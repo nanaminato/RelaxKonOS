@@ -113,6 +113,8 @@ public sealed partial class GitClientViewModel
             _ = ApplyLogFiltersAsync();
     }
 
+    public Func<string, string> Labels => localize;
+
     public void RefreshEditorLocalization()
     {
         var date = SelectedLogDate?.Value ?? "all";
@@ -127,6 +129,7 @@ public sealed partial class GitClientViewModel
         finally { _updatingLogFilterOptions = false; }
         RebuildLogBranchOptions();
         RebuildLogAuthorOptions();
+        OnPropertyChanged(nameof(Labels));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(Status));
         OnPropertyChanged(nameof(CommitChangedFiles));

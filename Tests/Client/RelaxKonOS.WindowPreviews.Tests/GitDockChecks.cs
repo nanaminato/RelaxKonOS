@@ -63,6 +63,42 @@ internal static class GitDockChecks
         var optionsMenu = (MenuFlyout)view.FindControl<Button>("GitDockOptionsButton")!.Flyout!;
         optionsMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Tag, "overview")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Check(view.SelectedGitTab?.View is GitOverviewView, "Management tabs use their distinct view instead of reusing the log content.");
+        var branches = new GitBranchesView(vm);
+        var branchGrid = branches.FindControl<DataGrid>("BranchGrid")!;
+        var branchHost = new Window { Content = branches };
+        branchHost.Show();
+        Dispatcher.UIThread.RunJobs();
+        Check(Equals(branchGrid.Columns[0].Header, LocalizedText.Get("git.branches.col_name")),
+            "The application-owned branch page localizes its grid headers.");
+        var branchLanguage = settings.Language;
+        var originalHeader = branchGrid.Columns[0].Header;
+        try
+        {
+            settings.Language = Equals(originalHeader, "名前") ? "en-US" : "ja-JP";
+            Dispatcher.UIThread.RunJobs();
+            project.RefreshLocalization();
+            Dispatcher.UIThread.RunJobs();
+            Check(!Equals(branchGrid.Columns[0].Header, originalHeader)
+                && Equals(branchGrid.Columns[0].Header, LocalizedText.Get("git.branches.col_name")),
+                "An open branch page refreshes its grid headers when the host language changes.");
+        }
+        finally
+        {
+            settings.Language = branchLanguage;
+            Dispatcher.UIThread.RunJobs();
+            project.RefreshLocalization();
+            branchHost.Close();
+        }
+        var remoteVm = new GitClientViewModel(api, LocalizedText.Get);
+        remoteVm.Remotes.Add(new("origin", "https://example.invalid/repo.git"));
+        var remotePage = new GitRemotesView(remoteVm);
+        var remoteHost = new Window { Width = 1000, Height = 400, Content = remotePage };
+        remoteHost.Show();
+        Dispatcher.UIThread.RunJobs();
+        remoteHost.UpdateLayout();
+        Check(remotePage.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == LocalizedText.Get("git.remotes.edit")),
+            "The remote row template resolves action labels from the application view model.");
+        remoteHost.Close();
         vm.NavigateToCommand.Execute(GitClientPage.Log);
         Check(view.SelectedGitTab == primary, "Existing page navigation selects the corresponding tab in the new dock.");
         var second = await view.NewLogTabAsync();

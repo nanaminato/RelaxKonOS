@@ -3,10 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 /// <summary>远程（remote）管理视图：列出所有 remote，支持添加/编辑/删除。</summary>
-internal partial class GitRemotesView : UserControl
+public partial class GitRemotesView : UserControl
 {
     private GitClientViewModel? _vm;
 

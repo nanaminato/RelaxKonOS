@@ -2,9 +2,9 @@ using RelaxKonOS.App.Git;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal partial class GitBranchesView : UserControl
+public partial class GitBranchesView : UserControl
 {
     private GitClientViewModel? _vm;
 
