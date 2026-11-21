@@ -2,12 +2,11 @@ using RelaxKonOS.AppSDK;
 using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Databases;
 
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 
-public sealed record MySqlGrantChoice(MySqlGrant Value, LocalizedStatus Label);
+public sealed record MySqlGrantChoice(MySqlGrant Value, DatabaseStatus Label);
 
 public sealed partial class MySqlViewModel
 {
@@ -19,11 +18,11 @@ public sealed partial class MySqlViewModel
     [ObservableProperty] private string accountPassword = "";
     [ObservableProperty] private string? selectedDatabase;
     [ObservableProperty] private MySqlAccount? selectedAccount;
-    [ObservableProperty] private MySqlGrantChoice selectedGrant = new(MySqlGrant.ReadOnly, LocalizedStatus.Key("database.permission.ReadOnly"));
+    [ObservableProperty] private MySqlGrantChoice selectedGrant = new(MySqlGrant.ReadOnly, DatabaseStatus.Key("database.permission.ReadOnly"));
     public IReadOnlyList<string> Databases => State?.Databases ?? [];
     public IReadOnlyList<MySqlAccount> Accounts => State?.Accounts ?? [];
     public IReadOnlyList<MySqlGrantChoice> Grants { get; } = Enum.GetValues<MySqlGrant>()
-        .Select(value => new MySqlGrantChoice(value, LocalizedStatus.Key("database.permission." + value))).ToArray();
+        .Select(value => new MySqlGrantChoice(value, DatabaseStatus.Key("database.permission." + value))).ToArray();
     public bool CanManageAccounts => Writable && AccountInstallation is { IsActive: false } && State is { Running: true, Verified: true };
 
     [RelayCommand] private Task CreateDatabaseAsync() => SubmitAccountAsync(MySqlAction.CreateDatabase);
@@ -46,7 +45,7 @@ public sealed partial class MySqlViewModel
         };
         if (account?.Valid(action) != true || secret is not null && !MySqlAccountCommand.Password(secret))
         {
-            Notice = LocalizedStatus.Key("database.mysql_account_invalid");
+            Notice = DatabaseStatus.Key("database.mysql_account_invalid");
             return;
         }
         Busy = true;
@@ -60,7 +59,7 @@ public sealed partial class MySqlViewModel
             await SendAsync();
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException or UnauthorizedAccessException or OperationCanceledException)
-        { Notice = LocalizedStatus.Key("database.credential_unavailable"); }
+        { Notice = DatabaseStatus.Key("database.credential_unavailable"); }
         finally
         {
             AccountPassword = "";
@@ -79,7 +78,7 @@ public sealed partial class MySqlViewModel
         if (status == HttpStatusCode.Forbidden && AuthorizeAccountsAsync is not null && await AuthorizeAccountsAsync())
             status = await Stage();
         if ((int)status is >= 200 and < 300) return true;
-        Notice = LocalizedStatus.Key("database.credential_unavailable");
+        Notice = DatabaseStatus.Key("database.credential_unavailable");
         return false;
     }
 }

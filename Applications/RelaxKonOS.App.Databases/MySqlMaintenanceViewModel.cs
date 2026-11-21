@@ -1,11 +1,10 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.ManagedRuntimes.MySql;
 using RelaxKonOS.Protocol.Databases;
 
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 
 public sealed partial class MySqlViewModel
 {
@@ -46,7 +45,7 @@ public sealed partial class MySqlViewModel
         var command = new MySqlMaintenanceCommand(id, action, action == MySqlMaintenanceAction.Update ? MySqlMaintenancePolicy.Target : version,
             action == MySqlMaintenanceAction.Restore ? SelectedBackup?.Id : null,
             action == MySqlMaintenanceAction.UninstallDeleteData ? DeleteConfirmation : null);
-        if (!command.Valid) { Notice = LocalizedStatus.Key("database.maintenance_invalid"); return; }
+        if (!command.Valid) { Notice = DatabaseStatus.Key("database.maintenance_invalid"); return; }
         Busy = true;
         try
         {

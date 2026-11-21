@@ -1,10 +1,9 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql client, InstallationTaskViewModel installation):ObservableObject,IDisposable
 {
     public InstallationTaskViewModel Installation=>installation;
@@ -16,8 +15,10 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql cli
     [ObservableProperty] private int keepLast=3;
     [ObservableProperty] private bool allowDowntime;
     public string NextDue=>Snapshot?.BackupSchedule is {Enabled:true} policy?policy.NextDueAt.ToLocalTime().ToString("g"):"—";
-    public LocalizedStatus ScheduleOutcome=>LocalizedStatus.Key(Snapshot?.BackupSchedule?.LastOutcome??"database.backup_schedule_no_run");
-    public string ScheduledTask=>Snapshot?.ScheduledOperation is {} operation?$"{operation.OperationId} · {LocalizedText.Get("installation.stage."+operation.Stage)}":"—";
+    public DatabaseStatus ScheduleOutcome=>DatabaseStatus.Key(Snapshot?.BackupSchedule?.LastOutcome??"database.backup_schedule_no_run");
+    public DatabaseStatus ScheduledTask => Snapshot?.ScheduledOperation is { } operation
+        ? DatabaseStatus.Key("database.installation_stage." + operation.Stage, operation.OperationId + " · ")
+        : DatabaseStatus.Literal("—");
     public bool CanConfigureSchedule=> (Snapshot?.Instances?.FirstOrDefault()?.Id == Snapshot?.InstanceId || Snapshot?.Instances is null)&&!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation is {IsActive:false}&&OtherBusy?.Invoke()!=true&&!HasPending
         &&Snapshot is {Supported:true,Managed:true,InstanceId:not null,PendingOperationId:null};
     public bool CanRecoverSchedule=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation is {IsActive:false}&&OtherBusy?.Invoke()!=true&&!HasPending
@@ -43,7 +44,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql cli
     [ObservableProperty] private PostgreSqlBackup? selectedBackup;
     [ObservableProperty] private string deleteConfirmation="";
     [ObservableProperty] private bool busy;
-    [ObservableProperty] private LocalizedStatus notice=LocalizedStatus.Literal("");
+    [ObservableProperty] private DatabaseStatus notice=DatabaseStatus.Literal("");
     public bool HasPending=>pending is not null||policyPending is not null;
     public IEnumerable<PostgreSqlBackup> Backups=>Snapshot?.Backups??[];
     public string Candidate=>Plan?.Candidate?.Version??"—";
@@ -72,17 +73,17 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql cli
     [RelayCommand] private async Task PlanAsync()
     {
         if(!Ready)return;Busy=true;
-        try{var result=await client.MaintenancePlanAsync(default);if(!invalid){migrationPlan=false;Plan=result;Notice=LocalizedStatus.Literal("");}}
-        catch(InstallationApiException error){Notice=LocalizedStatus.Key(error.ProblemCode);}
-        catch{Notice=LocalizedStatus.Key("database.maintenance_plan_failed");}
+        try{var result=await client.MaintenancePlanAsync(default);if(!invalid){migrationPlan=false;Plan=result;Notice=DatabaseStatus.Literal("");}}
+        catch(InstallationApiException error){Notice=DatabaseStatus.Key(error.ProblemCode);}
+        catch{Notice=DatabaseStatus.Key("database.maintenance_plan_failed");}
         finally{Busy=false;}
     }
     [RelayCommand] private async Task MigrationPlanAsync()
     {
         if(!CanPlanMigration)return;Busy=true;MigrationSourceAccepted=false;
-        try{var result=await client.MigrationPlanAsync(default);if(!invalid){migrationPlan=true;Plan=result;Notice=LocalizedStatus.Literal("");}}
-        catch(InstallationApiException error){Notice=LocalizedStatus.Key(error.ProblemCode);}
-        catch{Notice=LocalizedStatus.Key("database.maintenance_plan_failed");}
+        try{var result=await client.MigrationPlanAsync(default);if(!invalid){migrationPlan=true;Plan=result;Notice=DatabaseStatus.Literal("");}}
+        catch(InstallationApiException error){Notice=DatabaseStatus.Key(error.ProblemCode);}
+        catch{Notice=DatabaseStatus.Key("database.maintenance_plan_failed");}
         finally{Busy=false;}
     }
     [RelayCommand] private Task MigrateAsync()=>Submit(PostgreSqlMaintenanceAction.MigrateMajor,CanMigrate);
@@ -90,7 +91,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql cli
     {
         if(!CanConfigureSchedule)return;
         var policy=new PostgreSqlBackupScheduleRequest(ScheduleEnabled,IntervalHours,KeepLast,AllowDowntime);
-        if(IntervalHours is <1 or >168||KeepLast is <1 or >6){Notice=LocalizedStatus.Key("database.backup_schedule_invalid");return;}
+        if(IntervalHours is <1 or >168||KeepLast is <1 or >6){Notice=DatabaseStatus.Key("database.backup_schedule_invalid");return;}
         var before=Snapshot!;Busy=true;
         try{if(ConfirmScheduleAsync is null||!await ConfirmScheduleAsync(policy)||invalid)return;
             policyPending=new(true,Maintenance:new(PostgreSqlMaintenanceAction.ConfigureBackupSchedule,before.InstanceId!.Value,before.Revision,Schedule:policy));await SendPolicy();}

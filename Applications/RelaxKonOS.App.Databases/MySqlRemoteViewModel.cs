@@ -1,11 +1,10 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Databases;
 
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 
 public sealed partial class MySqlViewModel
 {
@@ -37,7 +36,7 @@ public sealed partial class MySqlViewModel
                 RemoteCertificateChoices = choices.Where(x => (x.Status is CertificateStatus.Active or CertificateStatus.Issued)
                     && x.FingerprintSha256 is not null).ToArray();
         }
-        catch { Notice = LocalizedStatus.Key("database.tls_invalid"); }
+        catch { Notice = DatabaseStatus.Key("database.tls_invalid"); }
     }
 
     [RelayCommand] private Task OpenRemoteAsync() => SubmitRemoteAsync(true);
@@ -51,14 +50,14 @@ public sealed partial class MySqlViewModel
         {
             if (RemoteCertificate is not { FingerprintSha256: { } fingerprint } certificate || RemoteAccount is not { } account)
             {
-                Notice = LocalizedStatus.Key("database.remote_request_invalid");
+                Notice = DatabaseStatus.Key("database.remote_request_invalid");
                 return;
             }
             policy = new(id, RemoteListenAddress.Trim(), RemoteSourceAddress.Trim(), account.Database, account.User, account.Grant,
                 RemoteServerName.Trim(), certificate.Id, fingerprint);
             if (!policy.Valid)
             {
-                Notice = LocalizedStatus.Key("database.remote_request_invalid");
+                Notice = DatabaseStatus.Key("database.remote_request_invalid");
                 return;
             }
         }

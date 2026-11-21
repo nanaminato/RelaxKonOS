@@ -38,7 +38,8 @@ public sealed class DatabaseApp : RemoteApplicationBase
         Task<bool> AuthorizeInstallationAsync(InstallationServiceId service) => context.Services
             .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>()
             .RequestGrantAsync(InstallationClient.ElevationCapability(service), service.ToString().ToLowerInvariant());
-        var view = new Views.DatabaseWorkspace();
+        var view = new DatabaseWorkspace();
+        DatabaseWorkspaceLanguage.Bind(view, language);
         var window = context.ShowWindow(Text("application.relaxkonos.database.display_name"), view, new Rect(90, 60, 980, 700), Manifest.IconGlyph);
         model.Installation = new(DesktopInstallationText.Instance, context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSql, false, model.RefreshAsync,

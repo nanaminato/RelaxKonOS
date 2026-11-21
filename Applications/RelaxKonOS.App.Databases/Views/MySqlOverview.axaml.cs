@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Databases.Views;
+namespace RelaxKonOS.App.Databases.Views;
 
 public partial class MySqlOverview : UserControl
 {

@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-namespace RelaxKonOS.Client.Apps.Databases.Views;
+namespace RelaxKonOS.App.Databases.Views;
 public partial class DatabaseWorkspace : UserControl
 {
     public DatabaseWorkspace() => InitializeComponent();

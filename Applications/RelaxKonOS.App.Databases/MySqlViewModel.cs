@@ -1,11 +1,10 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 
 public sealed partial class MySqlViewModel(IServerMySql client, IExternalServerConnection connection) : ObservableObject, IDisposable
 {
@@ -21,9 +20,9 @@ public sealed partial class MySqlViewModel(IServerMySql client, IExternalServerC
 
     [ObservableProperty] private MySqlState? state;
     [ObservableProperty] private bool busy;
-    [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
+    [ObservableProperty] private DatabaseStatus notice = DatabaseStatus.Literal("");
 
-    public LocalizedStatus Status => LocalizedStatus.Key(State switch
+    public DatabaseStatus Status => DatabaseStatus.Key(State switch
     {
         null => "database.state_unavailable",
         { ProblemCode: { } problem } => problem,
@@ -70,13 +69,13 @@ public sealed partial class MySqlViewModel(IServerMySql client, IExternalServerC
             if (!invalid && connection.IsCurrent)
             {
                 State = current;
-                Notice = LocalizedStatus.Literal("");
+                Notice = DatabaseStatus.Literal("");
             }
         }
         catch (Exception error) when (error is HttpRequestException or System.Text.Json.JsonException or InvalidOperationException or UnauthorizedAccessException)
         {
             State = null;
-            Notice = LocalizedStatus.Key("database.state_unavailable");
+            Notice = DatabaseStatus.Key("database.state_unavailable");
         }
         catch (OperationCanceledException) { }
         finally { reading = false; }

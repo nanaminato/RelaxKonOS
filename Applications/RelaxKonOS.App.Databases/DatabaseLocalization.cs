@@ -11,14 +11,19 @@ public static class DatabaseLocalization
 
     public static string Resolve(ISystemLanguage language, string key, string fallback)
     {
-        var labels = language.CurrentLanguage.Split('-', 2)[0].ToLowerInvariant() switch
+        return Resolve(language.CurrentLanguage, key, fallback);
+    }
+
+    internal static string Resolve(string culture, string key, string fallback) =>
+        Labels(culture).GetValueOrDefault(key) ?? English.Value.GetValueOrDefault(key) ?? fallback;
+
+    internal static IReadOnlyDictionary<string, string> Labels(string culture) =>
+        culture.Split('-', 2)[0].ToLowerInvariant() switch
         {
             "zh" => Chinese.Value,
             "ja" => Japanese.Value,
             _ => English.Value,
         };
-        return labels.GetValueOrDefault(key) ?? English.Value.GetValueOrDefault(key) ?? fallback;
-    }
 
     private static Dictionary<string, string> Load(string culture)
     {

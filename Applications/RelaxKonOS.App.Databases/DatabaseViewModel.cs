@@ -2,11 +2,10 @@ using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Avalonia.Controls;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 
 public sealed partial class DatabaseViewModel(IServerPostgreSql client) : ObservableObject, IDisposable
 {
@@ -58,7 +57,7 @@ public sealed partial class DatabaseViewModel(IServerPostgreSql client) : Observ
     }
     [ObservableProperty] private PostgreSqlState? snapshot;
     [ObservableProperty] private bool busy;
-    [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
+    [ObservableProperty] private DatabaseStatus notice = DatabaseStatus.Literal("");
     public MySqlViewModel? MySql { get; set; }
     public InstallationTaskViewModel Installation { get; set; } = null!;
     public InstallationTaskViewModel? AdminRecoveryInstallation { get; set; }
@@ -73,10 +72,10 @@ public sealed partial class DatabaseViewModel(IServerPostgreSql client) : Observ
     public Func<PostgreSqlAction, PostgreSqlState, Task<bool>>? ConfirmAsync { get; set; }
     public Func<Task<int?>>? ChoosePortAsync { get; set; }
     public Func<Guid, Task<bool>>? ConfirmRecoveryAsync { get; set; }
-    public LocalizedStatus StateText => LocalizedStatus.Key(Snapshot is not { } s ? "database.state_unavailable" : !s.Supported ? "database.platform_unsupported"
+    public DatabaseStatus StateText => DatabaseStatus.Key(Snapshot is not { } s ? "database.state_unavailable" : !s.Supported ? "database.platform_unsupported"
         : s.PendingOperationId is not null ? "database.recovery_required" : s.PackageRemoved ? "database.package_retained" : !s.Installed ? "database.not_installed" : s.InstanceId is null ? "database.not_initialized"
         : s.Running ? "database.running" : "database.stopped");
-    public LocalizedStatus ConnectionText => LocalizedStatus.Key(Snapshot?.ConnectionVerified == true ? "database.connection_verified" : "database.connection_unverified");
+    public DatabaseStatus ConnectionText => DatabaseStatus.Key(Snapshot?.ConnectionVerified == true ? "database.connection_verified" : "database.connection_unverified");
     public string Version => Snapshot?.Version ?? "—";
     public string Instance => Snapshot?.InstanceId?.ToString() ?? "—";
     public string Port => Snapshot?.Port.ToString(System.Globalization.CultureInfo.CurrentCulture) ?? "—";
@@ -133,9 +132,9 @@ public sealed partial class DatabaseViewModel(IServerPostgreSql client) : Observ
     {
         if (invalid || reading) return;
         reading = true;
-        try { Snapshot = await ReadCurrentInstanceAsync(); Notice = Snapshot.ProblemCode is { } code ? LocalizedStatus.Key(code) : LocalizedStatus.Literal(""); }
+        try { Snapshot = await ReadCurrentInstanceAsync(); Notice = Snapshot.ProblemCode is { } code ? DatabaseStatus.Key(code) : DatabaseStatus.Literal(""); }
         catch (OperationCanceledException) { }
-        catch { Snapshot = null; Notice = LocalizedStatus.Key("database.state_unavailable"); }
+        catch { Snapshot = null; Notice = DatabaseStatus.Key("database.state_unavailable"); }
         finally { reading = false; NotifyState(); }
     }
     private async Task<PostgreSqlState> ReadCurrentInstanceAsync()
@@ -195,6 +194,6 @@ public sealed partial class DatabaseViewModel(IServerPostgreSql client) : Observ
         try { await SendAsync(submissionKind, request); }
         finally { Busy = false; }
     }
-    public void Invalidate() { MySql?.Invalidate(); invalid = true; lifetime.Cancel(); MaintenanceManager?.Invalidate(); AccountManager?.Invalidate(); RemoteManager?.Invalidate(); Snapshot = null; Notice = LocalizedStatus.Key("database.session_changed"); NotifyState(); }
+    public void Invalidate() { MySql?.Invalidate(); invalid = true; lifetime.Cancel(); MaintenanceManager?.Invalidate(); AccountManager?.Invalidate(); RemoteManager?.Invalidate(); Snapshot = null; Notice = DatabaseStatus.Key("database.session_changed"); NotifyState(); }
     public void Dispose() { Invalidate(); MySql?.Dispose(); lifetime.Dispose(); Installation?.Dispose(); AdminRecoveryInstallation?.Dispose(); MaintenanceManager?.Dispose(); AccountManager?.Dispose(); RemoteManager?.Dispose(); }
 }

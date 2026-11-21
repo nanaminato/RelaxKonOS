@@ -1,11 +1,10 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Installations;
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 public sealed partial class PostgreSqlRemoteViewModel(IServerCertificates certificates, InstallationTaskViewModel installation) : ObservableObject, IDisposable
 {
     public InstallationTaskViewModel Installation => installation;
@@ -22,7 +21,7 @@ public sealed partial class PostgreSqlRemoteViewModel(IServerCertificates certif
     [ObservableProperty] private CertificateDto? selectedCertificate;
     [ObservableProperty] private IReadOnlyList<CertificateDto> choices=[];
     [ObservableProperty] private bool busy;
-    [ObservableProperty] private LocalizedStatus notice=LocalizedStatus.Literal("");
+    [ObservableProperty] private DatabaseStatus notice=DatabaseStatus.Literal("");
     public IEnumerable<PostgreSqlAccount> Accounts => Snapshot?.Accounts?.Where(x=>x.Permission!=PostgreSqlPermission.Migration)??[];
     public bool HasPending => pending is not null;
     private bool Ready => !invalid && !Busy && CanManage && !installation.IsActive && OtherBusy?.Invoke()!=true && pending is null && Snapshot is { Supported:true, Installed:true, InstanceId:not null };
@@ -37,7 +36,7 @@ public sealed partial class PostgreSqlRemoteViewModel(IServerCertificates certif
     [RelayCommand] public async Task RefreshCertificatesAsync()
     {
         try { Choices=(await certificates.ListAsync()).Where(x=>x.Status is CertificateStatus.Active or CertificateStatus.Issued && x.FingerprintSha256 is not null).ToArray(); }
-        catch { Notice=LocalizedStatus.Key("database.tls_invalid"); }
+        catch { Notice=DatabaseStatus.Key("database.tls_invalid"); }
     }
     [RelayCommand] private Task EnableAsync()=>SubmitAsync(true);
     [RelayCommand] private Task CloseAsync()=>SubmitAsync(false);
@@ -47,7 +46,7 @@ public sealed partial class PostgreSqlRemoteViewModel(IServerCertificates certif
         var command=enabled ? new PostgreSqlRemoteCommand(Snapshot!.InstanceId!.Value,Snapshot.Revision,true,ListenAddress.Trim(),ServerName.Trim(),SelectedAccount?.Database,SelectedAccount?.Name,
             Sources.Split([',',';','\n'],StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries),SelectedCertificate?.Id,SelectedCertificate?.FingerprintSha256)
             :new PostgreSqlRemoteCommand(Snapshot!.InstanceId!.Value,Snapshot.Revision,false);
-        if(!PostgreSqlRemoteValidation.Valid(command)){Notice=LocalizedStatus.Key("database.remote_request_invalid");return;}
+        if(!PostgreSqlRemoteValidation.Valid(command)){Notice=DatabaseStatus.Key("database.remote_request_invalid");return;}
         Busy=true;
         try { if(ConfirmAsync is null || !await ConfirmAsync() || invalid)return;pending=new(true,RemoteAccess:command);await Send(); }
         finally { Busy=false; }

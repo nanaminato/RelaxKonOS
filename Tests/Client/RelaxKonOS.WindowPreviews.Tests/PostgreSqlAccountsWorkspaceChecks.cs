@@ -1,3 +1,5 @@
+using RelaxKonOS.App.Databases.Views;
+using RelaxKonOS.App.Databases;
 using InstallationTaskViewModel = RelaxKonOS.AppSDK.InstallationTaskViewModel;
 using InstallationApiException = RelaxKonOS.AppSDK.InstallationApiException;
 using IServerPostgreSql = RelaxKonOS.AppSDK.IServerPostgreSql;
@@ -10,8 +12,6 @@ using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.Databases;
-using RelaxKonOS.Client.Apps.Databases.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Installation;
@@ -21,7 +21,7 @@ using RelaxKonOS.Protocol.Installations;
 
 internal static class PostgreSqlAccountsWorkspaceChecks
 {
-    public static void Run(ShellSettings settings)
+    public static void Run(ShellSettings settings, LocalizationService localization)
     {
         void Check(bool ok,string label) { if(!ok)throw new Exception(label);Console.WriteLine("PASS Database accounts "+label); }
         using var handler = new Handler(); using var http = new HttpClient(handler);
@@ -55,6 +55,7 @@ internal static class PostgreSqlAccountsWorkspaceChecks
         {
             settings.Language=language;Dispatcher.UIThread.RunJobs();
             var view=new DatabaseAccounts{DataContext=vm}; var window=new Window{Width=760,Height=680,Content=view};
+            DatabaseWorkspaceLanguage.Bind(window, localization);
             window.Show();Dispatcher.UIThread.RunJobs();window.UpdateLayout();
             Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(t=>t.Text?.StartsWith("database.")==true),"localized account page in "+language);
             Check(view.GetVisualDescendants().OfType<TextBox>().Count(t=>t.PasswordChar=='●')==2,"both password fields remain masked");

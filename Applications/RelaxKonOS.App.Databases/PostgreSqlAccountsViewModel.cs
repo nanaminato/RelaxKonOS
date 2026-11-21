@@ -1,13 +1,12 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.App.Databases;
 
-public sealed record PostgreSqlPermissionChoice(PostgreSqlPermission Value, LocalizedStatus Label);
+public sealed record PostgreSqlPermissionChoice(PostgreSqlPermission Value, DatabaseStatus Label);
 public sealed partial class PostgreSqlAccountsViewModel(IServerPostgreSql client, InstallationTaskViewModel installation) : ObservableObject, IDisposable
 {
     private readonly CancellationTokenSource lifetime = new();
@@ -29,9 +28,9 @@ public sealed partial class PostgreSqlAccountsViewModel(IServerPostgreSql client
     [ObservableProperty] private string passwordAgain = "";
     [ObservableProperty] private PostgreSqlDatabase? selectedDatabase;
     [ObservableProperty] private PostgreSqlAccount? selectedAccount;
-    [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
+    [ObservableProperty] private DatabaseStatus notice = DatabaseStatus.Literal("");
     public IReadOnlyList<PostgreSqlPermissionChoice> Permissions { get; } = Enum.GetValues<PostgreSqlPermission>()
-        .Select(x => new PostgreSqlPermissionChoice(x, LocalizedStatus.Key("database.permission." + x))).ToArray();
+        .Select(x => new PostgreSqlPermissionChoice(x, DatabaseStatus.Key("database.permission." + x))).ToArray();
     [ObservableProperty] private PostgreSqlPermissionChoice? selectedPermission;
     public IReadOnlyList<PostgreSqlDatabase> Databases => Snapshot?.Databases ?? [];
     public IReadOnlyList<PostgreSqlAccount> Accounts => Snapshot?.Accounts?.Where(x => x.Database == SelectedDatabase?.Name).ToArray() ?? [];
@@ -106,15 +105,15 @@ public sealed partial class PostgreSqlAccountsViewModel(IServerPostgreSql client
             if (invalid || pending is null) return;
             await Installation.SubmitAsync(InstallationOperationKind.Configure, new PostgreSqlInstallationRequest(true, AccountCommand: pending));
             if (!Installation.HasPendingSubmission) pending = null;
-            Notice = LocalizedStatus.Literal("");
+            Notice = DatabaseStatus.Literal("");
         }
         catch (InstallationApiException ex)
         {
-            Notice = LocalizedStatus.Key(ex.ProblemCode);
+            Notice = DatabaseStatus.Key(ex.ProblemCode);
             if (ex.Status is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Conflict) { pending = null; pendingSecret = null; }
         }
         catch (OperationCanceledException) { }
-        catch { Notice = LocalizedStatus.Key("database.account_request_pending"); }
+        catch { Notice = DatabaseStatus.Key("database.account_request_pending"); }
         finally { Notify(); }
     }
     [RelayCommand] private async Task ResumeAsync() { if (!CanResume) return; Busy = true; try { await RunPendingAsync(); } finally { Busy = false; } }

@@ -99,7 +99,7 @@ if (args.Contains("--component-download-preview"))
     Console.WriteLine(downloadOutput);
     return;
 }
-if (args.Contains("--database-only")) { DatabaseWorkspaceChecks.Run(settings, localization); PostgreSqlAccountsWorkspaceChecks.Run(settings); return; }
+if (args.Contains("--database-only")) { DatabaseWorkspaceChecks.Run(settings, localization); PostgreSqlAccountsWorkspaceChecks.Run(settings, localization); return; }
 if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
 if (args.Contains("--image-viewer-only")) { ImageViewerWorkspaceChecks.Run(settings, localization); return; }
 if (args.Contains("--welcome-only")) { WelcomeWorkspaceChecks.Run(settings, localization, services); return; }

@@ -18,8 +18,6 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.Databases;
-using RelaxKonOS.Client.Apps.Databases.Views;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
@@ -76,6 +74,7 @@ internal static class DatabaseWorkspaceChecks
             {
                 var view=new DatabaseWorkspace { DataContext=model };
                 var window=new Window { Width=size.Width,Height=size.Height,Content=view };
+                DatabaseWorkspaceLanguage.Bind(window, localization);
                 window.Show();Dispatcher.UIThread.RunJobs();window.UpdateLayout();
                 Check(view.GetVisualDescendants().OfType<Button>().Any(x=>x.IsVisible && x.Command==model.StartCommand),"start control renders in "+language);
                 Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(x=>x.Text?.StartsWith("database.")==true),"localized overview in "+language);
@@ -83,6 +82,22 @@ internal static class DatabaseWorkspaceChecks
                 window.Close();Dispatcher.UIThread.RunJobs();
             }
         }
+        var liveWorkspace = new DatabaseWorkspace { DataContext = model };
+        DatabaseWorkspaceLanguage.Bind(liveWorkspace, localization);
+        var liveWindow = new Window { Width = 980, Height = 700, Content = liveWorkspace };
+        liveWindow.Show();
+        foreach (var culture in new[] { "zh-CN", "en-US", "ja-JP" })
+        {
+            settings.Language = culture;
+            Dispatcher.UIThread.RunJobs();
+            var title = localization.Get("application.relaxkonos.database.display_name", "[missing]");
+            var state = localization.Get(model.StateText.ResourceKey!, "[missing]");
+            Check(liveWorkspace.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == title)
+                && liveWorkspace.GetVisualDescendants().OfType<DatabaseStatusText>().Any(text => text.Text == state),
+                "open workspace refreshes labels and status in " + culture);
+        }
+        liveWindow.Close();
+        Dispatcher.UIThread.RunJobs();
         using var handler = new LostResponseHandler();
         using var http = new HttpClient(handler);
         model.Installation.Dispose();
@@ -120,6 +135,7 @@ internal static class DatabaseWorkspaceChecks
             settings.Language = language; Dispatcher.UIThread.RunJobs();
             var maintenance = new DatabaseMaintenance { DataContext = adminModel };
             var window = new Window { Width = 760, Height = 680, Content = maintenance };
+            DatabaseWorkspaceLanguage.Bind(window, localization);
             window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
             Check(maintenance.GetVisualDescendants().OfType<Button>().Any(x => x.Command == adminModel.AdminRecoveryCommand), "administrator recovery control renders in " + language);
             Check(!maintenance.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.StartsWith("database.") == true), "administrator recovery copy localized in " + language);
@@ -153,6 +169,7 @@ internal static class DatabaseWorkspaceChecks
         {
             settings.Language=language;Dispatcher.UIThread.RunJobs();
             var view=new DatabaseRemoteAccess { DataContext=remoteModel };var window=new Window { Width=760,Height=680,Content=view };
+            DatabaseWorkspaceLanguage.Bind(window, localization);
             window.Show();Dispatcher.UIThread.RunJobs();window.UpdateLayout();
             Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(x=>x.Text?.StartsWith("database.")==true),"remote access localized in "+language);
             using(var bitmap=new RenderTargetBitmap(new PixelSize(760,680))){bitmap.Render(window);bitmap.Save(Path.Combine(output,"remote-"+language+".png"));}
@@ -221,6 +238,7 @@ internal static class DatabaseWorkspaceChecks
             settings.Language=language;Dispatcher.UIThread.RunJobs();
             var hostModel=new DatabaseViewModel(new Client()){MaintenanceManager=maintenanceModel};
             var view=new DatabaseMaintenance{DataContext=hostModel};var window=new Window{Width=980,Height=760,Content=view};
+            DatabaseWorkspaceLanguage.Bind(window, localization);
             window.Show();Dispatcher.UIThread.RunJobs();window.UpdateLayout();
             Check(view.GetVisualDescendants().OfType<Button>().Any(x=>x.Command==maintenanceModel.BackupCommand),"maintenance controls render in "+language);
             Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(x=>x.Text?.StartsWith("database.")==true),"maintenance copy localized in "+language);
@@ -285,6 +303,7 @@ internal static class DatabaseWorkspaceChecks
         mysql.State = mysql.State with { InstanceId = Guid.NewGuid(), Running = true, Verified = true };
         var mysqlView = new MySqlOverview { DataContext = mysql };
         var mysqlWindow = new Window { Width = 760, Height = 460, Content = mysqlView };
+        DatabaseWorkspaceLanguage.Bind(mysqlWindow, localization);
         mysqlWindow.Show();
         Dispatcher.UIThread.RunJobs();
         Check(mysqlView.GetVisualDescendants().OfType<Button>().Any(button => button.Command == mysql.StopCommand && button.IsEnabled),
