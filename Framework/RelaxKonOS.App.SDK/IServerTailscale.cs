@@ -19,4 +19,5 @@ public interface IServerTailscale
 public interface IExternalTailscale : IServerTailscale
 {
     Task<bool> RequestPeerAccessAsync(HostSettingsConnection connection, CancellationToken cancellationToken);
+    Task<TailscaleControlSnapshot> ReadAuthorizedControlAsync(HostSettingsConnection connection, CancellationToken cancellationToken);
 }

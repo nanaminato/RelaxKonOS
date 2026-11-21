@@ -55,6 +55,9 @@ internal sealed class ServerTailscaleCapability(AppId appId, IAppPermissionManag
             manage: true, elevate: false, ct);
 
     public Task<TailscaleControlSnapshot> GetControlAsync(HostSettingsConnection target, CancellationToken ct) =>
+        InvokeAsync(target, token => Control.GetControlAsync(target, token), manage: true, elevate: false, ct);
+
+    public Task<TailscaleControlSnapshot> ReadAuthorizedControlAsync(HostSettingsConnection target, CancellationToken ct) =>
         WithGrantAsync(target, token => Control.GetControlAsync(target, token), ct);
 
     public Task<TailscaleOperation> PrepareAsync(HostSettingsConnection target, TailscalePrepareRequest request, CancellationToken ct) =>

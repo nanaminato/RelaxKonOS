@@ -36,9 +36,15 @@ internal static class TailscaleScopeChecks
         await RejectAsync<RelaxKonOSAuthException>(() => scopedLogin.ChallengeAsync(identity, Guid.NewGuid(), default));
 
         permissions.Granted.Add(AppPermissions.ServerTailscaleManage);
+        await scoped.GetControlAsync(identity, default);
+        if (broker.Elevations != 0)
+            throw new InvalidOperationException("Passive Tailscale refresh must never request native authorization.");
+        await scoped.ReadAuthorizedControlAsync(identity, default);
+        if (broker.Elevations != 1)
+            throw new InvalidOperationException("An explicit Tailscale settings read must use the scoped grant.");
         var operation = Guid.NewGuid();
         var challenge = await scopedLogin.ChallengeAsync(identity, operation, default);
-        if (challenge.OperationId != operation || loginFixture.ChallengeReads != 1 || broker.Elevations != 1
+        if (challenge.OperationId != operation || loginFixture.ChallengeReads != 1 || broker.Elevations != 2
             || !await scoped.RequestPeerAccessAsync(identity, default) || broker.PeerGrants != 1)
             throw new InvalidOperationException("The Tailscale capability did not restrict native authorization to the intended scope.");
 
@@ -107,6 +113,7 @@ public class TailscaleScopeTransport : DispatchProxy
     {
         nameof(IServerTailscale.GetStatusAsync) => Task.FromResult(new TailscaleStatusDto("observed",
             TailnetName: "tailnet-fixture", Account: new("account", "Account"))),
+        nameof(IServerTailscale.GetControlAsync) => Task.FromResult(new TailscaleControlSnapshot("fixture", true, true, new(true, true), true)),
         nameof(IServerTailscaleLogin.ChallengeAsync) => ReadChallenge((Guid)args![1]!),
         _ => throw new NotSupportedException(method?.Name),
     };
