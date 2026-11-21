@@ -1,6 +1,6 @@
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
-internal static class CodeEditorFileTypes
+public static class CodeEditorFileTypes
 {
     public static IReadOnlyList<string> SupportedExtensions { get; } =
     [

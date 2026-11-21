@@ -11,6 +11,7 @@ using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Files;
@@ -100,6 +101,14 @@ internal static class FusedApplicationChecks
                 settings.SystemStyleId = style;
                 settings.Appearance = settings.Appearance with { Mode = dark ? ThemeKind.Dark : ThemeKind.Light };
                 settings.Language = language;
+                var editorSettingsTitle = language switch
+                {
+                    "zh-CN" => "代码编辑器设置",
+                    "ja-JP" => "コード エディターの設定",
+                    _ => "Code Editor settings",
+                };
+                Check(LocalizedText.Get("code_editor.settings.title") == editorSettingsTitle,
+                    $"Editor assembly resources must follow the {language} display language.");
                 foreach (var (managed, name) in new[] { (codeWindow, "code"), (explorerWindow, "explorer") })
                 {
                     codeWindow.View.IsVisible = name == "code";

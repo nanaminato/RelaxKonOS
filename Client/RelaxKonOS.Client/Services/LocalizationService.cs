@@ -1,3 +1,4 @@
+using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.Client.Services.Diagnostics;
 using System.Text.Json;
 using Avalonia.Threading;
@@ -108,18 +109,19 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
     {
         var directory = Path.Combine(System.AppContext.BaseDirectory, "Localization");
         var loaded = new Dictionary<string, LanguageFileBuilder>(StringComparer.OrdinalIgnoreCase);
+        foreach (var resource in CodeEditorLocalization.ResourceNames)
+        {
+            using var source = CodeEditorLocalization.Open(resource);
+            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
+        }
+
         if (Directory.Exists(directory))
         {
             foreach (var path in Directory.EnumerateFiles(directory, "*.json", SearchOption.AllDirectories))
             {
                 try
                 {
-                    var language = JsonSerializer.Deserialize<LanguageFile>(File.ReadAllText(path));
-                    if (language is not { Culture.Length: > 0 }) continue;
-
-                    if (!loaded.TryGetValue(language.Culture, out var merged))
-                        loaded[language.Culture] = merged = new LanguageFileBuilder(language.Culture);
-                    merged.Merge(language, path);
+                    Merge(JsonSerializer.Deserialize<LanguageFile>(File.ReadAllText(path)), path);
                 }
                 catch (JsonException)
                 {
@@ -134,6 +136,14 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
                 [DefaultLanguage] = new LanguageFile(DefaultLanguage, "English", 0, new Dictionary<string, string>()),
             };
         return loaded.ToDictionary(pair => pair.Key, pair => pair.Value.Build(), StringComparer.OrdinalIgnoreCase);
+
+        void Merge(LanguageFile? language, string source)
+        {
+            if (language is not { Culture.Length: > 0 }) return;
+            if (!loaded.TryGetValue(language.Culture, out var merged))
+                loaded[language.Culture] = merged = new LanguageFileBuilder(language.Culture);
+            merged.Merge(language, source);
+        }
     }
 
     private sealed record LanguageFile(string Culture, string? DisplayName, int? SortOrder, Dictionary<string, string>? Strings);

@@ -90,6 +90,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.Welcome", "A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.EventAlerts", "Applications\RelaxKonOS.App.EventAlerts\RelaxKonOS.App.EventAlerts.csproj", "{63644019-AF28-4235-B77A-B6FDF4309CE1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.CodeEditor", "Applications\RelaxKonOS.App.CodeEditor\RelaxKonOS.App.CodeEditor.csproj", "{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -592,6 +594,18 @@ Global
 		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|x64.Build.0 = Release|Any CPU
 		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|x86.ActiveCfg = Release|Any CPU
 		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|x86.Build.0 = Release|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Debug|x64.Build.0 = Debug|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Debug|x86.Build.0 = Debug|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Release|x64.ActiveCfg = Release|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Release|x64.Build.0 = Release|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Release|x86.ActiveCfg = Release|Any CPU
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -623,5 +637,6 @@ Global
 		{D321F6E5-6ADC-4007-AC41-2DA115624535} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{EDBDF72E-774F-4C42-993E-20316DF07257} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 		{63644019-AF28-4235-B77A-B6FDF4309CE1} = {A10A91C2-6485-6656-963B-F6FCBC812542}
+		{7CF20639-83BF-4963-A1FC-5280FDAFCF7E} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 	EndGlobalSection
 EndGlobal
