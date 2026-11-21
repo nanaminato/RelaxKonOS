@@ -20,7 +20,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     private readonly LocalizationService _localization;
     private readonly Queue<AppPackageCandidate> _pending = new();
     private JointAppDeploymentService.Review? _jointReview;
-    private Guid? _expiredJointPlan;
+    private Guid? _invalidJointPlan;
 
     public AppInstallerViewModel(AppPackageInstallerService installer)
     {
@@ -115,7 +115,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
                 if (_jointReview is null)
                 {
                     var pending = await joint.FindPendingAsync(candidate, _storeLifetime.Token);
-                    if (pending is not null && pending.Plan.Id != _expiredJointPlan)
+                    if (pending is not null && pending.Plan.Id != _invalidJointPlan)
                     {
                         if (ConfirmDeploymentAsync is null || !await ConfirmDeploymentAsync(pending.Plan)) return;
                         _jointReview = pending;
@@ -151,11 +151,13 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         catch (Exception exception)
         {
             if (exception.Message is "deployment-plan-expired" or "deployment-snapshot-changed"
-                or "deployment-module-plan-expired")
+                or "deployment-module-plan-expired" or "deployment-server-changed" or "module-server-mismatch")
             {
-                _expiredJointPlan = _jointReview?.Plan.Id;
+                _invalidJointPlan = _jointReview?.Plan.Id;
                 _jointReview = null;
             }
+            else if (exception.Message is "deployment-account-changed" or "module-session-changed")
+                _jointReview = null;
             Status = LocalizedText.Ref("app_installer.status.install_failed", DeploymentProblem(exception));
             await ReportAsync(LocalizedText.Get("app_installer.error.install_title"), Status);
         }
@@ -182,13 +184,17 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         { Message: "deployment-module-AwaitingRestart" } => LocalizedText.Get("app_installer.deployment.restart_pending"),
         { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),
+        { Message: "deployment-account-changed" or "module-session-changed" } =>
+            LocalizedText.Get("app_installer.deployment.session_changed"),
+        { Message: "deployment-server-changed" or "module-server-mismatch" } =>
+            LocalizedText.Get("app_installer.deployment.server_changed"),
         _ => error.Message,
     };
 
     partial void OnCurrentPackageChanged(AppPackageCandidate? value)
     {
         _jointReview = null;
-        _expiredJointPlan = null;
+        _invalidJointPlan = null;
         (PackageIcon as IDisposable)?.Dispose();
         PackageIcon = null;
         if (value?.IconData is { Length: > 0 } data)

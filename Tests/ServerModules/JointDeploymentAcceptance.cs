@@ -12,6 +12,9 @@ using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Modules;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
@@ -111,17 +114,29 @@ internal static class JointDeploymentAcceptance
             var review = await joint.PrepareAsync(candidate, [], default);
             Require(review.Plan.PreparedSteps.Length == 1 && review.Plan.OrderedReleases[0].Package.Id == ModuleId,
                 "the desktop plans the missing signed module before the real desktop archive");
-            var requestsBeforeLoginChange = factory.Requests;
-            factory.BeforeNextClient = () => session.Url = host.Url;
-            try
+            var settings = new ShellSettings(null!);
+            var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
+            using (var uiServices = new ServiceCollection().AddSingleton(localization).BuildServiceProvider())
             {
-                await joint.ExecuteAsync(review, default);
-                throw new InvalidOperationException("Expected the login change to invalidate the running attempt.");
+                typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, uiServices);
+                using var model = new AppInstallerViewModel(installer) { JointDeployment = joint, CurrentPackage = candidate };
+                var requestsBeforeLoginChange = 0;
+                var confirmations = 0;
+                model.ConfirmDeploymentAsync = _ =>
+                {
+                    if (++confirmations != 1) return Task.FromResult(false);
+                    requestsBeforeLoginChange = factory.Requests;
+                    factory.BeforeNextClient = () => session.Url = host.Url;
+                    return Task.FromResult(true);
+                };
+                await model.InstallCommand.ExecuteAsync(null);
+                Require(factory.Requests == requestsBeforeLoginChange
+                    && !applications.IsRegistered(new AppId(AppIdText)),
+                    "a replacement login during client binding sends no module request");
+                await model.InstallCommand.ExecuteAsync(null);
+                Require(confirmations == 2 && !applications.IsRegistered(new AppId(AppIdText)),
+                    "retry after a replacement login requires a fresh confirmation");
             }
-            catch (InvalidOperationException error) when (error.Message == "deployment-account-changed") { }
-            Require(factory.Requests == requestsBeforeLoginChange
-                && !applications.IsRegistered(new AppId(AppIdText)),
-                "a replacement login during client binding sends no module request");
             await ExpectRestartAsync(joint, review);
             Require(!applications.IsRegistered(new AppId(AppIdText)) && InstalledModuleStore.Read(serverRoot).Single().ModuleId == ModuleId,
                 "the first execution installs the signed module and leaves the desktop package pending");

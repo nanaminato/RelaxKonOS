@@ -54,6 +54,8 @@
         "app_installer.deployment.no_permission": "現在のアカウントにはサーバーモジュールの管理権限がありません。",
         "app_installer.deployment.module_unavailable": "互換性のあるサーバーモジュール {0} が見つかりません。コンポーネントセンターでモジュールと配布元を確認してください。",
         "app_installer.deployment.app_unavailable": "{0} への依存関係を満たす互換アプリがインストールされていません。",
+        "app_installer.deployment.session_changed": "ログインセッションが変わりました。サインイン後にデプロイ計画をもう一度確認してください。",
+        "app_installer.deployment.server_changed": "接続先のサーバーが変わりました。このサーバー向けの新しいデプロイ計画を確認してください。",
         "app_installer.deployment.enable_installed": "インストール済みモジュール {0}（{1}）を有効化",
         "app_installer.deployment.enable_review": "一覧のサーバーモジュールを有効化します。インストールが必要なモジュールは先にインストールします。サーバーの再起動が必要な場合は、再接続してから再試行してください。",
         "app_compatibility.title": "アプリケーションを利用できません",
