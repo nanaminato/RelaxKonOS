@@ -1,8 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Apps.ProxyServer;
-using RelaxKonOS.Client.Apps.ProxyServer.Views;
 
 namespace RelaxKonOS.Client.Apps.Proxy.Views;
 
@@ -13,6 +11,8 @@ internal partial class ProxyManagerWorkspace : UserControl
         Header.DataContext = DataContext;
         Header.Attach(window, HeaderActions);
     }
+
+    public Func<Control?>? CreateDependencySettings { get; init; }
 
     private Button? _selectedButton;
     public ProxyManagerWorkspace(ProxyManagerViewModel viewModel)
@@ -34,15 +34,13 @@ internal partial class ProxyManagerWorkspace : UserControl
         if (_selectedButton is not null) _selectedButton.Classes.Remove("nav-selected");
         _selectedButton = button;
         _selectedButton?.Classes.Add("nav-selected");
-        if (section == "settings" && (DataContext as ProxyManagerViewModel)?.Dependency is { } dependency)
-            _ = dependency.RefreshAsync();
         ContentHost.Content = section switch
         {
             "profiles" => new ProxyProfilesView(),
             "proxies" => new ProxyGroupsView(),
             "connections" => new ProxyConnectionsView(),
             "logs" => new ProxyLogsView(),
-            "settings" => new ProxySettingsView(),
+            "settings" => new ProxySettingsView(CreateDependencySettings?.Invoke()),
             _ => new ProxyOverviewView()
         };
     }

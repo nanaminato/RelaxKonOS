@@ -1,8 +1,7 @@
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
-using RelaxKonOS.Client.Apps.TaskManager;
+using RelaxKonOS.Protocol.SystemMonitor;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Proxy;
@@ -14,17 +13,16 @@ namespace RelaxKonOS.Client.Apps.Proxy;
 public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
 {
     private readonly IServerProxy repository;
-    private readonly ITaskManagerClient? systemMonitor;
     private int _refreshingTraffic;
     private bool _updatingOverviewProxySelection;
     private int? _persistedMixedPort;
     [ObservableProperty] private bool _hasManagePermission;
     [ObservableProperty] private bool _hasTunManagePermission;
 
-    public ProxyManagerViewModel(IServerProxy repository, bool canManage, bool canManageTun, ITaskManagerClient? systemMonitor = null)
+    public ProxyManagerViewModel(IServerProxy repository, bool canManage, bool canManageTun)
     {
         this.repository = repository;
-        this.systemMonitor = systemMonitor;
+
         _hasManagePermission = canManage;
         _hasTunManagePermission = canManageTun;
     }
@@ -302,8 +300,9 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     [RelayCommand(CanExecute = nameof(CanRestartProxy))] private Task RestartProxyAsync() => LifecycleAsync(ProxyLifecycleAction.Restart);
     [RelayCommand(CanExecute = nameof(CanToggleProxy))]
     private Task ToggleProxyAsync() => LifecycleAsync(ProxyIsRunning ? ProxyLifecycleAction.Stop : ProxyLifecycleAction.Start);
-    /// <summary>Mihomo installation lives in the component center; settings only observes and navigates.</summary>
-    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
+    /// <summary>Returns addresses that the host can use for its system proxy settings.</summary>
+    public Func<CancellationToken, Task<IReadOnlyList<NetworkAddressDto>>>? ReadNetworkAddressesAsync { get; init; }
+    public Func<string?, string?>? FormatPrivilegedHelperProblem { get; init; }
     [RelayCommand(CanExecute = nameof(CanEnableTun))]
     private Task EnableTunAsync() => (SelectedProfile ?? Overview?.ActiveProfile) is { } profile
         ? QueueAsync(() => repository.EnableTunAsync(profile.Id))
@@ -788,10 +787,10 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     }
     public async Task LoadSystemProxyHostOptionsAsync()
     {
-        if (systemMonitor is null) return;
+        if (ReadNetworkAddressesAsync is not { } read) return;
         try
         {
-            var addresses = await systemMonitor.GetNetworkAddressesAsync();
+            var addresses = await read(default);
             var values = new[] { "127.0.0.1" }
                 .Concat(addresses.Where(address => string.Equals(address.Family, "IPv4", StringComparison.OrdinalIgnoreCase)).Select(address => address.Address))
                 .Distinct(StringComparer.Ordinal)
@@ -802,7 +801,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         }
         catch (Exception) { }
     }
-    private static LocalizedStatus FormatOperation(ProxyOperationDto operation)
+    private LocalizedStatus FormatOperation(ProxyOperationDto operation)
     {
         if (operation.State == ProxyOperationState.Succeeded)
             return LocalizedText.Ref(operation.Kind switch
@@ -833,16 +832,16 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         StatusText = LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(problemCode));
         _ = ShowPrivilegedHelperUnavailableAsyncIfNeeded(problemCode);
     }
-    private static string FormatProblemCode(string? problemCode)
+    private string FormatProblemCode(string? problemCode)
     {
-        if (PrivilegedHelperProblemText.TryFormat(problemCode, out var helperMessage)) return helperMessage;
+        if (FormatPrivilegedHelperProblem?.Invoke(problemCode) is { } helperMessage) return helperMessage;
         if (string.IsNullOrWhiteSpace(problemCode)) return LocalizedText.Get("proxy.problem.unknown");
         var key = "proxy.problem." + problemCode.Replace("proxy.", string.Empty, StringComparison.Ordinal).Replace('.', '_');
         var localized = LocalizedText.Get(key);
         return localized == key ? problemCode : localized;
     }
     private Task ShowPrivilegedHelperUnavailableAsyncIfNeeded(string? problemCode) =>
-        PrivilegedHelperProblemText.TryFormat(problemCode, out _)
+        FormatPrivilegedHelperProblem?.Invoke(problemCode) is not null
             ? ShowPrivilegedHelperUnavailableAsync?.Invoke(problemCode) ?? Task.CompletedTask
             : Task.CompletedTask;
     private static string LocalizeEnum(string prefix, Enum value)

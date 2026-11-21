@@ -46,8 +46,19 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
         // the first request and waits for its decision before enabling server actions.
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.proxy");
-        var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor) { Dependency = dependency };
-        var view = new ProxyManagerWorkspace(vm);
+        var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false)
+        {
+            ReadNetworkAddressesAsync = systemMonitor is null ? null : systemMonitor.GetNetworkAddressesAsync,
+            FormatPrivilegedHelperProblem = code => PrivilegedHelperProblemText.TryFormat(code, out var text) ? text : null,
+        };
+        var view = new ProxyManagerWorkspace(vm)
+        {
+            CreateDependencySettings = () =>
+            {
+                _ = dependency.RefreshAsync();
+                return new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency };
+            },
+        };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
