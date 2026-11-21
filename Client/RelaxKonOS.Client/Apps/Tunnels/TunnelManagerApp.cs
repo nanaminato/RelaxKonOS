@@ -1,3 +1,7 @@
+using Avalonia.Utilities;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.Tunnels;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
@@ -57,15 +61,21 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
             await context.ShowDialogAsync<bool?>(window, LocalizedText.Get("tunnels.frps.diagnostics"), dialog =>
                 new TunnelManagedFrpsDiagnosticsView { DataContext = vm, CloseAction = dialog.Cancel }, new Size(720, 600));
         };
+        var localization = context.Services.GetRequiredService<LocalizationService>();
+        void ObserveLanguage(TunnelObservableObject model) =>
+            WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, TunnelObservableObject>(
+                localization, nameof(LocalizationService.LanguageChanged), model.OnLanguageChanged);
+
         vm.OpenProfileEditorAsync = async profile =>
         {
             var editableProfile = profile is null ? null : await client.GetProfileAsync(profile.Id);
             if (profile is not null && editableProfile is null) return;
-            var editor = new TunnelProfileEditorViewModel(client, editableProfile, null)
+            var editor = new TunnelProfileEditorViewModel(client, editableProfile, LocalizedText.Get)
             {
                 SavedAsync = vm.RefreshAfterChildAsync,
                 RequestDeletionConfirmationAsync = () => ConfirmAsync(LocalizedText.Get("common.delete"), LocalizedText.Get("tunnels.server.delete_confirmation"), LocalizedText.Get("common.delete")),
             };
+            ObserveLanguage(editor);
             await context.ShowDialogAsync<bool?>(window,
                 LocalizedText.Get(profile is null ? "tunnels.server.new_title" : "tunnels.server.edit_title"), dialog =>
                 {
@@ -75,11 +85,12 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
         };
         vm.OpenTunnelEditorAsync = async tunnel =>
         {
-            var editor = new TunnelDefinitionEditorViewModel(client, vm.Profiles, tunnel)
+            var editor = new TunnelDefinitionEditorViewModel(client, vm.Profiles, tunnel, LocalizedText.Get)
             {
                 SavedAsync = vm.RefreshAfterChildAsync,
                 RequestDeletionConfirmationAsync = () => ConfirmAsync(LocalizedText.Get("common.delete"), LocalizedText.Get("tunnels.tunnel.delete_confirmation"), LocalizedText.Get("common.delete")),
             };
+            ObserveLanguage(editor);
             await context.ShowDialogAsync<bool?>(window,
                 LocalizedText.Get(tunnel is null ? "tunnels.tunnel.new_title" : "tunnels.tunnel.edit_title"), dialog =>
                 {
@@ -89,7 +100,8 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
         };
         vm.OpenLogsWindowAsync = profile =>
         {
-            var logViewModel = new TunnelLogViewModel(client, profile);
+            var logViewModel = new TunnelLogViewModel(client, profile, LocalizedText.Get);
+            ObserveLanguage(logViewModel);
             var logWindow = context.ShowWindow(LocalizedText.Format("tunnels.logs.title_format", profile.Name),
                 new TunnelLogWindowView { DataContext = logViewModel }, new Rect(270, 175, 720, 510), Manifest.IconGlyph);
             EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? logClosed = null;

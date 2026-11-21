@@ -28,3 +28,8 @@ public interface IServerTunnels
     Task<IReadOnlyList<TunnelLogEntryDto>> GetManagedFrpsLogsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TunnelAuditEntryDto>> GetManagedFrpsAuditAsync(CancellationToken cancellationToken = default);
 }
+
+public sealed class TunnelRequestException(string problemCode) : Exception(problemCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}

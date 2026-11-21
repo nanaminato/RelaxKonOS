@@ -63,6 +63,7 @@
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Terminal\RelaxKonOS.App.Terminal.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.CodeEditor\RelaxKonOS.App.CodeEditor.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Git\RelaxKonOS.App.Git.csproj" />
+      <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Tunnels\RelaxKonOS.App.Tunnels.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.FileServices\RelaxKonOS.App.FileServices.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Certificates\RelaxKonOS.App.Certificates.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.WebServers\RelaxKonOS.App.WebServers.csproj" />

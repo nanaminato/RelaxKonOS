@@ -99,8 +99,3 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session, IH
     private static string SecretRoute(Guid id) => ProfileRoute(id) + "/secret";
     private static string TunnelRoute(Guid id) => TunnelApiRoutes.Tunnels + "/" + id.ToString("D");
 }
-
-public sealed class TunnelRequestException(string problemCode) : Exception(problemCode)
-{
-    public string ProblemCode { get; } = problemCode;
-}
