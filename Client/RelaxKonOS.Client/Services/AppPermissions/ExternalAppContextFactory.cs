@@ -632,6 +632,25 @@ public sealed class ExternalAppContextFactory
             return new(AppCapabilityResult.Succeeded, await files.ReadFileAsync(path, cancellationToken));
         }
 
+        public async Task<ServerDirectoryResult> ListDirectoryAsync(string path, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
+                return new(AppCapabilityResult.PermissionDenied);
+            if (string.IsNullOrWhiteSpace(path)) return new(AppCapabilityResult.InvalidArgument);
+            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+
+            var directory = await files.GetDirectoryAsync(path, cancellationToken);
+            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
+                return new(AppCapabilityResult.PermissionDenied);
+
+            return new(AppCapabilityResult.Succeeded, new(directory.Path, directory.Name,
+                directory.Directories.Select(entry => new ServerDirectoryEntry(entry.Path, entry.Name, IsDirectory: true))
+                    .Concat(directory.Files.Select(entry => new ServerDirectoryEntry(entry.Path, entry.Name, IsDirectory: false)))
+                    .ToArray()));
+        }
+
         public async Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default)
         {
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesWrite))

@@ -19,6 +19,9 @@ public interface IServerFiles
     /// <summary>Reads the contents of an editable file through the RelaxKonOS Server file API.</summary>
     Task<ServerFileContentResult> ReadAsync(string path, CancellationToken cancellationToken = default);
 
+    /// <summary>Lists the immediate children of a directory through the captured server session and read grant.</summary>
+    Task<ServerDirectoryResult> ListDirectoryAsync(string path, CancellationToken cancellationToken = default);
+
     /// <summary>Writes a file using the current RelaxKonOS Server session and the app's write grant.</summary>
     Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default);
 
@@ -28,6 +31,9 @@ public interface IServerFiles
 
 public sealed record ServerFileReadResult(AppCapabilityResult Status, Stream? Content, string? FileName);
 public sealed record ServerFileContentResult(AppCapabilityResult Status, byte[]? Content = null);
+public sealed record ServerDirectoryResult(AppCapabilityResult Status, ServerDirectory? Directory = null);
+public sealed record ServerDirectory(string Path, string Name, IReadOnlyList<ServerDirectoryEntry> Entries);
+public sealed record ServerDirectoryEntry(string Path, string Name, bool IsDirectory);
 
 public enum ServerFilePickerMode { OpenFile, SelectFolder, SaveFile }
 

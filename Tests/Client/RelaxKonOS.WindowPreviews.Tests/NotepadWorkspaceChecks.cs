@@ -48,12 +48,21 @@ internal static class NotepadWorkspaceChecks
         {
             settings.Language = "en-US";
             settings.NotepadDefaultEncoding = "UTF-16 LE";
+            var deniedListing = context.ServerFiles.ListDirectoryAsync("/remote");
+            Wait(deniedListing);
+            Check(deniedListing.Result is { Status: AppCapabilityResult.PermissionDenied, Directory: null }
+                && transport.DirectoryRequests == 0, "An ungranted app cannot enumerate the server directory.");
             Wait(app.OpenFileAsync(context, "/remote/notes.txt"));
             var window = manager.Windows.Single();
             var view = (NotepadView)window.View.Content!;
             var model = (NotepadViewModel)view.DataContext!;
             Check(model.Text == FileTransport.Original && model.EncodingName == "UTF-16 LE" && !model.IsDirty
                 && permission.Requested.SequenceEqual([AppPermissions.ServerFilesRead]), "Open with uses the workspace encoding and requests the read grant.");
+            var listing = context.ServerFiles.ListDirectoryAsync("/remote");
+            Wait(listing);
+            Check(listing.Result is { Status: AppCapabilityResult.Succeeded, Directory: { Path: "/remote", Name: "remote",
+                Entries: [{ Path: "/remote/src", IsDirectory: true }, { Path: "/remote/notes.txt", IsDirectory: false }] } }
+                && transport.DirectoryRequests == 1, "Directory enumeration returns the immediate files and directories through the authenticated file API.");
             Check(view.FindControl<Menu>("HeaderMenu")!.Items.OfType<MenuItem>().First().Header as string == "File", "Package menu uses its embedded English labels.");
             settings.Language = "ja-JP";
             Dispatcher.UIThread.RunJobs();
@@ -214,6 +223,7 @@ internal static class NotepadWorkspaceChecks
     {
         public const string Original = "remote notes";
         public List<(string Path, string Text, string Encoding)> Writes { get; } = [];
+        public int DirectoryRequests { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Check(request.Headers.Authorization?.Parameter == "fixture-token", "File API receives the current session identity.");
@@ -229,11 +239,17 @@ internal static class NotepadWorkspaceChecks
             }
             if (route == FileApiRoutes.Content)
                 return new(HttpStatusCode.OK) { Content = new ByteArrayContent(TextFileEncodings.Encode(Original, "UTF-16 LE")) };
+            if (route == FileApiRoutes.List)
+            {
+                DirectoryRequests++;
+                return Json(new DirectoryDto(path, "remote", FileSystemEntryType.Directory,
+                    [new("/remote/src", "src", null, FileSystemEntryType.Directory, null, null, null, false, false, null)],
+                    [Entry("/remote/notes.txt")], null, null));
+            }
             return route switch
             {
                 FileApiRoutes.Drives => Json(new[] { new DriveDto("/", "/", null, null, true, true) }),
                 FileApiRoutes.Special => Json(Array.Empty<SpecialLocationDto>()),
-                FileApiRoutes.List => Json(new DirectoryDto(path, "remote", FileSystemEntryType.Directory, [], [Entry("/remote/notes.txt")], null, null)),
                 FileApiRoutes.Info => Json(Entry(path)),
                 _ => throw new InvalidOperationException("Unexpected fixture route " + route),
             };

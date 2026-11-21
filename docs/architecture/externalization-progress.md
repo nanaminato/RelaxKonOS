@@ -82,4 +82,5 @@
 - 配置集 schemaVersion 2 显式声明离线或交互安装策略。Windows Release 使用实际 Event & Alert Center .roapp 验证交互条目在启动时不安装，官方商店可以审阅同一摘要的随包制品。当前发行配置的四个应用都声明离线安装。
 - SSH 文件管理器通过应用注册表和激活路由调用已登记的图像查看器或代码编辑器。Git 项目编辑器的共享文件选择器使用独立于 Code Editor 启动类的文件类型表。Code Editor 与 Git 的界面和 SDK 迁移仍待完成。
 - 桌面 SDK 的 `IServerFiles` 支持显式选择文件、目录或保存路径，支持多组过滤器，并提供远程路径大小写规则。Windows Release 的记事本回归通过真实宿主选择器验证目录结果和过滤器顺序，也覆盖原有打开与另存为操作。
+- 桌面 SDK 可以通过现有服务器文件 API 列出目录的直接子项。Windows Release 回归验证了未授权时拦截请求，以及获授权后返回文件和子目录。Code Editor 工作区仍需接入该能力。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。
