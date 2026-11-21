@@ -25,6 +25,10 @@ public interface IServerFiles
     /// <summary>Writes a file using the current RelaxKonOS Server session and the app's write grant.</summary>
     Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default);
 
+    /// <summary>Uses the version from a read or prior save. A null version requests exclusive creation.</summary>
+    Task<ServerFileWriteResult> WriteConditionalAsync(string path, byte[] content, string? expectedVersion,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Creates a directory using the app's write grant.</summary>
     Task<AppCapabilityResult> CreateDirectoryAsync(string path, CancellationToken cancellationToken = default);
 
@@ -39,7 +43,8 @@ public interface IServerFiles
 }
 
 public sealed record ServerFileReadResult(AppCapabilityResult Status, Stream? Content, string? FileName);
-public sealed record ServerFileContentResult(AppCapabilityResult Status, byte[]? Content = null);
+public sealed record ServerFileContentResult(AppCapabilityResult Status, byte[]? Content = null, string? Version = null);
+public sealed record ServerFileWriteResult(AppCapabilityResult Status, string? Version = null);
 public sealed record ServerDirectoryResult(AppCapabilityResult Status, ServerDirectory? Directory = null);
 public sealed record ServerDirectory(string Path, string Name, IReadOnlyList<ServerDirectoryEntry> Entries);
 public sealed record ServerDirectoryEntry(string Path, string Name, bool IsDirectory);

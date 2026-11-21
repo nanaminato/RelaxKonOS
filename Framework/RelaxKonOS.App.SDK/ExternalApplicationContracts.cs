@@ -153,4 +153,5 @@ public enum AppCapabilityResult
     PermissionDenied,
     InvalidArgument,
     Unavailable,
+    Conflict,
 }

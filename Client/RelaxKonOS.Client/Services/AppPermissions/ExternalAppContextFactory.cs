@@ -16,6 +16,7 @@ using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Protocol.SystemMonitor;
 using RelaxKonOS.Protocol.Capabilities;
 using RelaxKonOS.Protocol.AppSettings;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.WindowManager;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
@@ -629,7 +630,11 @@ public sealed class ExternalAppContextFactory
                 return new(AppCapabilityResult.PermissionDenied);
             if (string.IsNullOrWhiteSpace(path)) return new(AppCapabilityResult.InvalidArgument);
             if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
-            return new(AppCapabilityResult.Succeeded, await files.ReadFileAsync(path, cancellationToken));
+            var bytes = await files.ReadFileAsync(path, cancellationToken);
+            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
+                return new(AppCapabilityResult.PermissionDenied);
+            return new(AppCapabilityResult.Succeeded, bytes, bytes is null ? null : GitTextFileWrite.Version(bytes));
         }
 
         public async Task<ServerDirectoryResult> ListDirectoryAsync(string path, CancellationToken cancellationToken = default)
@@ -665,6 +670,24 @@ public sealed class ExternalAppContextFactory
             if (status != AppCapabilityResult.Succeeded) return status;
             await files.CreateDirectoryAsync(path, cancellationToken);
             return AppCapabilityResult.Succeeded;
+        }
+
+        public async Task<ServerFileWriteResult> WriteConditionalAsync(string path, byte[] content, string? expectedVersion,
+            CancellationToken cancellationToken)
+        {
+            var status = CheckWriteAccess(path, cancellationToken);
+            if (status != AppCapabilityResult.Succeeded) return new(status);
+            if (files is not IEditorFileWriter writer) return new(AppCapabilityResult.Unavailable);
+            try
+            {
+                var version = await writer.WriteEditorFileAsync(path, content, expectedVersion, cancellationToken);
+                return IsServerSession ? new(AppCapabilityResult.Succeeded, version) : new(AppCapabilityResult.Unavailable);
+            }
+            catch (RelaxKonOSAuthException error) when (error.Status == 409
+                && error.Type == "https://relaxkonos.app/problems/text-file-changed")
+            {
+                return new(AppCapabilityResult.Conflict);
+            }
         }
 
         public async Task<ServerFileRenameResult> RenameAsync(string path, string newName, CancellationToken cancellationToken)

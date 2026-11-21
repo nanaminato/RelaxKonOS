@@ -17,6 +17,8 @@ using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.UI.TextEditing;
@@ -76,10 +78,33 @@ internal static class NotepadWorkspaceChecks
             Wait(deniedDelete);
             Check(deniedDelete.Result == AppCapabilityResult.PermissionDenied && transport.TreeRequests.Count == 0,
                 "A denied app write grant prevents requests to mutate the directory tree.");
+            var deniedConditional = context.ServerFiles.WriteConditionalAsync("/remote/new.cs", [], null);
+            Wait(deniedConditional);
+            Check(deniedConditional.Result.Status == AppCapabilityResult.PermissionDenied && transport.ConditionalRequests == 0,
+                "Conditional saves require the app write grant.");
             permission.Write = AppPermissionStatus.Undecided;
             Wait(model.SaveCommand.ExecuteAsync(null));
             Check(transport.Writes.Single() == ("/remote/notes.txt", "draft", "UTF-16 LE") && !model.IsDirty
                 && permission.Requested.Contains(AppPermissions.ServerFilesWrite), "Save uses the authenticated file API and preserves the selected encoding.");
+            var versionedRead = context.ServerFiles.ReadAsync("/remote/notes.txt");
+            Wait(versionedRead);
+            var original = versionedRead.Result;
+            Check(original is { Status: AppCapabilityResult.Succeeded, Content: not null, Version: not null }
+                && original.Version == GitTextFileWrite.Version(original.Content), "A read returns the version of the actual bytes.");
+            var saveVersioned = context.ServerFiles.WriteConditionalAsync("/remote/notes.txt", "updated"u8.ToArray(), original.Version);
+            Wait(saveVersioned);
+            Check(saveVersioned.Result is { Status: AppCapabilityResult.Succeeded, Version: not null }
+                && saveVersioned.Result.Version != original.Version, "A matching version updates the file and returns a new version.");
+            var staleSave = context.ServerFiles.WriteConditionalAsync("/remote/notes.txt", [], original.Version);
+            Wait(staleSave);
+            var createFile = context.ServerFiles.WriteConditionalAsync("/remote/new.cs", [], null);
+            Wait(createFile);
+            var duplicateCreate = context.ServerFiles.WriteConditionalAsync("/remote/new.cs", [1], null);
+            Wait(duplicateCreate);
+            Check(staleSave.Result is { Status: AppCapabilityResult.Conflict, Version: null }
+                && createFile.Result.Status == AppCapabilityResult.Succeeded
+                && duplicateCreate.Result.Status == AppCapabilityResult.Conflict,
+                "Conditional saves report stale versions and exclusive creation cannot overwrite.");
             var create = context.ServerFiles.CreateDirectoryAsync("/remote/draft");
             var invalidRename = context.ServerFiles.RenameAsync("/remote/draft", "../renamed");
             Wait(Task.WhenAll(create, invalidRename));
@@ -242,6 +267,11 @@ internal static class NotepadWorkspaceChecks
         public List<(string Path, string Text, string Encoding)> Writes { get; } = [];
         public int DirectoryRequests { get; private set; }
         public List<string> TreeRequests { get; } = [];
+        public int ConditionalRequests { get; private set; }
+        private readonly Dictionary<string, string> _versions = new()
+        {
+            ["/remote/notes.txt"] = GitTextFileWrite.Version(TextFileEncodings.Encode(Original, "UTF-16 LE")),
+        };
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Check(request.Headers.Authorization?.Parameter == "fixture-token", "File API receives the current session identity.");
@@ -257,6 +287,17 @@ internal static class NotepadWorkspaceChecks
             }
             if (route == FileApiRoutes.Content)
                 return new(HttpStatusCode.OK) { Content = new ByteArrayContent(TextFileEncodings.Encode(Original, "UTF-16 LE")) };
+            if (route == FileApiRoutes.ConditionalContent && request.Method == HttpMethod.Put)
+            {
+                ConditionalRequests++;
+                var write = (await request.Content!.ReadFromJsonAsync<ConditionalFileWriteRequest>(cancellationToken: ct))!;
+                if (_versions.GetValueOrDefault(write.Path) != write.ExpectedVersion)
+                    return new(HttpStatusCode.Conflict) { Content = JsonContent.Create(new ProblemDetails(
+                        "https://relaxkonos.app/problems/text-file-changed", "text-file-changed", 409, null, null)) };
+                var version = GitTextFileWrite.Version(write.Content);
+                _versions[write.Path] = version;
+                return Json(new ConditionalFileWriteResult(version));
+            }
             if (route == FileApiRoutes.List)
             {
                 DirectoryRequests++;

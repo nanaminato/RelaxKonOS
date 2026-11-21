@@ -149,6 +149,8 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
         => throw new NotSupportedException();
     public Task<ServerDirectoryResult> ListDirectoryAsync(string path, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
+    public Task<ServerFileWriteResult> WriteConditionalAsync(string path, byte[] content, string? expectedVersion,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<AppCapabilityResult> CreateDirectoryAsync(string path, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
     public Task<ServerFileRenameResult> RenameAsync(string path, string newName, CancellationToken cancellationToken = default)
