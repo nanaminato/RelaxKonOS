@@ -30,7 +30,7 @@
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期和隔离宿主联合部署已验，真实防火墙操作待验 |
-| proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
+| proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows Release 包生命周期已验，真实 mihomo 待验 |
 | proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows Release 包生命周期及启动守卫已验，真实 sing-box 待验 |
 | squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows Release 包生命周期已验，真实 Squid 待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
@@ -319,3 +319,4 @@
 - Proxy Manager 工作区通过控件工厂显示组件依赖，通过宿主回调读取网络地址并处理 Helper 故障。视图模型移除了组件中心、任务管理器客户端和提权故障格式化的具体类型引用。Windows Release 代理专项通过。
 - Proxy Manager 视图模型和代理组投影已进入独立项目。视图模型通过注入的查询解析本地化，现有桌面窗口在语言变更时刷新绑定。Windows Release 代理工作区与流量轮询专项通过。
 - Proxy Manager 的工作区、设置和订阅对话框、样式、图标及中英日资源已进入应用程序集。Windows Release 代理工作区、组合工作区和流量轮询通过，独立入口与官方发行接线待完成。
+- Proxy Manager 已改为官方可选包。联合部署要求与 Squid、Proxy Server 共用的 Proxy 模块及对应管理能力。Windows Release 使用实际 DevCli 归档验证拒绝绕过联合部署、只读激活、权限隔离、升级、重启发现和卸载。SDK 专项验证关闭或切换连接时取消请求并清除订阅内容。系统代理地址候选在打开相应设置时请求指标读取权限。真实 mihomo 和包含此包的完整桌面发行待验。

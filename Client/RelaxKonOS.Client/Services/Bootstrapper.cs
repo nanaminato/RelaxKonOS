@@ -381,7 +381,6 @@ public static class Bootstrapper
         services.AddSingleton<Func<RelaxKonOS.AppSDK.IServerSquid>>(provider => () => provider.GetRequiredService<RelaxKonOS.AppSDK.IServerSquid>());
         services.AddHttpClient<RelaxKonOS.AppSDK.IServerSquid, RelaxKonOS.Client.Apps.Squid.RemoteSquidClient>()
             .AddHttpMessageHandler<AcceptLanguageHandler>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.TailscaleApp>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleClient>().AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleLoginClient>().AddRelaxKonOSAuthentication();

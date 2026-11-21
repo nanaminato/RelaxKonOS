@@ -13,6 +13,7 @@ namespace RelaxKonOS.App.ProxyManager;
 public sealed partial class ProxyManagerViewModel : ObservableObject
 {
     private readonly IServerProxy repository;
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly Func<string, string, string> localize;
     private int _refreshingTraffic;
     private bool _updatingOverviewProxySelection;
@@ -100,7 +101,10 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     /// <summary>Dialog forms edit an in-memory record. Keep a cheap immutable snapshot so Cancel really means cancel.</summary>
     public ProxySettingsDto? CapturePendingSettings() => Settings;
 
-    public void RestorePendingSettings(ProxySettingsDto? settings) => Settings = settings;
+    public void RestorePendingSettings(ProxySettingsDto? settings)
+    {
+        if (!_lifetime.IsCancellationRequested) Settings = settings;
+    }
 
     public int RunningConnectionCount => Connections.Count;
     public string RuntimeVersion => Runtime?.Version ?? "—";
@@ -222,6 +226,35 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         + (file.Length is { } size ? " · " + size + " B" : "") + (file.ProblemCode is { } problem ? " · " + problem : "")) ?? []);
     public IReadOnlyList<string> LogLevels { get; } = ["silent", "error", "warning", "info", "debug"];
 
+    public void InvalidateSession()
+    {
+        if (_lifetime.IsCancellationRequested) return;
+        _lifetime.Cancel();
+        SetPermissions(false, false);
+        RuntimeSubscriptionText = "";
+        SubscriptionLink = "";
+        SelectedProfile = null;
+        SelectedSubscription = null;
+        SelectedConnection = null;
+        SelectedGroup = null;
+        SelectedOverviewProxyNode = null;
+        SelectedProxy = "";
+        Profiles.Clear();
+        Subscriptions.Clear();
+        Groups.Clear();
+        Connections.Clear();
+        Logs.Clear();
+        Overview = null;
+        Runtime = null;
+        DnsStatus = null;
+        Traffic = null;
+        Settings = null;
+        RuntimeResources = null;
+        Replace(SystemProxyHostOptions, ["127.0.0.1"]);
+        StatusText = Message("proxy.problem.session_changed");
+        ConnectionStatus = StatusText;
+    }
+
     public async Task StartAsync() => await RefreshAsync();
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -230,13 +263,14 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var overviewTask = repository.GetOverviewAsync();
-            var profilesTask = repository.ListProfilesAsync();
-            var subscriptionsTask = repository.ListSubscriptionsAsync();
-            var settingsTask = repository.GetSettingsAsync();
+            var overviewTask = repository.GetOverviewAsync(_lifetime.Token);
+            var profilesTask = repository.ListProfilesAsync(_lifetime.Token);
+            var subscriptionsTask = repository.ListSubscriptionsAsync(_lifetime.Token);
+            var settingsTask = repository.GetSettingsAsync(_lifetime.Token);
             RuntimeResources = null;
-            var resourcesTask = LoadOptionalAsync(() => repository.GetResourcesAsync(), value => RuntimeResources = value);
+            var resourcesTask = LoadOptionalAsync(() => repository.GetResourcesAsync(_lifetime.Token), value => RuntimeResources = value);
             await Task.WhenAll(overviewTask, profilesTask, subscriptionsTask, settingsTask, resourcesTask);
+            _lifetime.Token.ThrowIfCancellationRequested();
 
             Overview = await overviewTask;
             Runtime = Overview.Runtime;
@@ -249,15 +283,16 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
             // A stopped/not-yet-installed runtime cannot answer controller requests. The shell
             // must still show its install and profile pages rather than fail the entire refresh.
             await Task.WhenAll(
-                LoadOptionalAsync(() => repository.ListGroupsAsync(), ReplaceGroups),
-                LoadOptionalAsync(() => repository.GetControllerConfigurationAsync(), value =>
+                LoadOptionalAsync(() => repository.ListGroupsAsync(_lifetime.Token), ReplaceGroups),
+                LoadOptionalAsync(() => repository.GetControllerConfigurationAsync(_lifetime.Token), value =>
                 {
                     if (string.IsNullOrEmpty(value.Routing.ProblemCode)) RoutingMode = value.Routing.Mode;
                     DnsStatus = value.Dns;
                 }),
                 RefreshConnectionsAsync(),
-                LoadOptionalAsync(() => repository.ListLogsAsync(), values => Replace(Logs, values)));
+                LoadOptionalAsync(() => repository.ListLogsAsync(cancellationToken: _lifetime.Token), values => Replace(Logs, values)));
             await LoadSystemProxyHostOptionsAsync();
+            _lifetime.Token.ThrowIfCancellationRequested();
             StatusText = Overview.Recovery.RecoveryRequired
                 ? Message("proxy.status.recovery_required")
                 : HasControllerAuthenticationFailure
@@ -272,11 +307,12 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     [RelayCommand]
     public async Task RefreshConnectionsAsync()
     {
-        if (IsRefreshingConnections) return;
+        if (_lifetime.IsCancellationRequested || IsRefreshingConnections) return;
         IsRefreshingConnections = true;
         try
         {
-            var connections = await repository.ListConnectionsAsync();
+            var connections = await repository.ListConnectionsAsync(_lifetime.Token);
+            if (_lifetime.IsCancellationRequested) return;
             var selectedId = SelectedConnection?.Id;
             Replace(Connections, connections);
             SelectedConnection = Connections.FirstOrDefault(item => item.Id == selectedId);
@@ -289,6 +325,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         {
             Connections.Clear(); SelectedConnection = null;
             OnPropertyChanged(nameof(RunningConnectionCount));
+            if (_lifetime.IsCancellationRequested) return;
             ConnectionStatus = Message("proxy.status.failed", (object?)FormatProblemCode(
                 exception is ProxyRequestException request ? request.ProblemCode
                     : exception is OperationCanceledException ? ProxyProblemCodes.ControllerTimeout : ProxyProblemCodes.ControllerUnavailable));
@@ -299,11 +336,13 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     /// <summary>Small live overview refresh; it deliberately avoids reloading profiles or logs.</summary>
     public async Task RefreshTrafficAsync(CancellationToken cancellationToken)
     {
-        if (cancellationToken.IsCancellationRequested || Interlocked.Exchange(ref _refreshingTraffic, 1) != 0) return;
+        if (_lifetime.IsCancellationRequested || cancellationToken.IsCancellationRequested
+            || Interlocked.Exchange(ref _refreshingTraffic, 1) != 0) return;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         try
         {
-            var value = await repository.GetTrafficAsync(cancellationToken);
-            if (!cancellationToken.IsCancellationRequested)
+            var value = await repository.GetTrafficAsync(linked.Token);
+            if (!linked.IsCancellationRequested)
                 Traffic = string.IsNullOrEmpty(value.ProblemCode) ? value : null;
         }
         catch (Exception error) when (error is ProxyRequestException or HttpRequestException or OperationCanceledException) { }
@@ -320,10 +359,10 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     public Func<string?, string?>? FormatPrivilegedHelperProblem { get; init; }
     [RelayCommand(CanExecute = nameof(CanEnableTun))]
     private Task EnableTunAsync() => (SelectedProfile ?? Overview?.ActiveProfile) is { } profile
-        ? QueueAsync(() => repository.EnableTunAsync(profile.Id))
+        ? QueueAsync(() => repository.EnableTunAsync(profile.Id, _lifetime.Token))
         : Task.CompletedTask;
-    [RelayCommand(CanExecute = nameof(CanTun))] private Task DisableTunAsync() => QueueAsync(() => repository.DisableTunAsync());
-    [RelayCommand(CanExecute = nameof(CanTun))] private Task EmergencyDisableAsync() => QueueAsync(() => repository.EmergencyDisableTunAsync());
+    [RelayCommand(CanExecute = nameof(CanTun))] private Task DisableTunAsync() => QueueAsync(() => repository.DisableTunAsync(_lifetime.Token));
+    [RelayCommand(CanExecute = nameof(CanTun))] private Task EmergencyDisableAsync() => QueueAsync(() => repository.EmergencyDisableTunAsync(_lifetime.Token));
     [RelayCommand(CanExecute = nameof(CanToggleTun))]
     private Task ToggleTunAsync() => IsTunEnabled ? DisableTunAsync() : EnableTunAsync();
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -334,7 +373,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         {
             IsBusy = true;
             var proxyOptions = SystemProxyOptions with { UsePac = SystemProxyOptions.UsePac && IsSystemProxyPacAvailable };
-            await repository.UpdateSettingsAsync(new UpdateProxySettingsRequest(SystemProxyEnabled, AllowLan, DnsEnabled, Ipv6Enabled, UnifiedDelay, LogLevel, MixedPort, AllowInsecureSubscriptionSources, SystemProxyHost, TunSettings, proxyOptions));
+            await repository.UpdateSettingsAsync(new UpdateProxySettingsRequest(SystemProxyEnabled, AllowLan, DnsEnabled, Ipv6Enabled, UnifiedDelay, LogLevel, MixedPort, AllowInsecureSubscriptionSources, SystemProxyHost, TunSettings, proxyOptions), _lifetime.Token);
             _persistedMixedPort = MixedPort;
             if (requiresRestart)
             {
@@ -360,8 +399,8 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            await repository.PrepareResourcesAsync();
-            RuntimeResources = await repository.GetResourcesAsync();
+            await repository.PrepareResourcesAsync(_lifetime.Token);
+            RuntimeResources = await repository.GetResourcesAsync(_lifetime.Token);
             StatusText = Message("proxy.status.geodata_configured");
         }
         catch (Exception exception) { RuntimeResources = null; SetFailureStatus(exception); }
@@ -375,7 +414,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            var profile = await repository.CreateProfileAsync(name, Overview?.EngineId ?? "mihomo");
+            var profile = await repository.CreateProfileAsync(name, Overview?.EngineId ?? "mihomo", _lifetime.Token);
             Profiles.Add(profile);
             ProfileName = string.Empty;
             StatusText = Message("proxy.status.profile_created", profile.Name);
@@ -384,13 +423,13 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    [RelayCommand(CanExecute = nameof(CanRefresh))]
+    [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task UpdateAllSubscriptionsAsync()
     {
         try
         {
             IsSubscriptionRefreshActive = true;
-            await QueueAsync(() => repository.RefreshAllSubscriptionsAsync());
+            await QueueAsync(() => repository.RefreshAllSubscriptionsAsync(_lifetime.Token));
         }
         finally { IsSubscriptionRefreshActive = false; }
     }
@@ -403,7 +442,8 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            var content = await repository.GetSubscriptionContentAsync(SelectedSubscription.Id);
+            var content = await repository.GetSubscriptionContentAsync(SelectedSubscription.Id, _lifetime.Token);
+            if (_lifetime.IsCancellationRequested) return;
             RuntimeSubscriptionText = content.Content;
             StatusText = Message("proxy.status.runtime_subscriptions_shown");
             ShowRuntimeSubscriptionWindow?.Invoke();
@@ -417,7 +457,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     {
         if (subscription is null || subscription.IsActive) return;
         SelectedSubscription = subscription;
-        await QueueAsync(() => repository.ActivateSubscriptionAsync(subscription.Id));
+        await QueueAsync(() => repository.ActivateSubscriptionAsync(subscription.Id, _lifetime.Token));
     }
 
     [RelayCommand(CanExecute = nameof(CanImportSubscription))]
@@ -427,11 +467,11 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         {
             IsBusy = true;
             var downloadRoute = ProxySubscriptionDownloadRoute.Direct;
-            var options = await repository.GetSubscriptionDownloadOptionsAsync();
+            var options = await repository.GetSubscriptionDownloadOptionsAsync(_lifetime.Token);
             if (options.SystemProxyAvailable && RequestSystemProxySubscriptionDownloadAsync is not null &&
                 await RequestSystemProxySubscriptionDownloadAsync())
                 downloadRoute = ProxySubscriptionDownloadRoute.SystemProxy;
-            var subscription = await repository.ImportSubscriptionAsync(new ImportProxySubscriptionRequest(SubscriptionLink.Trim(), DownloadRoute: downloadRoute));
+            var subscription = await repository.ImportSubscriptionAsync(new ImportProxySubscriptionRequest(SubscriptionLink.Trim(), DownloadRoute: downloadRoute), _lifetime.Token);
             Subscriptions.Add(subscription);
             SubscriptionLink = string.Empty;
             StatusText = Message("proxy.status.subscription_imported");
@@ -448,7 +488,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            var activated = await repository.ActivateProfileAsync(profile.Id);
+            var activated = await repository.ActivateProfileAsync(profile.Id, _lifetime.Token);
             Overview = Overview is null ? null : Overview with { ActiveProfile = activated };
             for (var index = 0; index < Profiles.Count; index++) Profiles[index] = Profiles[index] with { IsActive = Profiles[index].Id == activated.Id };
             SelectedProfile = activated;
@@ -466,7 +506,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            await repository.DeleteProfileAsync(profile.Id);
+            await repository.DeleteProfileAsync(profile.Id, _lifetime.Token);
             Profiles.Remove(profile);
             SelectedProfile = null;
             StatusText = Message("proxy.status.profile_deleted", profile.Name);
@@ -481,7 +521,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            await repository.SelectGroupAsync(SelectedGroup!.Name, SelectedProxy);
+            await repository.SelectGroupAsync(SelectedGroup!.Name, SelectedProxy, _lifetime.Token);
             SelectedGroup.SetSelected(SelectedProxy);
             StatusText = Message("proxy.status.node_selected", SelectedProxy);
         }
@@ -513,7 +553,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            await repository.SetRoutingModeAsync(mode);
+            await repository.SetRoutingModeAsync(mode, _lifetime.Token);
             RoutingMode = mode;
             StatusText = Message("proxy.status.routing_updated");
         }
@@ -581,7 +621,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            await repository.CloseConnectionAsync(connection.Id);
+            await repository.CloseConnectionAsync(connection.Id, _lifetime.Token);
             Connections.Remove(connection);
             SelectedConnection = null;
             OnPropertyChanged(nameof(RunningConnectionCount));
@@ -593,7 +633,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    private async Task LifecycleAsync(ProxyLifecycleAction action) => await QueueAsync(() => repository.LifecycleAsync(action));
+    private async Task LifecycleAsync(ProxyLifecycleAction action) => await QueueAsync(() => repository.LifecycleAsync(action, _lifetime.Token));
     private async Task QueueAsync(Func<Task<ProxyOperationAcceptedDto>> operation)
     {
         try
@@ -611,7 +651,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     {
         while (true)
         {
-            var operation = await repository.GetOperationAsync(operationId);
+            var operation = await repository.GetOperationAsync(operationId, _lifetime.Token);
             if (operation is null) { StatusText = Message("proxy.status.operation_unavailable"); return; }
             StatusText = FormatOperation(operation);
             if (operation.State is ProxyOperationState.Succeeded or ProxyOperationState.Failed or ProxyOperationState.Cancelled or ProxyOperationState.Interrupted)
@@ -629,11 +669,11 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
                 }
                 return;
             }
-            await Task.Delay(TimeSpan.FromSeconds(1));
+            await Task.Delay(TimeSpan.FromSeconds(1), _lifetime.Token);
         }
     }
 
-    private bool CanRefresh => !IsBusy;
+    private bool CanRefresh => !_lifetime.IsCancellationRequested && !IsBusy;
     private bool CanManageSystemProxy => CanManage && Settings is not null && (IsSystemProxyAvailable || SystemProxyEnabled);
     private bool CanManage => HasManagePermission && !IsBusy;
     private bool CanStartProxy => CanManage && Runtime?.State == ProxyRuntimeState.Stopped;
@@ -787,25 +827,30 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         OnPropertyChanged(nameof(ConfigurationUpdatedAt)); OnPropertyChanged(nameof(ClientVersion));
         EnableTunCommand.NotifyCanExecuteChanged(); DisableTunCommand.NotifyCanExecuteChanged(); EmergencyDisableCommand.NotifyCanExecuteChanged(); ToggleTunCommand.NotifyCanExecuteChanged();
     }
-    private static async Task LoadOptionalAsync<T>(Func<Task<T>> load, Action<T> apply)
+    private async Task LoadOptionalAsync<T>(Func<Task<T>> load, Action<T> apply)
     {
-        try { apply(await load()); }
+        try
+        {
+            var value = await load();
+            if (!_lifetime.IsCancellationRequested) apply(value);
+        }
         // Controller-specific pages simply remain empty until a runtime is healthy.
         catch (ProxyRequestException) { }
         catch (HttpRequestException) { }
     }
     private async Task LoadLogsAsync()
     {
-        try { Replace(Logs, await repository.ListLogsAsync()); }
+        try { Replace(Logs, await repository.ListLogsAsync(cancellationToken: _lifetime.Token)); }
         catch (ProxyRequestException) { }
         catch (HttpRequestException) { }
     }
     public async Task LoadSystemProxyHostOptionsAsync()
     {
-        if (ReadNetworkAddressesAsync is not { } read) return;
+        if (_lifetime.IsCancellationRequested || ReadNetworkAddressesAsync is not { } read) return;
         try
         {
-            var addresses = await read(default);
+            var addresses = await read(_lifetime.Token);
+            if (_lifetime.IsCancellationRequested) return;
             var values = new[] { "127.0.0.1" }
                 .Concat(addresses.Where(address => string.Equals(address.Family, "IPv4", StringComparison.OrdinalIgnoreCase)).Select(address => address.Address))
                 .Distinct(StringComparer.Ordinal)
@@ -843,6 +888,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     }
     private void SetFailureStatus(Exception exception)
     {
+        if (_lifetime.IsCancellationRequested) return;
         var problemCode = exception is ProxyRequestException request ? request.ProblemCode : exception.Message;
         StatusText = Message("proxy.status.failed", (object?)FormatProblemCode(problemCode));
         _ = ShowPrivilegedHelperUnavailableAsyncIfNeeded(problemCode);
@@ -926,7 +972,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         await concurrency.WaitAsync();
         try
         {
-            var delay = await repository.TestProxyDelayAsync(node.GroupName, node.Name, new TestProxyDelayRequest(target));
+            var delay = await repository.TestProxyDelayAsync(node.GroupName, node.Name, new TestProxyDelayRequest(target), _lifetime.Token);
             node.SetDelay(delay.DelayMilliseconds, delay.TimedOut);
         }
         catch { node.SetDelay(null, true); }

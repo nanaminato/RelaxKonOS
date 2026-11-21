@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "proxy.problem.session_changed": "服务器连接已变更，请重新打开代理管理器。",
     "application.relaxkonos.proxy.display_name": "代理管理器",
     "common.cancel": "取消",
     "common.close": "关闭",

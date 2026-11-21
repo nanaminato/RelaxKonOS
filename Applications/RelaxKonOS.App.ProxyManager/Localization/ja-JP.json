@@ -1,6 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "proxy.problem.session_changed": "サーバー接続が変更されました。プロキシ マネージャーを開き直してください。",
     "application.relaxkonos.proxy.display_name": "プロキシ マネージャー",
     "common.cancel": "キャンセル",
     "common.close": "閉じる",

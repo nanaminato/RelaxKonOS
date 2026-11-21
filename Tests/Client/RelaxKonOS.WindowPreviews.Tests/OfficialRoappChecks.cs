@@ -48,8 +48,9 @@ internal static class OfficialRoappChecks
         var isFileServices = applicationId == "relaxkonos.file-services";
         var isFirewall = applicationId == "relaxkonos.firewall";
         var isSquid = applicationId == "relaxkonos.squid";
+        var isProxyManager = applicationId == "relaxkonos.proxy";
         var isProxyServer = applicationId == "relaxkonos.proxy-server";
-        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer;
+        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager;
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
         var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
@@ -188,6 +189,16 @@ internal static class OfficialRoappChecks
                     && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.application-deployments"]
                     && candidate.Manifest.Dependencies?.Required is null or [],
                     "Application Deployments review exposes the deployment and file grants and required server capability.");
+            if (isProxyManager)
+            {
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage,
+                    AppPermissions.ServerProxyTunManage, AppPermissions.ServerComponentsRead, AppPermissions.ServerMetricsRead]
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.proxy"]
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.proxy" }, Capability: "server.proxy" }],
+                    "Proxy Manager review exposes the shared Proxy module and independent TUN grant.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Proxy Manager without joint deployment");
+            }
             if (isProxyServer)
             {
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerProxyServerRead, AppPermissions.ServerProxyServerManage,
@@ -301,6 +312,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.tunnels" => "RelaxKonOS.App.Tunnels.Views.TunnelManagerView",
                     "relaxkonos.squid" => "RelaxKonOS.App.Squid.Views.SquidWorkspace",
                     "relaxkonos.proxy-server" => "RelaxKonOS.App.ProxyServer.Views.ProxyServerWorkspace",
+                    "relaxkonos.proxy" => "RelaxKonOS.App.ProxyManager.Views.ProxyManagerWorkspace",
                     "relaxkonos.firewall" => "RelaxKonOS.App.Firewall.Views.FirewallWorkspace",
                     "relaxkonos.file-services" => "RelaxKonOS.App.FileServices.Views.FileServicesWorkspace",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
@@ -313,6 +325,16 @@ internal static class OfficialRoappChecks
                     Check(model.GetType().FullName == "RelaxKonOS.App.ApplicationDeployments.ApplicationDeploymentsViewModel"
                         && model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
                         "The installed deployment workspace honors a read-only grant.");
+                }
+                if (isProxyManager)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    Check(model.GetType().GetProperty("Overview")?.GetValue(model) is not null
+                        && model.GetType().GetProperty("HasManagePermission")?.GetValue(model) is false
+                        && model.GetType().GetProperty("HasTunManagePermission")?.GetValue(model) is false
+                        && model.GetType().GetProperty("UpdateAllSubscriptionsCommand")?.GetValue(model) is System.Windows.Input.ICommand refreshAll
+                        && !refreshAll.CanExecute(null),
+                        "The installed Proxy Manager honors a read-only grant.");
                 }
                 if (isProxyServer)
                 {
@@ -480,7 +502,7 @@ internal static class OfficialRoappChecks
             var windows = new WindowManager();
             var apps = new ApplicationManager(windows, services);
             var permissions = new RoappCatalogChecks.Permissions();
-            var auth = isProxyServer
+            var auth = isProxyServer || isProxyManager
                 ? DispatchProxy.Create<IAuthSession, ProxyServerScopeAuthFixture>()
                 : DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
             if (isTerminal)
@@ -517,15 +539,18 @@ internal static class OfficialRoappChecks
             var squid = isSquid ? new SquidWorkspaceChecks.SquidClientStub() : null;
             appPermissions.Granted.Add(AppPermissions.ServerProxyServerRead);
             var proxyServer = isProxyServer ? DispatchProxy.Create<IServerProxyServer, ProxyServerScopeTransport>() : null;
+            appPermissions.Granted.Add(AppPermissions.ServerProxyRead);
+            var proxyManager = isProxyManager ? new ProxyWorkspaceChecks.ProxyRepositoryFixture() : null;
             var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall
-                || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer;
+                || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
                 fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels, createSquidClient: squid is null ? null : () => squid,
-                createProxyServerClient: proxyServer is null ? null : () => proxyServer);
+                createProxyServerClient: proxyServer is null ? null : () => proxyServer,
+                createProxyClient: proxyManager is null ? null : () => proxyManager);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

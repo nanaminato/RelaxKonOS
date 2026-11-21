@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyManager;
 using System.Net;
 using System.Reflection;
 using RelaxKonOS.AppSDK;
@@ -42,6 +43,13 @@ internal static class ProxyScopeChecks
         if (await proxy.GetOperationAsync(queued.OperationId) is not null)
             throw new InvalidOperationException("The Proxy capability must hide operations owned by the Squid workspace.");
 
+        var model = new ProxyManagerViewModel(proxy, (key, _) => key, true, true) { RuntimeSubscriptionText = "fixture" };
+        var traffic = model.RefreshTrafficAsync(default);
+        model.InvalidateSession();
+        await traffic.WaitAsync(TimeSpan.FromSeconds(5));
+        if (model.HasManagePermission || model.HasTunManagePermission || model.RuntimeSubscriptionText.Length != 0
+            || model.StatusText.Resolve() != "proxy.problem.session_changed")
+            throw new InvalidOperationException("An inactive Proxy window must cancel sampling and forget subscription content.");
         var pending = proxy.GetTrafficAsync();
         auth.ServiceId = "https://replacement.invalid";
         auth.NotifyStateChanged();

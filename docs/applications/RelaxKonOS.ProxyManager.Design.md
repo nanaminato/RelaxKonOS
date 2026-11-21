@@ -4816,3 +4816,5 @@ Proxy 管理代次故障时，组件中心的 Core 恢复查询及授权紧急�
 Core 入站授权到期处理与活动 TUN 已在同一故障代次联验。入站撤销原应答被中断并在重启后确认期间，原 TUN 进程、配置、管理选路和真实 HTTP/DNS 转发保持。见[联合实测](../architecture/server-module-evidence/Proxy-Safety.md#proxy-代次隔离后的入站到期与活动-tun)。
 
 同一隔离代次中，Core guard 仍按原代理策略修复漂移。guard 与入站到期的原 Helper 应答均在途时中断 Server，重启后已修复的代理文件及原 TUN 保持，实际代理转发通过。见[三项安全职责联验](../architecture/server-module-evidence/Proxy-Safety.md#proxy-代次隔离后的-guard-到期与-tun-联合接续)。
+
+桌面 Proxy Manager 作为官方可选包 `relaxkonos.proxy` 在应用商店提供。安装由联合部署检查 `relaxkonos.proxy` 服务端模块及其 `server.proxy` 能力。TUN 与常规管理分别授权。打开系统代理设置时，可授权读取服务器网络地址以显示候选地址。

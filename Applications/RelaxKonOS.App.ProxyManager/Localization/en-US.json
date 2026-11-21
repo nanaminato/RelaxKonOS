@@ -1,6 +1,7 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "proxy.problem.session_changed": "The server connection changed. Reopen Proxy Manager.",
     "application.relaxkonos.proxy.display_name": "Proxy Manager",
     "common.cancel": "Cancel",
     "common.close": "Close",
