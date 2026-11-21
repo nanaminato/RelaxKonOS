@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitConflictResolutionView"
              x:DataType="git:GitClientViewModel" Classes="builtin-app">
@@ -39,7 +40,7 @@
                 <StackPanel Grid.Row="2" Spacing="4">
                     <WrapPanel>
                         <ComboBox ItemsSource="{Binding ConflictBlocks}" SelectedItem="{Binding SelectedConflictBlock}" MinWidth="100" Margin="0,0,8,0">
-                            <ComboBox.ItemTemplate><DataTemplate x:DataType="git:GitConflictBlock"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                            <ComboBox.ItemTemplate><DataTemplate x:DataType="gitApp:GitConflictBlock"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
                         </ComboBox>
                         <Button Content="{loc:Loc git.conflicts.block_ours}" Command="{Binding ApplyConflictBlockCommand}" CommandParameter="ours" />
                         <Button Content="{loc:Loc git.conflicts.block_theirs}" Command="{Binding ApplyConflictBlockCommand}" CommandParameter="theirs" />

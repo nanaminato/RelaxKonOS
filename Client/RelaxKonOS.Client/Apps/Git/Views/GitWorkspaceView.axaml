@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitWorkspaceView"
              x:DataType="git:GitClientViewModel" Classes="builtin-app">
@@ -37,7 +38,7 @@
                         <TextBlock x:Name="TrackedCountText" Text="" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" Margin="4,0,0,4"/>
                         <ItemsControl x:Name="TrackedItems" ItemsSource="{Binding TrackedChanges}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="git:GitFileChangeItem">
+                                <DataTemplate x:DataType="gitApp:GitFileChangeItem">
                                     <Grid Margin="2,2">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -74,7 +75,7 @@
                         <TextBlock x:Name="UntrackedCountText" Text="" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" Margin="4,0,0,4"/>
                         <ItemsControl x:Name="UntrackedItems" ItemsSource="{Binding UntrackedChanges}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="git:GitFileChangeItem">
+                                <DataTemplate x:DataType="gitApp:GitFileChangeItem">
                                     <Grid Margin="2,2">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>

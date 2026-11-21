@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 /// <summary>Wrapper for GitFileChangeDto that adds selection state for UI binding.</summary>
 public partial class GitFileChangeItem : ObservableObject

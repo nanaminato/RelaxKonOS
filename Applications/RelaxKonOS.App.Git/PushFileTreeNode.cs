@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 /// <summary>A node in the push-preview file tree. Folders are represented by non-file nodes.</summary>
 public sealed class PushFileTreeNode

@@ -40,7 +40,7 @@
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/PrivilegedOperationReplayPolicy.cs" Link="PrivilegedOperationReplayPolicy.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/ProcessGuardian/GuardianDefinitionEditor.cs" Link="GuardianDefinitionEditor.cs" />
-    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Git/GitConflictBlock.cs" Link="GitConflictBlock.cs" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.Git/RelaxKonOS.App.Git.csproj" />
     <ProjectReference Include="../../../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />
     <ProjectReference Include="../../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />
     <!-- The local desktop SDK currently lacks workload locator SDKs. This opt-in path permits

@@ -1,6 +1,6 @@
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 /// <summary>Index/worktree entries keep separate comparisons but share a commit-path selection.</summary>
 public sealed record GitEditorChangeItem(GitFileChangeDto Change, GitFileChangeItem? Selection)

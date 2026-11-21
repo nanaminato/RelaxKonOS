@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 /// <summary>Recognizes complete Git merge/diff3/zdiff3 marker blocks without changing line endings.</summary>
 public sealed record GitConflictBlock(int Start, int Length, string Ours, string Theirs, int Line)

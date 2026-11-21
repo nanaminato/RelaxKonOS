@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Git;
 using RelaxKonOS.Server.Storage.Sqlite;
-using RelaxKonOS.Client.Apps.Git;
+using RelaxKonOS.App.Git;
 
 public static class GitConflictChecks
 {
@@ -24,6 +24,11 @@ public static class GitConflictChecks
         var user = Guid.NewGuid();
         var count = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); Console.WriteLine($"PASS GIT {++count}: {name}"); }
+
+        var blocks = GitConflictBlock.Parse("before\r\n<<<<<<< HEAD\r\nours\r\n||||||| base\r\nbase\r\n=======\r\ntheirs\r\n>>>>>>> topic\r\nafter\r\n");
+        Check(blocks.Count == 1 && blocks[0].Ours == "ours\r\n" && blocks[0].Theirs == "theirs\r\n" && blocks[0].Line == 2, "Diff3 block excludes base and preserves CRLF");
+        Check(GitConflictBlock.Parse("<<<<<<< HEAD\na\n=======\nb\n").Count == 0, "Incomplete markers not auto-resolved");
+
         async Task<string> Run(string dir, params string[] args)
         {
             using var process = new Process { StartInfo = new(git) { WorkingDirectory = dir, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true } };
@@ -280,9 +285,6 @@ public static class GitConflictChecks
                   !UserExecutionRequestPolicy.IsValid(request with { GitArguments = ["status"] }, false), "Conflict Helper request rejects old versions and unrelated fields");
         }
 
-        var blocks = GitConflictBlock.Parse("before\r\n<<<<<<< HEAD\r\nours\r\n||||||| base\r\nbase\r\n=======\r\ntheirs\r\n>>>>>>> topic\r\nafter\r\n");
-        Check(blocks.Count == 1 && blocks[0].Ours == "ours\r\n" && blocks[0].Theirs == "theirs\r\n" && blocks[0].Line == 2, "Diff3 block excludes base and preserves CRLF");
-        Check(GitConflictBlock.Parse("<<<<<<< HEAD\na\n=======\nb\n").Count == 0, "Incomplete markers not auto-resolved");
         Console.WriteLine($"Git conflict checks passed: {count}");
     }
     private sealed class Factory(DbContextOptions<RelaxKonOSDbContext> options) : IDbContextFactory<RelaxKonOSDbContext>

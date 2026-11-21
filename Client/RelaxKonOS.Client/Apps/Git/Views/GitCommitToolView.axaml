@@ -1,11 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitCommitToolView"
              x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <UserControl.Resources>
-        <DataTemplate x:Key="ChangeTemplate" x:DataType="git:GitEditorChangeItem">
+        <DataTemplate x:Key="ChangeTemplate" x:DataType="gitApp:GitEditorChangeItem">
             <Grid ColumnDefinitions="24,*" Margin="2,0">
                 <CheckBox IsChecked="{Binding Selection.IsSelected, Mode=TwoWay}" IsVisible="{Binding CanSelect}"
                           ToolTip.Tip="{loc:Loc git.editor.select_commit}" VerticalAlignment="Center" MinWidth="0" MinHeight="24" Padding="0" />
