@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.WindowManager;
@@ -18,7 +17,7 @@ internal static class CertificateEditorChecks
         {
             var client = DispatchProxy.Create<IServerCertificates, CertificateEditorClient>();
             var stub = (CertificateEditorClient)(object)client;
-            var vm = new CertificateManagerViewModel(client, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
+            var vm = new CertificateManagerViewModel(client, new FirewallTestPermissions())
             {
                 Domains = "example.test", ContactEmail = "test@example.test", AcceptedTerms = true,
                 SelfSignedDomains = "example.test"
@@ -83,7 +82,7 @@ internal static class CertificateEditorChecks
         {
             var client = DispatchProxy.Create<IServerCertificates, CertificateCancellationClient>();
             var stub = (CertificateCancellationClient)(object)client;
-            var vm = new CertificateManagerViewModel(client, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
+            var vm = new CertificateManagerViewModel(client, new FirewallTestPermissions())
             { SelfSignedDomains = "example.test" };
             var submitted = vm.TryCreateSelfSignedCertificateAsync();
             Check(vm.IsOperationRunning && vm.CancelOperationCommand.CanExecute(null), "Only a server operation with a known ID can request cancellation.");
@@ -105,7 +104,7 @@ internal static class CertificateEditorChecks
         }
         var disconnectedClient = DispatchProxy.Create<IServerCertificates, CertificateCancellationClient>();
         var disconnected = (CertificateCancellationClient)(object)disconnectedClient;
-        var disconnectedVm = new CertificateManagerViewModel(disconnectedClient, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
+        var disconnectedVm = new CertificateManagerViewModel(disconnectedClient, new FirewallTestPermissions())
         { SelfSignedDomains = "example.test" };
         var observation = disconnectedVm.TryCreateSelfSignedCertificateAsync();
         PumpCancellationUntil(() => disconnected.ReadCalls > 0);

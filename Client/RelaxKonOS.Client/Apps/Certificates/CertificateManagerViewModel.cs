@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
@@ -16,7 +15,6 @@ namespace RelaxKonOS.Client.Apps.Certificates;
 public sealed partial class CertificateManagerViewModel : LocalizedObservableObject
 {
     private readonly IServerCertificates _client;
-    private readonly IAuthSession _session;
     private readonly IAppPermissionScope _permissions;
     [ObservableProperty] private bool _isOperationLogExpanded;
     [ObservableProperty] private string _operationLog = string.Empty;
@@ -34,10 +32,9 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private Guid? _activeOperationId;
     private bool _cancelRequested;
 
-    public CertificateManagerViewModel(IServerCertificates client, IAuthSession session, IAppPermissionScope permissions)
+    public CertificateManagerViewModel(IServerCertificates client, IAppPermissionScope permissions)
     {
         _client = client;
-        _session = session;
         _permissions = permissions;
         ChallengeTypes =
         [

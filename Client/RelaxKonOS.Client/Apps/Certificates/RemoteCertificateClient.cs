@@ -115,10 +115,3 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
 
     private sealed record CertificateProblemDetails(string? ProblemCode);
 }
-
-/// <summary>Structured certificate API failure exposed to the view model as a stable problem code.</summary>
-internal sealed class CertificateApiException(string problemCode, HttpStatusCode statusCode)
-    : HttpRequestException(problemCode, null, statusCode)
-{
-    public string ProblemCode { get; } = problemCode;
-}

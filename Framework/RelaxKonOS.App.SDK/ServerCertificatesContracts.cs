@@ -1,6 +1,14 @@
+using System.Net;
 using RelaxKonOS.Protocol.Certificates;
 
 namespace RelaxKonOS.AppSDK;
+
+/// <summary>A certificate operation rejected by the server with a stable problem code.</summary>
+public sealed class CertificateApiException(string problemCode, HttpStatusCode statusCode)
+    : HttpRequestException(problemCode, null, statusCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}
 
 /// <summary>
 /// Client-side facade for the host-global TLS certificate API. Long-running operations

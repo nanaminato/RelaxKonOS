@@ -288,7 +288,7 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
 {
     settings.Language = culture;
     appearance.Apply(mode, AppearancePreferencesDto.Default, SystemStyleIds.WindowsLike);
-    var certificateVm = new RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel(null!, null!, new LayoutCertificatePermissions());
+    var certificateVm = new RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel(null!, new LayoutCertificatePermissions());
     var now = DateTimeOffset.UtcNow;
     var certificate = new RelaxKonOS.Protocol.Certificates.CertificateDto(Guid.NewGuid(), "192.168.1.2", ["192.168.1.2", "server.example.test"], "CN=192.168.1.2", "123", "123", now, now.AddDays(365),
         RelaxKonOS.Protocol.Certificates.CertificateStatus.Active, RelaxKonOS.Protocol.Certificates.CertificateChallengeType.Dns01,

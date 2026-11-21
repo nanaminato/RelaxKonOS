@@ -29,7 +29,7 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var viewModel = new CertificateManagerViewModel(client, session, context.Permissions);
+        var viewModel = new CertificateManagerViewModel(client, context.Permissions);
         ManagedWindow? window = null;
         var view = CertificateManagerWorkspace.Create(
             viewModel,
