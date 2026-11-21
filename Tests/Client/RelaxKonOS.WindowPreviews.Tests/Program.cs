@@ -131,6 +131,11 @@ if (args.Contains("--certificates-only"))
     CertificateEditorChecks.Run(localization);
     return;
 }
+if (args.Contains("--git-capability-only"))
+{
+    GitCapabilityChecks.RunAsync(settings, localization).GetAwaiter().GetResult();
+    return;
+}
 if (args.Contains("--browser-capability-only"))
 {
     Task.Run(BrowserCapabilityChecks.RunAsync).GetAwaiter().GetResult();

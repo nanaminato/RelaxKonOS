@@ -44,6 +44,7 @@ public interface IExternalAppContext
     IServerRegistry Registry { get; }
     IServerCertificates Certificates { get; }
     IServerWebServers WebServers { get; }
+    IServerGit Git { get; }
     IRegistryAppearancePreferences? RegistryAppearance { get; }
     /// <summary>Available only to the official Browser application.</summary>
     IBrowserData? BrowserData { get; }
