@@ -1,10 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.ApplicationDeployments.Views;
 using System.Net.Http;
 using System.Security.Cryptography;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.ApplicationDeployments;
-using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.Common;
@@ -45,7 +46,7 @@ internal static class ApplicationCatalogLiveChecks
         _ = manager.ShowDialogAsync<CatalogApplicationInstallDto?>(owner, "Catalog", handle =>
         {
             dialog = handle;
-            return view = new ApplicationCatalogView(client, [release!], session.CurrentServer, handle);
+            return view = new ApplicationCatalogView(client, [release!], session.CurrentServer, handle, RelaxKonOS.Client.Localization.LocalizedText.Get, RelaxKonOS.Client.App.Services.GetRequiredService<RelaxKonOS.Client.Services.LocalizationService>());
         });
         var form = (StackPanel)((ScrollViewer)view!.Content!).Content!;
         var port = form.Children.OfType<TextBox>().Single(text => text.Name == "CatalogHostPort");

@@ -87,10 +87,10 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         };
         viewModel.ShowCatalogAsync = releases => context.ShowDialogAsync<CatalogApplicationInstallDto?>(window!,
             LocalizedText.Get("application_deployments.catalog.title"),
-            dialog => new ApplicationCatalogView(client, releases, session.CurrentServer, dialog), new Size(600, 680));
+            dialog => new ApplicationCatalogView(client, releases, session.CurrentServer, dialog, LocalizedText.Get, localization), new Size(600, 680));
         viewModel.ShowCatalogUpgradeAsync = (application, releases) => context.ShowDialogAsync<DeploymentOperationDto?>(window!,
             LocalizedText.Get("application_deployments.catalog.upgrade"),
-            dialog => new ApplicationCatalogUpgradeView(client, application, releases, dialog), new Size(680, 520));
+            dialog => new ApplicationCatalogUpgradeView(client, application, releases, dialog, LocalizedText.Get), new Size(680, 520));
 
         // The access address is the one field an operator routinely needs outside this window, so the
         // shell supplies both ways out of it: the system clipboard, and the default browser.

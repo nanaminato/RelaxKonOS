@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Avalonia.LogicalTree;
 using RelaxKonOS.App.ApplicationDeployments.ViewModels;
 using RelaxKonOS.App.ApplicationDeployments;
@@ -13,7 +14,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ApplicationDeployments;
-using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 using RelaxKonOS.App.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
@@ -139,7 +139,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
         _ = manager.ShowDialogAsync<CatalogApplicationInstallDto?>(owner, "Catalog", dialog =>
         {
             handle = dialog;
-            return view = new ApplicationCatalogView(client, [release], descriptor, dialog);
+            return view = new ApplicationCatalogView(client, [release], descriptor, dialog, RelaxKonOS.Client.Localization.LocalizedText.Get, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
         });
         var form = (StackPanel)((ScrollViewer)view!.Content!).Content!;
         var port = form.Children.OfType<TextBox>().Single(text => text.Name == "CatalogHostPort");

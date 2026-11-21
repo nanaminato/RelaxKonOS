@@ -1,4 +1,3 @@
-using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.AppSDK;
 using System.Globalization;
 using System.Text.Json;
@@ -6,17 +5,15 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
+namespace RelaxKonOS.App.ApplicationDeployments.Views;
 
-internal sealed class ApplicationCatalogView : UserControl
+public sealed class ApplicationCatalogView : UserControl
 {
+    private readonly Func<string, string> localize;
     private const string Prefix = "application_deployments.catalog.";
     private readonly ComboBox releasePicker = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly StackPanel fields = new() { Spacing = 6 };
@@ -31,12 +28,15 @@ internal sealed class ApplicationCatalogView : UserControl
     private InstallCatalogApplicationRequest? lastRequest;
     private string? requestKey;
     private readonly ServerDescriptorDto? server;
+    private readonly ISystemLanguage systemLanguage;
     private int? previewedPort;
 
     public ApplicationCatalogView(IServerApplicationDeployments client, IReadOnlyList<ApplicationCatalogTemplateDto> releases,
-        ServerDescriptorDto? server, ModalDialog<CatalogApplicationInstallDto?> dialog)
+        ServerDescriptorDto? server, ModalDialog<CatalogApplicationInstallDto?> dialog, Func<string, string> localize, ISystemLanguage systemLanguage)
     {
         this.server = server;
+        this.localize = localize;
+        this.systemLanguage = systemLanguage;
         dialog.CanCancelAsync = () => Task.FromResult(IsEnabled);
         releasePicker.ItemsSource = releases.Select(release => new ComboBoxItem
         {
@@ -70,7 +70,7 @@ internal sealed class ApplicationCatalogView : UserControl
                 previewedPort = hostPort;
                 install.IsEnabled = true;
             }
-            catch (ApplicationDeploymentClientException failure) { error.Text = LocalizedStatus.Key(failure.ProblemCode).Resolve(); }
+            catch (ApplicationDeploymentClientException failure) { error.Text = DeploymentText.Problem(failure.ProblemCode, localize); }
             catch (Exception failure) when (failure is HttpRequestException or OperationCanceledException or JsonException)
             { error.Text = Text("preview_failed"); }
             finally { IsEnabled = true; }
@@ -95,13 +95,13 @@ internal sealed class ApplicationCatalogView : UserControl
             error.Text = "";
             IsEnabled = false;
             try { dialog.Close(await client.InstallCatalogAsync(request, requestKey!)); }
-            catch (ApplicationDeploymentClientException failure) { error.Text = LocalizedStatus.Key(failure.ProblemCode).Resolve(); }
+            catch (ApplicationDeploymentClientException failure) { error.Text = DeploymentText.Problem(failure.ProblemCode, localize); }
             catch (Exception failure) when (failure is HttpRequestException or OperationCanceledException or JsonException)
             { error.Text = Text("submit_failed"); }
             finally { IsEnabled = true; }
         };
 
-        var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
+        var cancel = new Button { Content = localize("common.cancel") };
         cancel.Click += (_, _) => dialog.Cancel();
         Content = new ScrollViewer
         {
@@ -134,14 +134,14 @@ internal sealed class ApplicationCatalogView : UserControl
         var canInstall = CanInstall(release, server);
         var volumes = string.Join(", ", release.Volumes.Select(volume => volume.ContainerPath));
         details.Text = $"{release.Description}\n{release.MaintenanceNotes}\n"
-            + LocalizedText.Format(Prefix + "impact", release.ContainerPort, volumes.Length == 0 ? "—" : volumes);
+            + Format(Prefix + "impact", release.ContainerPort, volumes.Length == 0 ? "—" : volumes);
         if (!canInstall)
         {
             error.Text = Text("unsupported");
             return;
         }
 
-        var language = App.Services.GetRequiredService<LocalizationService>().CurrentLanguage;
+        var language = systemLanguage.CurrentLanguage;
         foreach (var field in release.Fields)
         {
             var label = language switch
@@ -158,7 +158,7 @@ internal sealed class ApplicationCatalogView : UserControl
         }
     }
 
-    internal static bool CanInstall(ApplicationCatalogTemplateDto release, ServerDescriptorDto? server) =>
+    public static bool CanInstall(ApplicationCatalogTemplateDto release, ServerDescriptorDto? server) =>
         release is { Trusted: true, Withdrawn: false, SchemaVersion: "2", Source: "built-in" }
         && server is { Platform: HostPlatformKind.Linux }
         && release.SupportedPlatforms.Contains("linux/amd64", StringComparer.Ordinal)
@@ -181,15 +181,18 @@ internal sealed class ApplicationCatalogView : UserControl
     private bool TryPort(out int hostPort) =>
         int.TryParse(port.Text, NumberStyles.None, CultureInfo.InvariantCulture, out hostPort) && hostPort is >= 1 and <= 65535;
 
-    private static string FormatTopology(CatalogApplicationTopologyDto value)
+    private string FormatTopology(CatalogApplicationTopologyDto value)
     {
-        var lines = new List<string> { LocalizedText.Format(Prefix + "topology_publish", value.BindAddress, value.HostPort, value.WebService) };
-        lines.AddRange(value.Services.Select(service => LocalizedText.Format(Prefix + "topology_service",
+        var lines = new List<string> { Format(Prefix + "topology_publish", value.BindAddress, value.HostPort, value.WebService) };
+        lines.AddRange(value.Services.Select(service => Format(Prefix + "topology_service",
             service.Id, service.ContainerPort, Join(service.DependsOn), Join(service.Volumes.Select(volume => volume.ContainerPath)))));
         return string.Join("\n", lines);
 
         static string Join(IEnumerable<string> values) => string.Join(", ", values.DefaultIfEmpty("—"));
     }
 
-    private static string Text(string key) => LocalizedText.Get(Prefix + key);
+    private string Format(string key, params object?[] arguments) =>
+        string.Format(CultureInfo.CurrentCulture, localize(key), arguments);
+
+    private string Text(string key) => localize(Prefix + key);
 }
