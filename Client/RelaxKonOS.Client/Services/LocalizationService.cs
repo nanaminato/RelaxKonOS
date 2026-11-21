@@ -121,6 +121,12 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 
+        foreach (var resource in RelaxKonOS.App.WebServers.WebServerLocalization.ResourceNames)
+        {
+            using var source = RelaxKonOS.App.WebServers.WebServerLocalization.Open(resource);
+            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
+        }
+
         foreach (var resource in RelaxKonOS.App.Terminal.TerminalLocalization.ResourceNames)
         {
             using var source = RelaxKonOS.App.Terminal.TerminalLocalization.Open(resource);

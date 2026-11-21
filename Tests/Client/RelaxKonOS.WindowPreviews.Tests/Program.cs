@@ -60,7 +60,28 @@ if (args is ["--catalog-live-desktop", var liveCatalogServer, var liveCatalogPac
 }
 if (args.Contains("--windows11-only")) { Windows11DesktopChecks.RunAsync().GetAwaiter().GetResult(); return; }
 if (args.Contains("--readiness-only")) { ApplicationReadinessShellChecks.Run(settings, localization, services); return; }
-if (args.Contains("--websites-only")) { WebSiteEditorChecks.Run(); WebSiteReadRecoveryChecks.Run(); WebSiteScopeChecks.Run(); CurrentNginxChecks.Run(); return; }
+if (args.Contains("--websites-only"))
+{
+    var previousLanguage = settings.Language;
+    try
+    {
+        var labels = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
+        {
+            settings.Language = culture;
+            var label = localization.Get("webservers.current.management_hint", "");
+            if (string.IsNullOrWhiteSpace(label) || !labels.Add(label))
+                throw new InvalidOperationException($"Missing distinct web server text for {culture}.");
+        }
+        Console.WriteLine("Web Server Manager resources resolved in all three languages.");
+    }
+    finally { settings.Language = previousLanguage; }
+    WebSiteEditorChecks.Run();
+    WebSiteReadRecoveryChecks.Run();
+    WebSiteScopeChecks.Run();
+    CurrentNginxChecks.Run();
+    return;
+}
 // Runs the settings interaction checks in isolation: the full suite stops at an unrelated
 // installer wizard failure before reaching them.
 if (args.Contains("--settings-only")) { SettingsInteractionChecks.Run(settings, localization); return; }
