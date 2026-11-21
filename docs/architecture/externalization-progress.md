@@ -62,6 +62,8 @@
 
 ## 测试证据
 
+- Web Server Manager 的站点域名、端口、代理路由和 HTTPS 来源草稿类型已迁入应用程序集，现有桌面编辑器直接绑定这些类型。Windows Release 网站专项验证草稿保留、提交快照和连接切换保护。连接适配、主视图模型和发行包仍待迁移。
+
 - Web Server Manager 的中、英、日资源原样迁入 `RelaxKonOS.App.WebServers` 项目。桌面宿主从应用程序集载入同一资源供 Web Server Manager 和组件中心使用。Windows Release 网站专项验证三语解析、编辑、读取恢复和当前 Nginx 选择。视图模型、独立入口及发行包仍待迁移。
 
 - Web Server Manager 的 SDK 宿主适配器按应用检查读取和管理权限，并绑定创建窗口时的服务器连接。当前 Nginx 选择继续由组件中心处理。Windows Release 网站专项覆盖读取授权、拒绝只读应用集成实例、已有管理权限时保留组件中心选择权，以及拦截旧连接。独立应用入口尚未接入。
