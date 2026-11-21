@@ -1,15 +1,11 @@
-using RelaxKonOS.App.Git;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.App.CodeEditor;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Apps.CodeEditor;
-using RelaxKonOS.Client.Apps.Explorer;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public enum EditorDraftAction { Cancel, Save, Discard }
 
@@ -26,24 +22,23 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, (GitFileChangeDto File, string? Commit)> _diffs = [];
 
-    public ProjectEditorViewModel(GitClientViewModel git, IServerGit client, IExplorerClient? files,
-        bool pathCaseSensitive, string defaultEncoding = "UTF-8")
+    public ProjectEditorViewModel(GitClientViewModel git, IServerGit client, IEditorWorkspaceFiles? workspace,
+        bool pathCaseSensitive, string defaultEncoding = "UTF-8", Func<string, Task<bool>>? pathExistsAsync = null)
     {
         Git = git;
         _client = client;
         Git.RepositoryPathComparison = pathCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        var workspace = ExplorerEditorWorkspaceFiles.Wrap(files);
-        Editor = new CodeEditorViewModel(LocalizedText.Get, workspace, pathCaseSensitive, defaultEncoding, workspace as IEditorFileWriter)
+        Editor = new CodeEditorViewModel(git.Labels, workspace, pathCaseSensitive, defaultEncoding, workspace as IEditorFileWriter)
         { OpenFilesOnSelection = false, IsProjectWorkspace = true };
         Git.OpenEditorProjectAsync = OpenRepositoryAsync;
         Git.OpenPlainFolderAsync = OpenPlainFolderAsync;
         Git.PrepareEditorOperationAsync = PrepareOperationAsync;
         Git.OpenEditorFileAsync = OpenWorkingTreeFileAsync;
         Git.OpenEditorDiffAsync = OpenDiffAsync;
-        if (files is not null) Git.CreatePlainProjectAsync = async path =>
+        if (workspace is not null && pathExistsAsync is not null) Git.CreatePlainProjectAsync = async path =>
         {
-            if (await files.GetInfoAsync(path) is not null) throw new InvalidOperationException(LocalizedText.Get("git.editor.target_exists"));
-            await files.CreateDirectoryAsync(path);
+            if (await pathExistsAsync(path)) throw new InvalidOperationException(git.Labels("git.editor.target_exists"));
+            await workspace.CreateDirectoryAsync(path, _lifetime.Token);
             await OpenPlainFolderAsync(path);
         };
         Git.OpenPatchAsync = patch =>
@@ -213,10 +208,10 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
             _ = OpenDiffAsync(source.File, source.Commit);
     }
 
-    private static string DiffTitle(GitFileChangeDto file, string? commit)
+    private string DiffTitle(GitFileChangeDto file, string? commit)
     {
         var label = commit is not null ? commit[..Math.Min(8, commit.Length)]
-            : LocalizedText.Get(file.Staged ? "git.editor.index" : "git.editor.worktree");
+            : Git.Labels(file.Staged ? "git.editor.index" : "git.editor.worktree");
         return $"{file.Path} · {label}";
     }
 

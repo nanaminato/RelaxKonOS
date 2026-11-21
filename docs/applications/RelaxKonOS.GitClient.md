@@ -69,7 +69,7 @@ GitClientApp (RemoteApplicationBase)
         └── 可收起的 Git 工具区（日志 / 分支 / 远程 / 概览）
 ```
 
-`GitClientApp.Activate` 从组合入口取得 `IAuthSession`、`IServerGit` 与 `IExplorerClient`，构造 `GitClientViewModel` 和窗口独有的 `ProjectEditorViewModel`，再创建工作区（1180×760）。登录检查保留；`StartAsync` 异步加载项目列表。共享编辑器对话框、草稿关闭保护、快捷键和语言事件由应用入口接线；窗口关闭时释放项目协调器、编辑资源和 Git 刷新计时器。
+`GitClientApp.Activate` 从组合入口取得 `IAuthSession`、`IServerGit` 与 `IExplorerClient`。桌面入口将远程文件访问适配为 `IEditorWorkspaceFiles`，并提供目标路径存在性检查。Git 应用程序集中的 `GitClientViewModel` 和每窗口一个的 `ProjectEditorViewModel` 使用这些接口。登录后创建工作区（1180×760），由 `StartAsync` 异步加载项目列表。应用入口为共享编辑器对话框、草稿关闭保护、快捷键和语言事件接线，并在窗口关闭时释放项目协调器、编辑资源和 Git 刷新计时器。
 
 ---
 

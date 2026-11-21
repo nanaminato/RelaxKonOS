@@ -55,7 +55,7 @@ internal static class ProjectEditorChecks
         var api = DispatchProxy.Create<IServerGit, ProjectGit>();
         var remote = (ProjectGit)(object)api;
         var git = new GitClientViewModel(api, LocalizedText.Get);
-        using var project = new ProjectEditorViewModel(git, api, files, true);
+        using var project = new ProjectEditorViewModel(git, api, ExplorerEditorWorkspaceFiles.Wrap(files), true, pathExistsAsync: async path => await files.GetInfoAsync(path) is not null);
         // Mount while still in the picker: bindings must follow repository selection.
         var view = GitClientWorkspace.Create(git, project);
         var host = new Window { Width = 1180, Height = 760, Content = view };
@@ -435,7 +435,7 @@ internal static class ProjectEditorChecks
         host.Close();
 
         var plainGit = new GitClientViewModel(api, LocalizedText.Get);
-        using var plain = new ProjectEditorViewModel(plainGit, api, files, true);
+        using var plain = new ProjectEditorViewModel(plainGit, api, ExplorerEditorWorkspaceFiles.Wrap(files), true, pathExistsAsync: async path => await files.GetInfoAsync(path) is not null);
         var pickCount = 0;
         plainGit.ShowRemotePathPickerAsync = () => { pickCount++; return Task.FromResult<string?>("/work"); };
         plainGit.IsBusy = true;

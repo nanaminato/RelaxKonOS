@@ -50,8 +50,9 @@ public sealed class GitClientApp : RemoteApplicationBase
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.git");
         var vm = new GitClientViewModel(client, LocalizedText.Get);
         var encodings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
-        var project = new ProjectEditorViewModel(vm, client, files,
-            session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8");
+        var project = new ProjectEditorViewModel(vm, client, ExplorerEditorWorkspaceFiles.Wrap(files),
+            session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8",
+            files is null ? null : async path => await files.GetInfoAsync(path) is not null);
         ManagedWindow? window = null;
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.

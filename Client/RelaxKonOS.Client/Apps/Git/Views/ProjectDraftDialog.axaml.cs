@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using RelaxKonOS.App.Git;
 using Avalonia.Interactivity;
 
 namespace RelaxKonOS.Client.Apps.Git.Views;
