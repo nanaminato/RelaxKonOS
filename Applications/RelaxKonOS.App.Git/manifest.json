@@ -1,0 +1,29 @@
+{
+  "id": "relaxkonos.git",
+  "displayName": "Project Editor",
+  "description": "Edit project files and manage Git repositories on the RelaxKonOS Server",
+  "version": "0.3.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Git.dll",
+  "entryType": "RelaxKonOS.App.Git.GitPackageApp",
+  "iconGlyph": "💻",
+  "iconPath": "Assets/git.png",
+  "instancePolicy": "MultiWindow",
+  "requestedPermissions": [
+    "server.git.read",
+    "server.git.manage",
+    "server.files.read",
+    "server.files.write",
+    "server.components.read"
+  ],
+  "serverRequirements": { "capabilities": ["server.git"] },
+  "dependencies": {
+    "required": [
+      { "package": { "kind": 1, "id": "relaxkonos.git" }, "capability": "server.git" }
+    ]
+  },
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "项目编辑器", "description": "编辑项目文件并管理 RelaxKonOS Server 上的 Git 仓库" },
+    "ja-JP": { "displayName": "プロジェクトエディター", "description": "RelaxKonOS Server 上のプロジェクトファイルを編集し Git リポジトリを管理します" }
+  }
+}

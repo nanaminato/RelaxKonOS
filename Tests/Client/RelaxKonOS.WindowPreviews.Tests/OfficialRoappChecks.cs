@@ -44,7 +44,8 @@ internal static class OfficialRoappChecks
         var isDocker = applicationId == "relaxkonos.docker";
         var isCertificates = applicationId == "relaxkonos.certificates";
         var isWebServers = applicationId == "relaxkonos.webservers";
-        var requiresModule = isDocker || isCertificates || isWebServers;
+        var isGit = applicationId == "relaxkonos.git";
+        var requiresModule = isDocker || isCertificates || isWebServers || isGit;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -153,6 +154,16 @@ internal static class OfficialRoappChecks
                     "Web Server review exposes the required module and scoped app capabilities.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Web Server Manager without joint deployment");
             }
+            if (isGit)
+            {
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage,
+                    AppPermissions.ServerFilesRead, AppPermissions.ServerFilesWrite, AppPermissions.ServerComponentsRead]
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.git"]
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.git" }, Capability: "server.git" }],
+                    "Git review exposes the Git module, capability and scoped grants.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Git without joint deployment");
+            }
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
             await WriteProfileAsync("interactive");
@@ -218,6 +229,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.terminal" => "RelaxKonOS.App.Terminal.TerminalWorkspaceView",
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
+                    "relaxkonos.git" => "RelaxKonOS.App.Git.Views.GitClientWorkspace",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
@@ -364,12 +376,15 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
             var certificates = isCertificates ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
             var webServers = isWebServers ? DispatchProxy.Create<IServerWebServers, CurrentNginxClient>() : null;
-            var scopedPermissions = isCertificates || isWebServers;
+            appPermissions.Granted.Add(AppPermissions.ServerGitRead);
+            appPermissions.Granted.Add(AppPermissions.ServerGitManage);
+            var git = isGit ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerGit, OfficialGitFixture>() : null;
+            var scopedPermissions = isCertificates || isWebServers || isGit;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
-                browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers);
+                browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 
@@ -398,7 +413,7 @@ internal static class OfficialRoappChecks
 
         Task WriteProfileAsync(string policy, string? minimum = null)
         {
-            var entry = new[] { new { appId = applicationId, minimumVersion = minimum ?? (isDocker ? "0.3.0" : "1.0.0"), installPolicy = policy } };
+            var entry = new[] { new { appId = applicationId, minimumVersion = minimum ?? (isDocker || isGit ? "0.3.0" : "1.0.0"), installPolicy = policy } };
             return File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
                 System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -449,4 +464,16 @@ public class OfficialBrowserDataFixture : DispatchProxy
                 throw new NotSupportedException(method?.Name);
         }
     }
+}
+
+public class OfficialGitFixture : DispatchProxy
+{
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+    {
+        nameof(RelaxKonOS.AppSDK.IServerGit.GetEngineStatusAsync) =>
+            Task.FromResult(new RelaxKonOS.Protocol.Git.GitEngineStatusDto(true, string.Empty)),
+        nameof(RelaxKonOS.AppSDK.IServerGit.ListRepositoriesAsync) =>
+            Task.FromResult<IReadOnlyList<RelaxKonOS.Protocol.Git.GitRepositoryDto>>([]),
+        _ => throw new NotSupportedException(method?.Name),
+    };
 }
