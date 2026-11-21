@@ -53,7 +53,7 @@ public sealed partial class ProcessGuardianViewModel(IServerGuardian client,
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
     /// <summary>Provided by the window and called only for a cross-account RunAs change.</summary>
-    public Func<Task<RunAsAdministratorApproval?>>? RequestAdministratorApprovalAsync { get; set; }
+    public Func<ProcessDefinitionDto, Task<GuardianAgentResponse?>>? SaveWithAdministratorApprovalAsync { get; set; }
 
     public async Task StartAsync() => await RefreshAsync();
     [RelayCommand]
@@ -166,19 +166,16 @@ public sealed partial class ProcessGuardianViewModel(IServerGuardian client,
             return;
         }
         var saved = false;
-        RunAsAdministratorApproval? approval = null;
-        if (RequiresAdministratorApproval())
-        {
-            approval = await (RequestAdministratorApprovalAsync?.Invoke() ?? Task.FromResult<RunAsAdministratorApproval?>(null));
-            if (approval is null) return;
-        }
         IsLoading = true;
         try
         {
             var definition = GuardianDefinitionEditor.Merge(_loadedDefinition, DefinitionId, DefinitionName,
                 ExecutablePath, ArgumentsText, WorkingDirectory, EnabledOnBoot, RunAs,
                 isWindows());
-            var result = await client.UpsertAsync(new UpsertGuardianWorkloadRequest(definition, approval));
+            var result = RequiresAdministratorApproval()
+                ? await (SaveWithAdministratorApprovalAsync?.Invoke(definition) ?? Task.FromResult<GuardianAgentResponse?>(null))
+                : await client.UpsertAsync(definition);
+            if (result is null) return;
             SetStatus(result.Success ? Message("guardian.create.succeeded", DefinitionName) : Message("guardian.create.failed", ProblemText(result.ProblemCode)));
             if (!result.Success) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
             saved = result.Success;

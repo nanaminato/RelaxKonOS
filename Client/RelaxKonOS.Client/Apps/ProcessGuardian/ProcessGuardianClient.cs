@@ -12,7 +12,10 @@ public sealed class ProcessGuardianClient(HttpClient http, IAuthSession session)
     public Task<GuardianStatusDto> GetStatusAsync(CancellationToken cancellationToken = default) => SendAsync<GuardianStatusDto>(ProcessGuardianApiRoutes.Status, cancellationToken);
     public Task<IReadOnlyList<GuardianWorkloadDto>> ListWorkloadsAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<GuardianWorkloadDto>>(ProcessGuardianApiRoutes.Workloads, cancellationToken);
     public Task<GuardianAgentResponse> GetDefinitionAsync(string id, CancellationToken cancellationToken = default) => SendAsync<GuardianAgentResponse>(ProcessGuardianApiRoutes.Workload.Replace("{id}", Uri.EscapeDataString(id)), cancellationToken);
-    public Task<GuardianAgentResponse> UpsertAsync(UpsertGuardianWorkloadRequest request, CancellationToken cancellationToken = default) => SendAsync<GuardianAgentResponse>(HttpMethod.Post, ProcessGuardianApiRoutes.Workloads, request, cancellationToken);
+    public Task<GuardianAgentResponse> UpsertAsync(ProcessDefinitionDto definition, CancellationToken cancellationToken = default) =>
+        SubmitDefinitionAsync(new(definition), cancellationToken);
+
+    internal Task<GuardianAgentResponse> SubmitDefinitionAsync(UpsertGuardianWorkloadRequest request, CancellationToken cancellationToken = default) => SendAsync<GuardianAgentResponse>(HttpMethod.Post, ProcessGuardianApiRoutes.Workloads, request, cancellationToken);
     public Task<GuardianAgentResponse> DeleteAsync(string id, CancellationToken cancellationToken = default) => SendAsync<GuardianAgentResponse>(HttpMethod.Delete, ProcessGuardianApiRoutes.Workload.Replace("{id}", Uri.EscapeDataString(id)), null, cancellationToken);
     public Task<GuardianAgentResponse> ApplyActionAsync(string id, string action, CancellationToken cancellationToken = default) => SendAsync<GuardianAgentResponse>(HttpMethod.Post, ProcessGuardianApiRoutes.WorkloadAction.Replace("{id}", Uri.EscapeDataString(id)).Replace("{action}", action), null, cancellationToken);
     public Task<IReadOnlyList<GuardianLogEntryDto>> ListLogsAsync(string id, CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<GuardianLogEntryDto>>(ProcessGuardianApiRoutes.WorkloadLogs.Replace("{id}", Uri.EscapeDataString(id)), cancellationToken);

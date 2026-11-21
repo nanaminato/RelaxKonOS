@@ -1,3 +1,6 @@
+using RelaxKonOS.App.ProcessGuardian;
+using RelaxKonOS.Client.Apps.ProcessGuardian;
+using RelaxKonOS.Protocol.ProcessGuardian;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.App.CodeEditor;
@@ -165,7 +168,7 @@ public sealed class ExternalAppContextFactory
         new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
         new ServerFirewallCapability(appId, _permissions, connection, _firewall, lifetime),
         new ServerGuardianCapability(appId, _permissions, connection, _guardian, lifetime),
-        appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime) : null,
+        appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient, _systemLanguage) : null,
         appId.Value == "relaxkonos.file-services" ? new FileServicesAdministratorPrompt(appId, _permissions, connection, fileSession, _windowManager) : null,
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
@@ -456,13 +459,14 @@ public sealed class ExternalAppContextFactory
     }
 
     private sealed class GuardianHostInteraction(AppId appId, IAppPermissionManager permissions,
-        ExternalServerConnection connection, UsageMemoryScope memory, IWindowManager windows, CancellationToken lifetime) : IGuardianHostInteraction
+        ExternalServerConnection connection, UsageMemoryScope memory, IWindowManager windows, CancellationToken lifetime,
+        ProcessGuardianClient? transport, ISystemLanguage language) : IGuardianHostInteraction
     {
         public string? CurrentUsername => HasReadAccess() ? connection.Session.CurrentUser?.Username : null;
 
         public async Task<string?> PickWorkloadPathAsync(IExternalAppWindowHandle owner, string title, GuardianWorkloadPathKind kind)
         {
-            if (!CanPick() || TopLevel.GetTopLevel(owner.Window.View)?.StorageProvider is not { } storage)
+            if (!CanManage(owner) || TopLevel.GetTopLevel(owner.Window.View)?.StorageProvider is not { } storage)
                 return null;
 
             string? path = kind switch
@@ -475,12 +479,27 @@ public sealed class ExternalAppContextFactory
                     .FirstOrDefault()?.TryGetLocalPath(),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind)),
             };
-            return CanPick() ? path : null;
-
-            bool CanPick() => owner is ExternalAppWindowHandle && owner.Window.Info.OwnerAppId == appId
-                && windows.Windows.Contains(owner.Window) && !owner.Closed.IsCancellationRequested
-                && HasReadAccess() && permissions.IsGranted(appId, CoreAppPermissions.ServerGuardianManage);
+            return CanManage(owner) ? path : null;
         }
+
+        public async Task<GuardianAgentResponse?> SaveWithAdministratorApprovalAsync(IExternalAppWindowHandle owner, ProcessDefinitionDto definition)
+        {
+            if (transport is null || !CanManage(owner)) return null;
+            definition = definition with { Arguments = definition.Arguments.ToArray() };
+            string Label(string key) => ProcessGuardianLocalization.Resolve(language, key);
+            var approval = await windows.ShowSystemDialogAsync<RunAsAdministratorApproval?>(Label("guardian.admin_approval.title"),
+                dialog => GuardianAdministratorDialog.Create(dialog, Label, definition), new Size(540, 320));
+            if (approval is null || !CanManage(owner)) return null;
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime, owner.Closed);
+            using var observation = connection.ObserveInvalidation(cancellation.Cancel);
+            cancellation.Token.ThrowIfCancellationRequested();
+            return await transport.SubmitDefinitionAsync(new(definition, approval), cancellation.Token);
+        }
+
+        private bool CanManage(IExternalAppWindowHandle owner) =>
+            owner is ExternalAppWindowHandle && owner.Window.Info.OwnerAppId == appId
+            && windows.Windows.Contains(owner.Window) && !owner.Closed.IsCancellationRequested
+            && HasReadAccess() && permissions.IsGranted(appId, CoreAppPermissions.ServerGuardianManage);
 
         private bool HasReadAccess() => !lifetime.IsCancellationRequested && connection.IsCurrent
             && permissions.IsGranted(appId, CoreAppPermissions.ServerGuardianRead);

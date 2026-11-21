@@ -7,7 +7,7 @@ public interface IServerGuardian
     Task<GuardianStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GuardianWorkloadDto>> ListWorkloadsAsync(CancellationToken cancellationToken = default);
     Task<GuardianAgentResponse> GetDefinitionAsync(string id, CancellationToken cancellationToken = default);
-    Task<GuardianAgentResponse> UpsertAsync(UpsertGuardianWorkloadRequest request, CancellationToken cancellationToken = default);
+    Task<GuardianAgentResponse> UpsertAsync(ProcessDefinitionDto definition, CancellationToken cancellationToken = default);
     Task<GuardianAgentResponse> DeleteAsync(string id, CancellationToken cancellationToken = default);
     Task<GuardianAgentResponse> ApplyActionAsync(string id, string action, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GuardianLogEntryDto>> ListLogsAsync(string id, CancellationToken cancellationToken = default);
@@ -19,6 +19,7 @@ public interface IServerGuardian
 public interface IGuardianHostInteraction
 {
     string? CurrentUsername { get; }
+    Task<GuardianAgentResponse?> SaveWithAdministratorApprovalAsync(IExternalAppWindowHandle owner, ProcessDefinitionDto definition);
     Task<string?> PickWorkloadPathAsync(IExternalAppWindowHandle owner, string title, GuardianWorkloadPathKind kind);
 }
 

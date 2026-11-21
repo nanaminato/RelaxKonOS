@@ -101,6 +101,24 @@ internal static class GuardianCapabilityChecks
         lifetime.Cancel();
         await RejectAsync<OperationCanceledException>(() => guardian.ListWorkloadsAsync());
         if (calls.Reads != 1) throw new InvalidOperationException("Guardian read reached an invalidated connection.");
+        var editor = new ProcessGuardianViewModel(client, () => "fixture", () => true, key => key, _ => null)
+        {
+            DefinitionId = "worker",
+            DefinitionName = "Worker",
+            ExecutablePath = "/bin/worker",
+            WorkingDirectory = "/work",
+            RunAs = "other",
+        };
+        var approvedDraftWasCaptured = false;
+        editor.SaveWithAdministratorApprovalAsync = definition =>
+        {
+            approvedDraftWasCaptured = definition.RunAs == "other" && definition.ExecutablePath == "/bin/worker" && editor.IsLoading;
+            return Task.FromResult<GuardianAgentResponse?>(null);
+        };
+        await editor.CreateWorkloadCommand.ExecuteAsync(null);
+        if (!approvedDraftWasCaptured || editor.IsLoading || calls.Writes != 1)
+            throw new InvalidOperationException("Cancelling Guardian approval submitted a workload.");
+
         Console.WriteLine("Guardian SDK permission and lifetime checks passed.");
     }
 
@@ -124,6 +142,7 @@ public class GuardianCapabilityClient : DispatchProxy
             case nameof(IServerGuardian.ListWorkloadsAsync):
                 Reads++;
                 return Task.FromResult<IReadOnlyList<GuardianWorkloadDto>>([]);
+            case nameof(IServerGuardian.UpsertAsync):
             case nameof(IServerGuardian.ApplyActionAsync):
                 Writes++;
                 return Task.FromResult(new GuardianAgentResponse(true, string.Empty));

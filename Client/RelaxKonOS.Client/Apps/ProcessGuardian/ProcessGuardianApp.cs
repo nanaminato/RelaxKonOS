@@ -5,7 +5,6 @@ using RelaxKonOS.Client.Services;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Services.Privileged;
@@ -47,7 +46,13 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         var views = new ProcessGuardianViews(Label);
         var window = context.ShowWindow(Label("application.relaxkonos.processguardian.display_name"), views.CreateWorkspace(viewModel), new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
-        viewModel.RequestAdministratorApprovalAsync = () => RequestAdministratorApprovalAsync(context, window, session);
+        viewModel.SaveWithAdministratorApprovalAsync = async definition =>
+        {
+            if (client is not ProcessGuardianClient transport) return null;
+            var approval = await context.ShowDialogAsync<RunAsAdministratorApproval?>(window, Label("guardian.admin_approval.title"),
+                dialog => GuardianAdministratorDialog.Create(dialog, Label, definition), new RelaxKonOS.Core.Primitives.Size(540, 320));
+            return approval is null ? null : await transport.SubmitDefinitionAsync(new(definition, approval));
+        };
         viewModel.ShowEditorAsync = async isEdit =>
         {
             await context.ShowDialogAsync<bool>(window,
@@ -100,33 +105,4 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         if (path is not null) vm.WorkingDirectory = path;
     }
 
-    private static Task<RunAsAdministratorApproval?> RequestAdministratorApprovalAsync(AppContext context, RelaxKonOS.WindowManager.ManagedWindow owner, IAuthSession session) =>
-        context.ShowDialogAsync<RunAsAdministratorApproval?>(owner, Label("guardian.admin_approval.title"), dialog =>
-        {
-            var username = new TextBox
-            {
-                    Text = string.Empty,
-                PlaceholderText = Label("guardian.admin_approval.username"),
-            };
-            var password = new TextBox { PasswordChar = '•', PlaceholderText = Label("guardian.admin_approval.password") };
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-            var cancel = new Button { Content = Label("common.cancel") };
-            cancel.Click += (_, _) => dialog.Cancel();
-            var confirm = new Button { Content = Label("common.ok"), Classes = { "primary" } };
-            confirm.Click += (_, _) => dialog.Close(new RunAsAdministratorApproval(username.Text?.Trim() ?? string.Empty, password.Text ?? string.Empty));
-            actions.Children.Add(cancel);
-            actions.Children.Add(confirm);
-            return new StackPanel
-            {
-                Spacing = 12,
-                Margin = new Avalonia.Thickness(20),
-                Children =
-                {
-                    new TextBlock { Text = Label("guardian.admin_approval.message"), TextWrapping = TextWrapping.Wrap },
-                    username,
-                    password,
-                    actions,
-                },
-            };
-        }, new RelaxKonOS.Core.Primitives.Size(460, 230));
 }

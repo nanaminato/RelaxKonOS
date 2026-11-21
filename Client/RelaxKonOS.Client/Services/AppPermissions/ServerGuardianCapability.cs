@@ -20,8 +20,8 @@ internal sealed class ServerGuardianCapability(AppId appId, IAppPermissionManage
     public Task<GuardianAgentResponse> GetDefinitionAsync(string id, CancellationToken cancellationToken) =>
         InvokeAsync(token => Client.GetDefinitionAsync(id, token), manage: false, cancellationToken);
 
-    public Task<GuardianAgentResponse> UpsertAsync(UpsertGuardianWorkloadRequest request, CancellationToken cancellationToken) =>
-        InvokeAsync(token => Client.UpsertAsync(request, token), manage: true, cancellationToken);
+    public Task<GuardianAgentResponse> UpsertAsync(ProcessDefinitionDto definition, CancellationToken cancellationToken) =>
+        InvokeAsync(token => Client.UpsertAsync(definition, token), manage: true, cancellationToken);
 
     public Task<GuardianAgentResponse> DeleteAsync(string id, CancellationToken cancellationToken) =>
         InvokeAsync(token => Client.DeleteAsync(id, token), manage: true, cancellationToken);
