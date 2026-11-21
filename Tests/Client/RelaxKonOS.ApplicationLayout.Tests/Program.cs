@@ -143,6 +143,8 @@ foreach (var page in new[] { "Containers", "Images", "Networks", "Volumes" })
     Dispatcher.UIThread.RunJobs();
     Check(navigation.Classes.Contains("nav-selected"), "The selected resource page retains its navigation state.");
     var table = view.GetVisualDescendants().OfType<DataGrid>().Single();
+    Check(table.Columns.All(column => column.Header is string text && !string.IsNullOrWhiteSpace(text)
+        && !text.Contains("[missing:")), $"{page}: table headers resolve in {culture}.");
     var compactHeight = table.Bounds.Height;
     Check(compactHeight > 40, $"{page}: compact resource list remains usable ({compactHeight}).");
     Check(table.Bounds.Width <= view.Bounds.Width, $"{page}: the table fits its viewport.");
@@ -216,8 +218,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
     vm.OperationLog = string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"[{i}] service output"));
     vm.IsOperationRunning = true;
     vm.IsOperationLogExpanded = false;
-    var type = typeof(DockerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.DockerOperationActivityView")!;
-    var activity = (Control)Activator.CreateInstance(type)!;
+    var activity = new RelaxKonOS.App.Docker.Views.DockerOperationActivityView();
     activity.DataContext = vm;
     host.Width = 800;
     host.Height = 520;
@@ -258,7 +259,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
         {
             vm.IsOperationLogExpanded = expanded;
             Dispatcher.UIThread.RunJobs();
-            var bar = workspace.GetVisualDescendants().Single(c => c.GetType() == type);
+            var bar = workspace.GetVisualDescendants().OfType<RelaxKonOS.App.Docker.Views.DockerOperationActivityView>().Single();
             var point = bar.TranslatePoint(default, workspace)!.Value;
             Check(Math.Abs(point.Y + bar.Bounds.Height - workspace.Bounds.Height) <= 1, "Activity is docked at the bottom of the workspace.");
             using var bitmap = new RenderTargetBitmap(new PixelSize(800, 520));

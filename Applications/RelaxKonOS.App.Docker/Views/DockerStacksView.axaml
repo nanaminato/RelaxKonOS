@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker;assembly=RelaxKonOS.App.Docker"
-             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerStacksView"
-             x:DataType="dockerApp:DockerManagerViewModel" Classes="builtin-app">
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Docker"
+             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker"
+             x:Class="RelaxKonOS.App.Docker.Views.DockerStacksView"
+             x:DataType="dockerApp:DockerManagerViewModel" x:Name="ResourcePage" Classes="builtin-app">
     <Border Padding="20" Classes="app-panel">
         <Grid RowDefinitions="Auto,Auto,Auto,210,Auto,Auto,180,Auto,150" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
@@ -17,9 +17,9 @@
                 <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding Stacks}" SelectedItem="{Binding SelectedStack, Mode=TwoWay}"
                           AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False" SelectionMode="Single" HorizontalScrollBarVisibility="Disabled" MinWidth="980" Classes="resource-table">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="{loc:Loc docker.table.name}" Binding="{ReflectionBinding Name}" Width="200" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="250" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.config_files}" Binding="{ReflectionBinding ConfigFiles}" Width="500" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.name}" Binding="{ReflectionBinding Name}" Width="200" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.status}" Binding="{ReflectionBinding Status}" Width="250" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.config_files}" Binding="{ReflectionBinding ConfigFiles}" Width="500" />
                     </DataGrid.Columns>
                 </DataGrid>
             </ScrollViewer>
@@ -29,7 +29,7 @@
                 <Button Content="{loc:Loc docker.action.restart}" Command="{Binding RestartStackCommand}" Margin="0,0,8,0" />
                 <Button Content="{loc:Loc docker.stack.edit}" Command="{Binding EditStackCommand}" Margin="0,0,8,0" />
                 <Button Content="{loc:Loc docker.stack.open_source}" Command="{Binding OpenSelectedStackSourceCommand}" Margin="0,0,8,0" />
-                <Button Content="{loc:Loc docker.stack.refresh_services}" Command="{Binding LoadStackServicesCommand}" />
+                <Button Content="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.stack.refresh_services}" Command="{Binding LoadStackServicesCommand}" />
                 <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteStackCommand}" Foreground="{DynamicResource DangerBrush}" />
             </WrapPanel>
             <TextBlock Grid.Row="5" Text="{loc:Loc docker.stack.services}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -38,23 +38,23 @@
                           CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Disabled" MinWidth="1100" Classes="resource-table">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc docker.table.service}" Binding="{ReflectionBinding Service}" Width="170" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.container}" Binding="{ReflectionBinding Container}" Width="230" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.image}" Binding="{ReflectionBinding Image}" Width="240" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding State}" Width="130" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="300" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.container}" Binding="{ReflectionBinding Container}" Width="230" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.image}" Binding="{ReflectionBinding Image}" Width="240" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.state}" Binding="{ReflectionBinding State}" Width="130" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.status}" Binding="{ReflectionBinding Status}" Width="300" />
                     </DataGrid.Columns>
                 </DataGrid>
             </ScrollViewer>
             <!-- The durable ledger, not a live event: an operation started from a phone is readable here too. -->
-            <TextBlock Grid.Row="7" Text="{loc:Loc docker.stack.operations}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBlock Grid.Row="7" Text="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.stack.operations}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
             <ScrollViewer Grid.Row="8" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding StackOperations}" AutoGenerateColumns="False" IsReadOnly="True"
                           CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Disabled" MinWidth="900" Classes="resource-table">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc docker.table.operation}" Binding="{ReflectionBinding Operation}" Width="180" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding Result}" Width="200" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.problem}" Binding="{ReflectionBinding Problem}" Width="360" />
-                        <DataGridTextColumn Header="{loc:Loc docker.table.created}" Binding="{ReflectionBinding Created}" Width="180" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.state}" Binding="{ReflectionBinding Result}" Width="200" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.problem}" Binding="{ReflectionBinding Problem}" Width="360" />
+                        <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.created}" Binding="{ReflectionBinding Created}" Width="180" />
                     </DataGrid.Columns>
                 </DataGrid>
             </ScrollViewer>

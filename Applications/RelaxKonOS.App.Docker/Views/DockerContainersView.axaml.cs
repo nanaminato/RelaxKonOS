@@ -2,9 +2,9 @@ using RelaxKonOS.App.Docker;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Docker.Views;
+namespace RelaxKonOS.App.Docker.Views;
 
-internal partial class DockerContainersView : UserControl
+public partial class DockerContainersView : UserControl
 {
     private readonly Func<Task> _showCreateDialog;
 

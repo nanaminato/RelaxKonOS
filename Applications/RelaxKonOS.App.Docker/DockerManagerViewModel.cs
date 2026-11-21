@@ -9,6 +9,10 @@ namespace RelaxKonOS.App.Docker;
 /// <summary>State and safe, typed operations for the server-local Docker Manager.</summary>
 public sealed partial class DockerManagerViewModel(IServerDockerResources resources, DockerText text) : ObservableObject
 {
+    public DockerText Labels => new(text.Get);
+
+    public void RefreshLocalization() => OnPropertyChanged(nameof(Labels));
+
 
     public ObservableCollection<DockerContainerDto> Containers { get; } = [];
     public ObservableCollection<DockerImageDto> Images { get; } = [];

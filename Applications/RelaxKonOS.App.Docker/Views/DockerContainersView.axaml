@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker;assembly=RelaxKonOS.App.Docker"
-             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerContainersView"
-             x:DataType="dockerApp:DockerManagerViewModel" Classes="builtin-app">
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Docker"
+             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker"
+             x:Class="RelaxKonOS.App.Docker.Views.DockerContainersView"
+             x:DataType="dockerApp:DockerManagerViewModel" x:Name="ResourcePage" Classes="builtin-app">
     <Border Padding="20" Classes="app-panel">
         <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
@@ -14,10 +14,10 @@
             <TextBlock Grid.Row="1" Text="{loc:Loc docker.containers_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
             <DataGrid Grid.Row="2" HorizontalAlignment="Stretch" ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer, Mode=TwoWay}" DoubleTapped="ContainersGrid_DoubleTapped" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False" SelectionMode="Single" HorizontalScrollBarVisibility="Auto" Classes="resource-table">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:Loc docker.table.name}" Binding="{ReflectionBinding Names}" Width="180" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.image}" Binding="{ReflectionBinding Image}" Width="210" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="360" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding State}" Width="120" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.name}" Binding="{ReflectionBinding Names}" Width="180" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.image}" Binding="{ReflectionBinding Image}" Width="210" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.status}" Binding="{ReflectionBinding Status}" Width="360" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.state}" Binding="{ReflectionBinding State}" Width="120" />
                 </DataGrid.Columns>
             </DataGrid>
             <WrapPanel Grid.Row="3" HorizontalAlignment="Left">
@@ -28,11 +28,11 @@
                 <Button Content="{loc:Loc docker.actions_more}" Margin="0,0,8,4">
                     <Button.Flyout>
                         <MenuFlyout>
-                            <MenuItem Header="{loc:Loc docker.action.pause}" Command="{Binding PauseContainerCommand}" />
-                            <MenuItem Header="{loc:Loc docker.action.unpause}" Command="{Binding UnpauseContainerCommand}" />
-                            <MenuItem Header="{loc:Loc docker.container.edit}" Command="{Binding EditContainerCommand}" />
-                            <MenuItem Header="{loc:Loc docker.container.logs}" Command="{Binding LoadContainerLogsCommand}" />
-                            <MenuItem Header="{loc:Loc docker.container.stats}" Command="{Binding LoadContainerStatsCommand}" />
+                            <MenuItem Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.action.pause}" Command="{Binding PauseContainerCommand}" />
+                            <MenuItem Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.action.unpause}" Command="{Binding UnpauseContainerCommand}" />
+                            <MenuItem Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.container.edit}" Command="{Binding EditContainerCommand}" />
+                            <MenuItem Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.container.logs}" Command="{Binding LoadContainerLogsCommand}" />
+                            <MenuItem Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.container.stats}" Command="{Binding LoadContainerStatsCommand}" />
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>

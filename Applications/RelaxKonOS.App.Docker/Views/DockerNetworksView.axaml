@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker;assembly=RelaxKonOS.App.Docker"
-             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerNetworksView"
-             x:DataType="dockerApp:DockerManagerViewModel" Classes="builtin-app">
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Docker"
+             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker"
+             x:Class="RelaxKonOS.App.Docker.Views.DockerNetworksView"
+             x:DataType="dockerApp:DockerManagerViewModel" x:Name="ResourcePage" Classes="builtin-app">
     <Border Padding="20" Classes="app-panel">
         <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
@@ -14,9 +14,9 @@
             <TextBlock Grid.Row="1" Text="{loc:Loc docker.networks_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
             <DataGrid Grid.Row="2" HorizontalAlignment="Stretch" ItemsSource="{Binding Networks}" SelectedItem="{Binding SelectedNetwork, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False" SelectionMode="Single" HorizontalScrollBarVisibility="Auto" Classes="resource-table">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:Loc docker.table.name}" Binding="{ReflectionBinding Name}" Width="300" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.driver}" Binding="{ReflectionBinding Driver}" Width="200" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.scope}" Binding="{ReflectionBinding Scope}" Width="160" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.name}" Binding="{ReflectionBinding Name}" Width="300" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.driver}" Binding="{ReflectionBinding Driver}" Width="200" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.scope}" Binding="{ReflectionBinding Scope}" Width="160" />
                 </DataGrid.Columns>
             </DataGrid>
             <WrapPanel Grid.Row="3">

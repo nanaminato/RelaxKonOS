@@ -49,7 +49,11 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm), dependency);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
-        void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => imageMirrorsViewModel.RefreshLocalization();
+        void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args)
+        {
+            vm.RefreshLocalization();
+            imageMirrorsViewModel.RefreshLocalization();
+        }
         sdk.SystemLanguage.LanguageChanged += LanguageChanged;
         EventHandler<ManagedWindow>? closed = null;
         closed = (_, current) =>

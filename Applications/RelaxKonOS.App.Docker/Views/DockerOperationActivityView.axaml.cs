@@ -1,9 +1,9 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Docker;
+namespace RelaxKonOS.App.Docker.Views;
 
 /// <summary>Shared, read-only progress and bounded diagnostic output for a Docker command.</summary>
-internal partial class DockerOperationActivityView : UserControl
+public partial class DockerOperationActivityView : UserControl
 {
     public DockerOperationActivityView() => InitializeComponent();
 }

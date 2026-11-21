@@ -1,9 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Docker.Views;
+namespace RelaxKonOS.App.Docker.Views;
 
-internal partial class DockerImagesView : UserControl
+public partial class DockerImagesView : UserControl
 {
     private readonly Func<Task> _showPullDialog;
 

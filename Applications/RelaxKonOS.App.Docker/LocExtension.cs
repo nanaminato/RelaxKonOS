@@ -7,7 +7,7 @@ namespace RelaxKonOS.App.Docker;
 
 public sealed class LocExtension(string key) : MarkupExtension
 {
-    private static readonly LabelConverter Converter = new();
+    public static IValueConverter Converter { get; } = new LabelConverter();
 
     public override object ProvideValue(IServiceProvider serviceProvider) => new Binding("Labels")
     {

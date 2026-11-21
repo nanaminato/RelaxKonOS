@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker;assembly=RelaxKonOS.App.Docker"
-             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerImagesView"
-             x:DataType="dockerApp:DockerManagerViewModel" Classes="builtin-app">
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Docker"
+             xmlns:dockerApp="clr-namespace:RelaxKonOS.App.Docker"
+             x:Class="RelaxKonOS.App.Docker.Views.DockerImagesView"
+             x:DataType="dockerApp:DockerManagerViewModel" x:Name="ResourcePage" Classes="builtin-app">
     <Border Padding="20" Classes="app-panel">
         <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
@@ -14,10 +14,10 @@
             <TextBlock Grid.Row="1" Text="{loc:Loc docker.images_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
             <DataGrid Grid.Row="2" HorizontalAlignment="Stretch" ItemsSource="{Binding Images}" SelectedItem="{Binding SelectedImage, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False" SelectionMode="Single" HorizontalScrollBarVisibility="Auto" Classes="resource-table">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:Loc docker.table.repository}" Binding="{ReflectionBinding Repository}" Width="300" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.tag}" Binding="{ReflectionBinding Tag}" Width="160" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.size}" Binding="{ReflectionBinding Size}" Width="120" />
-                    <DataGridTextColumn Header="{loc:Loc docker.table.created}" Binding="{ReflectionBinding CreatedSince}" Width="200" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.repository}" Binding="{ReflectionBinding Repository}" Width="300" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.tag}" Binding="{ReflectionBinding Tag}" Width="160" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.size}" Binding="{ReflectionBinding Size}" Width="120" />
+                    <DataGridTextColumn Header="{ReflectionBinding #ResourcePage.DataContext.Labels, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=docker.table.created}" Binding="{ReflectionBinding CreatedSince}" Width="200" />
                 </DataGrid.Columns>
             </DataGrid>
             <WrapPanel Grid.Row="3">
