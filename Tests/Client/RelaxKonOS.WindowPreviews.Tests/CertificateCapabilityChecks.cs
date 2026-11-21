@@ -1,7 +1,9 @@
+using System.Net;
 using System.Reflection;
 using Avalonia.Controls;
 using RelaxKonOS.App.Certificates;
 using RelaxKonOS.App.Certificates.Views;
+using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services;
@@ -24,9 +26,10 @@ internal static class CertificateCapabilityChecks
         using var http = new HttpClient();
         var windows = new RelaxKonOS.WindowManager.WindowManager();
         windows.Attach(new Canvas { Width = 1280, Height = 900 });
-        var factory = new ExternalAppContextFactory(permissions, permissions, language, settings, null!, auth,
+        ExternalAppContextFactory Factory(IServerCertificates certificates) => new(permissions, permissions, language, settings, null!, auth,
             null!, windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings), null!, null!, null!,
-            null!, null!, memory, null!, null!, null!, null!, certificates: client);
+            null!, null!, memory, null!, null!, null!, null!, certificates: certificates);
+        var factory = Factory(client);
         var capability = factory.Create(new ApplicationManifest(new AppId("relaxkonos.certificates"), "Certificates")).Certificates;
 
         await RejectAsync<UnauthorizedAccessException>(() => capability.ListAsync());
@@ -52,6 +55,20 @@ internal static class CertificateCapabilityChecks
             throw new InvalidOperationException("The package entry did not open the certificate workspace and load its list.");
         windows.ForceClose(window);
         Console.WriteLine("Certificate package entry opens the SDK workspace and reads the certificate list.");
+
+        using var certificateHttp = new HttpClient(new CertificateReadTransport());
+        var httpCapability = Factory(new RemoteCertificateClient(certificateHttp, auth, null!))
+            .Create(entry.Manifest).Certificates;
+        if ((await httpCapability.ListAsync()).Count != 0)
+            throw new InvalidOperationException("The certificate HTTP client did not decode the collection response.");
+        try
+        {
+            await httpCapability.ListAsync();
+            throw new InvalidOperationException("A missing certificate collection must fail.");
+        }
+        catch (CertificateApiException error) when (error.StatusCode == HttpStatusCode.NotFound
+            && error.ProblemCode == "certificate.fixture_missing") { }
+        Console.WriteLine("Certificate SDK used the authenticated HTTP collection route and preserved structured errors.");
     }
 
     private static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
@@ -59,6 +76,25 @@ internal static class CertificateCapabilityChecks
         try { await operation(); }
         catch (T) { return; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+    }
+
+    private sealed class CertificateReadTransport : HttpMessageHandler
+    {
+        private int _requests;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method != HttpMethod.Get || request.RequestUri?.Host != "fixture.invalid"
+                || request.RequestUri.AbsolutePath != CertificateApiRoutes.Certificates
+                || request.Headers.Authorization is not { Scheme: "Bearer", Parameter: "fixture-token" })
+                throw new InvalidOperationException("The certificate SDK used an unexpected HTTP request.");
+            return Task.FromResult(++_requests == 1
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") }
+                : new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent("""{"problemCode":"certificate.fixture_missing"}"""),
+                });
+        }
     }
 
     internal sealed class Permission : IAppPermissionManager, IAppPermissionRequestService
