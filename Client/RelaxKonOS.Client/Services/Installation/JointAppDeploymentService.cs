@@ -206,6 +206,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             var release = plan.OrderedReleases[stepIndex];
             if (release.Package.Kind == DeploymentPackageKind.ServerModule)
             {
+                if (!release.Satisfied)
+                    await VerifyDependenciesAsync(plan, stepIndex, cancellationToken);
                 await (modules ?? throw new InvalidOperationException("deployment-server-unavailable"))
                     .ApplyOrReconcileAsync(plan, release, cancellationToken);
                 return;
@@ -225,7 +227,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                     || !MatchesAccount(plan))
                     throw new InvalidOperationException("deployment-application-plan-changed");
                 VerifyApplicationBaseline();
-                await VerifyDependenciesAsync(plan, ct);
+                await VerifyDependenciesAsync(plan, stepIndex, ct);
                 if (!(plan.Target == LocalTarget && AllowsBundledLaunchRequirements(candidate, packages))
                     && !applications.EvaluateCompatibility(RuntimeManifest(manifest)).IsCompatible)
                     throw new InvalidOperationException("deployment-application-incompatible");
@@ -235,16 +237,18 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
 
         public async Task VerifyAsync(DeploymentPlan plan, CancellationToken cancellationToken)
         {
-            await VerifyDependenciesAsync(plan, cancellationToken);
+            await VerifyDependenciesAsync(plan, plan.OrderedReleases.Length - 1, cancellationToken);
             if (installed is null || packages.FindInstalled(installed.Id) != installed
                 || applications.GetManifest(new AppId(installed.Id))?.Version != installed.Version)
                 throw new InvalidOperationException("deployment-application-not-registered");
         }
 
-        private async Task VerifyDependenciesAsync(DeploymentPlan plan, CancellationToken cancellationToken)
+        private async Task VerifyDependenciesAsync(DeploymentPlan plan, int endIndex, CancellationToken cancellationToken)
         {
-            foreach (var dependency in plan.OrderedReleases)
+            for (var index = 0; index < endIndex; index++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                var dependency = plan.OrderedReleases[index];
                 if (dependency.Package.Kind == DeploymentPackageKind.ServerModule)
                     await (modules ?? throw new InvalidOperationException("deployment-server-unavailable"))
                         .VerifyAsync(plan, dependency, cancellationToken);
