@@ -1,3 +1,4 @@
+using RelaxKonOS.App.FileServices;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
@@ -88,7 +89,7 @@ public sealed partial class FileServicesViewModel(IServerFileServices client, IA
         OnPropertyChanged(nameof(FactsAvailable)); OnPropertyChanged(nameof(CanManage));
     }
     public bool IsWindowsServer => Capabilities?.WindowsShareSecuritySupported == true;
-    public void AddSharePermission(string principal = "", FileShareAccess access = FileShareAccess.Read) => SharePermissions.Add(new(principal, access, IsWindowsServer,
+    public void AddSharePermission(string principal = "", FileShareAccess access = FileShareAccess.Read) => SharePermissions.Add(new(LocalizedText.Get, principal, access, IsWindowsServer,
         SupportsSambaCredentials ? Users.Where(user => user.Eligible).Select(user => user.Username) : []));
     public bool SupportsSambaCredentials => Capabilities?.SambaCredentialsSupported == true;
     public string UserToggleText => LocalizedText.Get(SelectedUser?.Enabled == true ? "file_services.user_disable" : "file_services.user_enable");
@@ -347,39 +348,3 @@ public sealed partial class FileServicesViewModel(IServerFileServices client, IA
         }
     }
 }
-
-public sealed partial class FileSharePermissionEditor : ObservableObject
-{
-    public bool IsWindowsServer { get; }
-    public IReadOnlyList<FileSharePrincipalOption> PrincipalOptions { get; }
-    public bool HasPrincipalOptions => PrincipalOptions.Count > 0;
-    [ObservableProperty] private FileSharePrincipalOption? _selectedPrincipal;
-    partial void OnSelectedPrincipalChanged(FileSharePrincipalOption? value) { if (value is not null) Principal = value.Value; }
-    private readonly IReadOnlyList<FileShareAccessOption> _accessOptions = FileShareAccessOption.Create();
-    public IReadOnlyList<FileShareAccessOption> AccessOptions => _accessOptions;
-    [ObservableProperty] private string _principal;
-    [ObservableProperty] private FileShareAccessOption _selectedAccess;
-
-    public FileSharePermissionEditor(string principal = "", FileShareAccess access = FileShareAccess.Read, bool isWindowsServer = false, IEnumerable<string>? linuxUsers = null)
-    {
-        IsWindowsServer = isWindowsServer;
-        PrincipalOptions = isWindowsServer
-            ? [new("S-1-5-32-544", LocalizedText.Get("file_services.principal.administrators")), new("S-1-5-32-545", LocalizedText.Get("file_services.principal.users")),
-               new("S-1-5-11", LocalizedText.Get("file_services.principal.authenticated_users")), new("S-1-1-0", LocalizedText.Get("file_services.principal.everyone"))]
-            : (linuxUsers ?? []).Distinct(StringComparer.Ordinal).OrderBy(username => username, StringComparer.Ordinal).Select(username => new FileSharePrincipalOption(username, username)).ToArray();
-        _principal = principal;
-        _selectedPrincipal = PrincipalOptions.FirstOrDefault(option => string.Equals(option.Value, principal, StringComparison.OrdinalIgnoreCase));
-        _selectedAccess = _accessOptions.First(x => x.Value == access);
-    }
-}
-
-public sealed record FileShareAccessOption(FileShareAccess Value, string Label)
-{
-    public static IReadOnlyList<FileShareAccessOption> Create() =>
-    [
-        new(FileShareAccess.Read, LocalizedText.Get("file_services.access.Read", "Read")),
-        new(FileShareAccess.ReadWrite, LocalizedText.Get("file_services.access.ReadWrite", "Read / write"))
-    ];
-}
-
-public sealed record FileSharePrincipalOption(string Value, string Label);

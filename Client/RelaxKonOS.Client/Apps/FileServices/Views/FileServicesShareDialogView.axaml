@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:fsApp="clr-namespace:RelaxKonOS.App.FileServices;assembly=RelaxKonOS.App.FileServices" xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
              x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesShareDialogView" x:DataType="fs:FileServicesViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" Margin="20" RowSpacing="12">
@@ -26,17 +26,17 @@
             </Grid>
             <ItemsControl ItemsSource="{Binding SharePermissions}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="fs:FileSharePermissionEditor">
+                    <DataTemplate x:DataType="fsApp:FileSharePermissionEditor">
                         <Grid ColumnDefinitions="*,160,Auto" ColumnSpacing="8" Margin="0,0,0,6">
                             <StackPanel Spacing="4">
                                 <ComboBox IsVisible="{Binding HasPrincipalOptions}" ItemsSource="{Binding PrincipalOptions}" SelectedItem="{Binding SelectedPrincipal, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <ComboBox.ItemTemplate><DataTemplate x:DataType="fs:FileSharePrincipalOption"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                                    <ComboBox.ItemTemplate><DataTemplate x:DataType="fsApp:FileSharePrincipalOption"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
                                 </ComboBox>
                             <TextBox PlaceholderText="{loc:Loc file_services.permission_principal}" Text="{Binding Principal, Mode=TwoWay}" MinWidth="0" />
                             </StackPanel>
                             <ComboBox Grid.Column="1" ItemsSource="{Binding AccessOptions}" SelectedItem="{Binding SelectedAccess, Mode=TwoWay}">
                                 <ComboBox.ItemTemplate>
-                                    <DataTemplate x:DataType="fs:FileShareAccessOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
+                                    <DataTemplate x:DataType="fsApp:FileShareAccessOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
                             <Button Grid.Column="2" Content="{loc:Loc file_services.permission_remove}" Tag="{Binding}" Click="RemovePermission_Click" />
