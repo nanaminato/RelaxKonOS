@@ -1,6 +1,9 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "database.dialog_cancel": "キャンセル",
+    "database.dialog_confirm": "確認",
+    "database.dialog_ok": "OK",
     "database.mysql_remote_scope": "IPv4 の接続元を 1 件指定します。開閉時に MySQL を再起動します。アカウント管理や管理者の復旧前に閉じてください。",
     "database.mysql_remote_source": "許可する接続元 IPv4（1 件）",
     "database.mysql_maintenance_scope": "メンテナンス前にリモート接続を閉じてください。バックアップ時は MySQL を停止し、隔離インスタンスで検証します。修復には検証済みのバックアップとインスタンスの停止が必要です。",

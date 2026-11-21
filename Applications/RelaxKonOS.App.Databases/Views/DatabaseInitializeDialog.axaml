@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ x:Class="RelaxKonOS.App.Databases.Views.DatabaseInitializeDialog">
+ <Grid RowDefinitions="*,Auto" Margin="20" RowSpacing="16">
+  <ScrollViewer><StackPanel Spacing="14">
+   <TextBlock x:Name="Hint" TextWrapping="Wrap" />
+   <TextBlock x:Name="PortLabel" />
+   <NumericUpDown x:Name="Port" Minimum="1024" Maximum="65535" Value="5432" FormatString="0" />
+  </StackPanel></ScrollViewer>
+  <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+   <Button x:Name="CancelButton" Click="Cancel" />
+   <Button x:Name="ConfirmButton" Click="Accept" />
+  </StackPanel>
+ </Grid>
+</UserControl>

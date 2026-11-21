@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ComponentCenter;
-using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.App.Databases.Views;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.App.Databases;
 using RelaxKonOS.Client.Services;
@@ -128,17 +128,15 @@ public sealed class DatabaseApp : RemoteApplicationBase
         model.ChoosePortAsync = async () =>
         {
             var port = await context.ShowDialogAsync<int>(window, Text("database.initialize"),
-                dialog => new Views.DatabaseInitializeDialog(value => dialog.Close(value)), new Size(520, 340));
+                dialog => new DatabaseInitializeDialog(language, value => dialog.Close(value)), new Size(520, 340));
             return port is >= 1024 and <= 65535 ? port : null;
         };
         model.ConfirmAsync = (action, state) => Confirm("database.confirm." + action);
         model.ConfirmRecoveryAsync = _ => Confirm("database.confirm.Recover");
         async Task<bool> Confirm(string key, string? detail = null)
         {
-            var accepted = false;
-            await context.ShowDialogAsync<bool>(window, Text("application.relaxkonos.database.display_name"), dialog => new ConfirmDialogView
-            { DataContext = new ConfirmDialogViewModel(Text(key) + (detail is null ? "" : "\n\n" + detail), value => { accepted = value; dialog.Close(value); }) }, new Size(540, 280));
-            return accepted;
+            return await context.ShowDialogAsync<bool>(window, Text("application.relaxkonos.database.display_name"),
+                dialog => new DatabaseConfirmDialog(language, key, detail, value => dialog.Close(value)), new Size(540, 280)) == true;
         }
         var observation = connection.ObserveInvalidation(() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {

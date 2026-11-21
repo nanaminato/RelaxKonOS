@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RelaxKonOS.App.Databases.Views.DatabaseConfirmDialog"
+             Background="{DynamicResource SurfaceBrush}"
+             Width="440" Classes="builtin-app">
+    <Grid RowDefinitions="*,Auto" Margin="20" RowSpacing="16">
+        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Top">
+            <TextBlock Text="⚠" FontSize="28" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Top" />
+            <TextBlock x:Name="Message" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="360" />
+        </StackPanel>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="CancelButton" Click="Cancel" Padding="16,6" />
+            <Button x:Name="ConfirmButton" Classes="primary" Click="Accept" Padding="16,6" />
+        </StackPanel>
+    </Grid>
+</UserControl>

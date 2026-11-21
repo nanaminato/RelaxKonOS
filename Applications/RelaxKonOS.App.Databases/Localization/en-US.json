@@ -1,6 +1,9 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "database.dialog_cancel": "Cancel",
+    "database.dialog_confirm": "Confirm",
+    "database.dialog_ok": "OK",
     "database.mysql_remote_scope": "Allows one exact IPv4 source. Opening and closing restart MySQL. Close access before account maintenance or administrator recovery.",
     "database.mysql_remote_source": "Allowed source IPv4 (one address)",
     "database.mysql_maintenance_scope": "Close remote access before maintenance. Backups stop MySQL and are verified in a private instance. Repair requires a verified backup and a stopped instance.",

@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using RelaxKonOS.App.Databases;
+using RelaxKonOS.App.Databases.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
@@ -13,6 +14,7 @@ using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Common;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -26,6 +28,27 @@ internal static class DatabaseWorkspaceChecks
     public static void Run(ShellSettings settings, LocalizationService localization)
     {
         void Check(bool ok,string label) { if(!ok)throw new Exception(label);Console.WriteLine("PASS Database "+label); }
+        settings.Language = "en-US";
+        int? port = null;
+        bool? confirmed = null;
+        var initialize = new DatabaseInitializeDialog(localization, value => port = value);
+        var confirm = new DatabaseConfirmDialog(localization, "database.mysql_remote_confirm", "fixture", value => confirmed = value);
+        var dialogWindow = new Window { Content = new StackPanel { Children = { initialize, confirm } } };
+        dialogWindow.Show();
+        foreach (var culture in new[] { "zh-CN", "ja-JP", "en-US" })
+        {
+            settings.Language = culture;
+            Dispatcher.UIThread.RunJobs();
+            Check(Equals(initialize.FindControl<Button>("ConfirmButton")?.Content, localization.Get("common.confirm", "[missing]"))
+                && Equals(confirm.FindControl<Button>("CancelButton")?.Content, localization.Get("common.cancel", "[missing]"))
+                && confirm.FindControl<TextBlock>("Message")?.Text == localization.Get("database.mysql_remote_confirm", "[missing]") + "\n\nfixture",
+                "open database dialogs follow language changes in " + culture);
+        }
+        initialize.FindControl<Button>("ConfirmButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        confirm.FindControl<Button>("CancelButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check(port == 5432 && confirmed == false, "application dialogs preserve initialization and cancellation results");
+        dialogWindow.Close();
+        Dispatcher.UIThread.RunJobs();
         var fake=new Client();
         using var model=new DatabaseViewModel(fake) { CanManage=true,
             Installation=new(null!,null!,InstallationServiceId.PostgreSql,"test",()=>Task.CompletedTask,()=>Task.FromResult(false)) };

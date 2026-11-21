@@ -1,6 +1,9 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "database.dialog_cancel": "取消",
+    "database.dialog_confirm": "确认",
+    "database.dialog_ok": "确定",
     "database.mysql_remote_scope": "仅支持一个精确 IPv4 来源。开放和关闭会重启实例。先关闭访问，再维护账号或恢复管理员。",
     "database.mysql_remote_source": "允许的来源 IPv4（单个地址）",
     "database.mysql_maintenance_scope": "维护前请关闭远程访问。备份会停止 MySQL，并在隔离实例中验证。修复需要已验证备份和已停止的实例。",
