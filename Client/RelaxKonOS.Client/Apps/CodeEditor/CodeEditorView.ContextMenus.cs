@@ -16,7 +16,7 @@ public partial class CodeEditorView
             try { await action(); }
             catch (Exception ex)
             {
-                if (_viewModel is { } vm) vm.StatusText = LocalizedText.Ref("code_editor.context.operation_failed", ex.Message);
+                if (_viewModel is { } vm) vm.SetStatus("code_editor.context.operation_failed", ex.Message);
             }
         };
         return item;

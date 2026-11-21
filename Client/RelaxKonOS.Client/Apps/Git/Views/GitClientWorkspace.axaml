@@ -3,6 +3,7 @@
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:code="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
+             xmlns:editorApp="clr-namespace:RelaxKonOS.App.CodeEditor;assembly=RelaxKonOS.App.CodeEditor"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
@@ -43,7 +44,7 @@
                 </Button>
                 <ScrollViewer x:Name="DetailedMenuScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" IsVisible="False">
                 <Menu x:Name="MainMenu" IsVisible="False" FontSize="12" Background="Transparent" BorderThickness="0" Padding="0">
-                    <MenuItem x:Name="FileMenu" x:DataType="code:CodeEditorViewModel" Header="{loc:Loc common.file}">
+                    <MenuItem x:Name="FileMenu" x:DataType="editorApp:CodeEditorViewModel" Header="{loc:Loc common.file}">
                         <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
                         <MenuItem Header="{loc:Loc common.open_ellipsis}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
                         <Separator />
@@ -57,7 +58,7 @@
                         <MenuItem Header="{loc:Loc git.workspace.clone}" Click="CloneProject_Click"/>
                         <MenuItem Header="{loc:Loc git.workspace.close_project}" Click="CloseProject_Click"/>
                     </MenuItem>
-                    <MenuItem x:Name="EditMenu" x:DataType="code:CodeEditorViewModel" Header="{loc:Loc git.editor.edit_menu}">
+                    <MenuItem x:Name="EditMenu" x:DataType="editorApp:CodeEditorViewModel" Header="{loc:Loc git.editor.edit_menu}">
                         <MenuItem Header="{loc:Loc code_editor.find}" Click="Find_Click" InputGesture="Ctrl+F" />
                         <MenuItem Header="{loc:Loc common.file_encoding}" Command="{Binding ChooseEncodingCommand}" />
                         <MenuItem Header="{loc:Loc common.settings}" Command="{Binding OpenSettingsCommand}" />
@@ -270,7 +271,7 @@
         <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <TextBlock x:Name="StatusLine" Text="{Binding StatusText}" FontSize="11" TextTrimming="CharacterEllipsis" />
-                <StackPanel x:Name="EditorStatus" Grid.Column="1" x:DataType="code:CodeEditorViewModel" Orientation="Horizontal" Spacing="12">
+                <StackPanel x:Name="EditorStatus" Grid.Column="1" x:DataType="editorApp:CodeEditorViewModel" Orientation="Horizontal" Spacing="12">
                     <TextBlock Text="{Binding EncodingName}" IsVisible="{Binding IsTextDocument}" FontSize="11" />
                     <TextBlock Text="{Binding NewlineText}" IsVisible="{Binding IsTextDocument}" FontSize="11" />
                     <TextBlock Text="{Binding CaretPosition}" IsVisible="{Binding IsTextDocument}" FontSize="11" />

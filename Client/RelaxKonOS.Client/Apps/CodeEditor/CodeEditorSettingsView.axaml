@@ -2,9 +2,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:app="clr-namespace:RelaxKonOS.Client.Apps"
+             xmlns:codeEditorApp="clr-namespace:RelaxKonOS.App.CodeEditor;assembly=RelaxKonOS.App.CodeEditor"
              xmlns:codeEditor="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
              x:Class="RelaxKonOS.Client.Apps.CodeEditor.CodeEditorSettingsView"
-             x:DataType="codeEditor:CodeEditorViewModel"
+             x:DataType="codeEditorApp:CodeEditorViewModel"
              Width="440" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="14">
         <TextBlock Text="{loc:Loc code_editor.settings.title}" FontSize="18" FontWeight="SemiBold" />

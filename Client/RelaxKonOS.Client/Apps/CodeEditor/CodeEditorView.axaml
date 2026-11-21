@@ -8,7 +8,7 @@
              xmlns:diff="clr-namespace:RelaxKonOS.UI.TextEditing.Diff;assembly=RelaxKonOS.UI"
              x:Class="RelaxKonOS.Client.Apps.CodeEditor.CodeEditorView"
              x:Name="Root"
-             x:DataType="codeEditor:CodeEditorViewModel"
+             x:DataType="codeEditorApp:CodeEditorViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.Resources>

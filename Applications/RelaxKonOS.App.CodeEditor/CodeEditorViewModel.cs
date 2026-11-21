@@ -1,25 +1,22 @@
-using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.UI.TextEditing;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.Explorer;
-using RelaxKonOS.Client.Apps.TextEditor;
-using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.UI.Imaging;
 using Avalonia.Media;
 using RelaxKonOS.UI.TextEditing.Diff;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 /// <summary>Owns the window-local multi-root workspace and the currently open editor documents.</summary>
 public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 {
     private readonly IEditorWorkspaceFiles? _files;
+    private readonly Func<string, string> _localize;
     private readonly StringComparer _pathComparer;
     private bool _isLoadingDocument;
     private int _untitledSequence;
@@ -31,10 +28,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly IEditorFileWriter? _conditionalWriter;
 
-    public CodeEditorViewModel(IEditorWorkspaceFiles? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8",
+    public CodeEditorViewModel(Func<string, string> text, IEditorWorkspaceFiles? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8",
         IEditorFileWriter? conditionalWriter = null)
     {
         _files = files;
+        _localize = text;
         _conditionalWriter = conditionalWriter;
         _pathComparer = pathCaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
         DefaultEncodingName = TextFileEncodings.IsSupported(defaultEncodingName) ? defaultEncodingName : "UTF-8";
@@ -53,7 +51,19 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _fontSize = 14;
     [ObservableProperty] private bool _wordWrap;
     [ObservableProperty] private bool _isDirty;
-    [ObservableProperty] private LocalizedStatus _statusText;
+    private string? _statusKey;
+    private object?[] _statusArguments = [];
+    public string StatusText => _statusKey is { } key ? Format(key, _statusArguments) : string.Empty;
+
+    public void SetStatus(string key, params object?[] arguments)
+    {
+        _statusKey = key;
+        _statusArguments = arguments;
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    private string Format(string key, params object?[] arguments) =>
+        arguments.Length == 0 ? _localize(key) : string.Format(CultureInfo.CurrentCulture, _localize(key), arguments);
     [ObservableProperty] private CodeEditorDocument? _activeDocument;
     [ObservableProperty] private CodeEditorFolderNode? _selectedFolderNode;
     [ObservableProperty] private bool _isSidebarVisible = true;
@@ -83,7 +93,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     public bool CanSaveDocument => CanEditDocument && ActiveDocument?.IsReadOnly != true && (ActiveDocument is null || IsTextDocument);
     public bool IsComparisonDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Comparison;
     public DiffDocument? Comparison => ActiveDocument?.Comparison;
-    public string ComparisonNotice => ActiveDocument?.ComparisonNoticeKey is { } key ? LocalizedText.Get(key) : string.Empty;
+    public string ComparisonNotice => ActiveDocument?.ComparisonNoticeKey is { } key ? _localize(key) : string.Empty;
     public bool HasComparisonNotice => !string.IsNullOrEmpty(ActiveDocument?.ComparisonNoticeKey);
     public bool HasExternalChanges => ActiveDocument?.HasExternalChanges == true;
     public bool IsTextReadOnly => IsTextDocument && ActiveDocument?.IsReadOnly == true;
@@ -93,9 +103,9 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     public IImage? PreviewImage => ActiveDocument?.ImageSource;
     public double PreviewWidth => ImageAtActualSize ? PreviewImage?.Size.Width ?? double.NaN : double.NaN;
     public double PreviewHeight => ImageAtActualSize ? PreviewImage?.Size.Height ?? double.NaN : double.NaN;
-    public string FileSizeText => LocalizedText.Format("code_editor.preview.bytes", ActiveDocument?.ByteLength ?? 0);
+    public string FileSizeText => Format("code_editor.preview.bytes", ActiveDocument?.ByteLength ?? 0);
     public string ImageDimensionsText => PreviewImage is { } image
-        ? LocalizedText.Format("code_editor.preview.dimensions", (int)Math.Ceiling(image.Size.Width), (int)Math.Ceiling(image.Size.Height)) : string.Empty;
+        ? Format("code_editor.preview.dimensions", (int)Math.Ceiling(image.Size.Width), (int)Math.Ceiling(image.Size.Height)) : string.Empty;
 
     /// <summary>
     /// True while any open tab holds unsaved edits. The window close guard uses this rather than
@@ -105,9 +115,9 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     public int CharCount => Text.Length;
     public int LineCount => string.IsNullOrEmpty(Text) ? 1 : Enumerable.Count<char>(Text, character => character == '\n') + 1;
-    public string LineCountText => LocalizedText.Format("common.line_count_format", LineCount);
-    public string CharacterCountText => LocalizedText.Format("common.character_count_format", CharCount);
-    public string DocumentName => ActiveDocument?.DisplayName ?? LocalizedText.Get("code_editor.document.untitled");
+    public string LineCountText => Format("common.line_count_format", LineCount);
+    public string CharacterCountText => Format("common.character_count_format", CharCount);
+    public string DocumentName => ActiveDocument?.DisplayName ?? _localize("code_editor.document.untitled");
     public bool HasOpenFile => !string.IsNullOrWhiteSpace(CurrentPath);
 
     public Func<Task<string?>>? RequestFileAsync { get; set; }
@@ -223,7 +233,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message);
+                SetStatus("code_editor.status.open_failed", ex.Message);
                 return;
             }
         }
@@ -261,10 +271,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         // A new tab supersedes any read still in flight.
         _openRevision++;
         var document = new CodeEditorDocument(null, string.Empty, DefaultEncodingName,
-            LocalizedText.Format("code_editor.document.untitled_number", ++_untitledSequence));
+            Format("code_editor.document.untitled_number", ++_untitledSequence));
         OpenDocuments.Add(document);
         ActiveDocument = document;
-        StatusText = LocalizedText.Ref("code_editor.status.new_document");
+        SetStatus("code_editor.status.new_document");
     }
 
     [RelayCommand]
@@ -298,7 +308,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         if (root is null) return;
         WorkspaceRoots.Remove(root);
         if (ReferenceEquals(SelectedFolderNode, node) || ReferenceEquals(root, node)) SelectedFolderNode = null;
-        StatusText = LocalizedText.Ref("code_editor.status.folder_removed", root.Name);
+        SetStatus("code_editor.status.folder_removed", root.Name);
     }
 
     [RelayCommand]
@@ -327,7 +337,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         if (ActiveDocument is null) NewDocument();
         var document = ActiveDocument;
         if (document is null) return;
-        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
+        if (_files is null) { SetStatus("code_editor.status.connect_before_save"); return; }
         // Fix the document and its target before any picker opens, so the write cannot follow a
         // tab the user switched to while the save-path picker was up.
         var path = document.Path;
@@ -343,7 +353,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         if (ActiveDocument is null) NewDocument();
         var document = ActiveDocument;
         if (document is null) return;
-        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
+        if (_files is null) { SetStatus("code_editor.status.connect_before_save"); return; }
         var suggestedName = string.IsNullOrWhiteSpace(document.Path) ? "untitled.txt" : Path.GetFileName(document.Path) ?? "untitled.txt";
         var path = await (RequestSavePathAsync?.Invoke(suggestedName) ?? Task.FromResult<string?>(null));
         if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(document, path);
@@ -390,10 +400,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     public async Task AddWorkspaceRootAsync(string path)
     {
-        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_open"); return; }
+        if (_files is null) { SetStatus("code_editor.status.connect_before_open"); return; }
         if (WorkspaceRoots.Any(root => PathEquals(root.Path, path)))
         {
-            StatusText = LocalizedText.Ref("code_editor.status.folder_already_open", path);
+            SetStatus("code_editor.status.folder_already_open", path);
             return;
         }
         var root = CreateFolderNode(FolderName(path), path, true);
@@ -405,7 +415,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     public async Task OpenPathAsync(string path, bool forceReload = false, bool allowDiscardDirty = false)
     {
-        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_open"); return; }
+        if (_files is null) { SetStatus("code_editor.status.connect_before_open"); return; }
         var existing = OpenDocuments.FirstOrDefault(document => !string.IsNullOrWhiteSpace(document.Path) && PathEquals(document.Path, path));
         if (existing is not null && !forceReload)
         {
@@ -415,7 +425,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         }
         if (existing is not null && existing.IsDirty && !allowDiscardDirty)
         {
-            StatusText = LocalizedText.Ref("code_editor.status.save_or_discard");
+            SetStatus("code_editor.status.save_or_discard");
             return;
         }
         // Reserve the next read revision: a newer open or a new tab wins over this late result.
@@ -427,11 +437,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             if (_disposed || revision != _openRevision) return;
             if (existing is not null && existing.Revision != existingRevision)
             {
-                StatusText = LocalizedText.Ref("code_editor.status.save_or_discard");
+                SetStatus("code_editor.status.save_or_discard");
                 return;
             }
             // A missing file leaves every open tab untouched instead of clearing the editor.
-            if (bytes is null) { StatusText = LocalizedText.Ref("code_editor.status.file_missing"); return; }
+            if (bytes is null) { SetStatus("code_editor.status.file_missing"); return; }
             var encoding = existing?.EncodingName ?? EditorFileContent.DetectEncoding(bytes, DefaultEncodingName);
             IImage? image = null;
             var text = string.Empty;
@@ -463,7 +473,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             if (existing is null)
             {
                 existing = new CodeEditorDocument(path, text, encoding,
-                    LocalizedText.Format("code_editor.document.untitled_number", ++_untitledSequence));
+                    Format("code_editor.document.untitled_number", ++_untitledSequence));
                 OpenDocuments.Add(existing);
             }
             else
@@ -480,14 +490,15 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             existing.HasExternalChanges = false;
             existing.IsReadOnly = _conditionalWriter is not null && bytes.Length > TextFileCodec.MaximumBytes;
             ActivateDocument(existing);
-            StatusText = contentKind == CodeEditorContentKind.Text
-                ? LocalizedText.Ref("code_editor.status.opened", Path.GetFileName(path), encoding)
-                : LocalizedText.Ref("code_editor.preview.opened", Path.GetFileName(path));
+            if (contentKind == CodeEditorContentKind.Text)
+                SetStatus("code_editor.status.opened", Path.GetFileName(path), encoding);
+            else
+                SetStatus("code_editor.preview.opened", Path.GetFileName(path));
         }
         catch (Exception ex)
         {
             if (revision != _openRevision) return;
-            StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message);
+            SetStatus("code_editor.status.open_failed", ex.Message);
         }
     }
 
@@ -505,11 +516,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
                     ? CreateFolderNode(entry.Name, entry.Path, false)
                     : new CodeEditorFolderNode(entry.Name, entry.Path, false));
             node.IsLoaded = true;
-            StatusText = LocalizedText.Ref("code_editor.status.folder_loaded", directory.Name);
+            SetStatus("code_editor.status.folder_loaded", directory.Name);
         }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Ref("code_editor.status.folder_load_failed", node.Path, ex.Message);
+            SetStatus("code_editor.status.folder_load_failed", node.Path, ex.Message);
         }
         finally { node.IsLoading = false; }
     }
@@ -523,7 +534,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     private async Task SaveToPathAsync(CodeEditorDocument document, string path)
     {
-        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
+        if (_files is null) { SetStatus("code_editor.status.connect_before_save"); return; }
         if (!CanEditDocument || document.IsReadOnly || (document.ContentKind != CodeEditorContentKind.Text
             && !string.Equals(Path.GetExtension(document.Path), ".svg", StringComparison.OrdinalIgnoreCase))) return;
         // Snapshot the revision, bytes and encoding so the write describes exactly the tab the
@@ -564,20 +575,20 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
                 NotifyContentChanged();
             }
             OnPropertyChanged(nameof(DocumentName));
-            StatusText = LocalizedText.Ref("code_editor.status.saved", Path.GetFileName(path), encoding);
+            SetStatus("code_editor.status.saved", Path.GetFileName(path), encoding);
             saved = true;
         }
-        catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/text-file-changed", StringComparison.Ordinal))
+        catch (EditorWriteConflictException)
         {
             var samePath = document.Path is not null && PathEquals(document.Path, path);
             if (samePath) document.HasExternalChanges = true;
-            StatusText = LocalizedText.Ref(samePath ? "git.editor.external_changes" : "git.editor.target_exists");
+            SetStatus(samePath ? "git.editor.external_changes" : "git.editor.target_exists");
             NotifyContentChanged();
         }
         catch (Exception ex)
         {
             // The write is unconfirmed. Leave the tab dirty so the user verifies before retrying.
-            StatusText = LocalizedText.Ref("code_editor.status.save_failed", ex.Message);
+            SetStatus("code_editor.status.save_failed", ex.Message);
         }
         finally
         {
@@ -679,7 +690,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message);
+                SetStatus("code_editor.status.open_failed", ex.Message);
                 return false;
             }
         }
@@ -730,7 +741,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
                 if (ReferenceEquals(document, ActiveDocument)) ActivateDocument(document);
             }
             catch (OperationCanceledException) when (_disposed) { return; }
-            catch (Exception ex) { StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message); }
+            catch (Exception ex) { SetStatus("code_editor.status.open_failed", ex.Message); }
         }
     }
 

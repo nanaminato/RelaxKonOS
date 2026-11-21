@@ -40,6 +40,8 @@ internal sealed class SdkEditorWorkspaceFiles(IServerFiles files) : IEditorWorks
     public async Task<string> WriteEditorFileAsync(string path, byte[] content, string? expectedVersion, CancellationToken ct)
     {
         var result = await files.WriteConditionalAsync(path, content, expectedVersion, ct);
+        if (result.Status == AppCapabilityResult.Conflict)
+            throw new EditorWriteConflictException(LocalizedText.Get("git.editor.external_changes"));
         RequireSuccess(result.Status);
         return result.Version!;
     }

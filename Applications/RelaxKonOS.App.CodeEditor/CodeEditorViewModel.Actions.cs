@@ -1,9 +1,6 @@
-using RelaxKonOS.App.CodeEditor;
-using RelaxKonOS.Client.Apps.Explorer;
 using CommunityToolkit.Mvvm.ComponentModel;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 public enum EditorCloseScope { Others, Left, Right, Saved, All }
 public enum EditorTreeAction { NewFile, NewFolder, Rename, Delete }
@@ -99,13 +96,13 @@ public sealed partial class CodeEditorViewModel
             }
             else
             {
-                name = await (RequestEntryNameAsync?.Invoke(LocalizedText.Get("code_editor.context." + action.ToString().ToLowerInvariant()),
+                name = await (RequestEntryNameAsync?.Invoke(_localize("code_editor.context." + action.ToString().ToLowerInvariant()),
                     action == EditorTreeAction.Rename ? node.Name : string.Empty) ?? Task.FromResult<string?>(null));
                 if (name is null) return;
-                if (!IsValidEntryName(name)) { StatusText = LocalizedText.Ref("explorer.input_invalid"); return; }
+                if (!IsValidEntryName(name)) { SetStatus("explorer.input_invalid"); return; }
             }
             if (_disposed) return;
-            if (!CanEditDocument) throw new InvalidOperationException(LocalizedText.Get("code_editor.context.operation_busy"));
+            if (!CanEditDocument) throw new InvalidOperationException(_localize("code_editor.context.operation_busy"));
             // Prevent edits and saves while the remote path mutation is in flight.
             IsTreeBusy = true;
             _openRevision++;
@@ -136,7 +133,7 @@ public sealed partial class CodeEditorViewModel
                 {
                     // Exclusive creation uses the same conditional writer as project saves.
                     var writer = _conditionalWriter ?? _files as IEditorFileWriter;
-                    if (writer is null) throw new InvalidOperationException(LocalizedText.Get("code_editor.context.creation_unavailable"));
+                    if (writer is null) throw new InvalidOperationException(_localize("code_editor.context.creation_unavailable"));
                     await writer.WriteEditorFileAsync(path, [], null, _lifetime.Token);
                     createdPath = path;
                 }
@@ -150,9 +147,9 @@ public sealed partial class CodeEditorViewModel
         catch (OperationCanceledException) when (_disposed) { }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Ref("code_editor.context.operation_failed", ex.Message);
+            SetStatus("code_editor.context.operation_failed", ex.Message);
             if (!_disposed && ShowTreeOperationErrorAsync is { } showError)
-                await showError(LocalizedText.Format("code_editor.context.operation_failed", ex.Message));
+                await showError(Format("code_editor.context.operation_failed", ex.Message));
         }
         finally
         {

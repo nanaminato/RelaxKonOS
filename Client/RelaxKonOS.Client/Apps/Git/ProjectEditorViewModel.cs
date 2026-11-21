@@ -30,7 +30,8 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
         Git = git;
         _client = client;
         Git.RepositoryPathComparison = pathCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        Editor = new CodeEditorViewModel(ExplorerEditorWorkspaceFiles.Wrap(files), pathCaseSensitive, defaultEncoding, files as IEditorFileWriter)
+        var workspace = ExplorerEditorWorkspaceFiles.Wrap(files);
+        Editor = new CodeEditorViewModel(LocalizedText.Get, workspace, pathCaseSensitive, defaultEncoding, workspace as IEditorFileWriter)
         { OpenFilesOnSelection = false, IsProjectWorkspace = true };
         Git.OpenEditorProjectAsync = OpenRepositoryAsync;
         Git.OpenPlainFolderAsync = OpenPlainFolderAsync;
@@ -47,7 +48,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
         {
             if (_disposed) return Task.CompletedTask;
             Editor.OpenGeneratedTextDocument("changes.patch", patch);
-            Editor.StatusText = LocalizedText.Ref("git.workspace.patch_save_hint");
+            Editor.SetStatus("git.workspace.patch_save_hint");
             return Task.CompletedTask;
         };
         Git.PropertyChanged += GitChanged;
@@ -187,7 +188,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
             PresentDiff(key, file, commit, diff);
         }
         catch (OperationCanceledException) when (_disposed) { }
-        catch (Exception ex) { Editor.StatusText = LocalizedText.Ref("git.vm.diff_failed_format", ex.Message); }
+        catch (Exception ex) { Editor.SetStatus("git.vm.diff_failed_format", ex.Message); }
     }
 
     private void PresentDiff(string key, GitFileChangeDto file, string? commit, GitDiffDto diff)
@@ -244,7 +245,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
             if (ReferenceEquals(Editor.ActiveDocument, active) && active?.ComparisonKey is { } key && _diffs.TryGetValue(key, out var source))
                 await OpenDiffAsync(source.File, source.Commit);
         }
-        catch (Exception ex) { Editor.StatusText = LocalizedText.Ref("git.vm.diff_failed_format", ex.Message); }
+        catch (Exception ex) { Editor.SetStatus("git.vm.diff_failed_format", ex.Message); }
     }
 
     [RelayCommand]

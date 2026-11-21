@@ -1,3 +1,4 @@
+using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Services.AppSettings;

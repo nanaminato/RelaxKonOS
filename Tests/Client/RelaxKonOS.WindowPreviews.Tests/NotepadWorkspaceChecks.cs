@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.App.CodeEditor;
 using System.Net;
 using System.Net.Http.Json;
@@ -108,7 +109,7 @@ internal static class NotepadWorkspaceChecks
                 && createFile.Result.Status == AppCapabilityResult.Succeeded
                 && duplicateCreate.Result.Status == AppCapabilityResult.Conflict,
                 "Conditional saves report stale versions and exclusive creation cannot overwrite.");
-            using (var editor = new CodeEditorViewModel(new SdkEditorWorkspaceFiles(context.ServerFiles)))
+            using (var editor = new CodeEditorViewModel(LocalizedText.Get, new SdkEditorWorkspaceFiles(context.ServerFiles)))
             {
                 Wait(editor.OpenPathAsync("/remote/notes.txt"));
                 Check(editor.CurrentPath == "/remote/notes.txt" && editor.Text == FileTransport.Original,
@@ -160,7 +161,7 @@ internal static class NotepadWorkspaceChecks
                 "The SDK preserves separate file picker filters and their order.");
             picker.CancelAction!();
             Wait(filtered);
-            using (var editor = new CodeEditorViewModel(new SdkEditorWorkspaceFiles(context.ServerFiles)))
+            using (var editor = new CodeEditorViewModel(LocalizedText.Get, new SdkEditorWorkspaceFiles(context.ServerFiles)))
             {
                 CodeEditorSessionDialogs.ConfigureSdkPickers(editor, context.ServerFiles, pickerOwner);
                 var chooseSource = editor.RequestFileAsync!();

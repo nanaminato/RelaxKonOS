@@ -54,7 +54,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         var sdkFiles = sdkContext?.ServerFiles;
         var workspace = sshDesktop?.IsConnected == true ? ExplorerEditorWorkspaceFiles.Wrap(files)
             : sdkFiles is null ? null : new SdkEditorWorkspaceFiles(sdkFiles);
-        var viewModel = new CodeEditorViewModel(workspace, sdkFiles?.IsPathCaseSensitive ?? pathCaseSensitive,
+        var viewModel = new CodeEditorViewModel(LocalizedText.Get, workspace, sdkFiles?.IsPathCaseSensitive ?? pathCaseSensitive,
             encodingSettings?.CodeEditorDefaultEncoding ?? "UTF-8")
         {
             SaveDefaultEncodingAsync = encoding => encodingSettings?.SetCodeEditorDefaultEncodingAsync(encoding) ?? Task.CompletedTask,

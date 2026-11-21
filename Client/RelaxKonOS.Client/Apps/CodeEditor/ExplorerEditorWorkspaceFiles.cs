@@ -1,6 +1,7 @@
 using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Services.Auth;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
@@ -31,7 +32,13 @@ internal class ExplorerEditorWorkspaceFiles(IExplorerClient files) : IEditorWork
     private sealed class Conditional(IExplorerClient files, IEditorFileWriter writer)
         : ExplorerEditorWorkspaceFiles(files), IEditorFileWriter
     {
-        public Task<string> WriteEditorFileAsync(string path, byte[] content, string? expectedVersion, CancellationToken ct) =>
-            writer.WriteEditorFileAsync(path, content, expectedVersion, ct);
+        public async Task<string> WriteEditorFileAsync(string path, byte[] content, string? expectedVersion, CancellationToken ct)
+        {
+            try { return await writer.WriteEditorFileAsync(path, content, expectedVersion, ct); }
+            catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/text-file-changed", StringComparison.Ordinal))
+            {
+                throw new EditorWriteConflictException(error.Message);
+            }
+        }
     }
 }
