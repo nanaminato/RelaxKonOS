@@ -57,9 +57,11 @@ internal static class ModuleManagementHttpChecks
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             using var client = new HttpClient { BaseAddress = new Uri(address) };
             var detail = ServerModuleManagementRoutes.Detail.Replace("{moduleId}", ServerModules.GitId);
+            var receiptRoute = ServerModuleManagementRoutes.PackageOperation.Replace("{operationId:guid}", Guid.NewGuid().ToString("D"));
             check((await client.GetAsync(detail)).StatusCode == HttpStatusCode.Unauthorized, "module detail rejects unauthenticated requests");
             check((await client.GetAsync(ServerModuleManagementRoutes.InstalledPackages)).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.GetAsync(ServerModuleManagementRoutes.PackageOperations)).StatusCode == HttpStatusCode.Unauthorized
+                && (await client.GetAsync(receiptRoute)).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.PostAsync(ServerModuleManagementRoutes.PackageUpload, new ByteArrayContent([]))).StatusCode == HttpStatusCode.Unauthorized
                 && (await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageInstall,
                     new ServerModulePackageInstallRequest("official", "release-1", Guid.NewGuid().ToString("N")))).StatusCode == HttpStatusCode.Unauthorized
@@ -79,6 +81,9 @@ internal static class ModuleManagementHttpChecks
                     .Replace("{**path}", "hello"))).StatusCode == HttpStatusCode.Unauthorized,
                 "module package read and write APIs reject unauthenticated requests");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
+            using var forbiddenReceipt = await client.GetAsync(receiptRoute);
+            check(forbiddenReceipt.StatusCode == HttpStatusCode.Forbidden,
+                "individual package receipts require module management permission");
             var observer = await client.GetFromJsonAsync<ServerModuleDto>(detail, RelaxKonOSJsonOptions.Default);
             check(observer?.AllowedActions?.All(x => !x.Allowed && x.BlockedBy.Any(reason => reason.ProblemCode == "module-forbidden")) == true,
                 "ordinary module readers receive explicit forbidden action admissions");

@@ -64,7 +64,8 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             }
 
             var operation = await client.ReadPackageOperationAsync(operationId.Value, cancellationToken);
-            if (operation.ModuleId != release.Package.Id || operation.Version != release.Version
+            if (operation.Action is not ("install" or "update") || operation.ModuleId != release.Package.Id
+                || operation.Version != release.Version || operation.ReleaseId != serverPlan.ReleaseId
                 || operation.ArtifactSha256 != serverPlan.ArtifactSha256)
                 throw new InvalidOperationException("deployment-module-receipt-unavailable");
             if (operation.State != "Succeeded")

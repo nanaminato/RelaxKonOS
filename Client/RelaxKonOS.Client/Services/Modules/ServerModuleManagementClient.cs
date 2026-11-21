@@ -229,6 +229,7 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
     private static bool ValidPackageOperation(ServerPackageOperationDto? operation) =>
         operation is not null && operation.OperationId != Guid.Empty
         && operation.Action is "install" or "rollback" or "update" && ValidIds([operation.ModuleId])
+        && operation.ReleaseId is { Length: > 0 and <= 128 }
         && operation.Version is { Length: > 0 and <= 32 } && ValidDigest(operation.ArtifactSha256)
         && operation.State is "AwaitingRestart" or "Applying" or "Succeeded" or "Failed"
         && operation.CreatedAt != default && operation.UpdatedAt >= operation.CreatedAt;

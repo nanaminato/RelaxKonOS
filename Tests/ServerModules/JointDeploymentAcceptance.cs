@@ -142,6 +142,17 @@ internal static class JointDeploymentAcceptance
             Require(!applications.IsRegistered(new AppId(AppIdText)) && InstalledModuleStore.Read(serverRoot).Single().ModuleId == ModuleId,
                 "the first execution installs the signed module and leaves the desktop package pending");
 
+            factory.SubstituteReceiptRelease = true;
+            try
+            {
+                await joint.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected the substituted receipt to be rejected.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-module-receipt-unavailable") { }
+            finally { factory.SubstituteReceiptRelease = false; }
+            Require(!applications.IsRegistered(new AppId(AppIdText)) && factory.SubmittedEnableApplies == 0,
+                "a receipt with a mismatched release cannot enable the module or install the application");
+
             await host.DisposeAsync();
             host = null;
             host = await TestHost.StartAsync(serverRoot, config);
@@ -419,6 +430,7 @@ internal static class JointDeploymentAcceptance
         public IReadOnlyList<string> EnablePreviewKeys => handler.EnablePreviewKeys;
         public int SubmittedEnableApplies => handler.SubmittedEnableApplies;
         public int Requests => handler.Requests;
+        public bool SubstituteReceiptRelease { get => handler.SubstituteReceiptRelease; set => handler.SubstituteReceiptRelease = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
         public Task HoldNextEnableApply()
@@ -443,6 +455,7 @@ internal static class JointDeploymentAcceptance
         public List<string> EnablePreviewKeys { get; } = [];
         public TaskCompletionSource? EnableEntered { get; set; }
         public bool DropEnableResponse { get; set; }
+        public bool SubstituteReceiptRelease { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
@@ -452,6 +465,18 @@ internal static class JointDeploymentAcceptance
             Requests++;
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (SubstituteReceiptRelease && request.Method == HttpMethod.Get
+                && path?.StartsWith(ServerModuleManagementRoutes.PackageOperations + "/", StringComparison.Ordinal) == true)
+            {
+                using var response = await base.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var receipt = await response.Content.ReadFromJsonAsync<ServerPackageOperationDto>(
+                    RelaxKonOSJsonOptions.Default, cancellationToken);
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(receipt! with { ReleaseId = "other-release" }, options: RelaxKonOSJsonOptions.Default),
+                };
+            }
             if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules && FaultedModule is { } faulted)
             {
                 using var response = await base.SendAsync(request, cancellationToken);
