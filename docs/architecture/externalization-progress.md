@@ -17,7 +17,7 @@
 | welcome | RelaxKonOS.App.Welcome | 是 / 是 | 否 | 使用 SDK 激活记事本或安装器 | 基础 | Windows 已验 |
 | settings | Settings | 否 / 否 | 是 | 工作区设置与宿主设置 | 基础 | 待验 |
 | explorer | Explorer | 否 / 否 | 是 | 文件 API；调用存储提供者的聚合入口 | 基础 | 待验 |
-| terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 官方包已验，服务端恢复待验 |
+| terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
 | server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
 | component-center | ComponentCenter | 否 / 否 | 是 | 组件、可信来源、模块及任务 API | 基础 | 待验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
@@ -132,6 +132,7 @@
 - Terminal VT 首选项通过仅官方 Terminal 可用的 SDK 接口读取和保存。宿主选择桌面或 SSH 设备存储，并校验 VT 取值。Windows 回归使用实际设备首选项文件验证保存与重新加载。
 - Terminal 工作区配色和设备内边距通过 SDK 读取。宿主复用现有的外观订阅和设置写入，能力绑定创建时的登录。Windows 终端回归用模拟设置传输验证当前连接可保存、替换服务器后原能力停止写入。
 - Terminal 会话视图模型和 SDK 入口已迁入应用程序集。宿主提供会话控制、原生渲染、连接绑定和凭据解析。Terminal 1.0.0 官方 `.roapp` 约 7.1 MiB，由 Standard 和 Developer 离线预装。Windows Release 使用实际 DevCli 归档验证了预装、窗口启动、从目录打开、更新、失败保留版本、重启和卸载。桌面恢复经已安装的包入口转发，真实服务器恢复待验。
+- 同一 Terminal 官方归档在 WSL Linux x64 无头环境通过预装、窗口启动、目录打开、升级、失败保留版本、重启与卸载。终端工作区回归在 Linux 识别并运行 Ghostty 原生 VT，托管 VT 回归也通过。
 - 设置主题的颜色扫描已覆盖 Terminal 新项目。全局扫描仍报告 Proxy、Shell、Git、UI 样式和示例项目中的既有硬编码颜色。
 - 服务端替换或回退模块活动版本时，从依赖方的已安装清单校验版本约束。Windows HTTP 签名包回归证实排他上界阻止升级并保留原版本，包完整性与热替换回归通过。手动回退会重新检查归档版本的前置依赖。缺少依赖时保留当前版本，自动启动恢复会隔离失败更新并留下回执，避免激活不兼容的旧包。两条路径均通过 Windows 测试。
 - Windows 模块包回归验证了随宿主编译的 Git 模块也受依赖版本区间约束，兼容区间通过，要求更高版本的包被拒绝。

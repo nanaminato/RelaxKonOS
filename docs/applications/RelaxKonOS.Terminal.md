@@ -10,9 +10,9 @@ Server 的 Terminal 已接入官方模块注册试点，默认启用。可在受
 
 Terminal-T1 联合候选的 Windows 验证已通过：受控会话/发送/失败隔离及实际自有 ConPTY 停止共 15 项，Output/Exited 帧 5 项，既有 Hub 合同和管理员权限检查通过；记录位于 `.artifacts/module-milestones-20261104/milestones-windows-2.log`。该记录不等于真实已安装 Helper/S4U 部署或完整子孙进程树验收；最终候选构建摘要、Linux 结果及残余阻塞由架构总里程碑统一记录，不能将较早日志冒充后续改动的复验。
 
-> **当前 UI 行为（优先于下文早期工具条描述）**：一个服务端 PTY 对应一个桌面终端窗口；不提供会话切换、新建、断开、Restart 或 Clear 按钮。进入已认证桌面时会自动恢复所有存活会话；再次手动打开 Terminal 时也会恢复存活会话，若不存在会话则新建一个。只有关闭某个终端窗口才会显式终止对应的服务端进程。字体、字号、配色为 Workspace 级设置（桌面渲染引擎固定为 RoyalTerminal，见 §2.4），经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存在服务器端。
+> 桌面为每个恢复的服务端 PTY 创建独立窗口，新建会话可以加入同一窗口的标签页。开启「恢复终端」后，进入已认证桌面会恢复尚未打开的存活会话。手动打开 Terminal 也会查找可恢复会话，找不到时新建。主动关闭存活的远程标签页或窗口前需要确认。字体、字号和配色经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存到工作区。
 
-> 内置终端应用：基于 [RoyalTerminal](https://github.com/royalapplications/RoyalTerminal) NuGet 包引入终端能力，支持 **Remote Mode**（SignalR 远端 PTY）与 **Local Mode**（本地 PTY 回退）。
+> Terminal 是桌面官方基础应用。Standard 和 Developer 首次启动时从随包发行目录离线预装 `OfficialApps/relaxkonos.terminal.roapp`。Minimal 可从 **应用安装程序 → 官方应用** 安装。更新、修复和卸载使用同一入口。
 
 Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加当前用户仍存活的会话，找不到时返回 `terminal.session_not_found`，供网络恢复路径避免误创建 PTY。移动端交互规范和验收状态由 [Android AD07 文档](../../Client/RelaxKonOS.Client.Android/docs/features/TerminalAutomation.md) 维护。
 
@@ -58,7 +58,7 @@ sudo bash deployment/linux/install-relaxkonos-privileged-helper-development.sh "
 
 ## 1. 定位
 
-RemoteTerminal 是 RelaxKonOS 的内置应用之一，遵循架构 §6 的两类应用模型：
+Terminal 应用通过 SDK 使用桌面宿主提供的会话发现、PTY 控制和 RoyalTerminal 渲染。
 
 - **Remote Mode**（本次实现）：PTY 运行于 `RelaxKonOS.Server`，经 **SignalR Hub** 流式传输到 Client。属 §6.2 Remote Service Application。客户端认证后（`IAuthSession.State == Authenticated`）自动走 Remote Mode，JWT 通过 SignalR `AccessTokenProvider` 传递。
 - **Local Mode**（回退）：运行于 `RelaxKonOS.Client`，本地 PTY 启动平台默认 shell。属 §6.1 Local Application。当未登录（dev 调试）时自动回退。
@@ -71,7 +71,7 @@ RemoteTerminal 是 RelaxKonOS 的内置应用之一，遵循架构 §6 的两类
 ### 1.1 从其他内置应用打开终端
 
 `RelaxKonOS.AppSDK.IOpenTerminalApplication` 定义了“在指定远程目录中新建终端”的应用契约。内置应用通过
-`ApplicationManager.OpenTerminal(workingDirectory)` 调用该契约，无需依赖 `TerminalApp`；运行时会检查应用兼容性后，将目录传给终端的 `WorkingDirectory`。RemoteExplorer 的“在此处打开终端”菜单会优先使用所选文件夹，否则使用当前地址栏目录。
+`ApplicationManager.OpenTerminal(workingDirectory)` 调用该契约。运行时先检查兼容性，再将目录转发到已安装包的 `IExternalTerminalApplication.OpenAt`。RemoteExplorer 的“在此处打开终端”菜单优先使用所选文件夹，否则使用当前地址栏目录。
 
 ---
 
@@ -97,16 +97,16 @@ RemoteTerminal 是 RelaxKonOS 的内置应用之一，遵循架构 §6 的两类
 `TerminalControl` 作为普通 `UserControl` 内容塞进 `RemoteWindow`，与 Notepad / Settings 同构。但与 Notepad 不同的是，`TerminalControl` **在代码后台创建**（非 XAML），因为需要通过 9 参数构造函数注入自定义传输工厂：
 
 ```text
-TerminalApp (RemoteApplicationBase)
+TerminalPackageApp (IExternalRemoteApplication)
     |
-    AppContext.ShowWindow("Terminal", view)
+    IExternalAppContext.Windows.ShowWindow(...)
     |
     WindowManager.Create → RemoteWindow
     |
-    TerminalView (UserControl)
-    ├── 工具条（Restart / Clear / 状态栏）
+    TerminalWorkspaceView → TerminalView
+    ├── 会话菜单与状态栏
     └── TerminalHost (Grid)
-        └── TerminalControl (code-behind 创建, 9-param ctor)
+        └── 宿主通过 SDK 提供 TerminalControl
             └── TerminalTransportFactory = SignalRTransportFactory
 ```
 
