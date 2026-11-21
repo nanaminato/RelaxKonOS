@@ -84,13 +84,24 @@ internal static class DatabaseEndpointBoundaryChecks
             throw new InvalidOperationException("A schedule on a secondary PostgreSQL instance must block deactivation.");
         helper.ScheduledInstance = null;
 
+        using var unavailable = new ServiceCollection().BuildServiceProvider();
+        if (!(await module.InspectOrphanedWorkAsync(unavailable, linux, default)).Any(work =>
+                work.Description.Contains("Native database responsibility could not be established")))
+            throw new InvalidOperationException("Missing native evidence must block database deactivation.");
+
         var ledger = new InstallationOperationStore(inspectionBuilder.Environment);
         var queued = ledger.Create(InstallationServiceId.PostgreSql, InstallationOperationKind.Configure,
             "database-boundary-test", "queued-fixture", InstallationOperationStore.Reference("fixture"), ["fixture"], out _);
         if (!(await module.InspectOrphanedWorkAsync(native, linux, default)).Any(work => work.Description.Contains(queued.Operation.OperationId.ToString())))
             throw new InvalidOperationException("A queued database installation must block deactivation.");
 
-        Console.WriteLine("Database registration, endpoint paths, methods and authorization policies passed.");
+        var ledgerPath = Path.Combine(inspectionRoot, "data", "installation-operations.json");
+        await File.WriteAllTextAsync(ledgerPath, "invalid ledger");
+        if (!(await module.InspectOrphanedWorkAsync(native, linux, default)).Any(work =>
+                work.Description.Contains("installation ledger cannot be read")))
+            throw new InvalidOperationException("A damaged installation ledger must block database deactivation.");
+
+        Console.WriteLine("Database registration, endpoint policies and deactivation ownership checks passed.");
 
         void Check(string route, string method, string? policy)
         {
