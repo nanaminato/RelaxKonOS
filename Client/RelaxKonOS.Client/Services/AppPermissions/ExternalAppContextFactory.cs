@@ -55,6 +55,7 @@ public sealed class ExternalAppContextFactory
     private readonly IHostElevationBroker? _elevationBroker;
     private readonly IServerRegistry? _registry;
     private readonly ClientPresentationPreferences? _presentationPreferences;
+    private readonly IBrowserData? _browserData;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -81,7 +82,8 @@ public sealed class ExternalAppContextFactory
         IComponentLifecycleClient? componentLifecycle = null,
         IHostElevationBroker? elevationBroker = null,
         IServerRegistry? registry = null,
-        ClientPresentationPreferences? presentationPreferences = null)
+        ClientPresentationPreferences? presentationPreferences = null,
+        IBrowserData? browserData = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -108,6 +110,7 @@ public sealed class ExternalAppContextFactory
         _elevationBroker = elevationBroker;
         _registry = registry;
         _presentationPreferences = presentationPreferences;
+        _browserData = browserData;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -129,6 +132,7 @@ public sealed class ExternalAppContextFactory
         new ServerRegistryCapability(appId, _permissions, connection, _registry),
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
+        appId.Value == "relaxkonos.browser" && _browserData is not null ? new ExternalBrowserData(_browserData, connection) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -160,6 +164,7 @@ public sealed class ExternalAppContextFactory
         IServerProcesses ServerProcesses,
         IServerRegistry Registry,
         IRegistryAppearancePreferences? RegistryAppearance,
+        IBrowserData? BrowserData,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

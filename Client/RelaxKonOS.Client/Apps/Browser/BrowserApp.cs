@@ -7,6 +7,8 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Apps.Browser.ViewModels;
 using RelaxKonOS.Client.Apps.Browser.Views;
 using RelaxKonOS.Client.Services.Auth;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
@@ -35,7 +37,9 @@ public sealed class BrowserApp : RemoteApplicationBase
         BrowserDiagnostics.EnsureUiWatchdog();
         BrowserDiagnostics.Record("Browser activation requested.");
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IBrowserClient)) as IBrowserClient;
+        var client = session?.State == AuthSessionState.Authenticated
+            ? context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest).BrowserData
+            : null;
 
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {

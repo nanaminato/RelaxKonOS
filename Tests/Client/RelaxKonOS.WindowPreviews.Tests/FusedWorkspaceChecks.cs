@@ -69,7 +69,7 @@ internal static class FusedWorkspaceChecks
         using var notepadModel = new NotepadViewModel(new NotepadText(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()), null, null);
         using var imageModel = new ImageViewerViewModel(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), null);
         var tasksModel = new TaskManagerViewModel(null!, null!, null!, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
-        var browserModel = new BrowserViewModel(DispatchProxy.Create<RelaxKonOS.Client.Apps.Browser.IBrowserClient, HeaderPreviewPermissions>());
+        var browserModel = new BrowserViewModel(DispatchProxy.Create<RelaxKonOS.AppSDK.IBrowserData, HeaderPreviewPermissions>());
         var browserView = new BrowserMainView { DataContext = browserModel };
         var canvas = new Canvas();
         var host = new Window { Width = 1100, Height = 800, Content = canvas };

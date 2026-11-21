@@ -23,7 +23,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
     private readonly ApplicationManager _apps;
     private readonly DeveloperPackageManager _packages;
     private readonly LocalizationService _localization;
-    private readonly IBrowserClient _browserClient;
+    private readonly IBrowserData _browserClient;
     private BrowserSettingsDto? _browserSettings;
 
     public AppsPageViewModel(
@@ -31,7 +31,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
         ApplicationManager apps,
         DeveloperPackageManager packages,
         LocalizationService localization,
-        IBrowserClient browserClient)
+        IBrowserData browserClient)
         : base(settings, save: null)
     {
         _apps = apps;

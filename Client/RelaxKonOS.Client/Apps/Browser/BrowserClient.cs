@@ -1,3 +1,4 @@
+using IBrowserData = RelaxKonOS.AppSDK.IBrowserData;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Localization;
@@ -7,11 +8,11 @@ using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Apps.Browser;
 
-/// <summary>IBrowserClient 的 typed HttpClient 实现。
+/// <summary>IBrowserData 的 typed HttpClient 实现。
 /// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.EffectiveBaseUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
 /// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 <see cref="RelaxKonOSClient"/> / ExplorerClient 同源）。</summary>
-public sealed class BrowserClient : IBrowserClient
+public sealed class BrowserClient : IBrowserData
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;

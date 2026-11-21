@@ -1,11 +1,9 @@
 using RelaxKonOS.Protocol.Browser;
 
-namespace RelaxKonOS.Client.Apps.Browser;
+namespace RelaxKonOS.AppSDK;
 
-/// <summary>RelaxKonOS Server 浏览器书签/历史记录 HTTP 客户端抽象。typed HttpClient 实现（见 <see cref="BrowserClient"/>）。
-/// 所有方法从 <c>IAuthSession</c> 取 <c>serverUrl</c> + <c>accessToken</c> 构造绝对 URI 与 Authorization 头。
-/// 路由常量见 <see cref="BrowserApiRoutes"/>。错误统一为 <see cref="RelaxKonOSAuthException"/>（含 ProblemDetails）。</summary>
-public interface IBrowserClient
+/// <summary>Server-backed personal browser data for the authenticated workspace.</summary>
+public interface IBrowserData
 {
     // ── persistent browser settings ──
     Task<BrowserSettingsDto> GetSettingsAsync(CancellationToken ct = default);

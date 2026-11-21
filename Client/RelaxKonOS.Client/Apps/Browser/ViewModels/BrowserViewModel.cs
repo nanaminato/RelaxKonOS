@@ -1,3 +1,4 @@
+using IBrowserData = RelaxKonOS.AppSDK.IBrowserData;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Windows.Input;
@@ -15,14 +16,14 @@ namespace RelaxKonOS.Client.Apps.Browser.ViewModels;
 /// - 用户输入地址 → <see cref="NavigateCommand"/> → 更新当前标签，通过 <see cref="ViewNavigateRequested"/> 请求导航
 /// - NativeWebView.NavigationStarted/Completed 事件由 View code-behind 转发到
 ///   <see cref="OnNavigationStarted"/> / <see cref="OnNavigationCompleted"/>，更新地址栏 + 记录历史
-/// - 书签/历史通过 <see cref="IBrowserClient"/> 调用 Server REST API（JWT via IAuthSession）
+/// - 书签/历史通过 <see cref="IBrowserData"/> 调用 Server REST API（JWT via IAuthSession）
 /// - Sidebar 双标签页（书签 / 历史），点击条目导航，X 删除单条，"清空"清全部
 ///
 /// 注意：网页在客户端渲染（Windows/macOS 使用 NativeWebView，Linux 委托宿主浏览器），
 /// 网页内容走客户端网络而非 Server；Server 仅持久化书签与历史（按用户隔离）。</summary>
 public sealed partial class BrowserViewModel : LocalizedObservableObject
 {
-    private readonly IBrowserClient _client;
+    private readonly IBrowserData _client;
     private BookmarkDto? _currentBookmark;
     private int _bookmarkOffset;
     private int _historyOffset;
@@ -33,7 +34,7 @@ public sealed partial class BrowserViewModel : LocalizedObservableObject
     [ObservableProperty] private bool _isSyncingCollections;
     private Uri? _currentUri;          // 当前 WebView 实际加载的 URI（区别于地址栏文本，可能正在输入未提交）
 
-    public BrowserViewModel(IBrowserClient client)
+    public BrowserViewModel(IBrowserData client)
     {
         _client = client;
         Bookmarks = new ObservableCollection<BookmarkDto>();

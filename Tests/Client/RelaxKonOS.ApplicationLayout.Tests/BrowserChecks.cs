@@ -1,3 +1,4 @@
+using IBrowserData = RelaxKonOS.AppSDK.IBrowserData;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -264,7 +265,7 @@ internal static class BrowserChecks
     }
 }
 
-internal sealed class BrowserFixtureClient : IBrowserClient
+internal sealed class BrowserFixtureClient : IBrowserData
 {
     private readonly Guid _user = Guid.NewGuid();
     public List<BookmarkDto> Bookmarks { get; }

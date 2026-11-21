@@ -70,7 +70,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var packages = context.Services.GetRequiredService<DeveloperPackageManager>();
         var networkInspector = context.Services.GetRequiredService<NetworkInspectorWindowService>();
         var wallpapers = context.Services.GetRequiredService<WallpaperService>();
-        var browserClient = context.Services.GetRequiredService<IBrowserClient>();
+        var browserClient = context.Services.GetRequiredService<IBrowserData>();
         var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
 
         var viewModel = new SettingsViewModel(settings, settingsClient, session, context.Services.GetRequiredService<WorkspacePreferencesEditor>(), apps, remote, system, registry, developerMode, packages,

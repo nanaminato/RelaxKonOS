@@ -186,7 +186,7 @@ public static class Bootstrapper
         // Browser（浏览器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
         // NativeWebView 用平台原生引擎（Win=WebView2/macOS=WKWebView/Linux=WebKitGTK），网页内容走客户端网络；
         // Server 仅持久化书签与历史记录（按用户隔离）。
-        services.AddHttpClient<RelaxKonOS.Client.Apps.Browser.IBrowserClient, RelaxKonOS.Client.Apps.Browser.BrowserClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IBrowserData, RelaxKonOS.Client.Apps.Browser.BrowserClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "browser"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();

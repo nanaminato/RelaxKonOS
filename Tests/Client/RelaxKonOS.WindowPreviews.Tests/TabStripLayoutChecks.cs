@@ -1,3 +1,4 @@
+using IBrowserData = RelaxKonOS.AppSDK.IBrowserData;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -27,7 +28,7 @@ internal static class TabStripLayoutChecks
 
     private static void BrowserStrip()
     {
-        var model = new BrowserViewModel(DispatchProxy.Create<IBrowserClient, HeaderPreviewPermissions>());
+        var model = new BrowserViewModel(DispatchProxy.Create<IBrowserData, HeaderPreviewPermissions>());
         var view = new BrowserMainView { DataContext = model };
         var host = new Window { Width = 900, Height = 420, Content = view };
         host.Show();

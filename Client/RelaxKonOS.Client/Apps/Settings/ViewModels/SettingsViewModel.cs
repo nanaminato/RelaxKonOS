@@ -1,3 +1,4 @@
+using IBrowserData = RelaxKonOS.AppSDK.IBrowserData;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Services;
@@ -51,7 +52,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         DefaultAppRegistry? registry,
         DeveloperModeService? developerMode,
         DeveloperPackageManager? packages,
-        IBrowserClient? browserClient,
+        IBrowserData? browserClient,
         NetworkInspectorWindowService? networkInspector = null,
         LocalizationService? localization = null,
         WallpaperService? wallpapers = null,

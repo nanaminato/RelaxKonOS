@@ -63,7 +63,7 @@ internal static class SettingsWindowChecks
         using var model = new SettingsViewModel(settings, preferenceService, session, editor, apps,
             DispatchProxy.Create<IRelaxKonOSClient, UnusedPreviewServices>(),
             DispatchProxy.Create<ITaskManagerClient, UnusedPreviewServices>(), registry, developer, null,
-            DispatchProxy.Create<IBrowserClient, UnusedPreviewServices>(), inspector, localization);
+            DispatchProxy.Create<IBrowserData, UnusedPreviewServices>(), inspector, localization);
         var view = new SettingsView { DataContext = model };
         var window = new Window { Width = 640, Height = 480, Content = view };
         try

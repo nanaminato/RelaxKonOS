@@ -42,6 +42,8 @@ public interface IExternalAppContext
     IServerProcesses ServerProcesses { get; }
     IServerRegistry Registry { get; }
     IRegistryAppearancePreferences? RegistryAppearance { get; }
+    /// <summary>Available only to the official Browser application.</summary>
+    IBrowserData? BrowserData { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }
