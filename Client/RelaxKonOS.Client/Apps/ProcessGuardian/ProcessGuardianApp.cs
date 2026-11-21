@@ -8,7 +8,6 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.AppSDK;
@@ -32,27 +31,27 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         var client = context.Services.GetService(typeof(IServerGuardian)) as IServerGuardian;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.relaxkonos.processguardian.display_name"),
-                new TextBlock { Text = LocalizedText.Get("guardian.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = TextWrapping.Wrap },
+            context.ShowWindow(Label("application.relaxkonos.processguardian.display_name"),
+                new TextBlock { Text = Label("guardian.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = TextWrapping.Wrap },
                 new Rect(200, 160, 460, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
 
         var viewModel = new ProcessGuardianViewModel(client, () => session.CurrentUser?.Username,
-            () => session.CurrentServer?.Platform == HostPlatformKind.Windows, LocalizedText.Get,
+            () => session.CurrentServer?.Platform == HostPlatformKind.Windows, Label,
             code => PrivilegedHelperProblemText.TryFormat(code, out var message) ? message : null);
         var localization = App.Services.GetRequiredService<LocalizationService>();
         WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, ProcessGuardianViewModel>(
             localization, nameof(LocalizationService.LanguageChanged), viewModel.OnLanguageChanged);
         viewModel.OpenComponentManagement = () => (context.Services.GetService(typeof(RelaxKonOS.Runtime.ApplicationManager)) as RelaxKonOS.Runtime.ApplicationManager)?.Launch(new AppId("relaxkonos.server-center"));
-        var views = new ProcessGuardianViews(LocalizedText.Get);
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.processguardian.display_name"), views.CreateWorkspace(viewModel), new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
+        var views = new ProcessGuardianViews(Label);
+        var window = context.ShowWindow(Label("application.relaxkonos.processguardian.display_name"), views.CreateWorkspace(viewModel), new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestAdministratorApprovalAsync = () => RequestAdministratorApprovalAsync(context, window, session);
         viewModel.ShowEditorAsync = async isEdit =>
         {
             await context.ShowDialogAsync<bool>(window,
-                LocalizedText.Get(isEdit ? "guardian.editor.edit_title" : "guardian.editor.create_title"), dialog =>
+                Label(isEdit ? "guardian.editor.edit_title" : "guardian.editor.create_title"), dialog =>
                 {
                     viewModel.CloseEditorAsync = () => { dialog.Close(true); return Task.CompletedTask; };
                     return views.CreateEditor(viewModel, () => dialog.Cancel(),
@@ -61,7 +60,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         };
         viewModel.ShowLogsAsync = workload =>
         {
-            var logViewModel = new GuardianLogWindowViewModel(client, workload, LocalizedText.Get);
+            var logViewModel = new GuardianLogWindowViewModel(client, workload, Label);
             WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, GuardianLogWindowViewModel>(
                 localization, nameof(LocalizationService.LanguageChanged), logViewModel.OnLanguageChanged);
             var logWindow = context.ShowWindow(logViewModel.Title, views.CreateLogs(logViewModel), new Rect(170, 120, 800, 520), Manifest.IconGlyph);
@@ -72,13 +71,16 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         _ = viewModel.StartAsync();
     }
 
+    private static string Label(string key) =>
+        ProcessGuardianLocalization.Resolve(App.Services.GetRequiredService<LocalizationService>(), key);
+
     private static async Task SelectExecutableAsync(ProcessGuardianViewModel vm)
     {
         var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
         if (topLevel is null) return;
         var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
         {
-            Title = LocalizedText.Get("guardian.create.executable.select"),
+            Title = Label("guardian.create.executable.select"),
             AllowMultiple = false,
         }, UsageMemoryStore.CaptureServices(App.Services), "ProcessGuardian.executable");
         var path = selected.FirstOrDefault()?.TryGetLocalPath();
@@ -91,7 +93,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         if (topLevel is null) return;
         var selected = await UsageFilePicker.OpenFolderPickerAsync(topLevel.StorageProvider, new FolderPickerOpenOptions
         {
-            Title = LocalizedText.Get("guardian.create.working_directory.select"),
+            Title = Label("guardian.create.working_directory.select"),
             AllowMultiple = false,
         }, UsageMemoryStore.CaptureServices(App.Services), "ProcessGuardian.working-directory");
         var path = selected.FirstOrDefault()?.TryGetLocalPath();
@@ -99,18 +101,18 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
     }
 
     private static Task<RunAsAdministratorApproval?> RequestAdministratorApprovalAsync(AppContext context, RelaxKonOS.WindowManager.ManagedWindow owner, IAuthSession session) =>
-        context.ShowDialogAsync<RunAsAdministratorApproval?>(owner, LocalizedText.Get("guardian.admin_approval.title"), dialog =>
+        context.ShowDialogAsync<RunAsAdministratorApproval?>(owner, Label("guardian.admin_approval.title"), dialog =>
         {
             var username = new TextBox
             {
                     Text = string.Empty,
-                PlaceholderText = LocalizedText.Get("guardian.admin_approval.username"),
+                PlaceholderText = Label("guardian.admin_approval.username"),
             };
-            var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("guardian.admin_approval.password") };
+            var password = new TextBox { PasswordChar = '•', PlaceholderText = Label("guardian.admin_approval.password") };
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-            var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
+            var cancel = new Button { Content = Label("common.cancel") };
             cancel.Click += (_, _) => dialog.Cancel();
-            var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
+            var confirm = new Button { Content = Label("common.ok"), Classes = { "primary" } };
             confirm.Click += (_, _) => dialog.Close(new RunAsAdministratorApproval(username.Text?.Trim() ?? string.Empty, password.Text ?? string.Empty));
             actions.Children.Add(cancel);
             actions.Children.Add(confirm);
@@ -120,7 +122,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
                 Margin = new Avalonia.Thickness(20),
                 Children =
                 {
-                    new TextBlock { Text = LocalizedText.Get("guardian.admin_approval.message"), TextWrapping = TextWrapping.Wrap },
+                    new TextBlock { Text = Label("guardian.admin_approval.message"), TextWrapping = TextWrapping.Wrap },
                     username,
                     password,
                     actions,

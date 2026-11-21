@@ -1,9 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Avalonia.Threading;
 using RelaxKonOS.App.FileServices;
 using RelaxKonOS.App.Firewall;
 using RelaxKonOS.App.Git;
+using RelaxKonOS.App.ProcessGuardian;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 
@@ -18,12 +20,13 @@ internal static class LocalizationResourceChecks
             var files = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Localization", culture), "*.json");
             if (files.Length == 0) throw new Exception("No shipped localization files for " + culture);
             foreach (var file in files.Concat([$"Git.Localization.{culture}.json", $"FileServices.Localization.{culture}.json",
-                $"Firewall.Localization.{culture}.json"]))
+                $"Firewall.Localization.{culture}.json", $"ProcessGuardian.Localization.{culture}.json"]))
             {
                 using var source = Path.IsPathRooted(file) ? File.OpenRead(file)
                     : file.StartsWith("Git.", StringComparison.Ordinal) ? GitLocalization.Open(file)
                     : file.StartsWith("FileServices.", StringComparison.Ordinal) ? FileServicesLocalization.Open(file)
-                    : FirewallLocalization.Open(file);
+                    : file.StartsWith("Firewall.", StringComparison.Ordinal) ? FirewallLocalization.Open(file)
+                    : ProcessGuardianLocalization.Open(file);
                 using var json = JsonDocument.Parse(source);
                 var root = json.RootElement;
                 var rootKeys = new HashSet<string>();
@@ -63,6 +66,7 @@ internal static class LocalizationResourceChecks
                 if (Arguments(englishTable[entry.Key]) != Arguments(entry.Value))
                     throw new Exception("Format placeholders differ for " + culture + ": " + entry.Key);
         }
+        var localization = RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>();
         var previous = settings.Language;
         try
         {
@@ -74,10 +78,21 @@ internal static class LocalizationResourceChecks
                     throw new Exception("The live localization loader did not resolve the expected menu text for " + culture);
                 var keys = tables["en-US"].Keys.Where(key => key.StartsWith("code_editor.context.")
                     || key.StartsWith("explorer.cloud.") || key.StartsWith("git.") || key.StartsWith("file_services.")
-                    || key.StartsWith("firewall.")).ToArray();
+                    || key.StartsWith("firewall.") || key.StartsWith("guardian.")).ToArray();
                 foreach (var key in keys)
-                    if (!tables[culture].TryGetValue(key, out var expectedValue) || LocalizedText.Get(key) != expectedValue)
+                {
+                    var actual = key switch
+                    {
+                        _ when key.StartsWith("firewall.", StringComparison.Ordinal) => FirewallLocalization.Resolve(localization, key, key),
+                        _ when key.StartsWith("guardian.", StringComparison.Ordinal) => ProcessGuardianLocalization.Resolve(localization, key),
+                        _ => LocalizedText.Get(key),
+                    };
+                    if (!tables[culture].TryGetValue(key, out var expectedValue) || actual != expectedValue)
                         throw new Exception("Missing or incorrectly loaded translation " + culture + ": " + key);
+                }
+                foreach (var key in new[] { "common.refresh", "common.cancel", "application.relaxkonos.processguardian.display_name" })
+                    if (ProcessGuardianLocalization.Resolve(localization, key) != tables[culture][key])
+                        throw new Exception("Incorrect Guardian package translation " + culture + ": " + key);
                 _ = LocalizedText.Format("code_editor.context.delete_confirm", "/work/example");
                 _ = LocalizedText.Format("code_editor.context.operation_failed", "failure");
             }

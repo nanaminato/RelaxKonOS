@@ -8,5 +8,7 @@
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <PackageReference Include="Avalonia.Controls.DataGrid" />
+        <EmbeddedResource Include="Localization/*.json" LogicalName="ProcessGuardian.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="ProcessGuardian.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>
