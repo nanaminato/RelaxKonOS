@@ -16,6 +16,15 @@ public sealed class ProcessGuardianClient(HttpClient http, IAuthSession session)
     public Task<GuardianAgentResponse> DeleteAsync(string id, CancellationToken cancellationToken = default) => SendAsync<GuardianAgentResponse>(HttpMethod.Delete, ProcessGuardianApiRoutes.Workload.Replace("{id}", Uri.EscapeDataString(id)), null, cancellationToken);
     public Task<GuardianAgentResponse> ApplyActionAsync(string id, string action, CancellationToken cancellationToken = default) => SendAsync<GuardianAgentResponse>(HttpMethod.Post, ProcessGuardianApiRoutes.WorkloadAction.Replace("{id}", Uri.EscapeDataString(id)).Replace("{action}", action), null, cancellationToken);
     public Task<IReadOnlyList<GuardianLogEntryDto>> ListLogsAsync(string id, CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<GuardianLogEntryDto>>(ProcessGuardianApiRoutes.WorkloadLogs.Replace("{id}", Uri.EscapeDataString(id)), cancellationToken);
+    public IAsyncEnumerable<IReadOnlyList<GuardianLogEntryDto>> WatchLogsAsync(string id, CancellationToken cancellationToken)
+    {
+        var sessionId = session.CurrentSession?.Id;
+        var serviceId = session.ServiceId;
+        return GuardianLogStream.WatchAsync(session, id,
+            () => session.State == AuthSessionState.Authenticated && session.CurrentSession?.Id == sessionId
+                && session.ServiceId == serviceId, cancellationToken);
+    }
+
     public Task<IReadOnlyList<GuardianAuditEntryDto>> ListAuditAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<GuardianAuditEntryDto>>(ProcessGuardianApiRoutes.Audit, cancellationToken);
     private Task<T> SendAsync<T>(string route, CancellationToken cancellationToken) => SendAsync<T>(HttpMethod.Get, route, null, cancellationToken);
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)

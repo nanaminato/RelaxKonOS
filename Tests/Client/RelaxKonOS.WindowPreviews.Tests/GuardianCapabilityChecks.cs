@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Reflection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
@@ -21,6 +22,9 @@ internal static class GuardianCapabilityChecks
             new ExternalServerConnection(memory.Capture(auth)), client, lifetime.Token);
 
         await RejectAsync<UnauthorizedAccessException>(() => guardian.ListWorkloadsAsync());
+        await using (var denied = guardian.WatchLogsAsync("worker").GetAsyncEnumerator())
+            await RejectAsync<UnauthorizedAccessException>(() => denied.MoveNextAsync().AsTask());
+
         grants.Granted.Add(AppPermissions.ServerGuardianManage);
         await RejectAsync<UnauthorizedAccessException>(() => guardian.ApplyActionAsync("worker", "stop"));
         grants.Granted.Remove(AppPermissions.ServerGuardianManage);
@@ -33,8 +37,16 @@ internal static class GuardianCapabilityChecks
         await guardian.ApplyActionAsync("worker", "stop");
         if (calls.Writes != 1) throw new InvalidOperationException("Guardian management call was not delegated.");
 
-        ((EventAlertsAuthFixture)(object)auth).ServiceId = "http://replacement.invalid";
+        await using var logs = guardian.WatchLogsAsync("worker").GetAsyncEnumerator();
+        if (!await logs.MoveNextAsync() || logs.Current.Count != 0)
+            throw new InvalidOperationException("Guardian did not forward the log snapshot.");
+        var nextSnapshot = logs.MoveNextAsync().AsTask();
+
+        var session = (EventAlertsAuthFixture)(object)auth;
+        session.ServiceId = "http://replacement.invalid";
+        session.NotifyStateChanged();
         await RejectAsync<InvalidOperationException>(() => guardian.ListWorkloadsAsync());
+        await RejectAsync<OperationCanceledException>(async () => await nextSnapshot.WaitAsync(TimeSpan.FromSeconds(5)));
         lifetime.Cancel();
         await RejectAsync<OperationCanceledException>(() => guardian.ListWorkloadsAsync());
         if (calls.Reads != 1) throw new InvalidOperationException("Guardian read reached an invalidated connection.");
@@ -64,8 +76,17 @@ public class GuardianCapabilityClient : DispatchProxy
             case nameof(IServerGuardian.ApplyActionAsync):
                 Writes++;
                 return Task.FromResult(new GuardianAgentResponse(true, string.Empty));
+            case nameof(IServerGuardian.WatchLogsAsync):
+                return WatchAsync((CancellationToken)args![1]!);
             default:
                 throw new NotSupportedException(method?.Name);
         }
+    }
+
+    private static async IAsyncEnumerable<IReadOnlyList<GuardianLogEntryDto>> WatchAsync(
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        yield return [];
+        await Task.Delay(Timeout.InfiniteTimeSpan, token);
     }
 }

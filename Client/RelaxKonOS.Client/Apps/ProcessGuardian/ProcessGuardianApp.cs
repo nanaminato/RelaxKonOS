@@ -62,7 +62,9 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         };
         viewModel.ShowLogsAsync = workload =>
         {
-            var logViewModel = new GuardianLogWindowViewModel(session, workload);
+            var logViewModel = new GuardianLogWindowViewModel(client, workload, LocalizedText.Get);
+            WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, GuardianLogWindowViewModel>(
+                localization, nameof(LocalizationService.LanguageChanged), logViewModel.OnLanguageChanged);
             var logWindow = context.ShowWindow(logViewModel.Title, CreateLogsView(logViewModel), new Rect(170, 120, 800, 520), Manifest.IconGlyph);
             logWindow.CloseRequested += (_, _) => _ = logViewModel.DisposeAsync();
             _ = logViewModel.StartAsync();

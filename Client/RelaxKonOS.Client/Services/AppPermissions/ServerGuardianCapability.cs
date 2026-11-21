@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.ProcessGuardian;
@@ -33,6 +34,19 @@ internal sealed class ServerGuardianCapability(AppId appId, IAppPermissionManage
 
     public Task<IReadOnlyList<GuardianAuditEntryDto>> ListAuditAsync(CancellationToken cancellationToken) =>
         InvokeAsync(token => Client.ListAuditAsync(token), manage: false, cancellationToken);
+
+    public async IAsyncEnumerable<IReadOnlyList<GuardianLogEntryDto>> WatchLogsAsync(string id,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(lifetime, cancellationToken);
+        CheckAccess(manage: false, linked.Token);
+        using var observation = connection.ObserveInvalidation(linked.Cancel);
+        await foreach (var snapshot in Client.WatchLogsAsync(id, linked.Token).WithCancellation(linked.Token))
+        {
+            CheckAccess(manage: false, linked.Token);
+            yield return snapshot;
+        }
+    }
 
     private async Task<T> InvokeAsync<T>(Func<CancellationToken, Task<T>> operation, bool manage, CancellationToken cancellationToken)
     {
