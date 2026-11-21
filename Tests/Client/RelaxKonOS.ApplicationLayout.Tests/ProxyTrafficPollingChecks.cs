@@ -1,3 +1,4 @@
+using IServerProxy = RelaxKonOS.AppSDK.IServerProxy;
 using System.Diagnostics;
 using System.Reflection;
 using Avalonia.Controls;
@@ -9,7 +10,7 @@ internal static class ProxyTrafficPollingChecks
 {
     internal static void Run(Window host)
     {
-        var repository = DispatchProxy.Create<IProxyRepository, TrafficRepository>();
+        var repository = DispatchProxy.Create<IServerProxy, TrafficRepository>();
         var transport = (TrafficRepository)(object)repository;
         var model = new ProxyManagerViewModel(repository, false, false);
         var viewType = typeof(ProxyManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Proxy.Views.ProxyOverviewView", throwOnError: true)!;
@@ -63,7 +64,7 @@ public class TrafficRepository : DispatchProxy
 
     protected override object Invoke(MethodInfo? targetMethod, object?[]? args)
     {
-        if (targetMethod?.Name != nameof(IProxyRepository.GetTrafficAsync)) throw new NotSupportedException(targetMethod?.Name);
+        if (targetMethod?.Name != nameof(IServerProxy.GetTrafficAsync)) throw new NotSupportedException(targetMethod?.Name);
         var reply = new TaskCompletionSource<ProxyTrafficDto>(TaskCreationOptions.RunContinuationsAsynchronously);
         Requests.Add(((CancellationToken)args![0]!, reply));
         return reply.Task;

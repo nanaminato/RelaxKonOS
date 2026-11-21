@@ -36,7 +36,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var repository = context.Services.GetService(typeof(IProxyRepository)) as IProxyRepository;
+        var repository = context.Services.GetService(typeof(IServerProxy)) as IServerProxy;
         if (session is null || repository is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), new TextBlock { Text = LocalizedText.Get("proxy.login_required"), Margin = new Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;

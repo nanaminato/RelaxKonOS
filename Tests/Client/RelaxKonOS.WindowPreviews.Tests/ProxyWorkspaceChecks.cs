@@ -1,3 +1,4 @@
+using IServerProxy = RelaxKonOS.AppSDK.IServerProxy;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -233,7 +234,7 @@ internal static class ProxyWorkspaceChecks
     }
 
     /// <summary>Local fixture: real contract records, no server and no host mutation.</summary>
-    private sealed class ProxyRepositoryFixture : IProxyRepository
+    private sealed class ProxyRepositoryFixture : IServerProxy
     {
         private static readonly DateTimeOffset Now = DateTimeOffset.Now;
         private static readonly Guid ProfileId = Guid.NewGuid();

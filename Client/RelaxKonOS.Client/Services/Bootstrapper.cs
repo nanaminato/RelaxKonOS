@@ -244,7 +244,7 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "tunnels"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
-        services.AddHttpClient<RelaxKonOS.Client.Apps.Proxy.IProxyRepository, RelaxKonOS.Client.Apps.Proxy.RemoteProxyRepository>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerProxy, RelaxKonOS.Client.Apps.Proxy.RemoteProxyRepository>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "proxy"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();

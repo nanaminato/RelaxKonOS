@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Localization;
@@ -12,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Proxy;
 /// <summary>Presentation state for the host-global proxy workspace. Controller details stay on the RelaxKonOS.Server.</summary>
 public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
 {
-    private readonly IProxyRepository repository;
+    private readonly IServerProxy repository;
     private readonly ITaskManagerClient? systemMonitor;
     private int _refreshingTraffic;
     private bool _updatingOverviewProxySelection;
@@ -20,7 +21,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     [ObservableProperty] private bool _hasManagePermission;
     [ObservableProperty] private bool _hasTunManagePermission;
 
-    public ProxyManagerViewModel(IProxyRepository repository, bool canManage, bool canManageTun, ITaskManagerClient? systemMonitor = null)
+    public ProxyManagerViewModel(IServerProxy repository, bool canManage, bool canManageTun, ITaskManagerClient? systemMonitor = null)
     {
         this.repository = repository;
         this.systemMonitor = systemMonitor;

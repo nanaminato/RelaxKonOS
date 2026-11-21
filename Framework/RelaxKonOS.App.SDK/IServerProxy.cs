@@ -1,9 +1,9 @@
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
-namespace RelaxKonOS.Client.Apps.Proxy;
+namespace RelaxKonOS.AppSDK;
 
-public interface IProxyRepository
+public interface IServerProxy
 {
     Task<ProxyOverviewDto> GetOverviewAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProxyProfileDto>> ListProfilesAsync(CancellationToken cancellationToken = default);
