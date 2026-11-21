@@ -1,28 +1,24 @@
 using RelaxKonOS.UI.Imaging;
-using RelaxKonOS.App.Git;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using RelaxKonOS.Client.Controls;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal sealed record GitHeaderProjectEntry(string Name, string Path, GitRepositoryDto? Repository, string? Branch);
+public sealed record GitHeaderProjectEntry(string Name, string Path, GitRepositoryDto? Repository, string? Branch);
 
-internal partial class GitHeaderProjectPopup : UserControl
+public partial class GitHeaderProjectPopup : UserControl
 {
     private GitClientViewModel? _vm;
-    private ProjectEditorViewModel? _project;
+    private Func<(string? Path, string? Name)>? _currentProject;
     private Action? _close;
     private readonly List<GitHeaderProjectEntry> _recent = [];
     public IReadOnlyList<GitHeaderProjectEntry> RecentProjects => _recent;
     public GitHeaderProjectPopup() => InitializeComponent();
-    public void Configure(GitClientViewModel vm, ProjectEditorViewModel project, Action close)
+    public void Configure(GitClientViewModel vm, Func<(string? Path, string? Name)> currentProject, Action close)
     {
-        _vm = vm; _project = project; _close = close;
+        _vm = vm; DataContext = vm; _currentProject = currentProject; _close = close;
         NewProjectAction.Command = vm.NewProjectCommand;
         OpenProjectAction.Command = vm.OpenFolderCommand;
         CloneProjectAction.Command = vm.CloneRepositoryCommand;
@@ -30,18 +26,19 @@ internal partial class GitHeaderProjectPopup : UserControl
     }
     public void RecordCurrentProject()
     {
-        if (_vm is null || _project?.ProjectPath is not { } path) return;
+        if (_vm is null || _currentProject?.Invoke() is not { Path: { } path } project) return;
         var repo = _vm.SelectedRepository is { } selected && string.Equals(selected.Path, path, _vm.RepositoryPathComparison) ? selected : null;
         _recent.RemoveAll(item => string.Equals(item.Path, path, _vm.RepositoryPathComparison));
-        _recent.Insert(0, new(_project.ProjectName ?? path, path, repo, repo is null ? null : _vm.Status?.Branch));
+        _recent.Insert(0, new(project.Name ?? path, path, repo, repo is null ? null : _vm.Status?.Branch));
         if (_recent.Count > 12) _recent.RemoveRange(12, _recent.Count - 12);
     }
     public void Rebuild()
     {
-        if (_vm is null || _project is null) return;
+        if (_vm is null || _currentProject is null) return;
         RecordCurrentProject(); ProjectEntries.Children.Clear();
-        void Heading(string key) => ProjectEntries.Children.Add(new TextBlock { Text = LocalizedText.Get(key), FontSize = 11, Margin = new(8, 4, 8, 5), Foreground = ThemeBrushes.Get("TextSecondaryBrush") });
-        var current = _recent.FirstOrDefault(item => string.Equals(item.Path, _project.ProjectPath, _vm.RepositoryPathComparison));
+        void Heading(string key) => ProjectEntries.Children.Add(new TextBlock { Text = _vm.Labels(key), FontSize = 11, Margin = new(8, 4, 8, 5), Foreground = RelaxKonOS.UI.Themes.ThemeResources.Brush("TextSecondaryBrush") });
+        var currentPath = _currentProject().Path;
+        var current = _recent.FirstOrDefault(item => string.Equals(item.Path, currentPath, _vm.RepositoryPathComparison));
         if (current is not null) { Heading("git.workspace.open_projects"); AddProject(current, true); }
         var recent = _recent.Where(item => item != current).ToArray();
         if (recent.Length > 0)
@@ -63,8 +60,8 @@ internal partial class GitHeaderProjectPopup : UserControl
         row.Children.Add(icon);
         var texts = new StackPanel { Spacing = 3 };
         texts.Children.Add(new TextBlock { Text = entry.Name, FontSize = 12, FontWeight = current ? FontWeight.SemiBold : FontWeight.Normal, TextTrimming = TextTrimming.CharacterEllipsis });
-        texts.Children.Add(new TextBlock { Text = entry.Path, FontSize = 11, Foreground = ThemeBrushes.Get("TextSecondaryBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
-        if (!string.IsNullOrWhiteSpace(entry.Branch)) texts.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { new WorkspaceIcon { Kind = "Branch", Width = 12, Height = 12, Foreground = ThemeBrushes.Get("TextSecondaryBrush") }, new TextBlock { Text = entry.Branch, FontSize = 11, Foreground = ThemeBrushes.Get("TextSecondaryBrush") } } });
+        texts.Children.Add(new TextBlock { Text = entry.Path, FontSize = 11, Foreground = RelaxKonOS.UI.Themes.ThemeResources.Brush("TextSecondaryBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
+        if (!string.IsNullOrWhiteSpace(entry.Branch)) texts.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { new WorkspaceIcon { Kind = "Branch", Width = 12, Height = 12, Foreground = RelaxKonOS.UI.Themes.ThemeResources.Brush("TextSecondaryBrush") }, new TextBlock { Text = entry.Branch, FontSize = 11, Foreground = RelaxKonOS.UI.Themes.ThemeResources.Brush("TextSecondaryBrush") } } });
         Grid.SetColumn(texts, 1); row.Children.Add(texts);
         var button = new Button { Content = row, Tag = entry, Classes = { "project-entry" }, IsEnabled = _vm!.CanOpenProject };
         ToolTip.SetTip(button, entry.Path);

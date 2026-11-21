@@ -171,7 +171,7 @@
                         <TextBlock x:Name="ProjectNameLabel" Text="{Binding #Header.Title}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M2 3 L6 7 L10 3" Width="8" Height="5" Stretch="Uniform"/>
                     </StackPanel>
-                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><views:GitHeaderProjectPopup x:Name="ProjectPopup"/></Flyout></Button.Flyout>
+                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><gitAppViews:GitHeaderProjectPopup x:Name="ProjectPopup"/></Flyout></Button.Flyout>
                 </Button>
                 <Button x:Name="BranchBadge" Classes="header-action" Padding="7,3" MinHeight="24" MaxWidth="230" ToolTip.Tip="{loc:Loc git.editor.branches}" AutomationProperties.Name="{loc:Loc git.editor.branches}">
                     <StackPanel Orientation="Horizontal" Spacing="7">
@@ -179,7 +179,7 @@
                         <TextBlock Text="{Binding Status.Branch}" MaxWidth="175" TextTrimming="CharacterEllipsis"/>
                         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M2 3 L6 7 L10 3" Width="8" Height="5" Stretch="Uniform"/>
                     </StackPanel>
-                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><views:GitHeaderBranchPopup x:Name="BranchPopup"/></Flyout></Button.Flyout>
+                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><gitAppViews:GitHeaderBranchPopup x:Name="BranchPopup"/></Flyout></Button.Flyout>
                 </Button>
             </StackPanel>
             <StackPanel x:Name="HeaderActions" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -266,7 +266,7 @@
                 </Grid>
             </Border>
         </Grid>
-        <views:GitProjectPickerView Grid.Row="1" IsVisible="{Binding IsPickerMode}" x:Name="PickerHost" />
+        <gitAppViews:GitProjectPickerView Grid.Row="1" IsVisible="{Binding IsPickerMode}" x:Name="PickerHost" />
         <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <TextBlock x:Name="StatusLine" Text="{Binding StatusText}" FontSize="11" TextTrimming="CharacterEllipsis" />

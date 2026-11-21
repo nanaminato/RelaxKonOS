@@ -1,4 +1,3 @@
-using RelaxKonOS.App.Git;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Avalonia.Controls;
@@ -6,12 +5,11 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal sealed class GitHeaderBranchNode(string name, GitBranchDto? branch = null, bool tag = false)
+public sealed class GitHeaderBranchNode(string name, GitBranchDto? branch = null, bool tag = false)
 {
     public string Name { get; } = name;
     public GitBranchDto? Branch { get; } = branch;
@@ -22,7 +20,7 @@ internal sealed class GitHeaderBranchNode(string name, GitBranchDto? branch = nu
     public ObservableCollection<GitHeaderBranchNode> Children { get; } = [];
 }
 
-internal partial class GitHeaderBranchPopup : UserControl
+public partial class GitHeaderBranchPopup : UserControl
 {
     private GitClientViewModel? _vm;
     private Action? _close;
@@ -33,9 +31,9 @@ internal partial class GitHeaderBranchPopup : UserControl
     private int _refreshVersion;
     public void EndSession() => _refreshVersion++;
     public ObservableCollection<GitHeaderBranchNode> Nodes { get; } = [];
-    public GitHeaderBranchPopup() { InitializeComponent(); DataContext = this; }
+    public GitHeaderBranchPopup() => InitializeComponent();
     public void Configure(GitClientViewModel vm, Action close, Action<string> openTool, Action commit)
-    { _vm = vm; _close = close; _openTool = openTool; _commit = commit; }
+    { _vm = vm; DataContext = vm; _close = close; _openTool = openTool; _commit = commit; }
     public void RecordCurrentBranch()
     {
         if (_vm?.SelectedRepository is not { } repo || _vm.Status is not { IsDetached: false } status) return;
@@ -58,7 +56,7 @@ internal partial class GitHeaderBranchPopup : UserControl
         if (_vm is null) return;
         var search = BranchSearch.Text?.Trim() ?? "";
         bool Matches(string value) => value.Contains(search, StringComparison.CurrentCultureIgnoreCase);
-        bool ActionMatches(string key) => Matches(LocalizedText.Get(key));
+        bool ActionMatches(string key) => Matches(_vm.Labels(key));
         UpdateAction.IsVisible = ActionMatches("git.workspace.update");
         CommitAction.IsVisible = ActionMatches("git.workspace.commit_action");
         PushAction.IsVisible = ActionMatches("git.workspace.push");
@@ -68,7 +66,7 @@ internal partial class GitHeaderBranchPopup : UserControl
         Nodes.Clear();
         var repoId = _vm.SelectedRepository?.Id ?? "";
         var branches = _vm.Branches.Where(branch => Matches(branch.Name) || Matches(branch.Tracking ?? "")).ToArray();
-        GitHeaderBranchNode Group(string key) { var node = new GitHeaderBranchNode(LocalizedText.Get(key)); Nodes.Add(node); return node; }
+        GitHeaderBranchNode Group(string key) { var node = new GitHeaderBranchNode(_vm.Labels(key)); Nodes.Add(node); return node; }
         if (_recent.TryGetValue(repoId, out var recent))
         {
             var group = Group("git.workspace.recent");
@@ -116,13 +114,13 @@ internal partial class GitHeaderBranchPopup : UserControl
     {
         if (sender is not Control anchor || _vm is null) return;
         var menu = new MenuFlyout();
-        var fetch = new MenuItem { Header = LocalizedText.Get("git.log.menu.fetch_all"), Command = _vm.FetchCommand };
+        var fetch = new MenuItem { Header = _vm.Labels("git.log.menu.fetch_all"), Command = _vm.FetchCommand };
         fetch.Click += (_, _) => _close?.Invoke();
         menu.Items.Add(fetch);
-        var remotes = new MenuItem { Header = LocalizedText.Get("git.page.remotes") };
+        var remotes = new MenuItem { Header = _vm.Labels("git.page.remotes") };
         remotes.Click += (_, _) => { _close?.Invoke(); _openTool?.Invoke("remotes"); };
         menu.Items.Add(remotes);
-        var branches = new MenuItem { Header = LocalizedText.Get("git.editor.branches") };
+        var branches = new MenuItem { Header = _vm.Labels("git.editor.branches") };
         branches.Click += (_, _) => { _close?.Invoke(); _openTool?.Invoke("branches"); };
         menu.Items.Add(branches); menu.ShowAt(anchor);
     }
@@ -133,7 +131,7 @@ internal partial class GitHeaderBranchPopup : UserControl
         _vm.SelectedBranch = branch;
         void Add(string key, ICommand command, bool enabled = true)
         {
-            var item = new MenuItem { Header = LocalizedText.Get(key), Command = command, CommandParameter = branch, IsEnabled = enabled && _vm.CanManage };
+            var item = new MenuItem { Header = _vm.Labels(key), Command = command, CommandParameter = branch, IsEnabled = enabled && _vm.CanManage };
             item.Click += (_, _) => _close?.Invoke();
             menu.Items.Add(item);
         }
@@ -143,7 +141,7 @@ internal partial class GitHeaderBranchPopup : UserControl
         if (!node.IsTag) Add("git.log.menu.rename", _vm.RenameBranchCommand, !branch.IsRemote);
         Add("git.workspace.merge", _vm.MergeBranchCommand, !branch.IsCurrent);
         Add("git.workspace.rebase", _vm.RebaseBranchCommand, !branch.IsCurrent);
-        var compare = new MenuItem { Header = LocalizedText.Get("git.log.menu.diff_working_tree"), IsEnabled = _vm.CanManage };
+        var compare = new MenuItem { Header = _vm.Labels("git.log.menu.diff_working_tree"), IsEnabled = _vm.CanManage };
         compare.Click += async (_, _) => { _close?.Invoke(); _openTool?.Invoke("log"); await _vm.CompareBranchCommand.ExecuteAsync(branch); };
         menu.Items.Add(compare);
         if (!node.IsTag)
@@ -152,7 +150,7 @@ internal partial class GitHeaderBranchPopup : UserControl
             Add("git.log.menu.push", _vm.PushBranchCommand, !branch.IsRemote);
             Add("git.log.menu.tracked_branch", _vm.SetUpstreamBranchCommand, !branch.IsRemote);
             Add("git.log.menu.delete_branch", _vm.DeleteBranchContextCommand, !branch.IsCurrent && !branch.IsRemote);
-            var favorite = new MenuItem { Header = LocalizedText.Get(IsFavorite(branch) ? "git.workspace.unfavorite" : "git.workspace.favorite") };
+            var favorite = new MenuItem { Header = _vm.Labels(IsFavorite(branch) ? "git.workspace.unfavorite" : "git.workspace.favorite") };
             favorite.Click += (_, _) =>
             {
                 if (_vm.SelectedRepository is not { } repo) return;

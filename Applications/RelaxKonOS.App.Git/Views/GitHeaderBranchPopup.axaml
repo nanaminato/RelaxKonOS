@@ -1,10 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
- xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
- xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
- x:Class="RelaxKonOS.Client.Apps.Git.Views.GitHeaderBranchPopup"
- x:DataType="views:GitHeaderBranchPopup" Width="360" Background="{DynamicResource SurfaceBrush}">
+ xmlns:views="clr-namespace:RelaxKonOS.App.Git.Views"
+ xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI"
+ xmlns:loc="clr-namespace:RelaxKonOS.App.Git.Views"
+ x:Class="RelaxKonOS.App.Git.Views.GitHeaderBranchPopup"
+ x:Name="PopupRoot" Width="360" Background="{DynamicResource SurfaceBrush}">
  <UserControl.Styles>
   <Style Selector="Button.branch-action"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="9,4"/><Setter Property="MinHeight" Value="25"/><Setter Property="FontSize" Value="12"/></Style>
   <Style Selector="Button.branch-action:pointerover"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}"/></Style>
@@ -32,7 +32,7 @@
    <Separator Margin="0,8,0,0"/>
   </StackPanel>
   <ScrollViewer Grid.Row="3" MaxHeight="410" HorizontalScrollBarVisibility="Disabled">
-   <TreeView x:Name="HeaderBranchList" ItemsSource="{Binding Nodes}" KeyDown="Branches_KeyDown">
+   <TreeView x:Name="HeaderBranchList" ItemsSource="{Binding #PopupRoot.Nodes}" KeyDown="Branches_KeyDown">
     <TreeView.ItemTemplate>
      <TreeDataTemplate x:DataType="views:GitHeaderBranchNode" ItemsSource="{Binding Children}">
       <Grid ColumnDefinitions="17,*" MinHeight="25">

@@ -213,6 +213,9 @@ internal static class ProjectEditorChecks
         Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
         var branchPopup = view.FindControl<GitHeaderBranchPopup>("BranchPopup")!;
         await branchPopup.RefreshAsync();
+        Check(ReferenceEquals(branchPopup.FindControl<TreeView>("HeaderBranchList")!.ItemsSource, branchPopup.Nodes)
+            && branchPopup.FindControl<TextBox>("BranchSearch")!.PlaceholderText == LocalizedText.Get("git.workspace.search"),
+            "The application branch popup binds its tree and localized search prompt.");
         Check(remote.MaintenanceReads == maintenanceReads
             && git.Tags.Any(tag => tag.Name == "v1-preview") && git.Branches.Any(branch => branch.IsCurrent),
             "Opening the header refreshes branches and tags without requesting unavailable stash or worktree endpoints.");

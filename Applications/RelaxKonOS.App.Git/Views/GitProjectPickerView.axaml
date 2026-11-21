@@ -1,10 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
-             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git" xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Git.Views"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
-             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitProjectPickerView"
+             x:Class="RelaxKonOS.App.Git.Views.GitProjectPickerView"
              x:DataType="gitApp:GitClientViewModel" Background="{DynamicResource SurfaceSunkenBrush}" Classes="builtin-app">
     <UserControl.Styles>
         <Style Selector="Button.project-card"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="8" /></Style>
@@ -72,7 +72,7 @@
                             <Border IsVisible="{Binding HasLoadedRepositories}">
                                 <TextBlock Text="{loc:Loc git.picker.empty_hint}"
                                    FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" Margin="4,8"
-                                   IsVisible="{Binding Repositories.Count, Converter={x:Static git:GitPickerConverters.IsZeroToVisible}}" />
+                                   IsVisible="{Binding !Repositories.Count}" />
                             </Border>
                         </Border>
                     </StackPanel>

@@ -1,15 +1,14 @@
-using RelaxKonOS.App.Git;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 /// <summary>项目选择视图：列出已注册项目供直接打开，或新打开一个远程文件夹作为新项目。
 /// 注意：此控件在 GitClientWorkspace.axaml 中以 XAML 方式声明 → 使用无参构造函数 → 依赖继承的 DataContext，不要依赖构造函数注入 VM。
 /// 所有按钮 Click 处理器统一走 DataContext（它与父级 GitClientWorkspace 的 GitClientViewModel 一致），
 /// 并在状态栏（VM.StatusText）写入 [TRACE] 日志，便于诊断点击无反应类问题。</summary>
-internal partial class GitProjectPickerView : UserControl
+public partial class GitProjectPickerView : UserControl
 {
     public GitProjectPickerView() => InitializeComponent();
 

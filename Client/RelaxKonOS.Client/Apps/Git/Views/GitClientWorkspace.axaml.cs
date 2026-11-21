@@ -55,7 +55,7 @@ internal partial class GitClientWorkspace : UserControl
         DataContext = viewModel;
         InitializeGitDock();
         BranchPopup.Configure(viewModel, () => BranchBadge.Flyout?.Hide(), OpenTool, ShowCommitTool);
-        ProjectPopup.Configure(viewModel, project, () => ProjectSwitcher.Flyout?.Hide());
+        ProjectPopup.Configure(viewModel, () => (project.ProjectPath, project.ProjectName), () => ProjectSwitcher.Flyout?.Hide());
         BranchBadge.Flyout!.Closed += (_, _) => BranchPopup.EndSession();
         BranchBadge.Flyout!.Opened += async (_, _) => await BranchPopup.RefreshAsync();
         ProjectSwitcher.Flyout!.Opened += (_, _) => ProjectPopup.Rebuild();
