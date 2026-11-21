@@ -2,7 +2,10 @@ using RelaxKonOS.App.FileServices;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using RelaxKonOS.App.FileServices.Views;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Client.Apps.FileServices.Views;
@@ -24,6 +27,21 @@ internal static class FileShareDialogChecks
         vm.ShareName = "test-share";
         vm.SharePath = "/test/share";
         vm.AddSharePermission("test-user", FileShareAccess.Read);
+        var workspace = new FileServicesWorkspace(vm);
+        vm.Shares.Add(new("fixture", "Fixture", "/test/share", null, false, true, false,
+            [new("test-user", FileShareAccess.Read)], true));
+        var preview = new Window { Width = 1760, Height = 600, Content = workspace };
+        preview.Show();
+        workspace.FindControl<Button>("SharesButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        preview.UpdateLayout();
+        var shares = workspace.GetVisualDescendants().OfType<DataGrid>().Single();
+        Check(Equals(shares.Columns[^1].Header, RelaxKonOS.Client.Localization.LocalizedText.Get("file_services.column.Permissions")),
+            "The application shares page binds its localized permissions column.");
+        Check(shares.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "test-user: "
+            + RelaxKonOS.Client.Localization.LocalizedText.Get("file_services.access.Read")),
+            "The shares page formats row permissions using the application's labels.");
+        preview.Close();
         Check(vm.CanManage, "Current SMB capabilities allow editing before a prompt starts.");
         var manager = new WindowManagerService();
         manager.Attach(new Canvas { Width = 1000, Height = 700 });

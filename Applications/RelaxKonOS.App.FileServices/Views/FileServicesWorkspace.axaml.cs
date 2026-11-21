@@ -1,12 +1,11 @@
-using RelaxKonOS.App.FileServices;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.FileServices.Views;
+namespace RelaxKonOS.App.FileServices.Views;
 
-internal partial class FileServicesWorkspace : UserControl
+public partial class FileServicesWorkspace : UserControl
 {
     public void AttachWindowHeader(ManagedWindow window)
     {

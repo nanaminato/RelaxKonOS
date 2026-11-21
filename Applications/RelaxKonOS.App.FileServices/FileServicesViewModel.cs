@@ -15,6 +15,7 @@ public sealed partial class FileServicesViewModel(IServerFileServices client, IA
     private Func<string> _status = () => ResolveText(localize, "file_services.status.loading", "Loading SMB status…");
 
     public string StatusText => _status();
+    public Func<string, string> Labels => localize;
 
     private Func<string> Status
     {

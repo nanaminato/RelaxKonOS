@@ -6,7 +6,9 @@
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
+        <PackageReference Include="Avalonia.Controls.DataGrid" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
+        <AvaloniaResource Include="Assets/file-services.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="FileServices.Localization.%(Filename).json" />
     </ItemGroup>
 </Project>
