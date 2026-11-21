@@ -413,6 +413,15 @@ public sealed class ExternalAppContextFactory
         public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
             ShowDialogAsync<bool>(title, dialog => CreateConfirmation(dialog, message, confirmLabel), new Size(460, 320));
 
+        public Task<TResult?> ShowOwnedDialogAsync<TResult>(ManagedWindow owner, string title,
+            Func<ModalDialog<TResult>, Avalonia.Controls.Control> content, Size preferredSize)
+        {
+            if (!_windowManager.Windows.Contains(Window) || !_windowManager.Windows.Contains(owner)
+                || owner.Info.OwnerAppId != Window.Info.OwnerAppId || !ReferenceEquals(owner, Window) && !owner.IsModalDialog)
+                return Task.FromResult<TResult?>(default);
+            return _windowManager.ShowDialogAsync(owner, title, content, preferredSize);
+        }
+
         public Task<bool> ConfirmNestedAsync<T>(ModalDialog<T> owner, string title, string message, string confirmLabel)
         {
             if (owner.Window is not { } modal || modal.Info.OwnerAppId != Window.Info.OwnerAppId

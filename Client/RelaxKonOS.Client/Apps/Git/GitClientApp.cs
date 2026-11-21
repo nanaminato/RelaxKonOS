@@ -62,20 +62,6 @@ public sealed class GitClientApp : RemoteApplicationBase
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
             return Task.CompletedTask;
         };
-        vm.ShowWorkspaceInputAsync = (key, fields) => dialogs.ShowWorkspaceInputAsync(window!, key, fields);
-        vm.ShowCommitDialogAsync = () => dialogs.ShowCommitDialogAsync(window!, vm);
-        vm.ShowCreateBranchDialogAsync = source => dialogs.ShowCreateBranchDialogAsync(window!, vm, source);
-        vm.ShowPullDialogAsync = () => dialogs.ShowPullDialogAsync(window!, vm);
-        vm.ShowConflictResolutionDialogAsync = owner => dialogs.ShowConflictResolutionDialogAsync(owner ?? window!, vm);
-        vm.ShowPushRejectedDialogAsync = owner => dialogs.ShowPushRejectedDialogAsync(owner ?? window!);
-        vm.ShowRegisterRepositoryDialogAsync = () => dialogs.ShowRegisterRepositoryDialogAsync(window!, vm);
-        vm.ShowConfirmAsync = message => dialogs.ShowConfirmAsync(window!, message);
-        vm.ShowMessageAsync = message => dialogs.ShowMessageAsync(window!, message);
-        vm.ShowGitUnavailableAsync = async () =>
-        {
-            await dialogs.ShowGitUnavailableAsync(window!, vm);
-        };
-
         // 远程文件夹选择：直接复用内置 Explorer（ExplorerPickerMode.SelectFolder），
         // 与 Code Editor 的 RequestFolderAsync 完全一致；不再自实现一个简陋的目录浏览对话框。
         vm.ShowRemotePathPickerAsync = () => files is null
@@ -91,34 +77,12 @@ public sealed class GitClientApp : RemoteApplicationBase
                 _ = picker.LoadRootAsync();
                 return new ExplorerMainView { DataContext = picker };
             }, GetFolderPickerBounds(window!));
-        vm.ShowInitConfirmAsync = path => dialogs.ShowInitConfirmAsync(window!, path);
-        vm.ShowRemoteDialogAsync = existing => dialogs.ShowRemoteDialogAsync(window!, existing);
-        vm.ShowRenameBranchDialogAsync = branch => dialogs.ShowRenameBranchDialogAsync(window!, branch);
-        vm.ShowMergeDialogAsync = branch => dialogs.ShowMergeDialogAsync(window!, branch, vm);
-        vm.ShowSetTrackingDialogAsync = branch => dialogs.ShowSetTrackingDialogAsync(window!, branch, vm);
-        vm.ShowPushDialogAsync = () => dialogs.ShowPushDialogAsync(window!, vm);
-        vm.ShowFileDiffAsync = (owner, diff) => dialogs.ShowFileDiffAsync(owner ?? window!, diff, vm);
-        vm.ShowCredentialAccountsAsync = () => dialogs.ShowCredentialAccountsAsync(window!, vm);
-        vm.ShowGitCredentialsDialogAsync = (owner, host) => dialogs.ShowGitCredentialsDialogAsync(owner ?? window!, host);
-        vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => dialogs.ShowRemoteBranchPickerDialogAsync(owner ?? window!, remote, branch, vm);
-        vm.ConfigureLogSession = log =>
-        {
-            log.ShowCredentialAccountsAsync = () => dialogs.ShowCredentialAccountsAsync(window!, log);
-            log.ShowPushDialogAsync = () => dialogs.ShowPushDialogAsync(window!, log);
-            log.ShowCreateBranchDialogAsync = branch => dialogs.ShowCreateBranchDialogAsync(window!, log, branch);
-            log.ShowPullDialogAsync = () => dialogs.ShowPullDialogAsync(window!, log);
-            log.ShowMergeDialogAsync = branch => dialogs.ShowMergeDialogAsync(window!, branch, log);
-            log.ShowSetTrackingDialogAsync = branch => dialogs.ShowSetTrackingDialogAsync(window!, branch, log);
-            log.ShowConflictResolutionDialogAsync = owner => dialogs.ShowConflictResolutionDialogAsync(owner ?? window!, log);
-            log.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => dialogs.ShowRemoteBranchPickerDialogAsync(owner ?? window!, remote, branch, log);
-        };
-
-
         var view = GitClientWorkspace.Create(vm, project);
         view.OpenSettings = () => RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsDialog.ShowAsync(context, window, dependency);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
             view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.BindWindow(window);
+        dialogs.Configure(window, vm);
         var localization = context.Services.GetService(typeof(LocalizationService)) as LocalizationService;
         EventHandler<SystemLanguageChangedEventArgs> languageChanged = (_, _) => project.RefreshLocalization();
         if (localization is not null) localization.LanguageChanged += languageChanged;
@@ -126,7 +90,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         project.RequestDraftActionAsync = async documents =>
         {
             return await context.ShowDialogAsync<EditorDraftAction>(window, LocalizedText.Get("git.editor.drafts_title"),
-                dialog => new ProjectDraftDialog(documents.Select(item => item.Path ?? item.DisplayName).ToArray(), dialog.Close),
+                dialog => new ProjectDraftDialog(documents.Select(item => item.Path ?? item.DisplayName).ToArray(), dialog.Close, LocalizedText.Get),
                 new Size(540, 360));
         };
         project.Editor.RequestCloseDocumentAsync = async document =>

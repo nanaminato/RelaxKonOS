@@ -201,6 +201,9 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
         public void ExitFullScreen() => throw new NotSupportedException();
         public Task<TResult?> ShowDialogAsync<TResult>(string title, Func<ModalDialog<TResult>, Control> content, RelaxKonOS.Core.Primitives.Size preferredSize)
             => throw new NotSupportedException();
+        public Task<TResult?> ShowOwnedDialogAsync<TResult>(ManagedWindow owner, string title,
+            Func<ModalDialog<TResult>, Control> content, RelaxKonOS.Core.Primitives.Size preferredSize) =>
+            throw new NotSupportedException();
         public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => throw new NotSupportedException();
         public Task<bool> ConfirmNestedAsync<T>(ModalDialog<T> owner, string title, string message, string confirmLabel) =>
             throw new NotSupportedException();

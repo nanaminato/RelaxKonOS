@@ -17,7 +17,7 @@ public static class CodeEditorLocalization
     private static readonly Lazy<IReadOnlyDictionary<string, string>> Chinese = new(() => Load("zh-CN"));
     private static readonly Lazy<IReadOnlyDictionary<string, string>> Japanese = new(() => Load("ja-JP"));
 
-    internal static string Resolve(ISystemLanguage language, string key)
+    public static string Resolve(ISystemLanguage language, string key)
     {
         var labels = language.CurrentLanguage.Split('-', 2)[0].ToLowerInvariant() switch
         {

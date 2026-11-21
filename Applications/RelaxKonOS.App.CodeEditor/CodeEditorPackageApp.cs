@@ -33,7 +33,6 @@ public sealed class CodeEditorPackageApp : IExternalRemoteApplication, IExternal
         cancellationToken.ThrowIfCancellationRequested();
         var language = context.SystemLanguage;
         string Label(string key) => CodeEditorLocalization.Resolve(language, key);
-        string Format(string key, params object[] args) => string.Format(CultureInfo.CurrentCulture, Label(key), args);
         var files = new SdkEditorWorkspaceFiles(context.ServerFiles, Label, context.Permissions);
         var preferences = context.TextEditorPreferences;
         var model = new CodeEditorViewModel(Label, files, context.ServerFiles.IsPathCaseSensitive,
@@ -99,6 +98,19 @@ public sealed class CodeEditorPackageApp : IExternalRemoteApplication, IExternal
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, model.CloseDocumentCommand);
         };
 
+        ConfigureEditorDialogs(context, owner, model, files, Label);
+        if (string.IsNullOrWhiteSpace(path)) model.NewDocumentCommand.Execute(null);
+        else await model.OpenPathAsync(path);
+    }
+
+    public static void ConfigureEditorDialogs(IExternalAppContext context, IExternalAppWindowHandle owner,
+        CodeEditorViewModel model, SdkEditorWorkspaceFiles files, Func<string, string> label)
+    {
+        var closed = owner.Closed;
+        var preferences = context.TextEditorPreferences;
+        string Label(string key) => label(key);
+        string Format(string key, params object[] args) => string.Format(CultureInfo.CurrentCulture, Label(key), args);
+
         ServerFilePickerFilter SourceFilter() => new(Label("code_editor.source_file_filter"),
             CodeEditorFileTypes.SupportedExtensions.Select(extension => $"*{extension}")
                 .Concat(CodeEditorFileTypes.SupportedFileNames).ToArray());
@@ -141,9 +153,6 @@ public sealed class CodeEditorPackageApp : IExternalRemoteApplication, IExternal
             model.RequestEncodingActionAsync = () => preferences.PickEncodingActionAsync(owner);
             model.RequestEncodingAsync = () => preferences.PickEncodingAsync(owner, model.EncodingName);
         }
-
-        if (string.IsNullOrWhiteSpace(path)) model.NewDocumentCommand.Execute(null);
-        else await model.OpenPathAsync(path);
 
         async Task<string?> PickAsync(ServerFilePickerOptions options)
         {

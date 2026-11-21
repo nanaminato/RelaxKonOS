@@ -15,6 +15,45 @@ namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientDialogs(IGitDialogPresenter presenter, Func<string, string> localize)
 {
+    public void Configure(ManagedWindow window, GitClientViewModel vm)
+    {
+        vm.ShowWorkspaceInputAsync = (key, fields) => ShowWorkspaceInputAsync(window, key, fields);
+        vm.ShowCommitDialogAsync = () => ShowCommitDialogAsync(window, vm);
+        vm.ShowCreateBranchDialogAsync = source => ShowCreateBranchDialogAsync(window, vm, source);
+        vm.ShowPullDialogAsync = () => ShowPullDialogAsync(window, vm);
+        vm.ShowConflictResolutionDialogAsync = owner => ShowConflictResolutionDialogAsync(owner ?? window, vm);
+        vm.ShowPushRejectedDialogAsync = owner => ShowPushRejectedDialogAsync(owner ?? window);
+        vm.ShowRegisterRepositoryDialogAsync = () => ShowRegisterRepositoryDialogAsync(window, vm);
+        vm.ShowConfirmAsync = message => ShowConfirmAsync(window, message);
+        vm.ShowMessageAsync = message => ShowMessageAsync(window, message);
+        vm.ShowGitUnavailableAsync = async () =>
+        {
+            await ShowGitUnavailableAsync(window, vm);
+        };
+
+        vm.ShowInitConfirmAsync = path => ShowInitConfirmAsync(window, path);
+        vm.ShowRemoteDialogAsync = existing => ShowRemoteDialogAsync(window, existing);
+        vm.ShowRenameBranchDialogAsync = branch => ShowRenameBranchDialogAsync(window, branch);
+        vm.ShowMergeDialogAsync = branch => ShowMergeDialogAsync(window, branch, vm);
+        vm.ShowSetTrackingDialogAsync = branch => ShowSetTrackingDialogAsync(window, branch, vm);
+        vm.ShowPushDialogAsync = () => ShowPushDialogAsync(window, vm);
+        vm.ShowFileDiffAsync = (owner, diff) => ShowFileDiffAsync(owner ?? window, diff, vm);
+        vm.ShowCredentialAccountsAsync = () => ShowCredentialAccountsAsync(window, vm);
+        vm.ShowGitCredentialsDialogAsync = (owner, host) => ShowGitCredentialsDialogAsync(owner ?? window, host);
+        vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => ShowRemoteBranchPickerDialogAsync(owner ?? window, remote, branch, vm);
+        vm.ConfigureLogSession = log =>
+        {
+            log.ShowCredentialAccountsAsync = () => ShowCredentialAccountsAsync(window, log);
+            log.ShowPushDialogAsync = () => ShowPushDialogAsync(window, log);
+            log.ShowCreateBranchDialogAsync = branch => ShowCreateBranchDialogAsync(window, log, branch);
+            log.ShowPullDialogAsync = () => ShowPullDialogAsync(window, log);
+            log.ShowMergeDialogAsync = branch => ShowMergeDialogAsync(window, branch, log);
+            log.ShowSetTrackingDialogAsync = branch => ShowSetTrackingDialogAsync(window, branch, log);
+            log.ShowConflictResolutionDialogAsync = owner => ShowConflictResolutionDialogAsync(owner ?? window, log);
+            log.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => ShowRemoteBranchPickerDialogAsync(owner ?? window, remote, branch, log);
+        };
+    }
+
     private string Format(string key, params object?[] arguments) =>
         string.Format(CultureInfo.CurrentCulture, localize(key), arguments);
 

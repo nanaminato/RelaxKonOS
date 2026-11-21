@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
-             x:Class="RelaxKonOS.Client.Apps.Git.Views.ProjectDraftDialog"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Git.Views"
+             xmlns:views="clr-namespace:RelaxKonOS.App.Git.Views"
+             x:Class="RelaxKonOS.App.Git.Views.ProjectDraftDialog"
              x:DataType="views:ProjectDraftPrompt" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="12">
         <TextBlock Text="{loc:Loc git.editor.drafts_message}" TextWrapping="Wrap" />

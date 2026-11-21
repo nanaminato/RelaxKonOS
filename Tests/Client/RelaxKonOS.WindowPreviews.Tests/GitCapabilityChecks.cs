@@ -1,5 +1,8 @@
 using System.Net;
 using System.Reflection;
+using Avalonia.Controls;
+using RelaxKonOS.App.Git;
+using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Git;
@@ -21,8 +24,10 @@ internal static class GitCapabilityChecks
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "git-memory.json"));
         var transport = new GitTransport();
         using var http = new HttpClient(transport);
+        var windows = new RelaxKonOS.WindowManager.WindowManager();
+        windows.Attach(new Canvas { Width = 1280, Height = 900 });
         var factory = new ExternalAppContextFactory(permissions, permissions, language, settings, null!, auth, null!,
-            new RelaxKonOS.WindowManager.WindowManager(), null!, new ExplorerClient(http, auth, memory),
+            windows, null!, new ExplorerClient(http, auth, memory),
             new SshDesktopSession(null!, settings), null!, null!, null!, null!, null!, memory, null!,
             null!, null!, null!, git: new RemoteGitClient(http, auth));
         using var lifetime = new CancellationTokenSource();
@@ -53,6 +58,17 @@ internal static class GitCapabilityChecks
         await RejectAsync<OperationCanceledException>(() => git.ListRepositoriesAsync());
         if (transport.Calls != 5) throw new InvalidOperationException("A stale or cancelled context issued a Git request.");
         Console.WriteLine("Git SDK read/manage grants, authenticated transport, connection binding and cancellation passed.");
+
+        transport.BeforeResponse = null;
+        session.ServiceId = "http://fixture.invalid";
+        var entry = new GitPackageApp();
+        await entry.ActivateAsync(factory.Create(entry.Manifest));
+        var window = windows.Windows.Single();
+        if (window.View.Content is not GitClientWorkspace { DataContext: GitClientViewModel { HasLoadedRepositories: true } }
+            || transport.Calls != 7)
+            throw new InvalidOperationException("The Git SDK entry did not open its workspace and load repositories.");
+        windows.ForceClose(window);
+        Console.WriteLine("Git external activation opened the workspace, probed Git and loaded repositories through the SDK.");
     }
 
     private static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
@@ -78,6 +94,10 @@ internal static class GitCapabilityChecks
             {
                 ("GET", GitApiRoutes.Repositories) =>
                     new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") },
+                ("GET", GitApiRoutes.EngineStatus) => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"isAvailable":true,"problemCode":""}"""),
+                },
                 ("GET", FileApiRoutes.Info) when request.RequestUri.Query.Contains("occupied", StringComparison.Ordinal) =>
                     new HttpResponseMessage(HttpStatusCode.OK)
                     {

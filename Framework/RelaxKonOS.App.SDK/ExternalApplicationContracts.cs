@@ -188,6 +188,7 @@ public interface IExternalAppWindowHandle
     void EnterFullScreen();
     void ExitFullScreen();
     Task<TResult?> ShowDialogAsync<TResult>(string title, Func<ModalDialog<TResult>, Control> content, Size preferredSize);
+    Task<TResult?> ShowOwnedDialogAsync<TResult>(ManagedWindow owner, string title, Func<ModalDialog<TResult>, Control> content, Size preferredSize);
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel);
 
     /// <summary>Opens a confirmation owned by an active dialog belonging to the same application.</summary>
