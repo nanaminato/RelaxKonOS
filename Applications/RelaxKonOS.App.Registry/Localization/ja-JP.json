@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "application.relaxkonos.registry.display_name": "レジストリ",
         "registry.menu.file": "ファイル",
         "registry.menu.edit": "編集",
         "registry.menu.view": "表示",

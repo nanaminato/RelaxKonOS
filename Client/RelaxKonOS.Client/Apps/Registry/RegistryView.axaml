@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry"
+             xmlns:registryApp="clr-namespace:RelaxKonOS.App.Registry;assembly=RelaxKonOS.App.Registry"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Registry.RegistryView"
              x:DataType="registry:RegistryViewModel"
@@ -54,7 +55,7 @@
               <MenuItem Header="{loc:Loc registry.menu.delete_key}" Command="{Binding DeleteKeyCommand}" IsEnabled="{Binding CanDeleteKey}"/>
             </ContextMenu>
           </TreeView.ContextMenu>
-          <TreeView.ItemTemplate><TreeDataTemplate DataType="registry:RegistryKeyNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="6"><Image Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.UI/Assets/Icons/Explorer/file-folder.png"/><TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding ToolTipText}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
+          <TreeView.ItemTemplate><TreeDataTemplate DataType="registryApp:RegistryKeyNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="6"><Image Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.UI/Assets/Icons/Explorer/file-folder.png"/><TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding ToolTipText}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
         </TreeView>
       </Border>
       <GridSplitter DragCompleted="Sidebar_DragCompleted" Grid.Column="1" Width="3" ResizeDirection="Columns"/>

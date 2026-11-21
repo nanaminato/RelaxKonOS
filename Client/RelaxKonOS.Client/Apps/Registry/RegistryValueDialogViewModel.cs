@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Registry;
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -164,7 +165,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
                     RegistryValueType.Number => JsonSerializer.SerializeToElement(NumberValue ?? throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_number", "Enter a valid number."))),
                     _ => !IsRawJson && JsonRoots.Count > 0 ? JsonSerializer.SerializeToElement(JsonRoots[0].BuildValue()) : JsonSerializer.Deserialize<JsonElement>(ValueText),
                 };
-            var request = _row is { Document: not null } projected ? RegistryJsonProjection.Write(projected, value)
+            var request = _row is { Document: not null } projected ? RegistryJsonProjection.Write(projected.Document!, projected.JsonPath, value)
                 : new PutRegistryEntryRequest(Scope, Path, Name, ValueType, value, Entry is { } entry && entry.Name == Name ? entry.Revision : 0);
             var result = await _client.SaveAsync(request);
             if (Entry is { } expected && result.Address != expected.Address) throw new InvalidOperationException("Registry response target mismatch.");

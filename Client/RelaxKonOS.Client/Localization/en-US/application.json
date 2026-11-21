@@ -38,7 +38,6 @@
         "application.relaxkonos.git.description": "Edit project files and manage Git repositories on the RelaxKonOS Server",
         "application.relaxkonos.tunnels.display_name": "Tunnel Manager",
         "application.relaxkonos.tunnels.description": "Manage FRP tunnels and runtime status on the RelaxKonOS Server",
-        "application.relaxkonos.registry.display_name": "Registry",
         "application.relaxkonos.registry.description": "Browse supported RelaxKonOS configuration values",
         "application.relaxkonos.proxy.display_name": "Proxy Manager",
         "application.relaxkonos.proxy.description": "Manage the host proxy runtime, traffic, and network recovery state",

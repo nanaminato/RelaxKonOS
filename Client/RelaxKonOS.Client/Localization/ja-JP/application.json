@@ -38,7 +38,6 @@
         "application.relaxkonos.git.description": "RelaxKonOS Server 上のプロジェクトファイルを編集し Git リポジトリを管理します",
         "application.relaxkonos.tunnels.display_name": "トンネル マネージャー",
         "application.relaxkonos.tunnels.description": "RelaxKonOS Server 上の FRP トンネルとランタイム状態を管理します",
-        "application.relaxkonos.registry.display_name": "レジストリ",
         "application.relaxkonos.registry.description": "サポートされる RelaxKonOS 構成値を参照します",
         "application.relaxkonos.proxy.display_name": "プロキシ マネージャー",
         "application.relaxkonos.proxy.description": "ホストのプロキシ ランタイム、トラフィック、ネットワーク回復状態を管理します",

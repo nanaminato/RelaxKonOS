@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Registry;
 using IServerRegistry = RelaxKonOS.AppSDK.IServerRegistry;
 using System.Text.Json;
 using Avalonia.Controls;
@@ -303,10 +304,10 @@ internal static class RegistryChecks
         vm.SelectedKey = panes.Children.Single();
         await Until(() => vm.Entries.Any(row => row.Name == "size"));
         var nestedRow = vm.Entries.Single(row => row.Name == "size");
-        var nestedRequest = RegistryJsonProjection.Write(nestedRow, JsonSerializer.SerializeToElement(300));
+        var nestedRequest = RegistryJsonProjection.Write(nestedRow.Document!, nestedRow.JsonPath, JsonSerializer.SerializeToElement(300));
         Check(nestedRequest.Value[0].GetProperty("layout").GetProperty("panes")[0].GetProperty("size").GetInt32() == 300
             && nestedRequest.Value[0].GetProperty("width").GetInt32() == 1280, "Nested array edits must preserve the rest of the same document.");
-        Check(!RegistryJsonProjection.Row(document with { Schema = document.Schema with { CanWrite = false } }, "width", ["0", "width"]).Source.Schema.CanWrite,
+        Check(!RegistryJsonProjection.ProjectValue(document with { Schema = document.Schema with { CanWrite = false } }, "width", ["0", "width"]).Schema.CanWrite,
             "JSON properties must preserve the server's read-only capability.");
         Check(vm.NavigationPathInput.EndsWith("\\windows\\[0]\\layout\\panes\\[0]"), "JSON addresses must use indexes rather than display names.");
         vm.NavigationPathInput = "HKCU\\Workspace\\windows\\[2]";

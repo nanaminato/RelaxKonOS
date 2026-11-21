@@ -3,13 +3,13 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using RelaxKonOS.Protocol.Registry;
 
-namespace RelaxKonOS.Client.Apps.Registry;
+namespace RelaxKonOS.App.Registry;
 
 /// <summary>JSON navigation is a client view of one versioned registry value, never a new wire path.</summary>
 public static class RegistryJsonProjection
 {
-    public static string NodeLabel(string name, JsonElement value) => value.ValueKind == JsonValueKind.Array
-        ? name + " · " + Localization.LocalizedText.Format("registry.tree.items", value.GetArrayLength()) : name;
+    public static string NodeLabel(string name, JsonElement value, Func<int, string> formatCount) => value.ValueKind == JsonValueKind.Array
+        ? name + " · " + formatCount(value.GetArrayLength()) : name;
     public static JsonElement Resolve(JsonElement value, IReadOnlyList<string> path)
     {
         foreach (var part in path)
@@ -34,7 +34,7 @@ public static class RegistryJsonProjection
         return $"[{index}]" + (description is null ? "" : " " + description);
     }
 
-    public static RegistryEntryRow Row(RegistryEntryDto document, string name, IReadOnlyList<string> path)
+    public static RegistryEntryDto ProjectValue(RegistryEntryDto document, string name, IReadOnlyList<string> path)
     {
         var value = Resolve(document.DesiredValue, path);
         var type = value.ValueKind switch
@@ -44,7 +44,7 @@ public static class RegistryJsonProjection
             JsonValueKind.Number => RegistryValueType.Number,
             _ => RegistryValueType.Json,
         };
-        var projected = document with
+        return document with
         {
             Name = name, ValueType = type, DesiredValue = value,
             Schema = new(document.Schema.ValueId, document.Schema.CanWrite, false, false, null)
@@ -58,22 +58,20 @@ public static class RegistryJsonProjection
                 },
             },
         };
-        return RegistryEntryRow.From(projected) with { Document = document, JsonPath = path.ToArray() };
     }
 
-    public static PutRegistryEntryRequest Write(RegistryEntryRow row, JsonElement value)
+    public static PutRegistryEntryRequest Write(RegistryEntryDto document, IReadOnlyList<string> path, JsonElement value)
     {
-        var document = row.Document!;
         var root = JsonNode.Parse(document.DesiredValue.GetRawText());
-        if (row.JsonPath.Count == 0) root = JsonNode.Parse(value.GetRawText());
+        if (path.Count == 0) root = JsonNode.Parse(value.GetRawText());
         else
         {
             var current = root!;
-            foreach (var part in row.JsonPath.SkipLast(1))
+            foreach (var part in path.SkipLast(1))
                 current = current is JsonArray array ? array[int.Parse(part, CultureInfo.InvariantCulture)]! : current[part]!;
             var replacement = JsonNode.Parse(value.GetRawText());
-            if (current is JsonArray list) list[int.Parse(row.JsonPath[^1], CultureInfo.InvariantCulture)] = replacement;
-            else current[row.JsonPath[^1]] = replacement;
+            if (current is JsonArray list) list[int.Parse(path[^1], CultureInfo.InvariantCulture)] = replacement;
+            else current[path[^1]] = replacement;
         }
         return new(document.Scope, document.Path, document.Name, document.ValueType, JsonSerializer.SerializeToElement(root), document.Revision);
     }

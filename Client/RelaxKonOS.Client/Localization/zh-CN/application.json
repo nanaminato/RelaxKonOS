@@ -38,7 +38,6 @@
         "application.relaxkonos.git.description": "编辑项目文件并管理 RelaxKonOS Server 上的 Git 仓库",
         "application.relaxkonos.tunnels.display_name": "内网穿透",
         "application.relaxkonos.tunnels.description": "管理 RelaxKonOS Server 上的 FRP 隧道和运行时状态",
-        "application.relaxkonos.registry.display_name": "注册表",
         "application.relaxkonos.registry.description": "浏览受支持的 RelaxKonOS 配置值",
         "application.relaxkonos.proxy.display_name": "代理管理器",
         "application.relaxkonos.proxy.description": "管理主机代理运行时、流量与网络恢复状态",

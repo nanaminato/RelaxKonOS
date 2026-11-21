@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "application.relaxkonos.registry.display_name": "Registry",
         "registry.menu.file": "File",
         "registry.menu.edit": "Edit",
         "registry.menu.view": "View",

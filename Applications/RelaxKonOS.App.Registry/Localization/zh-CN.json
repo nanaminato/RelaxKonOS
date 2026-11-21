@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "application.relaxkonos.registry.display_name": "注册表",
         "registry.menu.file": "文件",
         "registry.menu.edit": "编辑",
         "registry.menu.view": "查看",

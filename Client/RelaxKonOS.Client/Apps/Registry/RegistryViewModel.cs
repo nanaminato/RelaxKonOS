@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Registry;
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Net.Http;
@@ -15,6 +16,16 @@ public sealed partial class RegistryViewModel(IServerRegistry client,
     IAppPermissionScope? permissions = null, CancellationToken windowClosed = default) : LocalizedObservableObject
 {
     public RegistryAppearanceSettings Appearance => preferences?.Registry ?? RegistryAppearanceSettings.Default;
+
+    private static string JsonNodeLabel(string name, JsonElement value) =>
+        RegistryJsonProjection.NodeLabel(name, value, count => LocalizedText.Format("registry.tree.items", count));
+
+    private static RegistryEntryRow CreateJsonRow(RegistryEntryDto document, string name, IReadOnlyList<string> path) =>
+        RegistryEntryRow.From(RegistryJsonProjection.ProjectValue(document, name, path)) with
+        {
+            Document = document,
+            JsonPath = path.ToArray(),
+        };
     public void StartAppearanceUpdates()
     {
         if (preferences is null) return;
@@ -407,17 +418,17 @@ public sealed partial class RegistryViewModel(IServerRegistry client,
                 var value = RegistryJsonProjection.Resolve(key.Document!.DesiredValue, key.JsonPath);
                 if (value.ValueKind == JsonValueKind.Object)
                     foreach (var property in value.EnumerateObject())
-                        Entries.Add(RegistryJsonProjection.Row(key.Document, property.Name, [.. key.JsonPath, property.Name]));
+                        Entries.Add(CreateJsonRow(key.Document, property.Name, [.. key.JsonPath, property.Name]));
                 else if (value.ValueKind == JsonValueKind.Array)
                 {
                     var index = 0;
                     foreach (var item in value.EnumerateArray())
                     {
                         var part = (index++).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                        Entries.Add(RegistryJsonProjection.Row(key.Document, RegistryJsonProjection.Label(part, item), [.. key.JsonPath, part]));
+                        Entries.Add(CreateJsonRow(key.Document, RegistryJsonProjection.Label(part, item), [.. key.JsonPath, part]));
                     }
                 }
-                else Entries.Add(RegistryJsonProjection.Row(key.Document, key.NavigationName, key.JsonPath));
+                else Entries.Add(CreateJsonRow(key.Document, key.NavigationName, key.JsonPath));
                 PaneState = Entries.Count == 0 ? RegistryPaneState.Empty : RegistryPaneState.Ready;
                 StatusText = Entries.Count == 0 ? LocalizedText.RefWithFallback("registry.status.empty", "No values in this key.") : LocalizedStatus.Literal("");
                 OnPropertyChanged(nameof(ValueCountText));
@@ -526,14 +537,14 @@ public sealed partial class RegistryViewModel(IServerRegistry client,
         {
             var node = previous.GetValueOrDefault(entry.Name) ?? JsonKey(key, entry, [], entry.Name);
             UpdateJsonDocuments([node], entry);
-            node.Name = RegistryJsonProjection.NodeLabel(entry.Name, entry.DesiredValue);
+            node.Name = JsonNodeLabel(entry.Name, entry.DesiredValue);
             key.Children.Add(node);
         }
     }
 
     private static RegistryKeyNode JsonKey(RegistryKeyNode parent, RegistryEntryDto document, IReadOnlyList<string> path, string label)
     {
-        var node = new RegistryKeyNode(RegistryJsonProjection.NodeLabel(label, RegistryJsonProjection.Resolve(document.DesiredValue, path)), document.Path, document.Scope, parent, RegistryKeyKind.Json)
+        var node = new RegistryKeyNode(JsonNodeLabel(label, RegistryJsonProjection.Resolve(document.DesiredValue, path)), document.Path, document.Scope, parent, RegistryKeyKind.Json)
         { Document = document, Address = document.Address, JsonPath = path };
         var value = RegistryJsonProjection.Resolve(document.DesiredValue, path);
         if (value.ValueKind == JsonValueKind.Array && value.GetArrayLength() > 0 || value.ValueKind == JsonValueKind.Object && value.EnumerateObject().Any())
@@ -550,7 +561,7 @@ public sealed partial class RegistryViewModel(IServerRegistry client,
         void Add(string part, string label)
         {
             var node = previous.GetValueOrDefault(part) ?? JsonKey(key, key.Document, [.. key.JsonPath, part], label);
-            node.Name = RegistryJsonProjection.NodeLabel(label, RegistryJsonProjection.Resolve(key.Document.DesiredValue, node.JsonPath));
+            node.Name = JsonNodeLabel(label, RegistryJsonProjection.Resolve(key.Document.DesiredValue, node.JsonPath));
             key.Children.Add(node);
         }
         if (value.ValueKind == JsonValueKind.Array)
@@ -581,7 +592,7 @@ public sealed partial class RegistryViewModel(IServerRegistry client,
                     var value = RegistryJsonProjection.Resolve(entry.DesiredValue, node.JsonPath);
                     var label = node.JsonPath.Count == 0 ? entry.Name
                         : node.Parent?.JsonValueKind == JsonValueKind.Array ? RegistryJsonProjection.Label(node.JsonPath[^1], value) : node.JsonPath[^1];
-                    node.Name = RegistryJsonProjection.NodeLabel(label, value);
+                    node.Name = JsonNodeLabel(label, value);
                     node.NotifyJsonChanged();
                 }
                 catch (Exception error) when (error is KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
@@ -630,47 +641,4 @@ public sealed class RegistryValueLabels(RegistryEntryDto source, string name, st
     public string Type => LocalizedText.Get("registry.type." + type, type);
     public string Data => source.ValueType == RegistryValueType.Boolean
         ? LocalizedText.Get(source.DesiredValue.GetBoolean() ? "registry.boolean.true" : "registry.boolean.false") : data;
-}
-
-public enum RegistryKeyKind { Root, CurrentUser, Users, User, Key, Json, Placeholder }
-
-public sealed partial class RegistryKeyNode : ObservableObject
-{
-    public RegistryKeyNode(string name, string? path, RegistryScope? scope, RegistryKeyNode? parent, RegistryKeyKind kind = RegistryKeyKind.Key, Guid? targetUserId = null)
-    {
-        _name = name; Path = path; Scope = scope; Parent = parent; Kind = kind; TargetUserId = targetUserId ?? parent?.TargetUserId;
-        if (kind is RegistryKeyKind.Key or RegistryKeyKind.Users)
-            Children.Add(new RegistryKeyNode("…", null, null, this, RegistryKeyKind.Placeholder));
-    }
-    public IReadOnlyList<RegistryEntryDto>? CachedValues { get; set; }
-    public RegistryEntryDto? Document { get; set; }
-    public IReadOnlyList<string> JsonPath { get; init; } = [];
-    public string NavigationName => Kind == RegistryKeyKind.Json
-        ? JsonPath.Count == 0 ? Document!.Name : Parent?.JsonValueKind == System.Text.Json.JsonValueKind.Array ? "[" + JsonPath[^1] + "]" : JsonPath[^1]
-        : (Path ?? Name)[((Path ?? Name).LastIndexOf('\\') + 1)..];
-    public JsonValueKind? JsonValueKind => Document is null ? null : RegistryJsonProjection.Resolve(Document.DesiredValue, JsonPath).ValueKind;
-    public string ToolTipText => Document is null ? Name : RegistryJsonProjection.Resolve(Document.DesiredValue, JsonPath).GetRawText();
-    public void NotifyJsonChanged()
-    {
-        OnPropertyChanged(nameof(ToolTipText));
-        OnPropertyChanged(nameof(JsonValueKind));
-    }
-    public Guid? TargetUserId { get; }
-    [ObservableProperty] private string _name;
-    public string? Path { get; }
-    public RegistryScope? Scope { get; }
-    public RegistryKeyNode? Parent { get; }
-    public RegistryKeyKind Kind { get; }
-    public bool IsRegistryKey => Kind == RegistryKeyKind.Key;
-    /// <summary>Raw account name for the status bar, without the tree's duplicate/current-user markers.</summary>
-    public string? UserName { get; set; }
-    public RegistryAddress? Address { get; set; }
-    public bool AllowCreate { get; set; }
-    public bool AllowDelete { get; set; }
-    public bool CanCreateChildKey => AllowCreate;
-    public bool CanManageKey => AllowDelete;
-    public ObservableCollection<RegistryKeyNode> Children { get; } = [];
-    [ObservableProperty] private bool _isExpanded;
-    [ObservableProperty] private bool _childrenLoaded;
-    [ObservableProperty] private bool _isLoadingChildren;
 }

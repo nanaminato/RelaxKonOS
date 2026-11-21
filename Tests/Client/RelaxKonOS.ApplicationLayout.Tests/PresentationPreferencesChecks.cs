@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Registry;
 using IServerRegistry = RelaxKonOS.AppSDK.IServerRegistry;
 using System.Reflection;
 using System.Text.Json;

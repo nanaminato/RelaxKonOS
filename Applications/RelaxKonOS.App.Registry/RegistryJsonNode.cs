@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace RelaxKonOS.Client.Apps.Registry;
+namespace RelaxKonOS.App.Registry;
 
 /// <summary>Materializes one level on expansion; unopened branches retain their original JSON.</summary>
 public sealed partial class RegistryJsonNode : ObservableObject

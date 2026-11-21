@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Registry;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Input;
