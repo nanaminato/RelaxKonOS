@@ -240,8 +240,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             .Where(application => _applications.GetManifest(application.Id) is { } manifest
                 && _applications.EvaluateCompatibility(manifest).IsCompatible
                 && (_sshDesktop.IsConnected
-                    ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-                        or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings" or "relaxkonos.appinstaller"
+                    ? IsSshDesktopApplication(application.Id.Value)
                     : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
             .Select(i =>
             {
@@ -341,8 +340,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     [RelayCommand]
     private void Launch(AppId id)
     {
-        if (_sshDesktop.IsConnected && id.Value is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings")) return;
+        if (_sshDesktop.IsConnected && !IsSshDesktopApplication(id.Value)) return;
         _applications.Launch(id);
         IsStartOpen = false;
     }
@@ -1014,10 +1012,13 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             details,
         });
 
+    private static bool IsSshDesktopApplication(string id) =>
+        id is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings" or "relaxkonos.appinstaller";
+
     private void LaunchApplication(string id)
     {
-        if (_sshDesktop.IsConnected && id is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings")) return;
+        if (_sshDesktop.IsConnected && !IsSshDesktopApplication(id)) return;
         var appId = new AppId(id);
         if (id is "relaxkonos.terminal" or "relaxkonos.taskmanager" && !_applications.IsRegistered(appId))
             appId = new AppId("relaxkonos.appinstaller");

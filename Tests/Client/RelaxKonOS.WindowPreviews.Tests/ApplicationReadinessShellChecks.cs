@@ -46,6 +46,11 @@ internal static class ApplicationReadinessShellChecks
             Check(recovery.Info.OwnerAppId.Value == installerId,
                 "Opening Terminal without its package starts App Installer");
             windows.ForceClose(recovery);
+            vm.OpenTaskManagerCommand.Execute(null);
+            recovery = windows.Windows.Single();
+            Check(recovery.Info.OwnerAppId.Value == installerId,
+                "Opening Task Manager without its package starts App Installer");
+            windows.ForceClose(recovery);
             Check(vm.StartApps.Any(app => app.Id == appId) && vm.StartApps.Single(app => app.Id == appId).HasAvailabilityBadge,
                 "Unknown dependencies stay discoverable with a separate state badge by default");
             availability.Set(ComponentAvailabilityKind.Missing); Dispatcher.UIThread.RunJobs();
@@ -89,6 +94,11 @@ internal static class ApplicationReadinessShellChecks
             Check(vm.StartApps.Any(app => app.Id.Value == installerId)
                 && !vm.StartApps.Any(app => app.Id == appId),
                 "An SSH desktop with no external packages still lists App Installer in ready-only mode");
+            vm.LaunchCommand.Execute(new AppId(installerId));
+            recovery = windows.Windows.Single();
+            Check(recovery.Info.OwnerAppId.Value == installerId,
+                "The SSH desktop launcher opens the listed App Installer");
+            windows.ForceClose(recovery);
             vm.OpenTerminalCommand.Execute(null);
             Check(windows.Windows.Single().Info.OwnerAppId.Value == installerId,
                 "The SSH desktop Terminal shortcut offers package recovery too");
