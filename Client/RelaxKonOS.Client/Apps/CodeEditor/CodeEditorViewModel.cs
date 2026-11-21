@@ -4,7 +4,7 @@ using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Apps.ImageViewer;
+using RelaxKonOS.App.ImageViewer;
 using Avalonia.Media;
 using RelaxKonOS.Client.Controls.Diff;
 using RelaxKonOS.Client.Services.Auth;

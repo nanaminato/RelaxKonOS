@@ -1,10 +1,10 @@
 using System.Windows.Input;
 using RelaxKonOS.Core.Input;
 
-namespace RelaxKonOS.Client.Services;
+namespace RelaxKonOS.WindowManager;
 
 /// <summary>Executes an application command for an exact, Windows-style key gesture.</summary>
-internal static class WindowShortcut
+public static class WindowShortcut
 {
     /// <summary>
     /// Runs <paramref name="command"/> only when the gesture matches and the command is available.

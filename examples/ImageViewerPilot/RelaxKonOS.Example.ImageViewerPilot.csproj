@@ -5,9 +5,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
-    <PackageReference Include="Avalonia" />
-    <PackageReference Include="Svg.Controls.Avalonia" />
-    <Compile Include="../../Client/RelaxKonOS.Client/Apps/ImageViewer/ImageViewerDecoder.cs" Link="ImageViewerDecoder.cs" />
+    <ProjectReference Include="../../Applications/RelaxKonOS.App.ImageViewer/RelaxKonOS.App.ImageViewer.csproj" />
   </ItemGroup>
 </Project>

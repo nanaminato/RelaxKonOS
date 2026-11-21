@@ -1,8 +1,7 @@
-<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.ImageViewer.ViewModels"
-             x:Class="RelaxKonOS.Client.Apps.ImageViewer.Views.ImageViewerView"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.ImageViewer"
+             x:Class="RelaxKonOS.App.ImageViewer.ImageViewerView"
              x:DataType="vm:ImageViewerViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <UserControl.Styles>
@@ -34,15 +33,15 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
-            <common:WorkspaceWindowHeader x:Name="Header" Title="{Binding DocumentName}" Subtitle="{Binding DimensionsText}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/imageviewer.png" />
+            <wm:WorkspaceWindowHeader x:Name="Header" Title="{Binding DocumentName}" Subtitle="{Binding DimensionsText}" />
             <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                <Button Classes="header-action" Content="−" Command="{Binding ZoomOutCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_out}" AutomationProperties.Name="{loc:Loc image_viewer.zoom_out}" />
+                <Button Classes="header-action" Content="−" Command="{Binding ZoomOutCommand}" ToolTip.Tip="{Binding ZoomOutText}" AutomationProperties.Name="{Binding ZoomOutText}" />
                 <TextBlock x:Name="ZoomLabel" Text="{Binding ZoomPercent, StringFormat={}{0}%}" MinWidth="43" VerticalAlignment="Center" />
-                <Button Classes="header-action" Content="+" Command="{Binding ZoomInCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_in}" AutomationProperties.Name="{loc:Loc image_viewer.zoom_in}" />
-                <Button Classes="header-action" Content="⋯" ToolTip.Tip="{loc:Loc explorer.more}" AutomationProperties.Name="{loc:Loc explorer.more}">
+                <Button Classes="header-action" Content="+" Command="{Binding ZoomInCommand}" ToolTip.Tip="{Binding ZoomInText}" AutomationProperties.Name="{Binding ZoomInText}" />
+                <Button Classes="header-action" Content="⋯" ToolTip.Tip="{Binding MoreText}" AutomationProperties.Name="{Binding MoreText}">
                     <Button.Flyout><MenuFlyout>
-                        <MenuItem Header="{loc:Loc image_viewer.fit_to_view}" Command="{Binding FitToViewCommand}" />
-                        <MenuItem Header="{loc:Loc image_viewer.reset_zoom}" Command="{Binding ResetZoomCommand}" />
+                        <MenuItem Header="{Binding FitText}" Command="{Binding FitToViewCommand}" />
+                        <MenuItem Header="{Binding ResetZoomText}" Command="{Binding ResetZoomCommand}" />
                     </MenuFlyout></Button.Flyout>
                 </Button>
             </StackPanel>
@@ -77,7 +76,7 @@
         <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="ShortcutHint" Grid.Column="1" Text="{loc:Loc image_viewer.shortcuts}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                <TextBlock x:Name="ShortcutHint" Grid.Column="1" Text="{Binding ShortcutsText}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
             </Grid>
         </Border>
     </Grid>

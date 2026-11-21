@@ -625,7 +625,7 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
-| UI-068 [ImageViewerView](../../Client/RelaxKonOS.Client/Apps/ImageViewer/Views/ImageViewerView.axaml) | ScrollViewer；入口：ZoomOutCommand、ZoomInCommand、FitToViewCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
+| UI-068 [ImageViewerView](../../Applications/RelaxKonOS.App.ImageViewer/ImageViewerView.axaml) | ScrollViewer；入口：ZoomOutCommand、ZoomInCommand、FitToViewCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 内置与试点共用视图 |
 
 ### Notepad
 

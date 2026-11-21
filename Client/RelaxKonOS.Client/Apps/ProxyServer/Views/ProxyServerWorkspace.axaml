@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
+             xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
              xmlns:loc="using:RelaxKonOS.Client.Localization"
              xmlns:vm="using:RelaxKonOS.Client.Apps.ProxyServer"
              xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
@@ -26,7 +26,7 @@
 
   <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
-      <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.proxy-server.display_name}"
+      <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.proxy-server.display_name}"
                                     Subtitle="{loc:Loc proxy_server.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png" />
       <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc proxy_server.refresh}" AutomationProperties.Name="{loc:Loc proxy_server.refresh}" VerticalAlignment="Center">

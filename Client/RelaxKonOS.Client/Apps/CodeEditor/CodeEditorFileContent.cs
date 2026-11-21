@@ -1,5 +1,5 @@
 using RelaxKonOS.Client.Apps.Explorer.Models;
-using RelaxKonOS.Client.Apps.ImageViewer;
+using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Protocol.Files;
 
@@ -7,7 +7,7 @@ namespace RelaxKonOS.Client.Apps.CodeEditor;
 
 internal static class CodeEditorFileContent
 {
-    public static bool IsImage(string path) => ImageViewerApp.SupportedExtensions.Contains(
+    public static bool IsImage(string path) => ImageViewerDecoder.SupportedExtensions.Contains(
         Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
     public static string DetectEncoding(byte[] bytes, string fallback)

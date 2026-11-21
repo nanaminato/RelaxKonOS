@@ -13,8 +13,10 @@ import sys
 from pathlib import Path
 
 
-root = Path(__file__).resolve().parents[1] / "Client" / "RelaxKonOS.Client"
+repo = Path(__file__).resolve().parents[1]
+root = repo / "Client" / "RelaxKonOS.Client"
 language_dir = root / "Localization"
+image_viewer = repo / "Applications" / "RelaxKonOS.App.ImageViewer"
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.
 valid_key = re.compile(r"[a-z][a-z0-9-]*(?:[._][A-Za-z0-9-]+)*$")
@@ -41,31 +43,35 @@ xaml_key = re.compile(r"\{loc:Loc\s+([A-Za-z0-9_.]+)\s*\}")
 def load_language(culture: str) -> dict[str, str]:
     strings: dict[str, str] = {}
     paths = sorted((language_dir / culture).glob("*.json"))
+    image_viewer_fragment = image_viewer / "Localization" / f"{culture}.json"
+    if image_viewer_fragment.is_file():
+        paths.append(image_viewer_fragment)
     if not paths:
         errors.append(f"{culture}: no localization files")
 
     for path in paths:
+        location = path.relative_to(repo).as_posix()
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
-            errors.append(f"{path.relative_to(language_dir)}: invalid JSON ({error.msg})")
+            errors.append(f"{location}: invalid JSON ({error.msg})")
             continue
 
         if document.get("Culture") != culture:
-            errors.append(f"{path.relative_to(language_dir)}: Culture must be {culture}")
+            errors.append(f"{location}: Culture must be {culture}")
         unexpected = set(document) - allowed_document_keys
         if unexpected:
-            errors.append(f"{path.relative_to(language_dir)}: unexpected top-level keys {', '.join(sorted(unexpected))}")
+            errors.append(f"{location}: unexpected top-level keys {', '.join(sorted(unexpected))}")
         values = document.get("Strings")
         if not isinstance(values, dict):
-            errors.append(f"{path.relative_to(language_dir)}: Strings must be an object")
+            errors.append(f"{location}: Strings must be an object")
             continue
 
         for key, value in values.items():
             if key in strings:
-                errors.append(f"{path.relative_to(language_dir)}: duplicate key {key}")
+                errors.append(f"{location}: duplicate key {key}")
             elif not isinstance(value, str) or not value.strip():
-                errors.append(f"{path.relative_to(language_dir)}: {key} must have non-empty text")
+                errors.append(f"{location}: {key} must have non-empty text")
             else:
                 strings[key] = value
 
@@ -118,11 +124,13 @@ def collect_requested_keys() -> tuple[dict[str, str], dict[str, str]]:
     sources = sorted(
         path
         for pattern in ("*.cs", "*.axaml")
-        for path in root.rglob(pattern)
+        for source_root in (root, image_viewer)
+        for path in source_root.rglob(pattern)
         if not {"bin", "obj"} & set(path.parts)
     )
     for path in sources:
-        location_root = path.relative_to(root).as_posix()
+        location_root = path.relative_to(repo).as_posix()
+        in_image_viewer = path.is_relative_to(image_viewer)
         for line_number, line in enumerate(
             path.read_text(encoding="utf-8-sig", errors="replace").splitlines(), 1
         ):
@@ -144,6 +152,9 @@ def collect_requested_keys() -> tuple[dict[str, str], dict[str, str]]:
                 requested.setdefault(suffix_prefix[match.group(1)] + match.group(2), location)
             for match in xaml_key.finditer(line):
                 requested.setdefault(match.group(1), location)
+            if in_image_viewer:
+                for key in re.findall(r'"(image_viewer\.[a-z0-9_.-]+)"', line):
+                    requested.setdefault(key, location)
     return requested, prefixes
 
 

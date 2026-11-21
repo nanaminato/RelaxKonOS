@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
+             xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:squid="clr-namespace:RelaxKonOS.Client.Apps.Squid"
              xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter"
@@ -71,7 +71,7 @@
     <!-- Identity lives in the window chrome when the host attaches it; the header stays in place
          for embedded/preview rendering. -->
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
-      <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.squid.display_name}"
+      <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.squid.display_name}"
                                     Subtitle="{loc:Loc squid.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/squid.png" />
       <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc squid.refresh}" AutomationProperties.Name="{loc:Loc squid.refresh}" VerticalAlignment="Center">

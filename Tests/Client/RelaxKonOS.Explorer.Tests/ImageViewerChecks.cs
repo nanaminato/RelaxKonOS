@@ -2,7 +2,7 @@ using System.Text;
 using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Svg;
-using RelaxKonOS.Client.Apps.ImageViewer;
+using RelaxKonOS.App.ImageViewer;
 
 internal static class ImageViewerChecks
 {

@@ -1,9 +1,7 @@
-using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Media;
+using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.ImageViewer;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Core.Primitives;
 
 namespace RelaxKonOS.Examples.ImageViewerPilot;
 
@@ -11,53 +9,58 @@ namespace RelaxKonOS.Examples.ImageViewerPilot;
 public sealed class ImageViewerPilotApp : IExternalRemoteApplication, IExternalFileOpenApplication
 {
     public ApplicationManifest Manifest { get; } = new(new AppId("com.relaxkonos.example.image-viewer"),
-        "Image Viewer Pilot", "0.1.0-dev", RequestedPermissions: [AppPermissions.ServerFilesRead]);
+        "Image Viewer Pilot", "0.1.0-dev", RequestedPermissions: [AppPermissions.ServerFilesRead],
+        SupportedFileExtensions: ImageViewerDecoder.SupportedExtensions);
 
-    public Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default)
-    {
-        context.Windows.ShowWindow(Manifest.DisplayName, new TextBlock
-        {
-            Text = "Open an image from Explorer using Open with → Image Viewer Pilot.",
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(20),
-        });
-        return Task.CompletedTask;
-    }
+    public Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default) =>
+        OpenViewerAsync(context, null, cancellationToken);
 
-    public async Task OpenFileAsync(IExternalAppContext context, string path, CancellationToken cancellationToken = default)
+    public Task OpenFileAsync(IExternalAppContext context, string path, CancellationToken cancellationToken = default) =>
+        OpenViewerAsync(context, path, cancellationToken);
+
+    private async Task OpenViewerAsync(IExternalAppContext context, string? path, CancellationToken cancellationToken)
     {
-        var body = new ContentControl { Content = "Opening image…", Padding = new Thickness(20) };
-        var window = context.Windows.ShowWindow($"{Path.GetFileName(path)} · {Manifest.DisplayName}", body);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, window.Closed);
-        var token = linked.Token;
+        var title = string.IsNullOrWhiteSpace(path) ? Manifest.DisplayName : $"{Path.GetFileName(path)} · {Manifest.DisplayName}";
+        var model = new ImageViewerViewModel(context.SystemLanguage,
+            (file, token) => ReadImageAsync(context.ServerFiles, file, token), title: title);
         try
         {
-            var result = await context.ServerFiles.OpenReadAsync(path, token);
-            if (result.Content is not { } content)
-            {
-                body.Content = result.Status == AppCapabilityResult.PermissionDenied
-                    ? "Allow server file reads for Image Viewer Pilot in Settings."
-                    : $"Could not open the image ({result.Status}).";
-                return;
-            }
-            await using (content)
-            {
-                const int limit = 32 * 1024 * 1024;
-                using var data = new MemoryStream();
-                var buffer = new byte[81920];
-                int read;
-                while ((read = await content.ReadAsync(buffer, token)) != 0)
-                {
-                    if (data.Length + read > limit) throw new InvalidDataException("The image exceeds 32 MiB.");
-                    data.Write(buffer, 0, read);
-                }
-                token.ThrowIfCancellationRequested();
-                var image = ImageViewerDecoder.Load(path, data.ToArray());
-                if (image is IDisposable disposable) window.Closed.Register(disposable.Dispose);
-                body.Content = new Image { Source = image, Stretch = Stretch.Uniform };
-            }
+            var view = new ImageViewerView { DataContext = model };
+            var window = context.Windows.ShowWindow(model.ViewerTitle, view, bounds: new Rect(180, 100, 880, 640));
+            window.Closed.Register(model.Dispose);
+            view.AttachWindow(window.Window);
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception exception) { body.Content = exception.Message; }
+        catch
+        {
+            model.Dispose();
+            throw;
+        }
+
+        if (!string.IsNullOrWhiteSpace(path)) await model.OpenPathAsync(path, cancellationToken);
+    }
+
+    private static async Task<byte[]?> ReadImageAsync(IServerFiles files, string path, CancellationToken cancellationToken)
+    {
+        var result = await files.OpenReadAsync(path, cancellationToken);
+        if (result.Content is not { } content)
+        {
+            if (result.Status == AppCapabilityResult.PermissionDenied) throw new UnauthorizedAccessException();
+            if (result.Status == AppCapabilityResult.InvalidArgument) return null;
+            throw new IOException($"Server files are unavailable ({result.Status}).");
+        }
+
+        await using (content)
+        {
+            const int limit = 32 * 1024 * 1024;
+            using var data = new MemoryStream();
+            var buffer = new byte[81920];
+            int read;
+            while ((read = await content.ReadAsync(buffer, cancellationToken)) != 0)
+            {
+                if (data.Length + read > limit) throw new InvalidDataException("The image exceeds 32 MiB.");
+                data.Write(buffer, 0, read);
+            }
+            return data.ToArray();
+        }
     }
 }

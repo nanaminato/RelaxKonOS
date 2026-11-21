@@ -1,4 +1,4 @@
-<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterWorkspace"
@@ -6,7 +6,7 @@
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
-            <common:WorkspaceWindowHeader x:Name="Header" Title="{Binding Title}" Subtitle="{Binding Subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/server-center.png" />
+            <wm:WorkspaceWindowHeader x:Name="Header" Title="{Binding Title}" Subtitle="{Binding Subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/server-center.png" />
 
         </Grid>
 

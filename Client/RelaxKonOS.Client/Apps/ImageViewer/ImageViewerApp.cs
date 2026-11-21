@@ -1,13 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Apps.Explorer;
-using RelaxKonOS.Client.Apps.ImageViewer.ViewModels;
-using RelaxKonOS.Client.Apps.ImageViewer.Views;
+using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
-using RelaxKonOS.Core.Input;
 using RelaxKonOS.Core.Primitives;
+using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.ImageViewer;
@@ -15,9 +14,6 @@ namespace RelaxKonOS.Client.Apps.ImageViewer;
 /// <summary>Lightweight built-in viewer for common remote image files.</summary>
 public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
 {
-    public static IReadOnlyList<string> SupportedExtensions { get; } =
-    [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico", ".svg"];
-
     public override ApplicationManifest Manifest { get; } = new(
         Id: new AppId("relaxkonos.imageviewer"),
         DisplayName: "Image Viewer",
@@ -25,7 +21,7 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
         IconGlyph: "🖼️",
         Description: "Lightweight viewer for remote image files",
         RequestedPermissions: [AppPermissions.ServerFilesRead],
-        SupportedFileExtensions: SupportedExtensions);
+        SupportedFileExtensions: ImageViewerDecoder.SupportedExtensions);
 
     public override void Activate(AppContext context) => OpenViewer(context, null);
 
@@ -37,26 +33,23 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
         IExplorerClient? files = sshDesktop?.IsConnected == true
             ? context.Services.GetService(typeof(SshExplorerClient)) as SshExplorerClient
             : context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var viewModel = new ImageViewerViewModel(files, sshDesktop?.IsConnected == true);
-        var view = new ImageViewerView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("image_viewer.title"), view,
-            bounds: new Rect(180, 100, 880, 640),
-            iconGlyph: Manifest.IconGlyph);
-        view.AttachWindowHeader(window);
-        LocalizedWindowTitle.Follow(window, context, "image_viewer.title");
-        window.KeyDown += (_, e) =>
+        var localization = context.Services.GetRequiredService<LocalizationService>();
+        var viewModel = new ImageViewerViewModel(localization, files is null ? null : files.ReadFileAsync,
+            sshDesktop?.IsConnected == true, localization.Get);
+        ManagedWindow window;
+        try
         {
-            if (e.Modifiers == RemoteKeyModifiers.Control && e.Key.Value is "Add" or "OemPlus")
-                WindowShortcut.TryExecute(e, e.Key, RemoteKeyModifiers.Control, viewModel.ZoomInCommand);
-            else if (e.Modifiers == RemoteKeyModifiers.Control && e.Key.Value is "Subtract" or "OemMinus")
-                WindowShortcut.TryExecute(e, e.Key, RemoteKeyModifiers.Control, viewModel.ZoomOutCommand);
-            else if (e.Key == RemoteKey.Letter('F'))
-                WindowShortcut.TryExecute(e, RemoteKey.Letter('F'), RemoteKeyModifiers.None, viewModel.FitToViewCommand);
-            else
-                WindowShortcut.TryExecute(e, RemoteKey.Digit(0), RemoteKeyModifiers.Control, viewModel.ResetZoomCommand);
-        };
+            var view = new ImageViewerView { DataContext = viewModel };
+            window = context.ShowWindow(viewModel.ViewerTitle, view, bounds: new Rect(180, 100, 880, 640), iconGlyph: Manifest.IconGlyph);
+            view.AttachWindow(window);
+        }
+        catch
+        {
+            viewModel.Dispose();
+            throw;
+        }
 
-        EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
+        EventHandler<ManagedWindow>? closed = null;
         closed = (_, closedWindow) =>
         {
             if (!ReferenceEquals(closedWindow, window)) return;

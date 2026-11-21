@@ -1,4 +1,4 @@
-<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:webservers="clr-namespace:RelaxKonOS.Client.Apps.WebServers"
@@ -9,7 +9,7 @@
              MinHeight="0" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" MinWidth="0" MinHeight="0">
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
-            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.webservers.display_name}" Subtitle="{loc:Loc webservers.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/webservers.png" />
+            <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.webservers.display_name}" Subtitle="{loc:Loc webservers.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/webservers.png" />
 
         </Grid>
 

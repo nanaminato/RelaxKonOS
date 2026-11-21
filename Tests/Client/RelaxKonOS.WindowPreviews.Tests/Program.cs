@@ -80,6 +80,7 @@ if (args.Contains("--component-download-preview"))
 }
 if (args.Contains("--database-only")) { DatabaseWorkspaceChecks.Run(settings); PostgreSqlAccountsWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
+if (args.Contains("--image-viewer-only")) { ImageViewerWorkspaceChecks.Run(settings, localization); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(settings); return; }
 if (args.Contains("--developer-release-only")) { DeveloperReleaseChecks.Run(); return; }

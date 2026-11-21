@@ -2,10 +2,13 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Svg;
 
-namespace RelaxKonOS.Client.Apps.ImageViewer;
+namespace RelaxKonOS.App.ImageViewer;
 
-internal static class ImageViewerDecoder
+public static class ImageViewerDecoder
 {
+    public static IReadOnlyList<string> SupportedExtensions { get; } =
+        [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico", ".svg"];
+
     public static IImage Load(string path, byte[] bytes)
     {
         using var stream = new MemoryStream(bytes, writable: false);

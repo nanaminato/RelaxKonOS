@@ -115,7 +115,7 @@
 | 11 | 代码编辑器 | `Apps/CodeEditor/CodeEditorView.axaml` | 菜单栏 + 文档标签 | **已有** `ListBox.title-tabs` | **已接入** |
 | 12 | 记事本 | `Apps/Notepad/NotepadView.axaml` | 菜单栏 + 文档名 | 无 | **已接入** |
 | 13 | 任务管理器 | `Apps/TaskManager/Views/TaskManagerMainView.axaml` | 工具条 | 无 | **已接入** |
-| 14 | 图片查看器 | `Apps/ImageViewer/Views/ImageViewerView.axaml` | 查看工具条 | 无 | **已接入** |
+| 14 | 图片查看器 | `Applications/RelaxKonOS.App.ImageViewer/ImageViewerView.axaml` | 查看工具条 | 无 | **已接入** |
 | 15 | 浏览器 | `Apps/Browser/Views/BrowserMainView.axaml` | `DockPanel.Dock="Top"` 的标签条 + 导航工具条与地址栏 | **已有** `ListBox.browser-tabs` | **已接入** |
 | 16 | SSH 文件浏览器 | `Apps/ServerCenter/Views/SshFileBrowserView.axaml` | SFTP 导航 / 地址 / 筛选 | **已有**独立目录快照、历史 / 搜索 / 视图状态 | **已接入** |
 
@@ -359,7 +359,7 @@ RemoteWindow.HeaderLeading / HeaderCenter / HeaderTrailing   （均为 Control?�
 
 ### 2026-10-11（剩余十四个窗口接入与验收）
 
-- 第一批服务器中心、Git、Docker、代理、隧道、端口转发、网站、证书和应用部署全部接入；共享 `Controls/WorkspaceWindowHeader` 将 20px 身份图标交 leading、弹性标题交 center，原副标题保留为提示或正文信息。Git 分支 / 刷新、Docker 安装状态操作与其余刷新命令仍有各自绑定；Git 项目选择模式不显示应用融合头部，进入工作区时重新挂接。
+- 第一批服务器中心、Git、Docker、代理、隧道、端口转发、网站、证书和应用部署全部接入；WindowManager 的共享 `WorkspaceWindowHeader` 将 20px 身份图标交 leading、弹性标题交 center，原副标题保留为提示或正文信息。Git 分支 / 刷新、Docker 安装状态操作与其余刷新命令仍有各自绑定；Git 项目选择模式不显示应用融合头部，进入工作区时重新挂接。
 - 记事本保留 File / Settings 命令与保存锁定，紧凑宽度提供菜单入口；任务管理器的页面切换 / 刷新进入头部，连接与状态文字留在状态栏；图片查看器保留缩放、适应与原始尺寸，信息留在预览区，窄窗口不再由提示文字撑出横向滚动。
 - 浏览器交 `HeaderTabs` + `HeaderToolbar`，采用共享标签形状和动态缩短，提供全部标签入口；导航样式随控件移动，窄窗口将前进 / 主页 / 收藏操作收进菜单。原生 WebView 生命周期与菜单遮挡处理保留。
 - 文件服务身份 / 刷新进入宿主，平台信息保留。应用部署的替换策略及空闲状态说明继续显示在正文。八个侧栏型工作区增加紧凑页面菜单，复用原导航动作；保持完整内容宽度，避免 320px 下侧栏挤压正文。

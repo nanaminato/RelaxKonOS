@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from ctypes import WinDLL, wintypes
 from pathlib import Path
 from tempfile import mkdtemp
+from zipfile import ZipFile
 import hashlib
 import json
 import os
@@ -278,6 +279,10 @@ def main():
         assert pilot["appId"] == PILOT_ID and pilot["windowLaunch"] == "passed" and pilot["uiTest"] == "notRun", pilot
         pilot_package = root / "image-viewer-pilot.roapp"
         dotnet(env_a, str(CLI), "pack", str(REPO / "examples/ImageViewerPilot"), "--output", str(pilot_package), "--install")
+        with ZipFile(pilot_package) as archive:
+            files = set(archive.namelist())
+            assert "lib/net10.0/RelaxKonOS.App.ImageViewer.dll" in files
+            assert "lib/net10.0/RelaxKonOS.Client.dll" not in files
         pilot_state = cli(env_a, "diagnostics", PILOT_ID)["apps"][0]
         assert pilot_state["currentVersionId"] != pilot["currentVersionId"] and pilot_state["windows"] == ["Image Viewer Pilot"], pilot_state
         print("Serialized deployments, reserved system ID rejection and Image Viewer pilot activation passed.", flush=True)

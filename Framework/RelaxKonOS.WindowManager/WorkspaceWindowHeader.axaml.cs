@@ -1,11 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
-using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Controls;
+namespace RelaxKonOS.WindowManager;
 
 /// <summary>Shared identity content. The window owns slot geometry and caption controls.</summary>
 public partial class WorkspaceWindowHeader : UserControl
@@ -16,6 +16,7 @@ public partial class WorkspaceWindowHeader : UserControl
     public string? Title { get => GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
     public string? Subtitle { get => GetValue(SubtitleProperty); set => SetValue(SubtitleProperty, value); }
     public string? IconAsset { get => GetValue(IconAssetProperty); set => SetValue(IconAssetProperty, value); }
+    public IImage? IconSource { get => HeaderIcon.Source; set => HeaderIcon.Source = value; }
     private ManagedWindow? _window;
 
     private static readonly Dictionary<string, Bitmap> Icons = new(StringComparer.Ordinal);

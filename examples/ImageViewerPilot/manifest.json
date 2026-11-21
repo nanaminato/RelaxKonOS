@@ -6,5 +6,5 @@
   "entryAssembly": "lib/net10.0/RelaxKonOS.Example.ImageViewerPilot.dll",
   "entryType": "RelaxKonOS.Examples.ImageViewerPilot.ImageViewerPilotApp",
   "requestedPermissions": ["server.files.read"],
-  "supportedFileExtensions": [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".ico", ".svg"]
+  "supportedFileExtensions": [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico", ".svg"]
 }

@@ -19,8 +19,7 @@ using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Client.Apps.FileServices.Views;
 using RelaxKonOS.Client.Apps.Notepad;
-using RelaxKonOS.Client.Apps.ImageViewer.ViewModels;
-using RelaxKonOS.Client.Apps.ImageViewer.Views;
+using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 using RelaxKonOS.Client.Apps.TaskManager.Views;
@@ -32,6 +31,7 @@ using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Apps.Git;
 using RelaxKonOS.Client.Apps.Git.Views;
@@ -67,7 +67,7 @@ internal static class FusedWorkspaceChecks
         var deploymentModel = new ApplicationDeploymentsViewModel(null!, permissions);
         var filesModel = new FileServicesViewModel(null!, permissions, () => true);
         var notepadModel = new NotepadViewModel(null!, "UTF-8");
-        using var imageModel = new ImageViewerViewModel(null!);
+        using var imageModel = new ImageViewerViewModel(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), null);
         var tasksModel = new TaskManagerViewModel(null!, new PerformanceStream(auth), null!, auth);
         var browserModel = new BrowserViewModel(DispatchProxy.Create<RelaxKonOS.Client.Apps.Browser.IBrowserClient, HeaderPreviewPermissions>());
         var browserView = new BrowserMainView { DataContext = browserModel };
@@ -90,7 +90,7 @@ internal static class FusedWorkspaceChecks
             Add(ApplicationDeploymentsWorkspace.Create(deploymentModel), "application-deployments", (view, window) => view.AttachWindowHeader(window));
             Add(new FileServicesWorkspace(filesModel), "file-services", (view, window) => view.AttachWindowHeader(window));
             Add(new NotepadView { DataContext = notepadModel }, "notepad", (view, window) => view.AttachWindowHeader(window));
-            Add(new ImageViewerView { DataContext = imageModel }, "imageviewer", (view, window) => view.AttachWindowHeader(window));
+            Add(new ImageViewerView { DataContext = imageModel }, "imageviewer", (view, window) => view.AttachWindow(window));
             Add(new TaskManagerMainView { DataContext = tasksModel }, "taskmanager", (view, window) => view.AttachWindowHeader(window));
             Add(browserView, "browser", (view, window) => view.AttachWindowHeader(window));
 

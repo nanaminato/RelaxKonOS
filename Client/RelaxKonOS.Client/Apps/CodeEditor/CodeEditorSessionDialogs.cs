@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
@@ -59,7 +60,7 @@ internal static class CodeEditorSessionDialogs
                     new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [
                         new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), CodeEditorApp.SupportedExtensions.Select(extension => $"*{extension}")
                             .Concat(CodeEditorApp.SupportedFileNames).ToArray()),
-                        new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.image_filter"), ImageViewer.ImageViewerApp.SupportedExtensions.Select(extension => $"*{extension}").ToArray()),
+                        new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.image_filter"), ImageViewerDecoder.SupportedExtensions.Select(extension => $"*{extension}").ToArray()),
                         new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.all_files"), ["*"]),
                     ]),
                     paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "CodeEditor.open-file")

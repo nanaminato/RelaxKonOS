@@ -5,6 +5,7 @@
                     "image_viewer.dimensions":  "{0} × {1}px",
                     "image_viewer.zoom_in":  "Zoom in",
                     "image_viewer.zoom_out":  "Zoom out",
+                    "image_viewer.more":  "More actions",
                     "image_viewer.reset_zoom":  "Reset zoom",
                     "image_viewer.fit_to_view":  "Fit",
                     "image_viewer.fit_to_view_hint":  "Fit to view (F)",
@@ -16,6 +17,7 @@
                     "image_viewer.status.loading":  "Loading image…",
                     "image_viewer.status.file_missing":  "The image file no longer exists.",
                     "image_viewer.status.opened":  "{0} · {1}",
-                    "image_viewer.status.open_failed":  "Cannot open image: {0}"
+                    "image_viewer.status.open_failed":  "Cannot open image: {0}",
+                    "image_viewer.status.permission_denied":  "Allow this app to read server files in Settings."
                 }
 }

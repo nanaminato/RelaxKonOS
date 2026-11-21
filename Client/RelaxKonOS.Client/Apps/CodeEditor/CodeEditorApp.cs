@@ -12,6 +12,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
 using RelaxKonOS.Core.Primitives;
+using RelaxKonOS.WindowManager;
 using RelaxKonOS.Protocol.Common;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
