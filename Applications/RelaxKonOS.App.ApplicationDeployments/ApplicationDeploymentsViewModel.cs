@@ -1,25 +1,22 @@
 using RelaxKonOS.App.ApplicationDeployments.ViewModels;
-using RelaxKonOS.App.ApplicationDeployments;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
+namespace RelaxKonOS.App.ApplicationDeployments;
 
 /// <summary>
 /// State for the application-deployment built-in app. It observes the durable operation after every
 /// long action instead of waiting on the HTTP request that queued it, so closing the window or losing
 /// the connection never loses the outcome.
 ///
-/// It derives from <see cref="LocalizedObservableObject"/> because status, error, and problem text are
+/// It derives from <see cref="DeploymentObservableObject"/> because status, error, and problem text are
 /// held as resource keys and must re-resolve when the display language changes.
 /// </summary>
-public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservableObject
+public sealed partial class ApplicationDeploymentsViewModel : DeploymentObservableObject
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1.5);
     private readonly IServerApplicationDeployments client;
@@ -31,7 +28,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// blank the detail before the new snapshot arrives.</summary>
     private Guid? loadedApplicationId;
 
-    public ApplicationDeploymentsViewModel(IServerApplicationDeployments client, IAppPermissionScope permissions)
+    public ApplicationDeploymentsViewModel(IServerApplicationDeployments client, IAppPermissionScope permissions, Func<string, string> localize) : base(localize)
     {
         this.client = client;
         this.permissions = permissions;
@@ -51,12 +48,12 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     [ObservableProperty] private ApplicationRowViewModel? _selectedApplication;
     [ObservableProperty] private RevisionRowViewModel? _selectedRevision;
     [ObservableProperty] private OperationRowViewModel? _activeOperation;
-    [ObservableProperty] private LocalizedStatus _statusText;
-    [ObservableProperty] private LocalizedStatus _errorText;
-    [ObservableProperty] private LocalizedStatus _operationText;
+    [ObservableProperty] private DeploymentMessage _statusText;
+    [ObservableProperty] private DeploymentMessage _errorText;
+    [ObservableProperty] private DeploymentMessage _operationText;
     [ObservableProperty] private bool _isOperationLogExpanded;
     [ObservableProperty] private string _operationLog = string.Empty;
-    partial void OnOperationTextChanged(LocalizedStatus value)
+    partial void OnOperationTextChanged(DeploymentMessage value)
     {
         var text = value.Resolve();
         if (string.IsNullOrWhiteSpace(text) || text == _lastOperationMessage) return;
@@ -72,7 +69,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     [ObservableProperty] private string _logTailText = "200";
 
     /// <summary>Assigned by the app shell to confirm a destructive action before it reaches the server.</summary>
-    public Func<LocalizedStatus, Task<bool>>? ConfirmAsync { get; set; }
+    public Func<DeploymentMessage, Task<bool>>? ConfirmAsync { get; set; }
     /// <summary>Assigned by the app shell to run the wizard and resolve when it closes.</summary>
     public Func<DeploymentWizardViewModel, Task>? ShowWizardAsync { get; set; }
     public Func<IReadOnlyList<ApplicationCatalogTemplateDto>, Task<CatalogApplicationInstallDto?>>? ShowCatalogAsync { get; set; }
@@ -105,7 +102,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     public bool ShowCatalogUpgradeAction => SelectedApplication?.Model is { CatalogTemplateId: not null, CurrentRevisionId: not null }
         && !ShowReinstallAction;
     public bool ShowManualDeployAction => SelectedApplication?.Model.CatalogTemplateId is null;
-    public string RemoveActionText => LocalizedText.Get(DeploymentText.Prefix +
+    public string RemoveActionText => Localize(DeploymentText.Prefix +
         (SelectedApplication?.Model.CatalogTemplateId is null ? ".delete" : ".catalog.uninstall"));
     public bool IsWorking => IsBusy || IsLoading;
 
@@ -116,7 +113,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     public bool HasApplications => Applications.Count > 0;
     public bool HasRevisions => Revisions.Count > 0;
     public bool HasOperations => Operations.Count > 0;
-    public string ApplicationCountText => LocalizedText.Format(DeploymentText.Prefix + ".application_count", Applications.Count);
+    public string ApplicationCountText => Format(DeploymentText.Prefix + ".application_count", Applications.Count);
 
     /// <summary>Rollback is reached from the revision it returns to, not from a menu that only works
     /// after selecting a row in a tab the operator may not have opened.</summary>
@@ -128,7 +125,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     public bool ShowRollbackHint => HasRevisions && !HasRevisionSelection;
     /// <summary>The rollback line only names a target when one was chosen and it is not the live one.</summary>
     public bool ShowRollbackTarget => HasRevisionSelection && !SelectedRevisionIsCurrent;
-    public string RollbackActionText => LocalizedText.Format(DeploymentText.Prefix + ".rollback_to",
+    public string RollbackActionText => Format(DeploymentText.Prefix + ".rollback_to",
         SelectedRevision?.NumberText ?? string.Empty);
     public bool CanCancelActiveOperation => CanManage && !IsLoading && ActiveOperation is { CanCancel: true };
 
@@ -139,11 +136,11 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
 
     public string CurrentRevisionText => SelectedApplication?.Model.CurrentRevisionNumber is { } number
         ? "#" + number.ToString(System.Globalization.CultureInfo.CurrentCulture)
-        : LocalizedText.Get(DeploymentText.Prefix + ".never_deployed");
+        : Localize(DeploymentText.Prefix + ".never_deployed");
 
     public string ContainerText => SelectedApplication?.Model.ContainerName ?? "—";
     public string DomainText => string.IsNullOrWhiteSpace(SelectedApplication?.Model.Domain)
-        ? LocalizedText.Get(DeploymentText.Prefix + ".not_configured")
+        ? Localize(DeploymentText.Prefix + ".not_configured")
         : SelectedApplication!.Model.Domain;
 
     /// <summary>
@@ -151,7 +148,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// and it names the artifact kind because that decides what every other field below it means.
     /// </summary>
     public string HeaderMetaText => SelectedApplication is { } row
-        ? $"{row.SourceText} · {LocalizedText.Get(DeploymentText.Prefix + ".field.revision")} {row.RevisionText}"
+        ? $"{row.SourceText} · {Localize(DeploymentText.Prefix + ".field.revision")} {row.RevisionText}"
         : string.Empty;
 
     /// <summary>
@@ -165,8 +162,8 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
 
     public bool HasSelectedDrift => SelectedApplication?.HasDrift is true;
 
-    public LocalizedStatus SelectedDriftText =>
-        SelectedApplication?.DriftText ?? LocalizedStatus.Literal(string.Empty);
+    public DeploymentMessage SelectedDriftText =>
+        DeploymentMessage.Literal(SelectedApplication?.DriftText);
 
     /// <summary>
     /// The readiness verdict. "Ready" means the observed state is running, which is the only claim
@@ -185,7 +182,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
                 ApplicationReadinessLevel.Process => IsReadinessHealthy ? ".readiness.healthy_process" : ".readiness.process",
                 _ => IsReadinessHealthy ? ".readiness.healthy_http" : ".readiness.http",
             };
-            return LocalizedText.Get(DeploymentText.Prefix + key);
+            return Localize(DeploymentText.Prefix + key);
         }
     }
 
@@ -257,7 +254,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     {
         if (!CanRead)
         {
-            StatusText = LocalizedStatus.Key(DeploymentText.Prefix + ".status.no_permission");
+            StatusText = Message(DeploymentText.Prefix + ".status.no_permission");
             return;
         }
         await LoadAsync();
@@ -270,10 +267,10 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     {
         if (IsLoading) return;
         IsLoading = true;
-        ErrorText = LocalizedStatus.Literal(string.Empty);
+        ErrorText = DeploymentMessage.Literal(string.Empty);
         try
         {
-            StatusText = LocalizedStatus.Key(DeploymentText.Prefix + ".status.loading");
+            StatusText = Message(DeploymentText.Prefix + ".status.loading");
             var templatesTask = client.ListTemplatesAsync();
             var applicationsTask = client.ListApplicationsAsync();
             Templates = await templatesTask;
@@ -283,14 +280,14 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
             // in the middle of a deployment.
             if (SelectedApplication is { } selected) await LoadSnapshotAsync(selected.Id, observeOperation: queuedApplicationId is null);
 
-            StatusText = LocalizedStatus.Format(DeploymentText.Prefix + ".status.loaded", Applications.Count);
+            StatusText = Message(DeploymentText.Prefix + ".status.loaded", Applications.Count);
         }
         catch (Exception exception) when (IsExpected(exception))
         {
             ErrorText = Describe(exception);
             StatusText = exception is ApplicationDeploymentClientException { StatusCode: 404 }
-                ? LocalizedStatus.Key(DeploymentText.Prefix + ".status.endpoint_unavailable")
-                : LocalizedStatus.Key(DeploymentText.Prefix + ".status.failed");
+                ? Message(DeploymentText.Prefix + ".status.endpoint_unavailable")
+                : Message(DeploymentText.Prefix + ".status.failed");
         }
         finally
         {
@@ -305,13 +302,13 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
 
         Revisions.Clear();
         foreach (var revision in snapshot.Revisions)
-            Revisions.Add(new RevisionRowViewModel(revision, snapshot.Application.CurrentRevisionId, LocalizedText.Get));
+            Revisions.Add(new RevisionRowViewModel(revision, snapshot.Application.CurrentRevisionId, Localize));
         Operations.Clear();
         foreach (var operation in snapshot.Operations) Operations.Add(Row(operation));
 
         if (snapshot.ActiveOperation is { } active)
         {
-            ActiveOperation = new OperationRowViewModel(active, LocalizedText.Get);
+            ActiveOperation = new OperationRowViewModel(active, Localize);
             if (observeOperation) _ = PollAsync(applicationId, active);
         }
         else
@@ -329,7 +326,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     {
         if (!CanAct || ShowCatalogAsync is null) return;
         IsBusy = true;
-        ErrorText = LocalizedStatus.Literal(string.Empty);
+        ErrorText = DeploymentMessage.Literal(string.Empty);
         try
         {
             var receipt = await ShowCatalogAsync(await client.ListCatalogAsync());
@@ -351,7 +348,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     {
         if (!CanAct || !ShowCatalogUpgradeAction || ShowCatalogUpgradeAsync is null || SelectedApplication is not { } application) return;
         IsBusy = true;
-        ErrorText = LocalizedStatus.Literal(string.Empty);
+        ErrorText = DeploymentMessage.Literal(string.Empty);
         try
         {
             var releases = await client.ListCatalogAsync();
@@ -380,7 +377,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     private async Task RunWizardAsync(DeploymentWizardIntent intent, ApplicationDto? existing)
     {
         if (!CanManage || ShowWizardAsync is null) return;
-        var wizard = new DeploymentWizardViewModel(client, intent, Templates, existing)
+        var wizard = new DeploymentWizardViewModel(client, intent, Templates, Localize, existing)
         {
             PickLocalArchiveAsync = PickLocalArchiveAsync,
             PickServerArchiveAsync = PickServerArchiveAsync,
@@ -407,7 +404,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         if (!CanRollback || ConfirmAsync is null || SelectedApplication is null || SelectedRevision is null) return;
         var application = SelectedApplication;
         var revision = SelectedRevision;
-        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix + ".confirm_rollback",
+        if (!await ConfirmAsync(Message(DeploymentText.Prefix + ".confirm_rollback",
                 application.Name, revision.NumberText))) return;
 
         await QueueAsync(application.Id, key => client.RollbackAsync(application.Id,
@@ -421,7 +418,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     private async Task StopApplicationAsync()
     {
         if (SelectedApplication is not { } application || ConfirmAsync is null) return;
-        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix + ".confirm_stop", application.Name))) return;
+        if (!await ConfirmAsync(Message(DeploymentText.Prefix + ".confirm_stop", application.Name))) return;
         await ApplyLifecycleAsync("stop", new ApplicationLifecycleRequest(Confirmed: true));
     }
 
@@ -429,7 +426,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     private async Task RestartApplicationAsync()
     {
         if (SelectedApplication is not { } application || ConfirmAsync is null) return;
-        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix + ".confirm_restart", application.Name))) return;
+        if (!await ConfirmAsync(Message(DeploymentText.Prefix + ".confirm_restart", application.Name))) return;
         await ApplyLifecycleAsync("restart", new ApplicationLifecycleRequest(Confirmed: true));
     }
 
@@ -449,7 +446,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     {
         if (!CanActOnSelection || ConfirmAsync is null || SelectedApplication is not { } application) return;
         var retained = application.Model.CatalogTemplateId is not null && application.Model.CurrentRevisionId is not null;
-        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix +
+        if (!await ConfirmAsync(Message(DeploymentText.Prefix +
                 (retained ? ".catalog.confirm_uninstall" : ".confirm_delete"), application.Name))) return;
 
         await QueueAsync(application.Id,
@@ -462,7 +459,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     {
         if (!CanAct || !ShowReinstallAction || ConfirmAsync is null || SelectedApplication is not { } application
             || application.Model.CurrentRevisionId is not { } revisionId) return;
-        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix + ".catalog.confirm_reinstall", application.Name))) return;
+        if (!await ConfirmAsync(Message(DeploymentText.Prefix + ".catalog.confirm_reinstall", application.Name))) return;
         await QueueAsync(application.Id, key => client.ReinstallCatalogAsync(application.Id,
             new ReinstallCatalogApplicationRequest(revisionId, Confirmed: true), key));
     }
@@ -472,11 +469,11 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     {
         if (IsBusy) return;
         IsBusy = true;
-        ErrorText = LocalizedStatus.Literal(string.Empty);
+        ErrorText = DeploymentMessage.Literal(string.Empty);
         try
         {
             var operation = await enqueue(Guid.NewGuid().ToString("N"));
-            ActiveOperation = new OperationRowViewModel(operation, LocalizedText.Get);
+            ActiveOperation = new OperationRowViewModel(operation, Localize);
             await PollAsync(applicationId, operation, deleting);
         }
         catch (Exception exception) when (IsExpected(exception))
@@ -497,7 +494,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         {
             var cancelled = await client.CancelOperationAsync(operation.Id, Guid.NewGuid().ToString("N"));
             ActiveOperation = Row(cancelled);
-            StatusText = LocalizedStatus.Key(DeploymentText.Prefix + ".status.cancel_requested");
+            StatusText = Message(DeploymentText.Prefix + ".status.cancel_requested");
         }
         catch (Exception exception) when (IsExpected(exception))
         {
@@ -518,8 +515,8 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         var current = operation;
         while (current.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
         {
-            ActiveOperation = new OperationRowViewModel(current, LocalizedText.Get);
-            OperationText = LocalizedStatus.Key(DeploymentText.Enum(DeploymentText.StagePrefix, current.Stage));
+            ActiveOperation = new OperationRowViewModel(current, Localize);
+            OperationText = Message(DeploymentText.Enum(DeploymentText.StagePrefix, current.Stage));
             try { await Task.Delay(PollInterval, token); }
             catch (OperationCanceledException) { return; }
             try
@@ -535,9 +532,9 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
             }
         }
 
-        ActiveOperation = new OperationRowViewModel(current, LocalizedText.Get);
-        OperationText = LocalizedStatus.Key(DeploymentText.Enum(DeploymentText.StatePrefix, current.State));
-        if (current.ProblemCode is { Length: > 0 } problem) ErrorText = LocalizedStatus.Key(problem);
+        ActiveOperation = new OperationRowViewModel(current, Localize);
+        OperationText = Message(DeploymentText.Enum(DeploymentText.StatePrefix, current.State));
+        if (current.ProblemCode is { Length: > 0 } problem) ErrorText = Message(problem);
 
         // A deleted application no longer exists, so the selection is dropped before reloading.
         if (deleting && current.State == DeploymentOperationState.Succeeded)
@@ -558,7 +555,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// from the history list too — not only from the wizard, whose error disappears when it closes.
     /// </summary>
     private OperationRowViewModel Row(DeploymentOperationDto operation) =>
-        new(operation, LocalizedText.Get, client.GetOperationDiagnosticsAsync);
+        new(operation, Localize, client.GetOperationDiagnosticsAsync);
 
     /// <summary>
     /// The address is the one field an operator routinely needs elsewhere (a browser, a curl, a log
@@ -571,7 +568,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         try
         {
             await CopyToClipboardAsync(address);
-            StatusText = LocalizedStatus.Key(DeploymentText.Prefix + ".status.address_copied");
+            StatusText = Message(DeploymentText.Prefix + ".status.address_copied");
         }
         catch (Exception exception) when (IsExpected(exception))
         {
@@ -609,7 +606,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
             IsLogTruncated = logs.Truncated;
             OnPropertyChanged(nameof(HasLog));
             OnPropertyChanged(nameof(LogText));
-            StatusText = LocalizedStatus.Format(DeploymentText.Prefix + ".status.logs_loaded", LogLines.Count);
+            StatusText = Message(DeploymentText.Prefix + ".status.logs_loaded", LogLines.Count);
         }
         catch (Exception exception) when (IsExpected(exception))
         {
@@ -661,15 +658,15 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         OnPropertyChanged(nameof(CanActOnSelection));
     }
 
-    partial void OnErrorTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasError));
+    partial void OnErrorTextChanged(DeploymentMessage value) => OnPropertyChanged(nameof(HasError));
 
-    partial void OnStatusTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasStatus));
+    partial void OnStatusTextChanged(DeploymentMessage value) => OnPropertyChanged(nameof(HasStatus));
 
     private async Task SelectAsync(Guid applicationId)
     {
         try
         {
-            ErrorText = LocalizedStatus.Literal(string.Empty);
+            ErrorText = DeploymentMessage.Literal(string.Empty);
             await LoadSnapshotAsync(applicationId);
         }
         catch (Exception exception) when (IsExpected(exception))
@@ -684,7 +681,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         try
         {
             Applications.Clear();
-            foreach (var application in applications) Applications.Add(new ApplicationRowViewModel(application, LocalizedText.Get));
+            foreach (var application in applications) Applications.Add(new ApplicationRowViewModel(application, Localize));
             SelectedApplication = preferred is { } id
                 ? Applications.FirstOrDefault(row => row.Id == id) ?? Applications.FirstOrDefault()
                 : Applications.FirstOrDefault();
@@ -761,14 +758,14 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         // machine with no registered handler fails the shell call rather than the HTTP call.
         or System.ComponentModel.Win32Exception;
 
-    private static LocalizedStatus Describe(Exception exception) => exception switch
+    private DeploymentMessage Describe(Exception exception) => exception switch
     {
-        ApplicationDeploymentClientException failure => LocalizedStatus.Key(failure.ProblemCode),
+        ApplicationDeploymentClientException failure => Message(failure.ProblemCode),
         // Handing the address to the default browser is the one action here that leaves the client
         // entirely, so a failure is the host having no registered browser rather than a lost
         // connection, and it must not be reported as one.
         System.ComponentModel.Win32Exception =>
-            LocalizedStatus.Key(DeploymentText.Prefix + ".error.open_address_failed"),
-        _ => LocalizedStatus.Key(DeploymentText.Prefix + ".error.transport"),
+            Message(DeploymentText.Prefix + ".error.open_address_failed"),
+        _ => Message(DeploymentText.Prefix + ".error.transport"),
     };
 }

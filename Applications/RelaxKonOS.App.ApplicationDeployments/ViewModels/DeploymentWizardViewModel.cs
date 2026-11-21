@@ -1,4 +1,3 @@
-using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -6,10 +5,9 @@ using Avalonia.Threading;
 using RelaxKonOS.Protocol.Hubs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels;
+namespace RelaxKonOS.App.ApplicationDeployments.ViewModels;
 
 /// <summary>Which of the three wizard intents is being carried out.</summary>
 public enum DeploymentWizardIntent
@@ -52,10 +50,10 @@ public enum DeploymentWizardStep
 /// deployment — because the final step is the operation's own progress; the wizard is what turns a
 /// form into one durable operation and then observes it to a terminal state.
 ///
-/// It derives from <see cref="LocalizedObservableObject"/> so validation and problem text held as
+/// It derives from <see cref="DeploymentObservableObject"/> so validation and problem text held as
 /// resource keys re-resolve when the display language changes while the wizard is open.
 /// </summary>
-public sealed partial class DeploymentWizardViewModel : LocalizedObservableObject
+public sealed partial class DeploymentWizardViewModel : DeploymentObservableObject
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1.5);
     private readonly IServerApplicationDeployments client;
@@ -71,13 +69,18 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         IServerApplicationDeployments client,
         DeploymentWizardIntent intent,
         IReadOnlyList<ApplicationDeploymentTemplateDto> templates,
-        ApplicationDto? existing = null)
+        Func<string, string> localize,
+        ApplicationDto? existing = null) : base(localize)
     {
         this.client = client;
         this.existing = existing;
         applicationId = existing?.Id;
         Intent = intent;
         foreach (var template in templates) Templates.Add(template);
+
+        SourceKinds = Options<ApplicationSourceKind>(DeploymentText.SourcePrefix);
+        WorkloadKinds = Options<ApplicationWorkloadKind>(DeploymentText.WorkloadPrefix);
+        ReadinessLevels = Options<ApplicationReadinessLevel>(DeploymentText.ReadinessPrefix);
 
         // A pick-list binds the whole option object, so the three selections are resolved here and the
         // enum each one carries stays a read-only projection. The scalar fields are filled afterwards so
@@ -120,6 +123,9 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         ValidateCurrentStep();
     }
 
+    private IReadOnlyList<DeploymentOption<TValue>> Options<TValue>(string prefix) where TValue : struct, Enum =>
+        Enum.GetValues<TValue>().Select(value => new DeploymentOption<TValue>(value, Localize(DeploymentText.Enum(prefix, value)))).ToArray();
+
     private static DeploymentOption<TValue> Match<TValue>(IReadOnlyList<DeploymentOption<TValue>> options, TValue value)
         where TValue : struct =>
         options.FirstOrDefault(option => EqualityComparer<TValue>.Default.Equals(option.Value, value)) ?? options[0];
@@ -128,17 +134,11 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     public ObservableCollection<ApplicationDeploymentTemplateDto> Templates { get; } = [];
 
     /// <summary>Localized pick-lists for the three enum choices the wizard presents.</summary>
-    public IReadOnlyList<DeploymentOption<ApplicationSourceKind>> SourceKinds { get; } =
-        [.. Enum.GetValues<ApplicationSourceKind>().Select(kind =>
-            new DeploymentOption<ApplicationSourceKind>(kind, LocalizedText.Get(DeploymentText.Enum(DeploymentText.SourcePrefix, kind))))];
+    public IReadOnlyList<DeploymentOption<ApplicationSourceKind>> SourceKinds { get; }
 
-    public IReadOnlyList<DeploymentOption<ApplicationWorkloadKind>> WorkloadKinds { get; } =
-        [.. Enum.GetValues<ApplicationWorkloadKind>().Select(kind =>
-            new DeploymentOption<ApplicationWorkloadKind>(kind, LocalizedText.Get(DeploymentText.Enum(DeploymentText.WorkloadPrefix, kind))))];
+    public IReadOnlyList<DeploymentOption<ApplicationWorkloadKind>> WorkloadKinds { get; }
 
-    public IReadOnlyList<DeploymentOption<ApplicationReadinessLevel>> ReadinessLevels { get; } =
-        [.. Enum.GetValues<ApplicationReadinessLevel>().Select(level =>
-            new DeploymentOption<ApplicationReadinessLevel>(level, LocalizedText.Get(DeploymentText.Enum(DeploymentText.ReadinessPrefix, level))))];
+    public IReadOnlyList<DeploymentOption<ApplicationReadinessLevel>> ReadinessLevels { get; }
 
     /// <summary>Assigned by the app shell to pick a local archive and return a readable stream for upload.</summary>
     public Func<Task<LocalDeploymentArchive?>>? PickLocalArchiveAsync { get; set; }
@@ -148,8 +148,8 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     public Action? CloseRequested { get; set; }
 
     [ObservableProperty] private int _stepIndex;
-    [ObservableProperty] private LocalizedStatus _statusText;
-    [ObservableProperty] private LocalizedStatus _errorText;
+    [ObservableProperty] private DeploymentMessage _statusText;
+    [ObservableProperty] private DeploymentMessage _errorText;
     [ObservableProperty] private bool _isBusy;
 
     // --- Definition ---------------------------------------------------------------------------
@@ -204,11 +204,11 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
     // --- Preview and progress -----------------------------------------------------------------
     [ObservableProperty] private bool _deployNow = true;
-    [ObservableProperty] private LocalizedStatus _previewText;
-    [ObservableProperty] private LocalizedStatus _operationText;
+    [ObservableProperty] private DeploymentMessage _previewText;
+    [ObservableProperty] private DeploymentMessage _operationText;
     [ObservableProperty] private string _progressText = string.Empty;
     [ObservableProperty] private string _liveLogText = string.Empty;
-    [ObservableProperty] private LocalizedStatus _liveLogStatus;
+    [ObservableProperty] private DeploymentMessage _liveLogStatus;
     [ObservableProperty] private bool _isLiveLogTruncated;
     [ObservableProperty] private bool _isUploading;
     [ObservableProperty] private double _uploadPercent;
@@ -324,7 +324,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         {
             ArchiveReferenceId = string.Empty;
             ArchiveFileName = string.Empty;
-            StatusText = LocalizedStatus.Literal(string.Empty);
+            StatusText = DeploymentMessage.Literal(string.Empty);
         }
         ValidateCurrentStep();
     }
@@ -356,7 +356,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     {
         if (IsImageTagLookupRunning || !RequiresImageReference || string.IsNullOrWhiteSpace(ImageReference)) return;
         IsImageTagLookupRunning = true;
-        ImageTagLookupText = LocalizedText.Get(DeploymentText.Prefix + ".image_tags_loading");
+        ImageTagLookupText = Localize(DeploymentText.Prefix + ".image_tags_loading");
         try
         {
             var result = await client.ListImageTagsAsync(ImageReference.Trim());
@@ -365,15 +365,15 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             OnPropertyChanged(nameof(HasImageTags));
             ImageTagLookupText = result.Available
                 ? result.Tags.Count > 0
-                    ? LocalizedText.Format(DeploymentText.Prefix + ".image_tags_found", result.Tags.Count)
-                    : LocalizedText.Get(DeploymentText.Prefix + ".image_tags_empty")
-                : LocalizedText.Get(DeploymentText.Prefix + ".image_tags_unavailable");
+                    ? Format(DeploymentText.Prefix + ".image_tags_found", result.Tags.Count)
+                    : Localize(DeploymentText.Prefix + ".image_tags_empty")
+                : Localize(DeploymentText.Prefix + ".image_tags_unavailable");
         }
         catch (Exception exception) when (IsExpected(exception))
         {
             ImageTags.Clear();
             OnPropertyChanged(nameof(HasImageTags));
-            ImageTagLookupText = LocalizedText.Get(DeploymentText.Prefix + ".image_tags_unavailable");
+            ImageTagLookupText = Localize(DeploymentText.Prefix + ".image_tags_unavailable");
         }
         finally { IsImageTagLookupRunning = false; }
     }
@@ -391,7 +391,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         IsUploading = true;
         UploadPercent = 0;
         UploadIndeterminate = true;
-        UploadProgressText = LocalizedText.Get(DeploymentText.Prefix + ".upload_starting");
+        UploadProgressText = Localize(DeploymentText.Prefix + ".upload_starting");
         try
         {
             await StageAsync(async () =>
@@ -411,9 +411,9 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         UploadPercent = progress.TotalBytes is > 0 ? Math.Clamp(100d * progress.Bytes / progress.TotalBytes.Value, 0, 100) : 0;
         var speed = progress.Bytes / Math.Max(0.001, progress.Elapsed.TotalSeconds);
         UploadProgressText = progress.TotalBytes is > 0 && progress.Bytes >= progress.TotalBytes.Value
-            ? LocalizedText.Get(DeploymentText.Prefix + ".upload_staging")
-            : progress.TotalBytes is null ? LocalizedText.Format(DeploymentText.Prefix + ".upload_progress_bytes", FormatBytes(progress.Bytes), FormatBytes(speed))
-            : LocalizedText.Format(DeploymentText.Prefix + ".upload_progress", FormatBytes(progress.Bytes),
+            ? Localize(DeploymentText.Prefix + ".upload_staging")
+            : progress.TotalBytes is null ? Format(DeploymentText.Prefix + ".upload_progress_bytes", FormatBytes(progress.Bytes), FormatBytes(speed))
+            : Format(DeploymentText.Prefix + ".upload_progress", FormatBytes(progress.Bytes),
                 progress.TotalBytes is { } total ? FormatBytes(total) : "—", UploadPercent.ToString("F1", CultureInfo.CurrentCulture), FormatBytes(speed));
     }
 
@@ -486,13 +486,13 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             {
                 Submitted = true;
                 IsFinished = true;
-                OperationText = LocalizedStatus.Key(Intent == DeploymentWizardIntent.EditDefinition
+                OperationText = Message(Intent == DeploymentWizardIntent.EditDefinition
                     ? DeploymentText.Prefix + ".definition_saved"
                     : DeploymentText.Prefix + ".definition_created");
                 return;
             }
 
-            OperationText = LocalizedStatus.Key(DeploymentText.Prefix + ".queuing");
+            OperationText = Message(DeploymentText.Prefix + ".queuing");
             var operation = await client.DeployAsync(targetId!.Value,
                 new DeployApplicationRequest(BuildSource(), expectedUpdatedAt!.Value, Confirmed: true), deploymentIdempotencyKey);
             Submitted = true;
@@ -528,18 +528,18 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         var token = polling.Token;
         var current = operation;
         liveVersion = -1;
-        LiveLogStatus = LocalizedStatus.Key(DeploymentText.Prefix + ".logs_connecting");
+        LiveLogStatus = Message(DeploymentText.Prefix + ".logs_connecting");
         await using var live = client.WatchLogs(operation.OperationId,
             snapshot => Dispatcher.UIThread.Post(() =>
             {
                 if (snapshot.OperationId != operation.OperationId || snapshot.Version <= liveVersion) return;
                 liveVersion = snapshot.Version;
                 LiveLogText = string.Join(Environment.NewLine, snapshot.Lines.Select(line =>
-                    $"{line.Timestamp.LocalDateTime:HH:mm:ss} {(line.Stage is { } stage ? LocalizedText.Get(DeploymentText.Enum(DeploymentText.StagePrefix, stage)) + " " : string.Empty)}{line.Message}"));
+                    $"{line.Timestamp.LocalDateTime:HH:mm:ss} {(line.Stage is { } stage ? Localize(DeploymentText.Enum(DeploymentText.StagePrefix, stage)) + " " : string.Empty)}{line.Message}"));
                 IsLiveLogTruncated = snapshot.Truncated;
             }), connected => Dispatcher.UIThread.Post(() =>
             {
-                if (!IsFinished) LiveLogStatus = LocalizedStatus.Key(DeploymentText.Prefix + (connected ? ".logs_live" : ".logs_connecting"));
+                if (!IsFinished) LiveLogStatus = Message(DeploymentText.Prefix + (connected ? ".logs_live" : ".logs_connecting"));
             }), token);
         while (current.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
         {
@@ -551,7 +551,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
                 var refreshed = await client.GetOperationAsync(current.OperationId, token);
                 if (refreshed is null) break;
                 current = refreshed;
-                ErrorText = LocalizedStatus.Literal(string.Empty);
+                ErrorText = DeploymentMessage.Literal(string.Empty);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
             catch (Exception exception) when (exception is HttpRequestException or IOException or OperationCanceledException)
@@ -559,7 +559,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
                 // Keep the SignalR observer alive during transient REST failures too. The durable
                 // operation continues on the server; only a new read can establish its outcome.
                 ErrorText = Describe(exception);
-                ProgressText = LocalizedText.Get(DeploymentText.Prefix + ".progress_unavailable");
+                ProgressText = Localize(DeploymentText.Prefix + ".progress_unavailable");
                 Operation = current;
                 continue;
             }
@@ -567,7 +567,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             {
                 // Non-transient permission/protocol errors need operator attention.
                 ErrorText = Describe(exception);
-                ProgressText = LocalizedText.Get(DeploymentText.Prefix + ".progress_unavailable");
+                ProgressText = Localize(DeploymentText.Prefix + ".progress_unavailable");
                 Operation = current;
                 return;
             }
@@ -575,18 +575,18 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
         Operation = current;
         IsFinished = true;
-        LiveLogStatus = LocalizedStatus.Key(DeploymentText.Prefix + ".logs_finished");
+        LiveLogStatus = Message(DeploymentText.Prefix + ".logs_finished");
         ReportStage(current);
         if (current.ProblemCode is { Length: > 0 } problem)
         {
-            ErrorText = LocalizedStatus.Key(problem);
+            ErrorText = Message(problem);
             // The problem code names the failure; the step's own output is what explains it. Fetching it
             // here means the operator never has to know that a second request exists.
             await LoadDiagnosticsAsync(current.OperationId, token);
         }
         else if (current.RecoveryProblemCode is { Length: > 0 } recovery)
         {
-            ErrorText = LocalizedStatus.Key(recovery);
+            ErrorText = Message(recovery);
         }
     }
 
@@ -614,28 +614,28 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             ? percent.ToString(CultureInfo.CurrentCulture) + "%"
             : string.Empty;
         if (operation.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
-            OperationText = LocalizedStatus.Key(DeploymentText.Enum(DeploymentText.StagePrefix, operation.Stage));
+            OperationText = Message(DeploymentText.Enum(DeploymentText.StagePrefix, operation.Stage));
         else
-            OperationText = LocalizedStatus.Key(DeploymentText.Enum(DeploymentText.StatePrefix, operation.State));
+            OperationText = Message(DeploymentText.Enum(DeploymentText.StatePrefix, operation.State));
     }
 
     private async Task StageAsync(Func<Task<DeploymentStagedFileDto>> stage)
     {
         IsBusy = true;
-        ErrorText = LocalizedStatus.Literal(string.Empty);
+        ErrorText = DeploymentMessage.Literal(string.Empty);
         try
         {
             var staged = await stage();
             ArchiveReferenceId = staged.ReferenceId;
             ArchiveFileName = staged.FileName;
-            StatusText = LocalizedStatus.Format(DeploymentText.Prefix + ".archive_staged", staged.FileName);
-            if (IsUploading) UploadProgressText = LocalizedText.Format(DeploymentText.Prefix + ".archive_staged", staged.FileName);
+            StatusText = Message(DeploymentText.Prefix + ".archive_staged", staged.FileName);
+            if (IsUploading) UploadProgressText = Format(DeploymentText.Prefix + ".archive_staged", staged.FileName);
             ValidateCurrentStep();
         }
         catch (OperationCanceledException) when (upload?.IsCancellationRequested == true)
         {
-            ErrorText = LocalizedStatus.Literal(string.Empty);
-            UploadProgressText = LocalizedText.Get(DeploymentText.Prefix + ".upload_cancelled");
+            ErrorText = DeploymentMessage.Literal(string.Empty);
+            UploadProgressText = Localize(DeploymentText.Prefix + ".upload_cancelled");
         }
         catch (Exception exception) when (IsExpected(exception))
         {
@@ -743,16 +743,16 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             if (step is DeploymentWizardStep.Preview or DeploymentWizardStep.Progress) continue;
             if (Validate(step) is { } problem)
             {
-                ErrorText = LocalizedStatus.Key(problem);
+                ErrorText = Message(problem);
                 return false;
             }
         }
         if (PublishesRevision && ValidatePreviewReadiness() is { } previewProblem)
         {
-            ErrorText = LocalizedStatus.Key(previewProblem);
+            ErrorText = Message(previewProblem);
             return false;
         }
-        ErrorText = LocalizedStatus.Literal(string.Empty);
+        ErrorText = DeploymentMessage.Literal(string.Empty);
         return true;
     }
 
@@ -766,10 +766,10 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     {
         if (Validate((DeploymentWizardStep)StepIndex) is { } problem)
         {
-            ErrorText = LocalizedStatus.Key(problem);
+            ErrorText = Message(problem);
             return false;
         }
-        ErrorText = LocalizedStatus.Literal(string.Empty);
+        ErrorText = DeploymentMessage.Literal(string.Empty);
         return true;
     }
 
@@ -874,39 +874,39 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     {
         var source = SourceKind == ApplicationSourceKind.Image
             ? ImageReference
-            : ArchiveFileName.Length > 0 ? ArchiveFileName : LocalizedText.Get(DeploymentText.Prefix + ".preview_no_archive");
-        var site = SiteId.Length > 0 ? SiteId : LocalizedText.Get(DeploymentText.Prefix + ".preview_site_none");
-        PreviewText = LocalizedStatus.Join("\n",
+            : ArchiveFileName.Length > 0 ? ArchiveFileName : Localize(DeploymentText.Prefix + ".preview_no_archive");
+        var site = SiteId.Length > 0 ? SiteId : Localize(DeploymentText.Prefix + ".preview_site_none");
+        PreviewText = DeploymentMessage.Join("\n",
         [
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_name", Name),
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_source",
-                LocalizedText.Get(DeploymentText.Enum(DeploymentText.SourcePrefix, SourceKind)), source),
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_entry", ProgramEntry.Length > 0 ? ProgramEntry : "—"),
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_endpoint", BindAddress,
+            Message(DeploymentText.Prefix + ".preview_name", Name),
+            Message(DeploymentText.Prefix + ".preview_source",
+                Localize(DeploymentText.Enum(DeploymentText.SourcePrefix, SourceKind)), source),
+            Message(DeploymentText.Prefix + ".preview_entry", ProgramEntry.Length > 0 ? ProgramEntry : "—"),
+            Message(DeploymentText.Prefix + ".preview_endpoint", BindAddress,
                 HostPort.Length > 0 ? HostPort : "—", ContainerPort),
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_readiness",
-                LocalizedText.Get(DeploymentText.Enum(DeploymentText.ReadinessPrefix, ReadinessLevel)),
+            Message(DeploymentText.Prefix + ".preview_readiness",
+                Localize(DeploymentText.Enum(DeploymentText.ReadinessPrefix, ReadinessLevel)),
                 HealthCheckPath.Length > 0 ? HealthCheckPath : "—"),
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_volumes", SplitLines(VolumesText).Length),
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_configuration",
+            Message(DeploymentText.Prefix + ".preview_volumes", SplitLines(VolumesText).Length),
+            Message(DeploymentText.Prefix + ".preview_configuration",
                 SplitLines(ConfigText).Length, SplitLines(SecretConfigText).Length),
-            LocalizedStatus.Format(DeploymentText.Prefix + ".preview_site", site),
-            LocalizedStatus.Key(DeploymentText.Prefix + ".preview_replacement_warning"),
+            Message(DeploymentText.Prefix + ".preview_site", site),
+            Message(DeploymentText.Prefix + ".preview_replacement_warning"),
         ]);
     }
 
-    partial void OnErrorTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasError));
+    partial void OnErrorTextChanged(DeploymentMessage value) => OnPropertyChanged(nameof(HasError));
 
-    partial void OnStatusTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasStatus));
+    partial void OnStatusTextChanged(DeploymentMessage value) => OnPropertyChanged(nameof(HasStatus));
 
     private static bool IsExpected(Exception exception) => exception
         is ApplicationDeploymentClientException or HttpRequestException or InvalidOperationException
         or IOException or UnauthorizedAccessException or TaskCanceledException;
 
-    private static LocalizedStatus Describe(Exception exception) => exception switch
+    private DeploymentMessage Describe(Exception exception) => exception switch
     {
-        ApplicationDeploymentClientException failure => LocalizedStatus.Key(failure.ProblemCode),
-        _ => LocalizedStatus.Key(DeploymentText.Prefix + ".error.transport"),
+        ApplicationDeploymentClientException failure => Message(failure.ProblemCode),
+        _ => Message(DeploymentText.Prefix + ".error.transport"),
     };
 
     private static string[] SplitLines(string text) => string.IsNullOrWhiteSpace(text)

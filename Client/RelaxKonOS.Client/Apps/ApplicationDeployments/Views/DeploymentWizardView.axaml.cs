@@ -1,5 +1,5 @@
 using Avalonia.Controls;
-using RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels;
+using RelaxKonOS.App.ApplicationDeployments.ViewModels;
 using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.Client.Apps.ApplicationDeployments.Views;

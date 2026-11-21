@@ -1,10 +1,13 @@
+using Avalonia.Utilities;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.Client.Services;
 using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
-using RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels;
+using RelaxKonOS.App.ApplicationDeployments.ViewModels;
 using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
@@ -51,7 +54,10 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         // The server-side file picker is optional: without a file-services client the wizard still
         // offers the local upload path, which is the one that never requires a server browse.
         var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var viewModel = new ApplicationDeploymentsViewModel(client, context.Permissions);
+        var localization = context.Services.GetRequiredService<RelaxKonOS.Client.Services.LocalizationService>();
+        var viewModel = new ApplicationDeploymentsViewModel(client, context.Permissions, LocalizedText.Get);
+        WeakEventHandlerManager.Subscribe<RelaxKonOS.Client.Services.LocalizationService, SystemLanguageChangedEventArgs, DeploymentObservableObject>(
+            localization, nameof(RelaxKonOS.Client.Services.LocalizationService.LanguageChanged), viewModel.OnLanguageChanged);
         ManagedWindow? window = null;
         var view = ApplicationDeploymentsWorkspace.Create(viewModel);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.application-deployments.display_name"),
@@ -70,9 +76,14 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
             return confirmed;
         };
 
-        viewModel.ShowWizardAsync = wizard => context.ShowDialogAsync<bool>(window!,
+        viewModel.ShowWizardAsync = wizard =>
+        {
+            WeakEventHandlerManager.Subscribe<RelaxKonOS.Client.Services.LocalizationService, SystemLanguageChangedEventArgs, DeploymentObservableObject>(
+                localization, nameof(RelaxKonOS.Client.Services.LocalizationService.LanguageChanged), wizard.OnLanguageChanged);
+            return context.ShowDialogAsync<bool>(window!,
             LocalizedText.Get("application_deployments.wizard.title"),
-            dialog => new DeploymentWizardView(wizard, dialog), new Size(780, 740));
+                dialog => new DeploymentWizardView(wizard, dialog), new Size(780, 740));
+        };
         viewModel.ShowCatalogAsync = releases => context.ShowDialogAsync<CatalogApplicationInstallDto?>(window!,
             LocalizedText.Get("application_deployments.catalog.title"),
             dialog => new ApplicationCatalogView(client, releases, session.CurrentServer, dialog), new Size(600, 680));

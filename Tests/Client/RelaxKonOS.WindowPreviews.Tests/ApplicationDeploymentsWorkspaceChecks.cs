@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.AppPermissions;
 using System.Reflection;
@@ -438,7 +439,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
         var client = DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>();
         stub = (DeploymentHostStub)(object)client;
         stub.Seed(empty, busy);
-        var model = new ApplicationDeploymentsViewModel(client, new DeploymentTestPermissions());
+        var model = new ApplicationDeploymentsViewModel(client, new DeploymentTestPermissions(), RelaxKonOS.Client.Localization.LocalizedText.Get);
         model.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         return model;
     }
