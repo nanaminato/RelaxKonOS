@@ -65,14 +65,25 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         var sdkWindow = sdkContext?.Windows.ShowWindow(title, view, bounds, Manifest.IconGlyph);
         var window = sdkWindow?.Window ?? context.ShowWindow(title, view, bounds, Manifest.IconGlyph);
         view.AttachWindowHeader(window);
-        EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
-        closed = (_, closedWindow) =>
+        if (sdkWindow is not null)
+        {
+            sdkWindow.Closed.Register(viewModel.Dispose);
+            DraftWindowCloseGuard.Attach(sdkWindow, IsBusy, HasChanges);
+        }
+        else
+        {
+            context.WindowManager.WindowClosed += Closed;
+            DraftWindowCloseGuard.Attach(context.WindowManager, window, IsBusy, HasChanges);
+        }
+
+        bool IsBusy() => viewModel.IsSaving || viewModel.IsTreeBusy;
+        bool HasChanges() => viewModel.HasUnsavedDocuments;
+        void Closed(object? sender, RelaxKonOS.WindowManager.ManagedWindow closedWindow)
         {
             if (!ReferenceEquals(closedWindow, window)) return;
-            context.WindowManager.WindowClosed -= closed;
+            context.WindowManager.WindowClosed -= Closed;
             viewModel.Dispose();
-        };
-        context.WindowManager.WindowClosed += closed;
+        }
         window.KeyDown += (_, e) =>
         {
             if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
@@ -90,12 +101,6 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, viewModel.SaveAsCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, viewModel.CloseDocumentCommand);
         };
-        // The window guard covers every open tab, not just the active one, so closing the window
-        // cannot silently drop a background document; a write in flight blocks the close.
-        DraftWindowCloseGuard.Attach(context.WindowManager, window,
-            isBusy: () => viewModel.IsSaving || viewModel.IsTreeBusy,
-            hasChanges: () => viewModel.HasUnsavedDocuments);
-
         CodeEditorSessionDialogs.Configure(context, window, viewModel, files, sdkFiles, sdkWindow);
 
         if (!string.IsNullOrWhiteSpace(path))

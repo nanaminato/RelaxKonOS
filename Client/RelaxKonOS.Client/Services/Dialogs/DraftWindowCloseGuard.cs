@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.WindowManager;
@@ -14,6 +15,12 @@ namespace RelaxKonOS.Client.Services.Dialogs;
 /// </summary>
 public static class DraftWindowCloseGuard
 {
+    public static void Attach(IExternalAppWindowHandle owner, Func<bool> isBusy, Func<bool> hasChanges)
+        => Attach(owner.Window, isBusy, hasChanges, () => owner.ConfirmAsync(
+            LocalizedText.Get("common.discard_title"),
+            LocalizedText.Get("common.discard_message"),
+            LocalizedText.Get("common.discard")));
+
     /// <summary>Guards a window whose unsaved state is changes to be discarded.</summary>
     public static void Attach(IWindowManager manager, ManagedWindow window, Func<bool> isBusy, Func<bool> hasChanges)
         => Attach(manager, window, isBusy, hasChanges,
@@ -33,16 +40,19 @@ public static class DraftWindowCloseGuard
         string title,
         string message,
         string confirmLabel)
+        => Attach(window, isBusy, hasChanges, () => manager.ShowDialogAsync<bool>(window, title,
+            confirmation => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, result => confirmation.Close(result), confirmLabel)
+            }));
+
+    private static void Attach(ManagedWindow window, Func<bool> isBusy, Func<bool> hasChanges, Func<Task<bool>> confirm)
     {
         window.CanCloseAsync = async () =>
         {
             if (isBusy()) return false;
             if (!hasChanges()) return true;
-            var confirmed = await manager.ShowDialogAsync<bool>(window, title,
-                confirmation => new ConfirmDialogView
-                {
-                    DataContext = new ConfirmDialogViewModel(message, result => confirmation.Close(result), confirmLabel)
-                });
+            var confirmed = await confirm();
             return confirmed && !isBusy();
         };
     }

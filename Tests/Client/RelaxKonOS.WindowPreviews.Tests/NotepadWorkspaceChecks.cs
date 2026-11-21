@@ -12,6 +12,7 @@ using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
@@ -190,8 +191,25 @@ internal static class NotepadWorkspaceChecks
                 Wait(discard);
                 Check(!discard.Result && manager.Windows.Contains(pickerOwner.Window),
                     "Cancelling the SDK confirmation keeps the editor window open.");
+
+                var busy = true;
+                var closed = pickerOwner.Closed;
+                DraftWindowCloseGuard.Attach(pickerOwner, () => busy, () => true);
+                var blocked = pickerOwner.Window.CanCloseAsync!();
+                Wait(blocked);
+                Check(!blocked.Result && !manager.Windows.Any(item => item.IsModalDialog),
+                    "The SDK close guard blocks a busy editor before opening a dialog.");
+                busy = false;
+                manager.Close(pickerOwner.Window);
+                Dialog<ConfirmDialogViewModel>().NoCommand.Execute(null);
+                Pump(() => !manager.Windows.Any(item => item.IsModalDialog));
+                Check(manager.Windows.Contains(pickerOwner.Window) && !closed.IsCancellationRequested,
+                    "Cancelling the SDK close guard preserves the editor and its lifetime.");
+                manager.Close(pickerOwner.Window);
+                Dialog<ConfirmDialogViewModel>().YesCommand.Execute(null);
+                Pump(() => !manager.Windows.Contains(pickerOwner.Window));
+                Check(closed.IsCancellationRequested, "Confirming the SDK close guard ends the window lifetime.");
             }
-            manager.ForceClose(pickerOwner.Window);
 
             var settingsTask = model.OpenSettingsCommand.ExecuteAsync(null);
             Pump(() => manager.Windows.Any(item => item.View.Content is NotepadSettingsView));
