@@ -930,8 +930,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         {
             if (SelectedStoreItem is not { } item) return;
             StoreStatus = LocalizedText.Get("server_modules.store_downloading");
-            var upload = await client.DownloadStorePackageAsync(item.SourceId, item.ReleaseId);
-            PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
+            PackagePlan = await client.PreparePackageAsync(item);
             PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
         });
         await ReviewPackagePlanAsync();

@@ -221,14 +221,14 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return page;
     }
 
-    public async Task<ServerModuleStorePageDto> SearchStoreAsync(string? query, string? sourceId = null)
+    public async Task<ServerModuleStorePageDto> SearchStoreAsync(string? query, string? sourceId = null, int offset = 0)
     {
-        Require(query is null or { Length: <= 128 } && (sourceId is null || ValidIds([sourceId])));
-        var route = ServerModuleManagementRoutes.ModuleStoreSearch + "?limit=25";
+        Require((query is null or { Length: <= 128 }) && (sourceId is null || ValidIds([sourceId])) && offset >= 0);
+        var route = FormattableString.Invariant($"{ServerModuleManagementRoutes.ModuleStoreSearch}?limit=25&offset={offset}");
         if (!string.IsNullOrWhiteSpace(query)) route += "&q=" + Uri.EscapeDataString(query);
         if (!string.IsNullOrWhiteSpace(sourceId)) route += "&sourceId=" + Uri.EscapeDataString(sourceId);
         var page = await SendAsync<ServerModuleStorePageDto>(HttpMethod.Get, route);
-        Require(page.Items is { Count: <= 50 } && page.NextOffset is null or > 0
+        Require(page.Items is { Count: <= 25 } && (page.NextOffset is null || page.NextOffset > offset)
             && page.BlockedBy is { Count: <= 64 }
             && page.Items.All(item => item is not null && ValidIds([item.SourceId]) && ValidIds([item.ModuleId])
                 && item.Version is { Length: > 0 and <= 32 } && item.ReleaseId is { Length: > 0 and <= 128 }
@@ -307,6 +307,30 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         var plan = await SendAsync<ServerModulePackagePlanDto>(HttpMethod.Post, ServerModuleManagementRoutes.PackageAutoPlan,
             new ServerModulePackageAutoPlanRequest(uploadId));
         ValidatePackagePlan(plan);
+        return plan;
+    }
+
+    public async Task<ServerModulePackagePlanDto> PreparePackageAsync(ServerModuleStoreItemDto release)
+    {
+        var upload = await DownloadStorePackageAsync(release.SourceId, release.ReleaseId);
+        Require(upload.Sha256 == release.ArtifactSha256 && upload.Bytes == release.ArchiveBytes);
+        var plan = await SendAsync<ServerModulePackagePlanDto>(HttpMethod.Post, ServerModuleManagementRoutes.PackagePlans,
+            new ServerModulePackageInstallRequest(release.SourceId, release.ReleaseId, upload.UploadId));
+        ValidatePackagePlan(plan);
+        Require(plan.SourceId == release.SourceId && plan.ReleaseId == release.ReleaseId
+            && plan.ModuleId == release.ModuleId && plan.Version == release.Version
+            && plan.PublisherId == release.PublisherId && plan.ArtifactSha256 == release.ArtifactSha256
+            && plan.ManifestSha256 == release.ManifestSha256 && plan.AppliedOperationId is null);
+        return plan;
+    }
+
+    public async Task<ServerModulePackagePlanDto> ReadPackagePlanAsync(Guid planId)
+    {
+        Require(planId != Guid.Empty);
+        var plan = await SendAsync<ServerModulePackagePlanDto>(HttpMethod.Get,
+            ServerModuleManagementRoutes.PackagePlan.Replace("{planId:guid}", planId.ToString()));
+        ValidatePackagePlan(plan);
+        Require(plan.PlanId == planId);
         return plan;
     }
 
