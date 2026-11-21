@@ -53,7 +53,7 @@ public sealed class ExternalAppContextFactory
     private readonly TextEditorEncodingSettings _textEncoding;
     private readonly IComponentLifecycleClient? _componentLifecycle;
     private readonly IHostElevationBroker? _elevationBroker;
-    private readonly IRegistryClient? _registry;
+    private readonly IServerRegistry? _registry;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -79,7 +79,7 @@ public sealed class ExternalAppContextFactory
         DockerImageMirrorClient dockerMirrors,
         IComponentLifecycleClient? componentLifecycle = null,
         IHostElevationBroker? elevationBroker = null,
-        IRegistryClient? registry = null)
+        IServerRegistry? registry = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;

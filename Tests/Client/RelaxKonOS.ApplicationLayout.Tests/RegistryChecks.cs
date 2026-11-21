@@ -1,3 +1,4 @@
+using IServerRegistry = RelaxKonOS.AppSDK.IServerRegistry;
 using System.Text.Json;
 using Avalonia.Controls;
 using RelaxKonOS.Client.Apps.Registry;
@@ -400,7 +401,7 @@ internal static class RegistryChecks
         Check(condition(), "Registry request did not complete.");
     }
 
-    private sealed class FakeRegistryClient : IRegistryClient
+    private sealed class FakeRegistryClient : IServerRegistry
     {
         private readonly FakeRegistryClient? _root;
         private readonly Guid _target;
@@ -419,8 +420,8 @@ internal static class RegistryChecks
         public RenameRegistryEntryRequest? RenameRequest { get; private set; }
         public FakeRegistryClient() { }
         private FakeRegistryClient(FakeRegistryClient root, Guid target) { _root = root; _target = target; }
-        public IRegistryClient ForServer(Guid instanceId) => throw new NotSupportedException();
-        public IRegistryClient ForUser(Guid targetUserId) => new FakeRegistryClient(Root, targetUserId);
+        public IServerRegistry ForServer(Guid instanceId) => throw new NotSupportedException();
+        public IServerRegistry ForUser(Guid targetUserId) => new FakeRegistryClient(Root, targetUserId);
         public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => Task.FromResult(new RegistryContextDto("server", Root.Owner, "nanami", Root.Workspace, true, null, Guid.NewGuid()));
         public Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<RegistryUserDto>>([
             new(Root.Owner, "nanami", true, Root.Workspace), new(Root.Other, "alice", false, Root.OtherWorkspace)]);

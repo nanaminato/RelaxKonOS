@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
@@ -24,7 +25,7 @@ public sealed class PresentationSettingsChanges
 /// <summary>Current authenticated client's presentation settings. Device geometry never follows another device.</summary>
 public sealed class ClientPresentationPreferences : IDisposable
 {
-    private readonly IRegistryClient _client;
+    private readonly IServerRegistry _client;
     private readonly IAuthSession _session;
     private readonly PresentationSettingsChanges _changes;
     private readonly SemaphoreSlim _writes = new(1, 1);
@@ -52,7 +53,7 @@ public sealed class ClientPresentationPreferences : IDisposable
     public string? ReadError { get; private set; }
     public event EventHandler? Changed;
 
-    public ClientPresentationPreferences(IRegistryClient client, IAuthSession session, PresentationSettingsChanges changes)
+    public ClientPresentationPreferences(IServerRegistry client, IAuthSession session, PresentationSettingsChanges changes)
     {
         _client = client; _session = session; _changes = changes;
         changes.RegistrySaved += OnRegistrySaved;
@@ -151,7 +152,7 @@ public sealed class ClientPresentationPreferences : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static async Task<T> ReadAsync<T>(IRegistryClient client, RegistryScope scope, string path, Action<long>? revision = null)
+    private static async Task<T> ReadAsync<T>(IServerRegistry client, RegistryScope scope, string path, Action<long>? revision = null)
     {
         var values = await client.ListValuesAsync(scope, path);
         if (values.Count == 0) throw new InvalidOperationException($"No presentation settings at {path}.");

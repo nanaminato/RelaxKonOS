@@ -1,3 +1,4 @@
+using IServerRegistry = RelaxKonOS.AppSDK.IServerRegistry;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -154,15 +155,15 @@ internal static class PresentationPreferencesChecks
     }
     private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
 
-    private sealed class Client(Guid owner, Guid workspace, PresentationSessionProxy state, PresentationSettingsChanges changes) : IRegistryClient
+    private sealed class Client(Guid owner, Guid workspace, PresentationSessionProxy state, PresentationSettingsChanges changes) : IServerRegistry
     {
         private readonly Dictionary<(Guid, string), (JsonObject Value, long Revision)> _documents = [];
         public int ReadCount;
         public bool FailReads;
         public Task? PendingRead;
         private Guid Device => ((DeviceDto)state.Values["CurrentDevice"]!).Id;
-        public IRegistryClient ForServer(Guid instanceId) => throw new NotSupportedException();
-        public IRegistryClient ForUser(Guid id) { Check(id == owner, "Wrong settings owner."); return this; }
+        public IServerRegistry ForServer(Guid instanceId) => throw new NotSupportedException();
+        public IServerRegistry ForUser(Guid id) { Check(id == owner, "Wrong settings owner."); return this; }
         public Task<RegistryContextDto> GetContextAsync(CancellationToken ct = default) => Task.FromResult(new RegistryContextDto("https://example.test", owner, "owner", workspace, false, Device, Guid.NewGuid()));
         public async Task<IReadOnlyList<RegistryEntryDto>> ListValuesAsync(RegistryScope scope, string path, CancellationToken ct = default)
         {

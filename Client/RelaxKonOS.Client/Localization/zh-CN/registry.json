@@ -20,6 +20,8 @@
         "registry.scope.workspace": "工作区",
         "registry.scope.user": "用户",
         "registry.scope.device": "设备",
+        "registry.permission.write_required": "需要写入注册表值的权限。",
+        "registry.permission.read_required": "需要读取注册表值的权限。",
         "registry.permission.required": "需要管理员权限",
         "registry.status.loading": "正在加载注册表…",
         "registry.status.empty": "此键没有值。",

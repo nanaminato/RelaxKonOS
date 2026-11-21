@@ -20,6 +20,8 @@
         "registry.scope.workspace": "Workspace",
         "registry.scope.user": "User",
         "registry.scope.device": "Device",
+        "registry.permission.write_required": "Permission to write registry values is required.",
+        "registry.permission.read_required": "Permission to read registry values is required.",
         "registry.permission.required": "Administrator authorization required",
         "registry.status.loading": "Loading registry…",
         "registry.status.empty": "No values in this key.",

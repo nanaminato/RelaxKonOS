@@ -13,7 +13,7 @@ internal static class RegistryCapabilityChecks
     {
         var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
         var session = (EventAlertsAuthFixture)(object)auth;
-        var client = DispatchProxy.Create<IRegistryClient, RegistryCapabilityTransport>();
+        var client = DispatchProxy.Create<IServerRegistry, RegistryCapabilityTransport>();
         var transport = (RegistryCapabilityTransport)(object)client;
         var permissions = new Permission();
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "registry-capability-memory.json"));
@@ -75,14 +75,14 @@ public class RegistryCapabilityTransport : DispatchProxy
 
     protected override object Invoke(MethodInfo? method, object?[]? args)
     {
-        if (method?.Name == nameof(IRegistryClient.ForUser))
+        if (method?.Name == nameof(IServerRegistry.ForUser))
         {
             Target = (Guid)args![0]!;
             return this;
         }
         Requests++;
-        if (method?.Name == nameof(IRegistryClient.GetContextAsync)) return Context.Task;
-        if (method?.Name == nameof(IRegistryClient.CreateKeyAsync) && args?[0] is CreateRegistryKeyRequest request)
+        if (method?.Name == nameof(IServerRegistry.GetContextAsync)) return Context.Task;
+        if (method?.Name == nameof(IServerRegistry.CreateKeyAsync) && args?[0] is CreateRegistryKeyRequest request)
             return Task.FromResult(new RegistryKeyDto(request.Scope, request.Path));
         throw new NotSupportedException(method?.Name);
     }

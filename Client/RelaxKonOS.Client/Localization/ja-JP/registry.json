@@ -20,6 +20,8 @@
         "registry.scope.workspace": "ワークスペース",
         "registry.scope.user": "ユーザー",
         "registry.scope.device": "デバイス",
+        "registry.permission.write_required": "レジストリ値を書き込む権限が必要です。",
+        "registry.permission.read_required": "レジストリ値を読み取る権限が必要です。",
         "registry.permission.required": "管理者の承認が必要です",
         "registry.status.loading": "レジストリを読み込んでいます…",
         "registry.status.empty": "このキーに値はありません。",

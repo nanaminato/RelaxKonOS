@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -7,7 +8,7 @@ namespace RelaxKonOS.Client.Apps.Registry;
 
 public sealed partial class RegistryKeyDialogViewModel : LocalizedObservableObject
 {
-    private readonly IRegistryClient _client;
+    private readonly IServerRegistry _client;
     private readonly Action<bool> _close;
     private readonly Action<RegistryKeyDto> _saved;
     public RegistryScope Scope { get; }
@@ -15,7 +16,7 @@ public sealed partial class RegistryKeyDialogViewModel : LocalizedObservableObje
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private string? _error;
 
-    public RegistryKeyDialogViewModel(RegistryScope scope, string parentPath, IRegistryClient client, Action<bool> close, Action<RegistryKeyDto> saved)
+    public RegistryKeyDialogViewModel(RegistryScope scope, string parentPath, IServerRegistry client, Action<bool> close, Action<RegistryKeyDto> saved)
     { Scope = scope; ParentPath = parentPath; _client = client; _close = close; _saved = saved; }
 
     [RelayCommand]

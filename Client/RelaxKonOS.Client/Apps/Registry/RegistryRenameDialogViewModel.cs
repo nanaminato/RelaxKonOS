@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -13,7 +14,7 @@ namespace RelaxKonOS.Client.Apps.Registry;
 public sealed partial class RegistryRenameDialogViewModel : LocalizedObservableObject
 {
     private readonly RegistryEntryDto _entry;
-    private readonly IRegistryClient _client;
+    private readonly IServerRegistry _client;
     private readonly Action<bool> _close;
     private readonly Action<RegistryEntryDto> _renamed;
 
@@ -24,7 +25,7 @@ public sealed partial class RegistryRenameDialogViewModel : LocalizedObservableO
     public string CurrentName => _entry.Name;
     public string ImpactText => LocalizedText.Get("registry.rename.impact", "Only the value name changes; the stored value and its owner stay the same.");
 
-    public RegistryRenameDialogViewModel(RegistryEntryRow row, IRegistryClient client, Action<bool> close, Action<RegistryEntryDto> renamed)
+    public RegistryRenameDialogViewModel(RegistryEntryRow row, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> renamed)
     {
         _entry = row.Source; _client = client; _close = close; _renamed = renamed; _newName = _entry.Name;
     }

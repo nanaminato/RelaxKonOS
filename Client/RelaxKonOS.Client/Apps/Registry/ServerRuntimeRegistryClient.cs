@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -10,12 +11,12 @@ using RelaxKonOS.Protocol.Registry;
 namespace RelaxKonOS.Client.Apps.Registry;
 
 /// <summary>Server-owned configuration uses the server management route, never a fabricated user.</summary>
-public sealed class ServerRuntimeRegistryClient(HttpClient http, IAuthSession session, IHostElevationBroker grants, Guid instanceId) : IRegistryClient
+public sealed class ServerRuntimeRegistryClient(HttpClient http, IAuthSession session, IHostElevationBroker grants, Guid instanceId) : IServerRegistry
 {
     private readonly string? _origin = session.EffectiveBaseUrl;
     private readonly Guid? _actor = session.CurrentUser?.Id;
-    public IRegistryClient ForUser(Guid user) => throw new InvalidOperationException("Server runtime settings have no user owner.");
-    public IRegistryClient ForServer(Guid expectedInstance) => expectedInstance == instanceId ? this : throw new InvalidOperationException("Server instance changed.");
+    public IServerRegistry ForUser(Guid user) => throw new InvalidOperationException("Server runtime settings have no user owner.");
+    public IServerRegistry ForServer(Guid expectedInstance) => expectedInstance == instanceId ? this : throw new InvalidOperationException("Server instance changed.");
     public Task<RegistryContextDto> GetContextAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public async Task<IReadOnlyList<RegistryEntryDto>> ListValuesAsync(RegistryScope scope, string path, CancellationToken ct = default)

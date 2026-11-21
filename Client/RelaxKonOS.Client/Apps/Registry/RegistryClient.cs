@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Protocol.Privileged;
 using System.Net.Http.Headers;
@@ -9,15 +10,15 @@ using RelaxKonOS.Protocol.Registry;
 
 namespace RelaxKonOS.Client.Apps.Registry;
 
-public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations, RelaxKonOS.Client.Services.PresentationSettingsChanges changes) : IRegistryClient
+public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations, RelaxKonOS.Client.Services.PresentationSettingsChanges changes) : IServerRegistry
 {
     private Guid? TargetUserId { get; init; }
     private string? BoundBaseUrl { get; init; }
     private Guid? BoundActor { get; init; }
     private Guid? BoundDevice { get; init; }
-    public IRegistryClient ForUser(Guid targetUserId) => new RegistryClient(http, session, elevations, changes)
+    public IServerRegistry ForUser(Guid targetUserId) => new RegistryClient(http, session, elevations, changes)
     { TargetUserId = targetUserId, BoundBaseUrl = session.EffectiveBaseUrl, BoundActor = session.CurrentUser?.Id, BoundDevice = session.CurrentDevice?.Id };
-    public IRegistryClient ForServer(Guid instanceId) => new ServerRuntimeRegistryClient(http, session, elevations, instanceId);
+    public IServerRegistry ForServer(Guid instanceId) => new ServerRuntimeRegistryClient(http, session, elevations, instanceId);
     public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => GetCoreAsync<RegistryContextDto>(RegistryApiRoutes.Context, cancellationToken);
     public Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default) =>
         elevations.ExecuteAsync(HostElevationCapability.RegistryManage, "registry/users",

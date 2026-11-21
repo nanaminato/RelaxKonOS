@@ -7,14 +7,14 @@ using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
 namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerRegistryCapability(AppId appId, IAppPermissionManager permissions,
-    ExternalServerConnection connection, IRegistryClient? client) : IServerRegistry
+    ExternalServerConnection connection, IServerRegistry? client) : IServerRegistry
 {
-    private IRegistryClient Client => client ?? throw new InvalidOperationException("The registry client is unavailable.");
+    private IServerRegistry Client => client ?? throw new InvalidOperationException("The registry client is unavailable.");
 
     public IServerRegistry ForUser(Guid targetUserId) => Bind(registry => registry.ForUser(targetUserId));
     public IServerRegistry ForServer(Guid instanceId) => Bind(registry => registry.ForServer(instanceId));
 
-    private IServerRegistry Bind(Func<IRegistryClient, IRegistryClient> bind)
+    private IServerRegistry Bind(Func<IServerRegistry, IServerRegistry> bind)
     {
         if (!connection.IsCurrent) throw new InvalidOperationException("The application's server connection has changed.");
         return new ServerRegistryCapability(appId, permissions, connection, bind(Client));

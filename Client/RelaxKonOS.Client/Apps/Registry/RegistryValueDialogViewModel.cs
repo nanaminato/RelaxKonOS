@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
@@ -11,7 +12,7 @@ namespace RelaxKonOS.Client.Apps.Registry;
 /// <summary>Schema-driven value editor. The target address is fixed at construction and never follows a background selection.</summary>
 public sealed partial class RegistryValueDialogViewModel : LocalizedObservableObject
 {
-    private readonly IRegistryClient _client;
+    private readonly IServerRegistry _client;
     private readonly Action<bool> _close;
     private readonly Action<RegistryEntryDto> _saved;
     private readonly RegistryEntryRow? _row;
@@ -132,13 +133,13 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         OnPropertyChanged(nameof(IsNumber)); OnPropertyChanged(nameof(IsInteger));
     }
 
-    public RegistryValueDialogViewModel(RegistryEntryRow row, IRegistryClient client, Action<bool> close, Action<RegistryEntryDto> saved)
+    public RegistryValueDialogViewModel(RegistryEntryRow row, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> saved)
     {
         _row = row;
         Entry = row.Source; _client = client; _close = close; _saved = saved; Scope = Entry.Scope; Path = Entry.Path; Name = Entry.Name; ValueType = Entry.ValueType;
         SetValue(Entry.DesiredValue);
     }
-    public RegistryValueDialogViewModel(RegistryScope scope, string path, IRegistryClient client, Action<bool> close, Action<RegistryEntryDto> saved)
+    public RegistryValueDialogViewModel(RegistryScope scope, string path, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> saved)
     { Scope = scope; Path = path; _client = client; _close = close; _saved = saved; Name = "NewValue"; ValueType = RegistryValueType.String; ValueText = ""; }
 
     [RelayCommand]

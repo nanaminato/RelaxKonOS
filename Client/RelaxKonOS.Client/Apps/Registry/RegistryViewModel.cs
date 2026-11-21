@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Net.Http;
 using System.Text.Json;
@@ -10,7 +11,9 @@ using RelaxKonOS.Protocol.Registry;
 namespace RelaxKonOS.Client.Apps.Registry;
 
 /// <summary>Windows-style, on-demand registry browser. Values are fetched only for the selected key.</summary>
-public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null) : LocalizedObservableObject
+public sealed partial class RegistryViewModel(IServerRegistry client,
+    RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null,
+    IAppPermissionScope? permissions = null, CancellationToken windowClosed = default) : LocalizedObservableObject
 {
     public RegistryAppearanceSettings Appearance => preferences?.Registry ?? RegistryAppearanceSettings.Default;
     public void StartAppearanceUpdates()
@@ -73,7 +76,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
     public bool CanCreateKey => SelectedKey?.CanCreateChildKey == true;
     public bool CanDeleteKey => SelectedKey?.CanManageKey == true;
 
-    private IRegistryClient ClientFor(RegistryAddress address) => address.Scope == RegistryScope.Server
+    private IServerRegistry ClientFor(RegistryAddress address) => address.Scope == RegistryScope.Server
         ? client.ForServer(address.ScopeId) : client.ForUser(address.OwnerUserId!.Value);
 
     private string OwnerName(Guid owner) => owner == _context?.CurrentUserId ? _context.Username
@@ -102,6 +105,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
     {
         try
         {
+            if (!await EnsurePermissionAsync(write: false)) return;
             if (preferences is not null) { if (_context is null) await preferences.EnsureLoadedAsync(); else await preferences.RefreshAsync(); }
             if (_context is null) { _context = await client.GetContextAsync(); BuildStaticTree(); NotifyContext(); }
             if (SelectedKey is { } key)
@@ -111,6 +115,27 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
             }
         }
         catch (Exception error) { SetFailure(error); }
+    }
+
+    internal async Task<bool> EnsurePermissionAsync(bool write)
+    {
+        if (windowClosed.IsCancellationRequested) return false;
+        if (permissions is null) return true;
+        var permission = write ? RelaxKonOS.Core.Applications.AppPermissions.ServerRegistryWrite
+            : RelaxKonOS.Core.Applications.AppPermissions.ServerRegistryRead;
+        var status = permissions.GetStatus(permission);
+        try
+        {
+            if (status == AppPermissionStatus.Undecided)
+                status = await permissions.RequestAsync(permission, windowClosed);
+        }
+        catch (OperationCanceledException) when (windowClosed.IsCancellationRequested) { return false; }
+        if (windowClosed.IsCancellationRequested) return false;
+        if (status == AppPermissionStatus.Granted) return true;
+        StatusText = write
+            ? LocalizedText.RefWithFallback("registry.permission.write_required", "Permission to write registry values is required.")
+            : LocalizedText.RefWithFallback("registry.permission.read_required", "Permission to read registry values is required.");
+        return false;
     }
 
     private void NotifyContext()
@@ -218,6 +243,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         var key = SelectedKey;
         try
         {
+            if (!await EnsurePermissionAsync(write: true) || !ReferenceEquals(SelectedEntry, selected)) return;
             await ClientFor(selected.Source.Address).DeleteAsync(selected.Source.Scope, selected.Source.Path, selected.Source.Name);
             if (!ReferenceEquals(SelectedKey, key)) return;
             Entries.Remove(selected);
@@ -242,6 +268,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         if (SelectedKey is not { CanManageKey: true, Scope: { } scope, Path: { } path } key) return;
         try
         {
+            if (!await EnsurePermissionAsync(write: true) || !ReferenceEquals(SelectedKey, key)) return;
             await ClientFor(key.Address!).DeleteKeyAsync(scope, path);
             var parent = key.Parent;
             parent?.Children.Remove(key);
@@ -269,6 +296,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         var key = SelectedKey;
         try
         {
+            if (!await EnsurePermissionAsync(write: true) || !ReferenceEquals(SelectedEntry, selected)) return;
             var result = await ClientFor(selected.Source.Address).SaveAsync(new PutRegistryEntryRequest(
                 selected.Source.Scope, selected.Source.Path, selected.Source.Name, selected.Source.ValueType, defaultValue, selected.Source.Revision));
             if (!ReferenceEquals(SelectedKey, key)) return;
