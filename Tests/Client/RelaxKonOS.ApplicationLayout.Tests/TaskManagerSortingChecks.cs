@@ -17,7 +17,7 @@ internal static class TaskManagerSortingChecks
     public static void Run(Window host)
     {
         var auth = DispatchProxy.Create<IAuthSession, SortingSession>();
-        var vm = new TaskManagerViewModel(null!, null!, null!, auth)
+        var vm = new TaskManagerViewModel(null!, null!, auth)
         { IsAutoRefresh = false, ActiveTab = TaskManagerTab.Processes };
         var processes = new List<ProcessInfoDto>
         {

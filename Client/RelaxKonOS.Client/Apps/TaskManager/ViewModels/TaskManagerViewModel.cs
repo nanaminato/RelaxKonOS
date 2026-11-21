@@ -7,8 +7,6 @@ using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.SystemMonitor;
-using RelaxKonOS.Protocol.Privileged;
-using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -18,10 +16,11 @@ namespace RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 /// <summary>性能数据来自服务端统一采样器；进程列表独立查询。</summary>
 public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IAsyncDisposable
 {
-    private readonly ITaskManagerClient _client;
+    private readonly IServerProcesses _processes;
+    private IAppPermissionScope? _permissions;
     private readonly IServerMonitor _monitor;
     private IServerPerformanceStream? _stream;
-    private readonly CancellationTokenSource _performanceLifetime = new();
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly DispatcherTimer _processTimer;
     private List<ProcessInfoDto> _allProcesses = [];
     private readonly Dictionary<(int Id, DateTimeOffset? StartTime), ProcessTreeItemViewModel> _processRows = [];
@@ -29,18 +28,16 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     private bool _rebuildingProcessRows;
     private long _lastSequence;
     private int _disposed;
-    private readonly IHostElevationBroker _elevation;
     private readonly IAuthSession _session;
     private int _processModeGeneration;
     private Guid? _processSessionId;
     private string? _processServiceId;
     private bool _switchingProcessMode;
 
-    public TaskManagerViewModel(ITaskManagerClient client, IServerMonitor monitor, IHostElevationBroker elevation, IAuthSession session)
+    public TaskManagerViewModel(IServerProcesses processes, IServerMonitor monitor, IAuthSession session)
     {
-        _client = client;
+        _processes = processes;
         _monitor = monitor;
-        _elevation = elevation;
         _session = session;
         _processSessionId = session.CurrentSession?.Id;
         _processServiceId = session.ServiceId;
@@ -83,11 +80,9 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         IsLoading = true;
         try
         {
-            // Probe a read, never a termination. The broker first asks for passwordless
-            // authorization; only the server's password-required response opens a prompt.
+            if (!await EnsureProcessPermissionAsync(request: true)) return;
             if (nextMode)
-                await _elevation.ExecuteAsync(HostElevationCapability.ProcessManage, "host/processes",
-                    () => _client.QueryProcessesAsync(pageSize: 1, elevated: true));
+                await _processes.AuthorizeAdministratorAsync(_lifetime.Token);
             if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             IsAdministratorMode = nextMode;
             _processModeGeneration++;
@@ -108,11 +103,12 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     public async Task StartAsync(IAppPermissionScope permissions)
     {
         if (_disposed != 0 || _stream is not null) return;
+        _permissions = permissions;
         var stream = _stream = _monitor.CreatePerformanceStream();
         stream.SnapshotReceived += OnSnapshotReceived;
         stream.Reconnected += OnStreamReconnected;
         stream.Disconnected += OnStreamDisconnected;
-        var cancellationToken = _performanceLifetime.Token;
+        var cancellationToken = _lifetime.Token;
         try
         {
             if (permissions.GetStatus(AppPermissions.ServerMetricsRead) == AppPermissionStatus.Undecided)
@@ -143,7 +139,7 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _performanceLifetime.Cancel();
+        _lifetime.Cancel();
         _processTimer.Stop();
         _session.StateChanged -= OnAuthSessionChanged;
         foreach (var row in _processRows.Values) row.Dispose();
@@ -155,12 +151,12 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
             stream.Disconnected -= OnStreamDisconnected;
             await stream.DisposeAsync();
         }
-        _performanceLifetime.Dispose();
+        _lifetime.Dispose();
     }
 
     [RelayCommand] private async Task RefreshAsync()
     {
-        if (ActiveTab == TaskManagerTab.Processes) await RefreshProcessesAsync();
+        if (ActiveTab == TaskManagerTab.Processes) await RefreshProcessesAsync(requestPermission: true);
         else await RefreshPerformanceAsync();
     }
 
@@ -174,10 +170,8 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         KillFeedback = LocalizedText.Format("task_manager.process.terminating", process.Name, process.Id);
         try
         {
-            var result = await ProcessTerminationFlow.ExecuteAsync(IsAdministratorMode,
-                elevated => _client.KillProcessAsync(process.Id, process.StartTime.Value, elevated),
-                operation => _elevation.ExecuteAsync(HostElevationCapability.ProcessManage, "host/processes", operation),
-                () => _disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId);
+            if (!await EnsureProcessPermissionAsync(request: true)) return;
+            var result = await _processes.TerminateAsync(process.Id, process.StartTime.Value, IsAdministratorMode, _lifetime.Token);
             if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             if (result.Success) { KillFeedback = LocalizedText.Format("task_manager.process.terminated", process.Name, process.Id); SelectedProcess = null; }
             else if (result.RequiresElevation) KillFeedback = LocalizedText.Format("task_manager.process.elevation_required", process.Name, process.Id, TerminationProblem(result));
@@ -214,7 +208,7 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     {
         if (value == TaskManagerTab.Processes)
         {
-            _ = RefreshProcessesAsync();
+            _ = RefreshProcessesAsync(requestPermission: true);
             if (IsAutoRefresh) _processTimer.Start();
         }
         else _processTimer.Stop();
@@ -231,7 +225,7 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     private async Task RefreshPerformanceAsync()
     {
         if (_disposed != 0) return;
-        var cancellationToken = _performanceLifetime.Token;
+        var cancellationToken = _lifetime.Token;
         try
         {
             var infoTask = _monitor.GetPerformanceInfoAsync(cancellationToken);
@@ -271,9 +265,22 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         }
     }
 
-    private async Task RefreshProcessesAsync()
+    private async Task<bool> EnsureProcessPermissionAsync(bool request)
     {
-        if (_switchingProcessMode) return;
+        if (_disposed != 0 || _lifetime.IsCancellationRequested || _permissions is null) return false;
+        var token = _lifetime.Token;
+        var permission = _permissions.GetStatus(AppPermissions.ServerProcessesManage);
+        if (permission == AppPermissionStatus.Undecided && request)
+            permission = await _permissions.RequestAsync(AppPermissions.ServerProcessesManage, token);
+        if (token.IsCancellationRequested) return false;
+        if (permission == AppPermissionStatus.Granted) return true;
+        StatusText = LocalizedText.Ref("task_manager.process.permission_denied");
+        return false;
+    }
+
+    private async Task RefreshProcessesAsync(bool requestPermission = false)
+    {
+        if (_switchingProcessMode || _lifetime.IsCancellationRequested) return;
         if (Interlocked.CompareExchange(ref _refreshingProcesses, 1, 0) != 0) return;
         IsLoading = true;
         var generation = _processModeGeneration;
@@ -281,6 +288,7 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         var service = _session.ServiceId;
         try
         {
+            if (!await EnsureProcessPermissionAsync(requestPermission)) return;
             var page = await QueryAllProcessesAsync();
             if (_disposed != 0 || generation != _processModeGeneration || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             ProcessTotalCount = page.TotalCount;
@@ -288,7 +296,12 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
             RebuildFilteredProcesses(SelectedProcess);
             StatusText = LocalizedText.Ref("task_manager.status.updated", page.SampledAt.LocalDateTime, Snapshot?.Cpu.TotalPercent ?? 0, ProcessTotalCount);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            if (!_lifetime.IsCancellationRequested)
+                StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message);
+        }
         finally { IsLoading = false; Interlocked.Exchange(ref _refreshingProcesses, 0); }
     }
 
@@ -296,13 +309,14 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     {
         const int pageSize = 500;
         var elevated = IsAdministratorMode;
+        var token = _lifetime.Token;
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var first = await _client.QueryProcessesAsync(page: 1, pageSize: pageSize, sort: "memory", elevated: elevated);
+            var first = await _processes.QueryAsync(page: 1, pageSize: pageSize, sort: "memory", administratorMode: elevated, cancellationToken: token);
             if (first.TotalCount <= first.Items.Count) return first;
             var pageCount = (first.TotalCount + pageSize - 1) / pageSize;
             var remaining = await Task.WhenAll(Enumerable.Range(2, pageCount - 1)
-                .Select(page => _client.QueryProcessesAsync(page: page, pageSize: pageSize, sort: "memory", elevated: elevated)));
+                .Select(page => _processes.QueryAsync(page: page, pageSize: pageSize, sort: "memory", administratorMode: elevated, cancellationToken: token)));
             var items = first.Items.Concat(remaining.SelectMany(page => page.Items)).ToArray();
             if (remaining.All(page => page.SampledAt == first.SampledAt && page.TotalCount == first.TotalCount)
                 && items.Length == first.TotalCount && items.Select(item => item.Id).Distinct().Count() == items.Length)
@@ -318,7 +332,7 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         if (row.Process.StartTime is not { } startTime) return;
         try
         {
-            var icon = await _client.GetProcessIconAsync(row.Process.Id, startTime, IsAdministratorMode);
+            var icon = await _processes.GetIconAsync(row.Process.Id, startTime, IsAdministratorMode, _lifetime.Token);
             if (row.IsDisposed || icon is null || icon.Value.Data.Length == 0) return;
             using var stream = new MemoryStream(icon.Value.Data, writable: false);
             row.IconImage = icon.Value.ContentType == "image/svg+xml"
@@ -330,18 +344,18 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
 
     private void OnSnapshotReceived(PerformanceRealtimeSnapshotDto snapshot) => Dispatcher.UIThread.Post(() =>
     {
-        if (!_performanceLifetime.IsCancellationRequested) ApplySnapshot(snapshot, false);
+        if (!_lifetime.IsCancellationRequested) ApplySnapshot(snapshot, false);
     });
     private void OnStreamReconnected() => Dispatcher.UIThread.Post(async () =>
     {
-        if (_performanceLifetime.IsCancellationRequested) return;
+        if (_lifetime.IsCancellationRequested) return;
         ConnectionStatus = LocalizedText.Ref("task_manager.connection.backfilling");
         await RefreshPerformanceAsync();
-        if (!_performanceLifetime.IsCancellationRequested) ConnectionStatus = LocalizedText.Ref("task_manager.connection.live");
+        if (!_lifetime.IsCancellationRequested) ConnectionStatus = LocalizedText.Ref("task_manager.connection.live");
     });
     private void OnStreamDisconnected() => Dispatcher.UIThread.Post(() =>
     {
-        if (!_performanceLifetime.IsCancellationRequested)
+        if (!_lifetime.IsCancellationRequested)
             ConnectionStatus = LocalizedText.Ref("task_manager.connection.disconnected");
     });
 
@@ -588,7 +602,8 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         if (_session.State == AuthSessionState.Authenticated && _processSessionId == _session.CurrentSession?.Id
             && _processServiceId == _session.ServiceId) return;
         _processSessionId = _session.CurrentSession?.Id; _processServiceId = _session.ServiceId;
-        _performanceLifetime.Cancel();
+        _lifetime.Cancel();
+        _processTimer.Stop();
         if (_stream is not null) _ = _stream.DisposeAsync();
         Info = null; Snapshot = null; SelectedPerformanceItem = null; PerformanceItems.Clear(); _lastSequence = 0;
         ConnectionStatus = LocalizedText.Ref("task_manager.connection.disconnected");

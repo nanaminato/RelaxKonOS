@@ -41,8 +41,7 @@ public sealed class TaskManagerApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(ITaskManagerClient)) as ITaskManagerClient;
-        if (session is null || client is null || session.State != AuthSessionState.Authenticated)
+        if (session is null || session.State != AuthSessionState.Authenticated)
         {
             var stub = new TextBlock
             {
@@ -58,8 +57,7 @@ public sealed class TaskManagerApp : RemoteApplicationBase
         }
 
         var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
-        var viewModel = new TaskManagerViewModel(client, sdk.ServerMonitor,
-            context.Services.GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(), session);
+        var viewModel = new TaskManagerViewModel(sdk.ServerProcesses, sdk.ServerMonitor, session);
         var view = new TaskManagerMainView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.taskmanager.display_name"), view,
             bounds: new Rect(70, 55, 1080, 720),

@@ -12,6 +12,7 @@ using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -50,6 +51,7 @@ public sealed class ExternalAppContextFactory
     private readonly UsageMemoryStore _usageMemory;
     private readonly TextEditorEncodingSettings _textEncoding;
     private readonly IComponentLifecycleClient? _componentLifecycle;
+    private readonly IHostElevationBroker? _elevationBroker;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -73,7 +75,8 @@ public sealed class ExternalAppContextFactory
         IRemoteEventAlertClient alerts,
         IRemoteDockerClient docker,
         DockerImageMirrorClient dockerMirrors,
-        IComponentLifecycleClient? componentLifecycle = null)
+        IComponentLifecycleClient? componentLifecycle = null,
+        IHostElevationBroker? elevationBroker = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -97,6 +100,7 @@ public sealed class ExternalAppContextFactory
         _usageMemory = usageMemory;
         _textEncoding = textEncoding;
         _componentLifecycle = componentLifecycle;
+        _elevationBroker = elevationBroker;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -113,6 +117,7 @@ public sealed class ExternalAppContextFactory
         new AppPermissionScope(appId, _permissionRequests),
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
         new ServerMonitorCapability(appId, _permissions, fileSession, _systemMonitor),
+        new ServerProcessesCapability(appId, _permissions, fileSession, _systemMonitor, _elevationBroker),
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -140,6 +145,7 @@ public sealed class ExternalAppContextFactory
         IAppPermissionScope Permissions,
         IDesktopAppearance DesktopAppearance,
         IServerMonitor ServerMonitor,
+        IServerProcesses ServerProcesses,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

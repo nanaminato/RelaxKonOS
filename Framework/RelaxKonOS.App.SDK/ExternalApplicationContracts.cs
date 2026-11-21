@@ -39,6 +39,7 @@ public interface IExternalAppContext
     IAppPermissionScope Permissions { get; }
     IDesktopAppearance DesktopAppearance { get; }
     IServerMonitor ServerMonitor { get; }
+    IServerProcesses ServerProcesses { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }
