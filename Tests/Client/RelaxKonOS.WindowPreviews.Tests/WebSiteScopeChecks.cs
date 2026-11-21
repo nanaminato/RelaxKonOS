@@ -25,6 +25,7 @@ internal static class WebSiteScopeChecks
             "A transport rebind that preserves the authentication snapshot retains the editor.");
         var saving = vm.SaveSiteCommand.ExecuteAsync(null);
         session.ReplaceIdentity();
+        Check(grant.Token.IsCancellationRequested, "Identity replacement cancels a pending site authorization.");
         grant.Permit.SetResult();
         PumpUntil(() => saving.IsCompleted);
         Check(stub.Calls == 0 && !vm.SiteFactsAvailable && vm.SelectedServer is null && vm.SiteName.Length == 0,
@@ -48,6 +49,7 @@ internal static class WebSiteScopeChecks
         vm = Create(client, auth, broker);
         saving = vm.SaveSiteCommand.ExecuteAsync(null);
         vm.SelectedServer = vm.SelectedServer! with { Id = "second" };
+        Check(grant.Token.IsCancellationRequested, "Instance replacement cancels a pending site authorization.");
         grant.Permit.SetResult();
         PumpUntil(() => saving.IsCompleted);
         Check(stub.Calls == 1 && vm.SiteName == "draft" && vm.SiteEditorTargetChanged && !vm.SaveSiteCommand.CanExecute(null),
@@ -118,10 +120,12 @@ internal static class WebSiteScopeChecks
 public class DelayedSiteElevation : DispatchProxy
 {
     public TaskCompletionSource Permit = new();
+    public CancellationToken Token { get; private set; }
     private Func<Task<WebServerSiteDto?>>? _work;
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         _work = (Func<Task<WebServerSiteDto?>>)args![2]!;
+        Token = (CancellationToken)args[3]!;
         return ExecuteAsync();
     }
     private async Task<WebServerSiteDto?> ExecuteAsync()

@@ -84,6 +84,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private long _siteEditorTargetVersion;
     private string? _siteEditorSiteId;
     private WebServerSiteDto? _siteEditorSnapshot;
+    private CancellationTokenSource? _siteSaveCancellation;
     public bool SiteEditorTargetChanged => _siteEditorOpen && (_siteEditorTargetVersion != _siteTargetVersion
         || SelectedSite?.Id != _siteEditorSiteId || !_windowConnection.IsCurrent);
     public string SiteEditorTargetChangeText => Text(_windowConnection.IsCurrent
@@ -102,6 +103,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
 
     public void EndSiteEditing()
     {
+        _siteSaveCancellation?.Cancel();
         _siteEditorOpen = false;
         _siteEditorSnapshot = null;
         OnPropertyChanged(nameof(SiteEditorTargetChanged));
@@ -491,12 +493,18 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private async Task SaveSiteAsync()
     {
         if (!CanSaveSite) return;
+        using var cancellation = new CancellationTokenSource();
+        _siteSaveCancellation = cancellation;
         IsSavingSite = true;
-        try { await SaveSiteCoreAsync(); }
-        finally { IsSavingSite = false; }
+        try { await SaveSiteCoreAsync(cancellation.Token); }
+        finally
+        {
+            _siteSaveCancellation = null;
+            IsSavingSite = false;
+        }
     }
 
-    private async Task SaveSiteCoreAsync()
+    private async Task SaveSiteCoreAsync(CancellationToken cancellationToken)
     {
         var server = SelectedServer;
         var site = _siteEditorSnapshot;
@@ -529,10 +537,11 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null, site?.UpdatedAt);
             var saved = await _authorization.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id,
-                () => IsCurrent() && HasManagePermission
-                    ? _client.UpsertSiteAsync(server.Id, request)
-                    : Task.FromException<WebServerSiteDto?>(new OperationCanceledException("The site editor target changed.")));
-            if (!IsCurrent()) return;
+                () => !cancellationToken.IsCancellationRequested && IsCurrent() && HasManagePermission
+                    ? _client.UpsertSiteAsync(server.Id, request, cancellationToken)
+                    : Task.FromException<WebServerSiteDto?>(new OperationCanceledException("The site editor target changed.")),
+                cancellationToken);
+            if (cancellationToken.IsCancellationRequested || !IsCurrent()) return;
             if (saved is null) { await ReportSiteSaveErrorAsync(Status("webservers.site.save_failed")); return; }
             var refreshed = await LoadSitesAsync();
             if (!IsCurrentConnection()) return;
@@ -554,6 +563,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
                 : SiteSaveProblemText(exception.ProblemCode);
             await ReportSiteSaveErrorAsync(WebServerStatusText.Literal(message));
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception)
         {
             if (IsCurrent()) await ReportSiteSaveErrorAsync(Status("webservers.site.save_failed"));
@@ -629,6 +639,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
 
     partial void OnSelectedServerChanged(WebServerDto? value)
     {
+        _siteSaveCancellation?.Cancel();
         _siteTargetVersion++;
         OnPropertyChanged(nameof(SiteEditorTargetChanged));
         OnPropertyChanged(nameof(SiteEditorTargetChangeText));
@@ -648,6 +659,8 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
 
     partial void OnSelectedSiteChanged(WebServerSiteDto? value)
     {
+        if (_siteEditorOpen && value?.Id != _siteEditorSiteId)
+            _siteSaveCancellation?.Cancel();
         _siteSelectionVersion++;
         OnPropertyChanged(nameof(SiteEditorTargetChanged));
         OnPropertyChanged(nameof(SiteEditorTargetChangeText));
@@ -1014,6 +1027,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         void Invalidate()
         {
             if (_windowConnection.IsCurrent) return;
+            _siteSaveCancellation?.Cancel();
             _siteReadVersion++;
             SiteFactsAvailable = false;
             SelectedServer = null;
