@@ -84,7 +84,7 @@ internal static class LocalizationResourceChecks
                     var actual = key switch
                     {
                         _ when key.StartsWith("firewall.", StringComparison.Ordinal) => FirewallLocalization.Resolve(localization, key, key),
-                        _ when key.StartsWith("guardian.", StringComparison.Ordinal) => ProcessGuardianLocalization.Resolve(localization, key),
+                        _ when key.StartsWith("guardian.", StringComparison.Ordinal) && !key.StartsWith("guardian.admin_approval.", StringComparison.Ordinal) => ProcessGuardianLocalization.Resolve(localization, key),
                         _ => LocalizedText.Get(key),
                     };
                     if (!tables[culture].TryGetValue(key, out var expectedValue) || actual != expectedValue)

@@ -1,4 +1,3 @@
-using RelaxKonOS.App.ProcessGuardian;
 using RelaxKonOS.Client.Apps.ProcessGuardian;
 using RelaxKonOS.Protocol.ProcessGuardian;
 using Avalonia.Controls;
@@ -168,7 +167,7 @@ public sealed class ExternalAppContextFactory
         new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
         new ServerFirewallCapability(appId, _permissions, connection, _firewall, lifetime),
         new ServerGuardianCapability(appId, _permissions, connection, _guardian, lifetime),
-        appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient, _systemLanguage) : null,
+        appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient) : null,
         appId.Value == "relaxkonos.file-services" ? new FileServicesAdministratorPrompt(appId, _permissions, connection, fileSession, _windowManager) : null,
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
@@ -460,7 +459,7 @@ public sealed class ExternalAppContextFactory
 
     private sealed class GuardianHostInteraction(AppId appId, IAppPermissionManager permissions,
         ExternalServerConnection connection, UsageMemoryScope memory, IWindowManager windows, CancellationToken lifetime,
-        ProcessGuardianClient? transport, ISystemLanguage language) : IGuardianHostInteraction
+        ProcessGuardianClient? transport) : IGuardianHostInteraction
     {
         public string? CurrentUsername => HasReadAccess() ? connection.Session.CurrentUser?.Username : null;
 
@@ -486,7 +485,7 @@ public sealed class ExternalAppContextFactory
         {
             if (transport is null || !CanManage(owner)) return null;
             definition = definition with { Arguments = definition.Arguments.ToArray() };
-            string Label(string key) => ProcessGuardianLocalization.Resolve(language, key);
+            string Label(string key) => LocalizedText.Get(key);
             var approval = await windows.ShowSystemDialogAsync<RunAsAdministratorApproval?>(Label("guardian.admin_approval.title"),
                 dialog => GuardianAdministratorDialog.Create(dialog, Label, definition), new Size(540, 320));
             if (approval is null || !CanManage(owner)) return null;

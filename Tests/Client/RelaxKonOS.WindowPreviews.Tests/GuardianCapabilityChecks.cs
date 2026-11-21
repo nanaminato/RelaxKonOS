@@ -144,6 +144,8 @@ public class GuardianCapabilityClient : DispatchProxy
     {
         switch (method?.Name)
         {
+            case nameof(IServerGuardian.GetStatusAsync):
+                return Task.FromResult(new GuardianStatusDto(true, true, string.Empty, "1.0.0"));
             case nameof(IServerGuardian.ListWorkloadsAsync):
                 Reads++;
                 return Task.FromResult<IReadOnlyList<GuardianWorkloadDto>>([]);

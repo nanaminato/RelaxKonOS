@@ -355,7 +355,6 @@ public static class Bootstrapper
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.PortForwarding.PortForwardingApp>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.ProcessGuardian.ProcessGuardianApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Squid.SquidApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Databases.DatabaseApp>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Databases.IPostgreSqlClient, RelaxKonOS.Client.Apps.Databases.PostgreSqlClient>()

@@ -35,6 +35,7 @@
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Git" AppId="relaxkonos.git" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ImageViewer" AppId="relaxkonos.imageviewer" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ProcessGuardian" AppId="relaxkonos.processguardian" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Registry" AppId="relaxkonos.registry" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.TaskManager" AppId="relaxkonos.taskmanager" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Certificates" AppId="relaxkonos.certificates" />

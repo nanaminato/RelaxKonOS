@@ -28,7 +28,7 @@
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
-| processguardian | ProcessGuardian | 否 / 否 | 是 | Guardian API 与独立 Agent | 可选 | 待验 |
+| processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期和隔离宿主联合部署已验，真实防火墙操作待验 |
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
 | proxy-server | ProxyServer | 否 / 否 | 是 | ProxyServer capability；组件中心管理 sing-box | 可选 | 待验 |
@@ -279,3 +279,4 @@
 - Process Guardian 外置上下文已提供受限的当前账户读取和宿主原生文件选择。选取可执行文件或工作目录需读取及管理授权、有效会话与当前应用的所有者窗口。Windows Release 构建和外置上下文授权测试通过，原生选择器实机交互待验。
 - Process Guardian 的跨账户工作负载保存已移至宿主批准流程。应用提交工作负载定义，宿主显示目标账户和可执行文件，并在批准后使用凭据提交。Windows Release 构建与取消批准回归通过，真实管理员验证待验。
 - Process Guardian 外置入口与包清单已实现，沿用 Guardian 服务端 capability、宿主路径选择、管理员批准和实时日志。Windows Release 构建、只读命令回归及 DevCLI 打包通过。官方目录切换和安装启动验收待完成。
+- Process Guardian 已切换为官方可选包，开发者配置采用交互安装。桌面宿主的内置入口与应用程序集引用已移除，管理员批准文案由宿主管理。Windows Release 构建、三语资源、Guardian SDK 和官方包生命周期验收通过，覆盖模拟 Agent 上的已安装启动、只读授权、更新、重启及卸载。真实 Agent 和宿主批准尚待联调。

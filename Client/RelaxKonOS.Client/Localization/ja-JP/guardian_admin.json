@@ -1,0 +1,9 @@
+{
+  "Strings": {
+    "guardian.admin_approval.title": "別アカウントでの実行を確認",
+    "guardian.admin_approval.message": "別アカウントで Guardian ワークロードを実行するには、ホスト管理者の承認が必要です。任意の管理者アカウントとそのパスワードを入力してください。資格情報はこの要求にのみ使用されます。",
+    "guardian.admin_approval.username": "管理者アカウント",
+    "guardian.admin_approval.password": "管理者パスワード"
+  },
+  "Culture": "ja-JP"
+}

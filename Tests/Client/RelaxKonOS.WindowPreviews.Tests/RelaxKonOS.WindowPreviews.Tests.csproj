@@ -16,6 +16,7 @@
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.TaskManager/RelaxKonOS.App.TaskManager.csproj" />
     <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Firewall/RelaxKonOS.App.Firewall.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProcessGuardian/RelaxKonOS.App.ProcessGuardian.csproj" />
     <PackageReference Include="Avalonia.Headless" />
     <PackageReference Include="Avalonia.Desktop" />
   </ItemGroup>

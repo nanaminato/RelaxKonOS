@@ -1,0 +1,9 @@
+{
+  "Strings": {
+    "guardian.admin_approval.title": "Confirm cross-account launch",
+    "guardian.admin_approval.message": "Running a guardian workload as another account requires host-administrator approval. Enter any administrator account and its password; the credential is used for this request only.",
+    "guardian.admin_approval.username": "Administrator account",
+    "guardian.admin_approval.password": "Administrator password"
+  },
+  "Culture": "en-US"
+}
