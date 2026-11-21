@@ -34,7 +34,7 @@ internal static class TailscaleLifecycleClientChecks
                 "Desktop sends an MSI expectation without routing it through archive or APT execution");
             return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { code = "offline" }) };
         }));
-        using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings, InstallationServiceId.Tailscale,
+        using var task = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("relaxkonos.component-center"), settings), InstallationServiceId.Tailscale,
             "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false));
         model.AttachPackageInstallation("tailscale", task);
         model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "tailscale");

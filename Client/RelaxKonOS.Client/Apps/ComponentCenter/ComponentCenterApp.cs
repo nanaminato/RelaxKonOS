@@ -253,7 +253,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 ("frpc", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp),
                 ("frps", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp) })
             {
-                var task = new RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel(installationClient, settings,
+                var task = new RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel(installationClient,
+                    new RelaxKonOS.Client.Services.AppSettings.ExternalAppSettings(Manifest.Id, settings),
                     serviceId, "relaxkonos.component-center", () => model.RefreshPackageInstallationAsync(componentId),
                     () => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
                         .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(context.Services)

@@ -24,6 +24,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
     {
         var session = context.Services.GetRequiredService<IAuthSession>();
         if (session.State != AuthSessionState.Authenticated) return;
+        var settings = new ExternalAppSettings(Manifest.Id, context.Services.GetRequiredService<IAppSettingsClient>());
         var model = new DatabaseViewModel(context.Services.GetRequiredService<IServerPostgreSql>())
         {
             Dependency = ComponentDependencySettingsViewModel.Create(context, "relaxkonos.database"),
@@ -34,7 +35,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             .RequestGrantAsync(InstallationClient.ElevationCapability(service), service.ToString().ToLowerInvariant());
         var view = new Views.DatabaseWorkspace();
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.database.display_name"), view, new Rect(90, 60, 980, 700), Manifest.IconGlyph);
-        model.Installation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        model.Installation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSql, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSql));
         var mysql = new MySqlViewModel(context.Services.GetRequiredService<IServerMySql>(), session)
@@ -42,13 +43,13 @@ public sealed class DatabaseApp : RemoteApplicationBase
             CanManage = model.CanManage,
             ConfirmAsync = () => Confirm("database.mysql_confirm")
         };
-        mysql.Installation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        mysql.Installation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.MySql, "relaxkonos.database", mysql.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.MySql),
             "mysql-installation");
         mysql.Installation.PropertyChanged += (_, _) => mysql.Notify();
         Task<bool> MySqlElevationAsync() => AuthorizeInstallationAsync(InstallationServiceId.MySqlAccounts);
-        mysql.AccountInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        mysql.AccountInstallation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.MySqlAccounts, "relaxkonos.database", mysql.RefreshAsync, MySqlElevationAsync, "mysql-accounts-installation");
         mysql.AccountInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmAccountAsync = (action, account) => Confirm("database.accounts_confirm",
@@ -56,18 +57,18 @@ public sealed class DatabaseApp : RemoteApplicationBase
             (account.User is null ? "" : " · " + account.User + "@" + account.Host));
         mysql.AuthorizeAccountsAsync = MySqlElevationAsync;
         _ = mysql.AccountInstallation.RestoreAsync();
-        mysql.AdministratorInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        mysql.AdministratorInstallation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.MySqlAdminRecovery, "relaxkonos.database", mysql.RefreshAsync, () => AuthorizeInstallationAsync(InstallationServiceId.MySqlAdminRecovery), "mysql-admin-recovery-installation");
         mysql.AdministratorInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmAdministratorAsync = () => Confirm("database.mysql_admin_recovery_confirm");
         _ = mysql.AdministratorInstallation.RestoreAsync();
         mysql.RemoteCertificates = context.Services.GetRequiredService<RelaxKonOS.AppSDK.IServerCertificates>();
-        mysql.RemoteInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        mysql.RemoteInstallation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.MySqlRemoteAccess, "relaxkonos.database", mysql.RefreshAsync, () => AuthorizeInstallationAsync(InstallationServiceId.MySqlRemoteAccess), "mysql-remote-installation");
         mysql.RemoteInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmRemoteAsync = () => Confirm("database.mysql_remote_confirm");
         _ = mysql.RemoteInstallation.RestoreAsync();
-        mysql.MaintenanceInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        mysql.MaintenanceInstallation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.MySqlMaintenance, "relaxkonos.database", mysql.RefreshAsync, () => AuthorizeInstallationAsync(InstallationServiceId.MySqlMaintenance), "mysql-maintenance-installation");
         mysql.MaintenanceInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmMaintenanceAsync = command => Confirm("database.maintenance_confirm",
@@ -75,12 +76,12 @@ public sealed class DatabaseApp : RemoteApplicationBase
         _ = mysql.MaintenanceInstallation.RestoreAsync();
         model.MySql = mysql;
         _ = mysql.Installation.RestoreAsync();
-        model.AdminRecoveryInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        model.AdminRecoveryInstallation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSqlAdminRecovery, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlAdminRecovery), "admin-recovery-installation");
         model.ConfirmAdminRecoveryAsync = () => Confirm("database.admin_recovery_confirm");
         model.AdminRecoveryInstallation.PropertyChanged += (_, _) => { model.NotifyState(); model.AccountManager?.Notify(); };
-        var remoteTask = new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        var remoteTask = new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSqlRemoteAccess, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlRemoteAccess), "remote-installation");
         model.RemoteManager = new(context.Services.GetRequiredService<RelaxKonOS.AppSDK.IServerCertificates>(), remoteTask)
@@ -88,7 +89,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             || model.AdminRecoveryInstallation.IsActive || model.CanResumeAdminRecovery || model.AccountManager?.Busy == true || model.AccountManager?.HasPendingRequest == true || model.AccountManager?.Installation.IsActive == true };
         remoteTask.PropertyChanged += (_, _) => { model.RemoteManager.Notify(); model.NotifyState(); model.AccountManager?.Notify(); };
         model.RemoteManager.PropertyChanged += (_, _) => model.NotifyState();
-        var accountsTask = new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+        var accountsTask = new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSqlAccounts, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlAccounts), "accounts-installation");
         model.AccountManager = new(context.Services.GetRequiredService<IServerPostgreSql>(), accountsTask)
@@ -100,7 +101,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         model.AccountManager.AuthorizeAsync = () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlAccounts);
         accountsTask.PropertyChanged += (_, _) => { model.AccountManager.Notify(); model.NotifyState(); };
         model.AccountManager.PropertyChanged += (_, _) => model.NotifyState();
-        var maintenanceTask=new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(),context.Services.GetRequiredService<IAppSettingsClient>(),
+        var maintenanceTask=new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSqlMaintenance,"relaxkonos.database",model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlMaintenance),"maintenance-installation");
         model.MaintenanceManager=new(context.Services.GetRequiredService<IServerPostgreSql>(),maintenanceTask)
@@ -108,7 +109,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             OtherBusy=()=>model.Busy||model.CanResume||model.Installation.IsActive||model.AdminRecoveryInstallation.IsActive||model.CanResumeAdminRecovery||model.RemoteManager.Busy||model.RemoteManager.HasPending||remoteTask.IsActive||model.AccountManager.Busy||model.AccountManager.HasPendingRequest||accountsTask.IsActive};
         maintenanceTask.PropertyChanged+=(_,_)=>{model.MaintenanceManager.Notify();model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
         model.MaintenanceManager.PropertyChanged+=(_,_)=>{model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
-        var backupPolicyTask=new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(),context.Services.GetRequiredService<IAppSettingsClient>(),
+        var backupPolicyTask=new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSqlBackupAutomation,"relaxkonos.database",model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlBackupAutomation),"backup-policy-installation");
         model.MaintenanceManager.ScheduleInstallation=backupPolicyTask;

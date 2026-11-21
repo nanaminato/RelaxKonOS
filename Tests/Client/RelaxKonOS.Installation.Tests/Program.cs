@@ -103,7 +103,7 @@ foreach (var grant in new[] { true, false })
             ? Json(HttpStatusCode.Forbidden, new { problemCode = "elevation-required" })
             : Json(HttpStatusCode.BadRequest, new { problemCode = "installation.invalid_request" });
     }));
-    using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings, InstallationServiceId.Nginx,
+    using var task = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings), InstallationServiceId.Nginx,
         "test", () => Task.CompletedTask, () => { grants++; return Task.FromResult(grant); });
     await task.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true, Version: "1.30.6"));
     Check(grants == 1 && requests.Count == (grant ? 2 : 1),
@@ -171,7 +171,7 @@ using (var http = new HttpClient(new Handler(_ => Json(HttpStatusCode.NotFound, 
 {
     var client = new InstallationClient(http, session);
     Check(await client.GetActiveAsync(InstallationServiceId.Mihomo, default) is null, "Missing active task is an empty result");
-    using var vm = new InstallationTaskViewModel(client, settings, InstallationServiceId.Mihomo, "test", () => Task.CompletedTask, () => Task.FromResult(false));
+    using var vm = new InstallationTaskViewModel(client, new ExternalAppSettings(new("test"), settings), InstallationServiceId.Mihomo, "test", () => Task.CompletedTask, () => Task.FromResult(false));
     var dialogs = 0;
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Helper error is preserved"); dialogs++; return Task.CompletedTask; };
     Check(await vm.CreateFileReferenceAsync("/mihomo.gz") is null && vm.HasMessage && dialogs == 1,
@@ -188,7 +188,7 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
 {
     var completed = new TaskCompletionSource();
     var dialogs = 0;
-    using var vm = new InstallationTaskViewModel(new InstallationClient(http, session), settings, InstallationServiceId.Mihomo,
+    using var vm = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings), InstallationServiceId.Mihomo,
         "test", () => { completed.SetResult(); return Task.CompletedTask; }, () => Task.FromResult(false));
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Polled helper error is preserved"); dialogs++; return Task.CompletedTask; };
     await vm.SubmitAsync(InstallationOperationKind.Install, RuntimePlanBody());
@@ -199,7 +199,7 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
 
 using (var handler = new BlockingTransferHandler())
 using (var http = new HttpClient(handler))
-using (var vm = new InstallationTaskViewModel(new InstallationClient(http, session), settings,
+using (var vm = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings),
     InstallationServiceId.Nginx, "test", () => Task.CompletedTask, () => Task.FromResult(false)))
 {
     using var package = new MemoryStream([1, 2, 3]);
@@ -745,7 +745,9 @@ public class SettingsStub : DispatchProxy
 {
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
-        "GetAsync" or "SaveAsync" => Task.FromResult<AppSettingsDocumentDto?>(null),
+        "GetAsync" => Task.FromResult<AppSettingsDocumentDto?>(null),
+        "SaveAsync" => Task.FromResult(new AppSettingsDocumentDto((AppSettingsScope)args![1]!, (string)args[2]!,
+            (System.Text.Json.JsonElement)args[3]!, (int)args[4]!, 1, DateTimeOffset.UtcNow)),
         _ => throw new NotSupportedException(method?.Name)
     };
 }

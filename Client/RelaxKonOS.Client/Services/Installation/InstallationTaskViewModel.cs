@@ -4,14 +4,12 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Services.Privileged;
-using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Client.Services.Installation;
 
-public sealed partial class InstallationTaskViewModel(IInstallationOperations client, IAppSettingsClient settings,
+public sealed partial class InstallationTaskViewModel(IInstallationOperations client, IExternalAppSettings settings,
     InstallationServiceId service, string appId, Func<Task> refresh, Func<Task<bool>> requestElevation, string workspaceKey = "installation") : ObservableObject, IDisposable
 {
     private IInstallationPackageOperations PackageOperations => client as IInstallationPackageOperations
@@ -190,7 +188,7 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
         try
         {
             InstallationOperationDto? remembered = null;
-            var saved = await settings.GetAsync(appId, AppSettingsScope.Workspace, workspaceKey, lifetime.Token);
+            var saved = await settings.GetAsync(key: workspaceKey, cancellationToken: lifetime.Token);
             if (saved?.Value.TryGetProperty("operationId", out var value) == true && value.TryGetGuid(out var id))
                 remembered = await client.GetAsync(id, lifetime.Token);
             if (remembered?.Service != service) remembered = null;
@@ -214,8 +212,8 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
     {
         try
         {
-            var existing = await settings.GetAsync(appId, AppSettingsScope.Workspace, workspaceKey, lifetime.Token);
-            await settings.SaveAsync(appId, AppSettingsScope.Workspace, workspaceKey, JsonSerializer.SerializeToElement(new { operationId = id }),
+            var existing = await settings.GetAsync(key: workspaceKey, cancellationToken: lifetime.Token);
+            await settings.SetAsync(JsonSerializer.SerializeToElement(new { operationId = id }), key: workspaceKey,
                 expectedRevision: existing?.Revision, cancellationToken: lifetime.Token);
         }
         catch (OperationCanceledException) { }

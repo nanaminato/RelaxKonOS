@@ -1,10 +1,12 @@
 using InstallationApiException = RelaxKonOS.AppSDK.InstallationApiException;
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
@@ -12,6 +14,18 @@ internal static class PackageTransactionClientChecks
 {
     public static async Task RunAsync(IAuthSession session, IAppSettingsClient settings)
     {
+        var backend = DispatchProxy.Create<IAppSettingsClient, InstallationSettingsFixture>();
+        var fixture = (InstallationSettingsFixture)(object)backend;
+        var databaseSettings = new ExternalAppSettings(new("relaxkonos.database"), backend);
+        var operationId = Guid.NewGuid();
+        var previous = await databaseSettings.GetAsync(key: "mysql-installation");
+        await databaseSettings.SetAsync(JsonSerializer.SerializeToElement(new { operationId }),
+            key: "mysql-installation", expectedRevision: previous?.Revision);
+        Check(fixture.ReadAddress == ("relaxkonos.database", AppSettingsScope.Workspace, "mysql-installation")
+            && fixture.WriteAddress == fixture.ReadAddress && fixture.ExpectedRevision == 7
+            && fixture.Value.GetProperty("operationId").GetGuid() == operationId,
+            "Database operation settings preserve workspace identity, document shape, and revision checks");
+
         var package = new ComponentPackageTarget("nginx", "1.26.3-1", "amd64", "repo", "https://repo.example/",
             "stable", "main", "https://repo.example/nginx.deb", new('a', 64), 1024, [new("acl.deb", "https://repo.example/acl.deb", 100, new('b', 64))]);
         var plan = new ComponentPlanRequest("nginx", "host", RuntimeChange.Install, 1,
@@ -29,7 +43,7 @@ internal static class PackageTransactionClientChecks
                 && body.FrozenPackage.Request == plan, "The exact displayed target and frozen revisions reach the ledger");
             return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { problemCode = "installation.connection_unavailable" }) };
         }));
-        using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings,
+        using var task = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("relaxkonos.component-center"), settings),
             InstallationServiceId.Nginx, "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false));
         await task.SubmitAsync(InstallationOperationKind.Install, options);
         await task.SubmitAsync(InstallationOperationKind.Install, options);
@@ -86,7 +100,7 @@ internal static class PackageTransactionClientChecks
                     id + " serialized installation retains the selected component identity");
                 return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { problemCode = "installation.connection_unavailable" }) };
             }));
-            using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings, service,
+            using var task = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("relaxkonos.component-center"), settings), service,
                 "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false), "installation." + id);
             await task.SubmitAsync(InstallationOperationKind.Install, options);
             await task.SubmitAsync(InstallationOperationKind.Install, options);
@@ -98,5 +112,32 @@ internal static class PackageTransactionClientChecks
     {
         if (!condition) throw new InvalidOperationException(message);
         Console.WriteLine("PASS: " + message);
+    }
+}
+
+public class InstallationSettingsFixture : DispatchProxy
+{
+    public (string, AppSettingsScope, string) ReadAddress { get; private set; }
+    public (string, AppSettingsScope, string) WriteAddress { get; private set; }
+    public long? ExpectedRevision { get; private set; }
+    public JsonElement Value { get; private set; }
+
+    protected override object Invoke(MethodInfo? method, object?[]? args)
+    {
+        var address = ((string)args![0]!, (AppSettingsScope)args[1]!, (string)args[2]!);
+        switch (method?.Name)
+        {
+            case nameof(IAppSettingsClient.GetAsync):
+                ReadAddress = address;
+                return Task.FromResult<AppSettingsDocumentDto?>(new(address.Item2, address.Item3,
+                    JsonSerializer.SerializeToElement(new { operationId = Guid.Empty }), 1, 7, DateTimeOffset.UtcNow));
+            case nameof(IAppSettingsClient.SaveAsync):
+                WriteAddress = address;
+                Value = (JsonElement)args[3]!;
+                ExpectedRevision = (long?)args[5];
+                return Task.FromResult(new AppSettingsDocumentDto(address.Item2, address.Item3, Value, 1, 8, DateTimeOffset.UtcNow));
+            default:
+                throw new NotSupportedException(method?.Name);
+        }
     }
 }
