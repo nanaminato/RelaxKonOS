@@ -101,6 +101,19 @@ await coordinator.ExecuteAsync(plan);
 Check(await journal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
     binding.AccountId, binding.ConnectionIdentity) is null);
 Check(backend.Applied.SequenceEqual(new[] {0, 1, 1, 2, 3}) && backend.Verifications == 1);
+using var cancelAfterStep = new CancellationTokenSource();
+var interruptedPlan = plan with { Id = Guid.NewGuid() };
+backend.AfterStep = cancelAfterStep.Cancel;
+try
+{
+    await coordinator.ExecuteAsync(interruptedPlan, cancelAfterStep.Token);
+    throw new Exception("Expected cancellation after the first step.");
+}
+catch (OperationCanceledException) when (cancelAfterStep.IsCancellationRequested) { }
+Check(backend.Verifications == 1);
+backend.AfterStep = null;
+await coordinator.ExecuteAsync(interruptedPlan);
+Check(backend.Applied.Skip(5).SequenceEqual(new[] {0, 1, 2, 3}) && backend.Verifications == 2);
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
@@ -108,11 +121,13 @@ sealed class Backend : IDeploymentBackend
     public DeploymentTarget Target = new("server", "state", "catalog");
     public List<int> Applied = [];
     public int Verifications;
+    public Action AfterStep;
     public Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken) => Task.FromResult(Target);
     public Task ApplyOrReconcileAsync(DeploymentPlan plan, int index, CancellationToken cancellationToken)
     {
         Applied.Add(index);
         if (Applied.Count == 2) throw new IOException("Interrupted");
+        AfterStep?.Invoke();
         return Task.CompletedTask;
     }
     public Task VerifyAsync(DeploymentPlan plan, CancellationToken cancellationToken)

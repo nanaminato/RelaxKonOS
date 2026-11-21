@@ -85,10 +85,12 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
         {
             cancellationToken.ThrowIfCancellationRequested();
             await backend.ApplyOrReconcileAsync(plan, index, cancellationToken);
-            await lease.SaveAsync(new(index + 1, false), cancellationToken);
+            // A completed backend step must be recorded before honoring cancellation.
+            await lease.SaveAsync(new(index + 1, false), CancellationToken.None);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         await backend.VerifyAsync(plan, cancellationToken);
-        await lease.SaveAsync(new(plan.OrderedReleases.Length, true), cancellationToken);
+        await lease.SaveAsync(new(plan.OrderedReleases.Length, true), CancellationToken.None);
     }
 }
