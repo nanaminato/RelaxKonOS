@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Installation;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,6 +11,7 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// <summary>State and safe, typed operations for the server-local Docker Manager.</summary>
 public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) : ObservableObject
 {
+    public IServerDockerInventory Inventory { get; init; } = client;
     /// <summary>Docker Engine installation lives in Component Center; settings only observes and navigates.</summary>
     public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
 
@@ -113,12 +115,12 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         IsLoading = true;
         try
         {
-            var statusTask = client.GetStatusAsync();
-            var containersTask = client.ListContainersAsync();
-            var imagesTask = client.ListImagesAsync();
-            var networksTask = client.ListNetworksAsync();
-            var volumesTask = client.ListVolumesAsync();
-            var stacksTask = client.ListStacksAsync();
+            var statusTask = Inventory.GetStatusAsync();
+            var containersTask = Inventory.ListContainersAsync();
+            var imagesTask = Inventory.ListImagesAsync();
+            var networksTask = Inventory.ListNetworksAsync();
+            var volumesTask = Inventory.ListVolumesAsync();
+            var stacksTask = Inventory.ListStacksAsync();
             await Task.WhenAll(statusTask, containersTask, imagesTask, networksTask, volumesTask, stacksTask);
             var status = await statusTask;
             IsDockerAvailable = status.IsAvailable;
@@ -814,7 +816,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     {
         try
         {
-            var status = await client.GetStatusAsync();
+            var status = await Inventory.GetStatusAsync();
             if (status.IsAvailable) return;
             IsDockerAvailable = false;
             StatusText = LocalizedText.Ref("docker.status.unavailable", status.ProblemCode);

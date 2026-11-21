@@ -21,6 +21,7 @@
     "docker.setup_guide.production_note": "此路径适合开发、个人自托管和验证。无人值守或生产环境优先使用独立 Linux 主机或虚拟机，并在该环境完成部署验收。",
     "docker.status.failed": "Docker 状态请求失败：{0}",
     "docker.status.unavailable_operation": "Docker 当前不可用，未执行此操作。",
+    "docker.error.read_permission": "请允许此应用读取 Docker 资源。",
     "docker.error.not_signed_in": "尚未登录 RelaxKonOS。",
     "docker.error.empty_response": "RelaxKonOS 返回了空响应。",
     "docker.operation.running": "正在执行：{0}",

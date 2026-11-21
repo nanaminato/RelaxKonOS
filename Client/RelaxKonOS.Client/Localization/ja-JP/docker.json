@@ -21,6 +21,7 @@
     "docker.setup_guide.production_note": "この方法は開発、個人のセルフホスティング、検証向けです。無人運用または本番デプロイには、別の Linux ホストまたは VM を優先し、その環境でデプロイ受け入れを完了してください。",
     "docker.status.failed": "Docker 状態の取得に失敗しました: {0}",
     "docker.status.unavailable_operation": "Docker を利用できないため、この操作は実行されませんでした。",
+    "docker.error.read_permission": "このアプリが Docker リソースを読み取ることを許可してください。",
     "docker.error.not_signed_in": "RelaxKonOS にサインインしていません。",
     "docker.error.empty_response": "RelaxKonOS から空の応答が返されました。",
     "docker.operation.running": "実行中: {0}",

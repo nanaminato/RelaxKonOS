@@ -1,6 +1,7 @@
 using RelaxKonOS.Client.Apps.Docker.Views;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Client.Services.Privileged;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -34,7 +35,8 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.docker");
-        var vm = new DockerManagerViewModel(client) { Dependency = dependency };
+        var inventory = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest).DockerInventory;
+        var vm = new DockerManagerViewModel(client) { Dependency = dependency, Inventory = inventory };
         var proxyViewModel = new DockerProxyViewModel(client, readOnly: true);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
         ManagedWindow? window = null;

@@ -25,7 +25,7 @@ internal static class EventAlertsCapabilityChecks
         var client = new RemoteEventAlertClient(http, auth);
         var factory = new ExternalAppContextFactory(permission, null!, language, settings, null!, auth,
             null!, null!, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings), null!, null!, null!,
-            null!, null!, memory, null!, client);
+            null!, null!, memory, null!, client, null!);
         var manifest = new ApplicationManifest(new AppId("relaxkonos.event-alerts"), "Event & Alert Center",
             "1.0.0", RequestedPermissions: [AppPermissions.ServerEventAlertsRead]);
         var capability = factory.Create(manifest).ServerAlerts;

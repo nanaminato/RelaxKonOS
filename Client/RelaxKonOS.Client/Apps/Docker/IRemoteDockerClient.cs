@@ -1,16 +1,11 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.Docker;
 
 namespace RelaxKonOS.Client.Apps.Docker;
 
-public interface IRemoteDockerClient
+public interface IRemoteDockerClient : IServerDockerInventory
 {
-    Task<DockerStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DockerImageDto>> ListImagesAsync(CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DockerNetworkDto>> ListNetworksAsync(CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DockerVolumeDto>> ListVolumesAsync(CancellationToken cancellationToken = default);
     Task<DockerContainerDetailsDto?> GetContainerAsync(string id, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DockerStackDto>> ListStacksAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerStackServiceDto>> ListStackServicesAsync(string name, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> ApplyContainerActionAsync(string id, string action, DockerContainerActionRequest request, CancellationToken cancellationToken = default);
     /// <summary>Parses a definition and returns what it would run. Nothing is applied.</summary>

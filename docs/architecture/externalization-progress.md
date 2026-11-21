@@ -62,6 +62,8 @@
 
 ## 测试证据
 
+- Docker Manager 的概览和资源列表已使用 SDK 的只读清单接口，沿用现有 Docker HTTP 路由。Windows 测试通过实际 HTTP 客户端与测试传输层，验证 Docker 状态请求、未授权拦截、切换服务器后丢弃结果，以及旧窗口无法访问新服务器。容器操作、引擎管理和独立应用包仍待迁移。
+
 - 本地 SDK 10.0.300。部署库独立构建通过，零警告、零错误。桌面 Client 构建通过，NuGet 漏洞索引不可达，项目还报告了原有编译警告。
 - Git CLI 通过本地代理访问 GitHub 失败，基线已通过 GitHub 连接器独立确认。
 - 运行 `dotnet run --project Tests/Deployment/RelaxKonOS.Deployment.Tests` 可复现。模拟后端通过共享依赖版本回溯、循环检测、过期计划、服务器切换、中断后恢复和重复提交检查。模拟后端未调用桌面或服务端安装器。

@@ -1,6 +1,7 @@
 using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
+using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Apps.Explorer;
@@ -37,6 +38,7 @@ public sealed class ExternalAppContextFactory
     private readonly IWindowManager _windowManager;
     private readonly ITaskManagerClient _systemMonitor;
     private readonly IRemoteEventAlertClient _alerts;
+    private readonly IRemoteDockerClient _docker;
     private readonly IExplorerClient _files;
     private readonly SshDesktopSession _sshSession;
     private readonly SshExplorerClient _sshFiles;
@@ -66,7 +68,8 @@ public sealed class ExternalAppContextFactory
         IAppActivationService activations,
         UsageMemoryStore usageMemory,
         TextEditorEncodingSettings textEncoding,
-        IRemoteEventAlertClient alerts)
+        IRemoteEventAlertClient alerts,
+        IRemoteDockerClient docker)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -78,6 +81,7 @@ public sealed class ExternalAppContextFactory
         _windowManager = windowManager;
         _systemMonitor = systemMonitor;
         _alerts = alerts;
+        _docker = docker;
         _files = files;
         _sshSession = sshSession;
         _sshFiles = sshFiles;
@@ -103,6 +107,7 @@ public sealed class ExternalAppContextFactory
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
         new ServerMonitorCapability(appId, _permissions, _systemMonitor),
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
+        new ServerDockerInventoryCapability(appId, _permissions, fileSession, _docker),
         new ServerFilesCapability(appId, _permissions,
             (sshFiles as IExplorerClient ?? _files).DownloadAsync,
             sshEndpoint is not null, sshEndpoint is not null || _session.CurrentServer?.Platform != RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
@@ -125,6 +130,7 @@ public sealed class ExternalAppContextFactory
         IDesktopAppearance DesktopAppearance,
         IServerMonitor ServerMonitor,
         IServerAlerts ServerAlerts,
+        IServerDockerInventory DockerInventory,
         IServerFiles ServerFiles,
         IExternalTextEditorPreferences? TextEditorPreferences,
         IExternalFileApiAccess FileApi,
