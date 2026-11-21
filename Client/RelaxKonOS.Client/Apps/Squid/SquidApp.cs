@@ -28,8 +28,15 @@ public sealed class SquidApp : RemoteApplicationBase
         var client = (IServerSquid?)context.Services.GetService(typeof(IServerSquid));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.squid");
-        var vm = new SquidViewModel(client) { Dependency = dependency };
-        var view = new SquidWorkspace(vm);
+        var vm = new SquidViewModel(client)
+        {
+            GetComponentManagementCommand = () => dependency.Components.FirstOrDefault()?.ManageCommand,
+        };
+        var view = new SquidWorkspace(vm)
+        {
+            CreateDependencySettings = () => new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency },
+            RefreshDependencySettings = () => _ = dependency.RefreshAsync(),
+        };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.squid.display_name"), view,
             new Rect(90, 55, 960, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);

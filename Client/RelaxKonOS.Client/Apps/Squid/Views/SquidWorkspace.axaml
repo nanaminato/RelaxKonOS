@@ -3,7 +3,7 @@
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:squid="clr-namespace:RelaxKonOS.Client.Apps.Squid"
-             xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter"
+
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.GatewayProxy;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Squid.Views.SquidWorkspace"
              x:DataType="squid:SquidViewModel"
@@ -494,7 +494,7 @@
 
           <!-- Settings: the component dependency area owns installation and package state. -->
           <StackPanel x:Name="Page6" Spacing="14" IsVisible="False">
-            <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
+            <ContentControl x:Name="DependencySettingsHost" />
             <Border Classes="app-panel" Padding="18">
               <StackPanel Spacing="6">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.section.package}" />

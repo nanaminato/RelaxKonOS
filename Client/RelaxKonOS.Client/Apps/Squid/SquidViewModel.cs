@@ -17,8 +17,8 @@ namespace RelaxKonOS.Client.Apps.Squid;
 /// </summary>
 public partial class SquidViewModel : ObservableObject, IDisposable
 {
-    /// <summary>Squid package installation lives in Component Center; settings only observes and navigates.</summary>
-    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
+    /// <summary>The workspace host supplies the shortcut to its component management surface.</summary>
+    public Func<IRelayCommand?>? GetComponentManagementCommand { get; init; }
     private readonly IServerSquid _client;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _initialized;
@@ -218,7 +218,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         if (RequiresPassword && !HasEnabledAccounts) yield return L("blocker.accounts");
     }
     /// <summary>The component centre owns installation; this window only points at it.</summary>
-    public IRelayCommand? OpenComponentCenterCommand => Dependency?.Components.FirstOrDefault()?.ManageCommand;
+    public IRelayCommand? OpenComponentCenterCommand => GetComponentManagementCommand?.Invoke();
     public bool CanOpenComponentCenter => OpenComponentCenterCommand is not null;
 
     /// <summary>A host that cannot run Squid offers no draft to edit; the notice explains why instead.</summary>

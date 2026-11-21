@@ -11,6 +11,8 @@ public partial class SquidWorkspace : UserControl
     private SquidViewModel? _viewModel;
 
     public Func<string, Control, Task>? ShowEditorAsync { get; set; }
+    public Func<Control?>? CreateDependencySettings { get; init; }
+    public Action? RefreshDependencySettings { get; init; }
 
     private async void EditorButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
@@ -48,7 +50,11 @@ public partial class SquidWorkspace : UserControl
             this.FindControl<StackPanel>($"Page{i}")!.IsVisible = i == page;
             this.FindControl<Button>($"PageButton{i}")!.Classes.Set("nav-selected", i == page);
         }
-        if (page == 6 && _viewModel?.Dependency is { } dependency) _ = dependency.RefreshAsync();
+        if (page == 6)
+        {
+            DependencySettingsHost.Content ??= CreateDependencySettings?.Invoke();
+            RefreshDependencySettings?.Invoke();
+        }
         BodyScroll.Offset = default;
     }
 
