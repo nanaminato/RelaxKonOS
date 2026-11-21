@@ -54,7 +54,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
 
     private static void ManagedCatalogForm()
     {
-        var client = DispatchProxy.Create<IRemoteApplicationDeploymentClient, DeploymentHostStub>();
+        var client = DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>();
         var host = (DeploymentHostStub)(object)client;
         host.Seed();
         var requirements = new[] { ServerCapabilities.ApplicationDeployments, ServerCapabilities.Docker, ServerCapabilities.ApplicationDeploymentsCompose };
@@ -400,7 +400,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
 
     private static ApplicationDeploymentsViewModel Model(out DeploymentHostStub stub, bool empty = false, bool busy = false)
     {
-        var client = DispatchProxy.Create<IRemoteApplicationDeploymentClient, DeploymentHostStub>();
+        var client = DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>();
         stub = (DeploymentHostStub)(object)client;
         stub.Seed(empty, busy);
         var model = new ApplicationDeploymentsViewModel(client, new DeploymentTestPermissions());

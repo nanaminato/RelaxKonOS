@@ -1,9 +1,8 @@
+using RelaxKonOS.AppSDK;
 using System.Diagnostics;
 using System.Net;
 
 namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
-
-public sealed record DeploymentUploadProgress(long Bytes, long? TotalBytes, TimeSpan Elapsed);
 
 /// <summary>Counts bytes written to the HTTP body; completion still awaits server staging.</summary>
 internal sealed class DeploymentUploadContent(Stream source, IProgress<DeploymentUploadProgress>? progress) : HttpContent

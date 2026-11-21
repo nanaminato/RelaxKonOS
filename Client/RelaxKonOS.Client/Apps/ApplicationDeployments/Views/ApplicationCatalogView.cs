@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Globalization;
 using System.Text.Json;
 using Avalonia;
@@ -31,7 +32,7 @@ internal sealed class ApplicationCatalogView : UserControl
     private readonly ServerDescriptorDto? server;
     private int? previewedPort;
 
-    public ApplicationCatalogView(IRemoteApplicationDeploymentClient client, IReadOnlyList<ApplicationCatalogTemplateDto> releases,
+    public ApplicationCatalogView(IServerApplicationDeployments client, IReadOnlyList<ApplicationCatalogTemplateDto> releases,
         ServerDescriptorDto? server, ModalDialog<CatalogApplicationInstallDto?> dialog)
     {
         this.server = server;

@@ -20,7 +20,7 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
 public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservableObject
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1.5);
-    private readonly IRemoteApplicationDeploymentClient client;
+    private readonly IServerApplicationDeployments client;
     private readonly IAppPermissionScope permissions;
     private CancellationTokenSource? polling;
     /// <summary>Set while this view model rewrites the selection itself, so the change handler does not reload twice.</summary>
@@ -29,7 +29,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// blank the detail before the new snapshot arrives.</summary>
     private Guid? loadedApplicationId;
 
-    public ApplicationDeploymentsViewModel(IRemoteApplicationDeploymentClient client, IAppPermissionScope permissions)
+    public ApplicationDeploymentsViewModel(IServerApplicationDeployments client, IAppPermissionScope permissions)
     {
         this.client = client;
         this.permissions = permissions;

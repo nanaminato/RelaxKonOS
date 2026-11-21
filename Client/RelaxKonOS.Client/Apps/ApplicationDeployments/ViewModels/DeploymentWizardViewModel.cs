@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Threading;
@@ -56,7 +57,7 @@ public enum DeploymentWizardStep
 public sealed partial class DeploymentWizardViewModel : LocalizedObservableObject
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1.5);
-    private readonly IRemoteApplicationDeploymentClient client;
+    private readonly IServerApplicationDeployments client;
     private readonly Guid? applicationId;
     private readonly ApplicationDto? existing;
     private readonly string definitionIdempotencyKey = Guid.NewGuid().ToString("N");
@@ -66,7 +67,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     private long liveVersion = -1;
 
     public DeploymentWizardViewModel(
-        IRemoteApplicationDeploymentClient client,
+        IServerApplicationDeployments client,
         DeploymentWizardIntent intent,
         IReadOnlyList<ApplicationDeploymentTemplateDto> templates,
         ApplicationDto? existing = null)

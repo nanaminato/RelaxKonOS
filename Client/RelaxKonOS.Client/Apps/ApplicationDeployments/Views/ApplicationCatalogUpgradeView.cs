@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -13,7 +14,7 @@ internal sealed class ApplicationCatalogUpgradeView : UserControl
 {
     private const string Prefix = "application_deployments.catalog.";
 
-    public ApplicationCatalogUpgradeView(IRemoteApplicationDeploymentClient client, ApplicationDto application,
+    public ApplicationCatalogUpgradeView(IServerApplicationDeployments client, ApplicationDto application,
         IReadOnlyList<ApplicationCatalogTemplateDto> releases, ModalDialog<DeploymentOperationDto?> dialog)
     {
         var version = new ComboBox

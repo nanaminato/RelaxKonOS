@@ -1,13 +1,13 @@
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
+namespace RelaxKonOS.AppSDK;
 
 /// <summary>
 /// Typed client for the server's application-deployment domain. Every mutating call carries an
 /// idempotency key, and every long action answers with a durable operation that this client can poll
 /// after a reconnect instead of relying on an in-flight HTTP request.
 /// </summary>
-public interface IRemoteApplicationDeploymentClient
+public interface IServerApplicationDeployments
 {
     Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationCatalogTemplateDto>> ListCatalogAsync(CancellationToken cancellationToken = default);
@@ -45,3 +45,5 @@ public interface IRemoteApplicationDeploymentClient
     /// <summary>Registers a file that already exists on the server. The host path never leaves this call.</summary>
     Task<DeploymentStagedFileDto> CreateFileReferenceAsync(string path, CancellationToken cancellationToken = default);
 }
+
+public sealed record DeploymentUploadProgress(long Bytes, long? TotalBytes, TimeSpan Elapsed);

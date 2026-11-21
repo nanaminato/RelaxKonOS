@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Localization;
@@ -12,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
 /// text: an archive travels as an upload reference and a secret travels as a value on its own create
 /// or update request only.
 /// </summary>
-public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSession session) : IRemoteApplicationDeploymentClient
+public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSession session) : IServerApplicationDeployments
 {
     public Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<ApplicationDeploymentTemplateDto>>(ApplicationDeploymentApiRoutes.Templates, cancellationToken);
