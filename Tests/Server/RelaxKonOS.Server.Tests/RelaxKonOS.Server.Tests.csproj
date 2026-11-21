@@ -12,6 +12,7 @@
     <None Update="Fixtures/ApplicationCatalog/upgrade-fixture.json" TargetPath="Assets/ApplicationCatalog/upgrade-fixture.json" />
     <None Update="Fixtures/ApplicationCatalog/fixture-web-db-plan.json" TargetPath="Assets/ApplicationCatalog/fixture-web-db-plan.json" />
     <ProjectReference Include="../../../RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj" />
+    <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" Aliases="desktopclient" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/WindowsFirewallOperations.cs" Link="WindowsFirewallOperations.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimePolicy.cs" Link="WindowsManagedRuntimePolicy.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/WindowsNginxStaticSiteAccess.cs" Link="WindowsNginxStaticSiteAccess.cs" />

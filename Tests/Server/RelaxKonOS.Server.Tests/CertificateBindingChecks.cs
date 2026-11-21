@@ -1,3 +1,5 @@
+extern alias desktopclient;
+
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http.Features;
@@ -6,6 +8,10 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Authentication;
 using System.Security.Claims;
 using System.Net.Security;
+using System.Reflection;
+using desktopclient::RelaxKonOS.Client.Apps.Certificates;
+using desktopclient::RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
@@ -167,7 +173,10 @@ internal static class CertificateBindingChecks
         await using var app = builder.Build();
         app.Use(async (context, next) =>
         {
-            if (!context.Request.Headers.ContainsKey("X-Anonymous")) context.User = principal;
+            if (!context.Request.Headers.ContainsKey("X-Anonymous")
+                && (context.Request.Method != "GET" || context.Request.Path != CertificateApiRoutes.Certificates
+                    || context.Request.Headers.Authorization == "Bearer fixture-certificate-access"))
+                context.User = principal;
             if (context.Request.Headers.ContainsKey("X-Hold-Order") && orderFixture is { } current)
             {
                 context.Response.OnStarting(async () =>
@@ -197,6 +206,15 @@ internal static class CertificateBindingChecks
         app.MapCertificateEndpoints();
         await app.StartAsync();
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        using (var anonymousList = await http.GetAsync(CertificateApiRoutes.Certificates))
+            TestAssert.Assert(anonymousList.StatusCode == HttpStatusCode.Unauthorized, "Certificate metadata was exposed without authentication.");
+        var auth = DispatchProxy.Create<IAuthSession, CertificateReadSession>();
+        ((CertificateReadSession)(object)auth).BaseUrl = http.BaseAddress.AbsoluteUri;
+        var client = new RemoteCertificateClient(http, auth, null!);
+        var list = await client.ListAsync();
+        TestAssert.Assert(list.Any(item => item.Id == id && item.PrimaryDomain == "one.example.test")
+            && list.Any(item => item.Id == selfSignedId && item.Kind == CertificateKind.SelfSigned),
+            "The desktop HTTP client did not read both stored certificates through the Server endpoint.");
         async Task<HttpResponseMessage> Submit(bool hold = false, CancellationToken ct = default)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("D")));
@@ -380,6 +398,19 @@ internal static class CertificateBindingChecks
             fixture.Cleaning.TrySetResult();
             await fixture.ReleaseCleanup.Task;
         }
+    }
+
+    public class CertificateReadSession : DispatchProxy
+    {
+        public string BaseUrl { get; set; } = "";
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+        {
+            "get_State" => AuthSessionState.Authenticated,
+            "get_EffectiveBaseUrl" => BaseUrl,
+            "get_Tokens" => new AuthTokens("fixture-certificate-access", "fixture-refresh", DateTimeOffset.MaxValue, DateTimeOffset.MaxValue),
+            _ => throw new NotSupportedException(method?.Name),
+        };
     }
 
     private sealed class UnprivilegedBindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => false; }
