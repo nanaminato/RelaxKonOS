@@ -1,4 +1,8 @@
 using RelaxKonOS.App.Terminal;
+using Avalonia.Utilities;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Diagnostics;
@@ -14,7 +18,7 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// RoyalTerminal is the only desktop engine, so the view-model owns the transport lifetime and
 /// hosts the single surface the factory builds.
 /// </summary>
-public partial class TerminalViewModel : LocalizedObservableObject
+public partial class TerminalViewModel : TerminalAppearanceViewModel
 {
     private readonly RelaxKonOS.Client.Services.DesktopDevicePreferences? _devicePreferences;
     public IReadOnlyList<string> VtEngines { get; } = ["Auto", "Managed", "Native"];
@@ -47,7 +51,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
     private ITerminalSurface? _surface;
     private bool _attached;
     private long _attachmentGeneration;
-    private bool _loadingAppearance;
 
     [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
     [ObservableProperty] private bool _hasExited;
@@ -63,14 +66,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
         }
     }
     partial void OnTitleChanged(string value) => OnPropertyChanged(nameof(DisplayTitle));
-    [ObservableProperty] private TerminalSettingsDto _appearance = TerminalSettingsDto.Default;
-    [ObservableProperty] private string _fontFamily = TerminalSettingsDto.Default.FontFamily;
-    [ObservableProperty] private double _fontSize = TerminalSettingsDto.Default.FontSize;
-    [ObservableProperty] private string _colorScheme = TerminalSettingsDto.Default.ColorScheme;
-
-    public IReadOnlyList<string> FontFamilies => TerminalAppearance.FontFamilies;
-    public IReadOnlyList<double> FontSizes => TerminalAppearance.FontSizes;
-    public IReadOnlyList<string> ColorSchemes => TerminalAppearance.ColorSchemes;
     public Func<Task>? RequestSettingsAsync { get; set; }
     public Func<Task>? RequestEnvironmentAsync { get; set; }
     public Action? CloseSettingsAction { get; set; }
@@ -105,6 +100,9 @@ public partial class TerminalViewModel : LocalizedObservableObject
         RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null,
         RelaxKonOS.Client.Services.DesktopDevicePreferences? devicePreferences = null)
     {
+        if (App.Services?.GetService<LocalizationService>() is { } language)
+            WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, TerminalViewModel>(
+                language, nameof(LocalizationService.LanguageChanged), OnLanguageChanged);
         _devicePreferences = sshDesktop?.IsConnected == true ? sshDesktop.DevicePreferences : devicePreferences;
         _vtEngine = _devicePreferences?.Value.TerminalVtEngine ?? "Auto";
         _preferences = session is { State: AuthSessionState.Authenticated } && sshDesktop?.IsConnected != true ? preferences : null;
@@ -175,6 +173,8 @@ public partial class TerminalViewModel : LocalizedObservableObject
 
     /// <summary>Re-raises the localizable state so the open window re-renders after a language switch.</summary>
     public void RefreshLocalization() => OnPropertyChanged(nameof(Status));
+
+    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private async Task OpenSettingsAsync()
@@ -266,37 +266,10 @@ public partial class TerminalViewModel : LocalizedObservableObject
         }
     }
 
-    private void ApplyAppearance(TerminalSettingsDto settings)
+    protected override void OnAppearanceEdited(TerminalSettingsDto settings)
     {
-        _loadingAppearance = true;
-        Appearance = settings;
-        FontFamily = settings.FontFamily;
-        FontSize = settings.FontSize;
-        ColorScheme = settings.ColorScheme;
-        _loadingAppearance = false;
-    }
-
-    partial void OnFontFamilyChanged(string value) => UpdateAppearance();
-    partial void OnFontSizeChanged(double value) => UpdateAppearance();
-    partial void OnColorSchemeChanged(string value) => UpdateAppearance(applyScheme: true);
-
-    private void UpdateAppearance(bool applyScheme = false)
-    {
-        if (_loadingAppearance)
-            return;
-
-        // The stored engine is always the built-in one, so a workspace written by an older build
-        // (which could still hold the legacy `xterm` token) migrates on its next appearance write.
-        var updated = Appearance with
-        {
-            FontFamily = FontFamily,
-            FontSize = FontSize,
-            ColorScheme = ColorScheme,
-            Backend = TerminalBackends.BuiltIn,
-        };
-        Appearance = applyScheme ? TerminalAppearance.ApplyScheme(updated, ColorScheme) : updated;
-        _surface?.ApplyAppearance(Appearance);
-        _ = SaveAppearanceAsync(Appearance);
+        _surface?.ApplyAppearance(settings);
+        _ = SaveAppearanceAsync(settings);
     }
 
     private async Task SaveAppearanceAsync(TerminalSettingsDto settings)

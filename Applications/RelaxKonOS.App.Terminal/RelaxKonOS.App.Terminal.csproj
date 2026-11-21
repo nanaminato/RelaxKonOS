@@ -6,6 +6,7 @@
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+        <PackageReference Include="CommunityToolkit.Mvvm" />
         <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia" />
         <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty" />
     </ItemGroup>
