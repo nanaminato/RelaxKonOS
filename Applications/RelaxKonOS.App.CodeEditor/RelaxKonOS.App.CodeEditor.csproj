@@ -9,5 +9,6 @@
         <ProjectReference Include="../../Framework/RelaxKonOS.UI/RelaxKonOS.UI.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="CodeEditor.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="CodeEditor.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

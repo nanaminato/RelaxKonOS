@@ -109,12 +109,21 @@ internal static class NotepadWorkspaceChecks
                 && createFile.Result.Status == AppCapabilityResult.Succeeded
                 && duplicateCreate.Result.Status == AppCapabilityResult.Conflict,
                 "Conditional saves report stale versions and exclusive creation cannot overwrite.");
-            using (var editor = new CodeEditorViewModel(LocalizedText.Get, new SdkEditorWorkspaceFiles(context.ServerFiles)))
+            using (var editor = new CodeEditorViewModel(LocalizedText.Get, new SdkEditorWorkspaceFiles(context.ServerFiles, LocalizedText.Get)))
             {
                 Wait(editor.OpenPathAsync("/remote/notes.txt"));
                 Check(editor.CurrentPath == "/remote/notes.txt" && editor.Text == FileTransport.Original,
                     "Code Editor loads remote documents through the SDK workspace adapter.");
             }
+            var packageEditor = new CodeEditorPackageApp();
+            Wait(packageEditor.OpenFileAsync(factory.Create(packageEditor.Manifest, openedFile: "/remote/sample.cs"), "/remote/sample.cs"));
+            var packageWindow = manager.Windows.Single(item => item.Info.OwnerAppId == packageEditor.Manifest.Id);
+            var packageModel = (CodeEditorViewModel)((CodeEditorView)packageWindow.View.Content!).DataContext!;
+            Check(packageWindow.Title == "コード エディター" && packageModel.CurrentPath == "/remote/sample.cs"
+                && packageModel.Text == FileTransport.Original, "The external Code Editor entry opens a localized SDK window and reads the selected file.");
+            Check(packageModel.RequestEntryNameAsync is not null && packageModel.RequestEncodingAsync is not null
+                && packageModel.RequestSavePathAsync is not null, "The external entry wires editor operations through the SDK.");
+            manager.ForceClose(packageWindow);
             var create = context.ServerFiles.CreateDirectoryAsync("/remote/draft");
             var invalidRename = context.ServerFiles.RenameAsync("/remote/draft", "../renamed");
             Wait(Task.WhenAll(create, invalidRename));
@@ -161,7 +170,7 @@ internal static class NotepadWorkspaceChecks
                 "The SDK preserves separate file picker filters and their order.");
             picker.CancelAction!();
             Wait(filtered);
-            using (var editor = new CodeEditorViewModel(LocalizedText.Get, new SdkEditorWorkspaceFiles(context.ServerFiles)))
+            using (var editor = new CodeEditorViewModel(LocalizedText.Get, new SdkEditorWorkspaceFiles(context.ServerFiles, LocalizedText.Get)))
             {
                 CodeEditorSessionDialogs.ConfigureSdkPickers(editor, context.ServerFiles, pickerOwner);
                 var chooseSource = editor.RequestFileAsync!();

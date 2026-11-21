@@ -105,7 +105,8 @@ public sealed class ExternalAppContextFactory
             sshEndpoint is null ? _files.DownloadAsync : (path, ct) => _sshFiles.DownloadAsync(path, sshEndpoint, ct),
             sshEndpoint is not null, sshEndpoint is not null || _session.CurrentServer?.Platform != RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
             openedFile, _files, fileSession, _windowManager),
-        appId.Value == "relaxkonos.notepad" ? new NotepadEncodingPreferences(_textEncoding, fileSession) : null,
+        appId.Value is "relaxkonos.notepad" or "relaxkonos.codeeditor"
+            ? new EditorEncodingPreferences(_textEncoding, fileSession, appId.Value == "relaxkonos.codeeditor") : null,
         new ExternalFileApiAccess(appId, _permissions, _session, _capabilities),
         new ExternalMediaService(appId, _permissions, _session, _capabilities),
         new ExternalAppSettings(appId, _appSettings),
@@ -169,11 +170,13 @@ public sealed class ExternalAppContextFactory
         private bool IsConnected() => connection.IsCurrent && session.State == AuthSessionState.Authenticated;
     }
 
-    private sealed class NotepadEncodingPreferences(TextEditorEncodingSettings settings, UsageMemoryScope session) : IExternalTextEditorPreferences
+    private sealed class EditorEncodingPreferences(TextEditorEncodingSettings settings, UsageMemoryScope session, bool codeEditor) : IExternalTextEditorPreferences
     {
-        public string DefaultEncoding => session.IsCurrent ? settings.NotepadDefaultEncoding : "UTF-8";
+        public string DefaultEncoding => session.IsCurrent
+            ? (codeEditor ? settings.CodeEditorDefaultEncoding : settings.NotepadDefaultEncoding) : "UTF-8";
         public Task SetDefaultEncodingAsync(string encoding) => session.IsCurrent
-            ? settings.SetNotepadDefaultEncodingAsync(encoding) : Task.CompletedTask;
+            ? (codeEditor ? settings.SetCodeEditorDefaultEncodingAsync(encoding) : settings.SetNotepadDefaultEncodingAsync(encoding))
+            : Task.CompletedTask;
 
         public Task<EncodingDialogAction?> PickEncodingActionAsync(IExternalAppWindowHandle owner) =>
             owner.ShowDialogAsync<EncodingDialogAction?>(LocalizedText.Get("common.file_encoding"),
