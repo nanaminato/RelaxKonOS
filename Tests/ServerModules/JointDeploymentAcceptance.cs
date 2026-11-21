@@ -196,10 +196,17 @@ internal static class JointDeploymentAcceptance
             {
                 var manifest = applications.GetManifest(new AppId(AppIdText))!;
                 Require(await readiness.RefreshAsync(manifest) is { CanOpen: true }, "a healthy module satisfies launch readiness");
+                var moduleCatalog = new ModuleDeploymentCatalog(new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth));
+                var healthy = await moduleCatalog.ReadAsync(default);
                 factory.FaultedModule = ModuleId;
                 Require(await readiness.RefreshAsync(manifest) is
                     { CanOpen: false, State: ComponentAvailabilityKind.Recovery, ComponentId: ModuleId },
                     "a faulted module cannot satisfy launch readiness even when effectively enabled");
+                var faulted = await moduleCatalog.ReadAsync(default);
+                Require(healthy.Releases.Any(release => release.Package.Id == ModuleId && release.Satisfied)
+                    && faulted.Releases.All(release => release.Package.Id != ModuleId || !release.Satisfied)
+                    && healthy.Target.StateRevision != faulted.Target.StateRevision,
+                    "a faulted module invalidates the deployment snapshot and is never a satisfied candidate");
                 factory.FaultedModule = null;
             }
             await packages.UninstallAsync(AppIdText);

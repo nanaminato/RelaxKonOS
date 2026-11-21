@@ -45,7 +45,8 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         {
             var package = installed.SingleOrDefault(item => item.ModuleId == module.Id);
             if (module is { ConfigurationWritable: true, EffectiveEnabled: false, DesiredEnabled: false,
-                    RestartRequired: false, PendingOperationId: null, RecoveryState: "none" }
+                    RestartRequired: false, PendingOperationId: null }
+                && !RequiresRecovery(module)
                 && InstalledActivationVersion(module) is { } activationVersion)
             {
                 ServerModuleStoreItemDto? signed = null;
@@ -67,8 +68,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                 }
             }
             var effectiveVersion = EffectivePackageVersion(module);
-            if (!module.EffectiveEnabled || module.RecoveryState != "none"
-                || module.RestartRequired || effectiveVersion is null)
+            if (!IsEffective(module) || effectiveVersion is null)
                 continue;
             var identity = package is { Active: true, Quarantined: false } && package.Version == module.EffectiveVersion
                 ? Identity(package.SourceId, package.ReleaseId, package.ArtifactSha256)
@@ -108,6 +108,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             module.Id, module.DesiredRevision, module.EffectiveRevision, module.ProcessGeneration,
             module.DesiredVersion, module.EffectiveVersion, module.InstalledVersion, module.ArtifactDigest,
             module.DesiredEnabled, module.EffectiveEnabled, module.RecoveryState, module.RestartRequired,
+            RequiresRecovery = RequiresRecovery(module),
             module.PendingOperationId
         });
         return new(modules[0].ServiceId!, Digest(state), CatalogRevision(sources));
@@ -123,6 +124,12 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
 
     private static DeploymentPackageKey Key(string id) => new(DeploymentPackageKind.ServerModule, id);
+
+    internal static bool RequiresRecovery(ServerModuleDto module) =>
+        module.RecoveryState != "none" || module.TrustState == "quarantined" || module.Residency?.State == "faulted";
+
+    internal static bool IsEffective(ServerModuleDto module) =>
+        module.EffectiveEnabled && !module.RestartRequired && !RequiresRecovery(module);
 
     internal static string? EffectivePackageVersion(ServerModuleDto module)
     {

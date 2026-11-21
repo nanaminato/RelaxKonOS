@@ -81,7 +81,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
         if (module is null || module.ArtifactDigest != digest
-            || module.RecoveryState != "none")
+            || ModuleDeploymentCatalog.RequiresRecovery(module))
             throw new InvalidOperationException("deployment-module-not-effective");
         var version = release.ActivationOnly ? ModuleDeploymentCatalog.InstalledActivationVersion(module) : module.InstalledVersion;
         if (version != release.Version)
@@ -116,7 +116,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
         var identity = release.ArtifactIdentity.Split('/')[^1];
-        if (module is not { EffectiveEnabled: true, RestartRequired: false, RecoveryState: "none" }
+        if (module is null || !ModuleDeploymentCatalog.IsEffective(module)
             || ModuleDeploymentCatalog.EffectivePackageVersion(module) != release.Version
             || !release.Capabilities.Keys.All(capability => module.Capabilities.Contains(capability, StringComparer.Ordinal))
             || identity.Length == 64 && module.ArtifactDigest != identity)
