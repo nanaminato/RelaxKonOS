@@ -378,7 +378,7 @@ public static class Bootstrapper
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IMihomoRuntimeCatalogClient, RelaxKonOS.Client.Apps.ProxyServer.MihomoRuntimeCatalogClient>()
             .RemoveAllLoggers();
-        services.AddHttpClient<RelaxKonOS.Client.Apps.Squid.ISquidClient, RelaxKonOS.Client.Apps.Squid.RemoteSquidClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerSquid, RelaxKonOS.Client.Apps.Squid.RemoteSquidClient>()
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.TailscaleApp>();

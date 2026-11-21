@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -18,17 +19,16 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 {
     /// <summary>Squid package installation lives in Component Center; settings only observes and navigates.</summary>
     public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
-    private readonly ISquidClient _client;
+    private readonly IServerSquid _client;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _initialized;
     private bool _disposed;
     private bool _previewGenerated;
-    private string? _pendingRoute;
-    private object? _pendingBody;
+    private Func<string, CancellationToken, Task<ProxyOperationAcceptedDto>>? _pendingSubmission;
     private string? _pendingKey;
     private Guid? _operation;
 
-    public SquidViewModel(ISquidClient client) => _client = client;
+    public SquidViewModel(IServerSquid client) => _client = client;
 
     /// <summary>Draft fields. They only reach the host through preview, validate and apply.</summary>
     [ObservableProperty] private string _bindAddress = "127.0.0.1";
@@ -495,7 +495,8 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         _previewGenerated = true;
         IsPreviewStale = false;
         if (ConfirmApplyAsync is null || !await ConfirmApplyAsync()) return;
-        Begin(GatewayProxyRoutes.Apply, new ApplySquidConfigurationRequest(configuration, AdoptExistingConfiguration));
+        var request = new ApplySquidConfigurationRequest(configuration, AdoptExistingConfiguration);
+        Begin((key, ct) => _client.ApplyAsync(request, key, ct));
         await SubmitAndWatchAsync();
     });
 
@@ -526,7 +527,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
     private Task SubmitAccountAsync(SquidAccountMutation request) => !CanManageAccounts ? Task.CompletedTask : WorkAsync(async () =>
     {
-        Begin(GatewayProxyRoutes.Accounts, request);
+        Begin((key, ct) => _client.ChangeAccountAsync(request, key, ct));
         // An uncertain request retains its original body only in this window's memory.
         AccountPassword = "";
         await SubmitAndWatchAsync();
@@ -558,13 +559,15 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
     private Task LifecycleAsync(SquidServiceAction action) => !Allows(action) ? Task.CompletedTask : WorkAsync(async () =>
     {
-        Begin(GatewayProxyRoutes.Lifecycle, new SquidLifecycleRequest(action));
+        var request = new SquidLifecycleRequest(action);
+        Begin((key, ct) => _client.RunLifecycleAsync(request, key, ct));
         await SubmitAndWatchAsync();
     });
 
-    private void Begin(string route, object body)
+    private void Begin(Func<string, CancellationToken, Task<ProxyOperationAcceptedDto>> submit)
     {
-        _pendingRoute = route; _pendingBody = body; _pendingKey = Guid.NewGuid().ToString("N");
+        _pendingSubmission = submit;
+        _pendingKey = Guid.NewGuid().ToString("N");
         PendingReference = _pendingKey;
         OutcomeText = default; OutcomeFailed = false;
         NotifyActions();
@@ -579,7 +582,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         {
             try
             {
-                var accepted = await _client.SubmitAsync(_pendingRoute!, _pendingBody!, _pendingKey!, _lifetime.Token);
+                var accepted = await _pendingSubmission!(_pendingKey!, _lifetime.Token);
                 _operation = accepted.OperationId;
                 PendingReference = accepted.OperationId.ToString();
                 NotifyActions();
@@ -622,7 +625,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
     private void ClearPending()
     {
-        _operation = null; _pendingKey = null; _pendingBody = null; _pendingRoute = null;
+        _operation = null; _pendingKey = null; _pendingSubmission = null;
         PendingReference = "";
         NotifyActions();
     }
@@ -682,7 +685,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _lifetime.Cancel();
-        _pendingBody = null; _pendingKey = null; _pendingRoute = null; _operation = null; PendingReference = "";
+        _pendingSubmission = null; _pendingKey = null; _operation = null; PendingReference = "";
         CanRead = false; CanManage = false; Snapshot = null; IsUnavailable = false;
         AccountPassword = ""; NewAccountName = ""; SelectedAccount = null; Accounts.Clear();
         BindAddress = ""; AllowedNetworks = ""; AllowedDomains = ""; DeniedDomains = ""; UpstreamHost = "";

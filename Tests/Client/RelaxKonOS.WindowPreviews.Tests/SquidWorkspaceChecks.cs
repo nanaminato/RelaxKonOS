@@ -1,3 +1,4 @@
+using IServerSquid = RelaxKonOS.AppSDK.IServerSquid;
 using Avalonia.LogicalTree;
 using Avalonia.Controls;
 using System.Reflection;
@@ -344,14 +345,14 @@ internal static class SquidWorkspaceChecks
         Check(!preview.Result.Valid && preview.Result.Errors.Single() == "invalid", "HTTP 200 invalid previews must deserialize without losing structured errors.");
         var validation = client.ValidateAsync(new SquidConfiguration(), default); Complete(validation);
         Check(!validation.Result.Valid && validation.Result.Diagnostics == "parse error", "Native validation diagnostics must survive the HTTP client boundary.");
-        Complete(client.SubmitAsync(GatewayProxyRoutes.Lifecycle, new SquidLifecycleRequest(SquidServiceAction.Reload), "retained-key", default));
+        Complete(client.RunLifecycleAsync(new SquidLifecycleRequest(SquidServiceAction.Reload), "retained-key", default));
         Check(handler.LastKey == "retained-key" && handler.LastBearer == "access" && handler.LastPath == GatewayProxyRoutes.Lifecycle,
             "The client must send the login bearer, closed route and retained idempotency key.");
         using var body = JsonDocument.Parse(handler.LastBody!);
         Check(body.RootElement.GetProperty("action").GetString() == "reload", "Lifecycle must use the shared Squid enum contract.");
         var before = handler.Calls;
         state.Login = state.Login with { Id = Guid.NewGuid() };
-        try { Complete(client.SubmitAsync(GatewayProxyRoutes.Lifecycle, new SquidLifecycleRequest(SquidServiceAction.Stop), "new-key", default)); throw new Exception("Stale login was allowed."); }
+        try { Complete(client.RunLifecycleAsync(new SquidLifecycleRequest(SquidServiceAction.Stop), "new-key", default)); throw new Exception("Stale login was allowed."); }
         catch (InvalidOperationException) { }
         Check(handler.Calls == before, "A stale application window must never mutate the newly selected host.");
     }
@@ -363,7 +364,7 @@ internal static class SquidWorkspaceChecks
         task.GetAwaiter().GetResult();
     }
     private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
-    private sealed class SquidClientStub : ISquidClient
+    private sealed class SquidClientStub : IServerSquid
     {
         public SquidConfigurationSnapshot Snapshot = new(new(new SquidConfiguration { Port = 1270 }, 1, 1, "hash", null), new(true, true, true, true, true, "hash", true), true);
         public int Reads; public int OperationReads; public bool LoseFirstResponse; public bool OperationFailed;
@@ -376,7 +377,10 @@ internal static class SquidWorkspaceChecks
         public Task<SquidConfigurationSnapshot> ReadAsync(CancellationToken ct) { Reads++; return Task.FromResult(Snapshot); }
         public Task<SquidConfigurationPreview> PreviewAsync(SquidConfiguration configuration, CancellationToken ct) => Task.FromResult(SquidConfigurationRenderer.Preview(configuration));
         public Task<SquidNativeValidation> ValidateAsync(SquidConfiguration configuration, CancellationToken ct) => Task.FromResult(new SquidNativeValidation(true, null, "parsed"));
-        public Task<ProxyOperationAcceptedDto> SubmitAsync(string route, object body, string key, CancellationToken ct)
+        public Task<ProxyOperationAcceptedDto> ApplyAsync(ApplySquidConfigurationRequest request, string key, CancellationToken ct) => SubmitAsync(request, key);
+        public Task<ProxyOperationAcceptedDto> ChangeAccountAsync(SquidAccountMutation request, string key, CancellationToken ct) => SubmitAsync(request, key);
+        public Task<ProxyOperationAcceptedDto> RunLifecycleAsync(SquidLifecycleRequest request, string key, CancellationToken ct) => SubmitAsync(request, key);
+        private Task<ProxyOperationAcceptedDto> SubmitAsync(object body, string key)
         {
             Submissions.Add((key, body));
             if (body is SquidAccountMutation mutation) _pendingAccount = mutation;

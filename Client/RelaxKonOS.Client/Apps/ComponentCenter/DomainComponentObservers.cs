@@ -1,5 +1,4 @@
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.Squid;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Tunnels;
@@ -14,7 +13,7 @@ internal static class ComponentObservationText
 }
 
 /// <summary>Reads published Squid status, never accounts or native configuration for display.</summary>
-public sealed class SquidComponentObserver(ISquidClient client) : IComponentHostObserver
+public sealed class SquidComponentObserver(IServerSquid client) : IComponentHostObserver
 {
     public bool CanObserve(string componentId) => componentId == "squid";
     public async Task<ComponentHostObservation?> ObserveAsync(string componentId, string? hostOs, CancellationToken cancellationToken)

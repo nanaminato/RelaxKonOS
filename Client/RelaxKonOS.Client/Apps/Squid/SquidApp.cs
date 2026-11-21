@@ -25,7 +25,7 @@ public sealed class SquidApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
-        var client = (ISquidClient?)context.Services.GetService(typeof(ISquidClient));
+        var client = (IServerSquid?)context.Services.GetService(typeof(IServerSquid));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.squid");
         var vm = new SquidViewModel(client) { Dependency = dependency };
