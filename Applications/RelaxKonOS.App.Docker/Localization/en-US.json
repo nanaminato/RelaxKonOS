@@ -154,6 +154,7 @@
     "docker.image.delete_failed": "Could not delete image: {0}",
     "docker.workspace": "WORKSPACE",
     "docker.overview": "Overview",
+    "application.relaxkonos.docker.display_name": "Docker Manager",
     "docker.subtitle": "Containers, images and local workloads",
     "docker.engine": "Docker Engine",
     "docker.running_containers": "Running containers",

@@ -9,7 +9,7 @@ using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.Client.Apps.Docker;
+using RelaxKonOS.App.Docker.Views;
 using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 using RelaxKonOS.Client.Apps.AppInstaller.Views;
 using RelaxKonOS.Client.Localization;
@@ -130,10 +130,9 @@ foreach (var page in new[] { "Containers", "Images", "Networks", "Volumes" })
 {
     settings.Language = culture;
     appearance.Apply(mode, AppearancePreferencesDto.Default, style);
-    var type = typeof(DockerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace")!;
     Func<Task> noOp = () => Task.CompletedTask;
-    var view = (Control)type.GetMethod("Create")!.Invoke(null,
-        new object?[] { vm, null, null, noOp, noOp, noOp, noOp, noOp, null })!;
+    var settingsPage = new TextBlock { Text = "fixture settings" };
+    var view = new DockerManagerWorkspace(vm, null!, null!, noOp, noOp, noOp, noOp, noOp, () => settingsPage);
     host.Content = view;
     host.Width = 800;
     host.Height = 520;
@@ -172,6 +171,13 @@ foreach (var page in new[] { "Containers", "Images", "Networks", "Volumes" })
         using var bitmap = new RenderTargetBitmap(new PixelSize(800, 800));
         bitmap.Render(view);
         bitmap.Save(Path.Combine(output, $"{page}-{mode}-{style}.png"), PngBitmapEncoderOptions.Default);
+    }
+    if (page == "Containers")
+    {
+        var settingsButton = view.GetVisualDescendants().OfType<Button>().Single(b => b.Tag as string == "settings");
+        settingsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Check(view.GetVisualDescendants().Contains(settingsPage), "Docker hosts the supplied settings page.");
     }
     cases++;
 }
@@ -247,9 +253,8 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
     if (culture == "zh-CN")
     {
         appearance.Apply(ThemeKind.Light, AppearancePreferencesDto.Default, SystemStyleIds.WindowsLike);
-        var workspaceType = typeof(DockerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace")!;
         Func<Task> noOp = () => Task.CompletedTask;
-        var workspace = (Control)workspaceType.GetMethod("Create")!.Invoke(null, new object?[] { vm, null, null, noOp, noOp, noOp, noOp, noOp, null })!;
+        var workspace = new DockerManagerWorkspace(vm, null!, null!, noOp, noOp, noOp, noOp, noOp);
         vm.OperationTitle = "Restart test3";
         vm.IsOperationRunning = true;
         vm.OperationStatus = new DockerText(LocalizedText.Get).Ref("docker.operation.running_label");

@@ -154,6 +154,7 @@
     "docker.image.delete_failed": "无法删除镜像：{0}",
     "docker.workspace": "工作区",
     "docker.overview": "概览",
+    "application.relaxkonos.docker.display_name": "Docker 管理器",
     "docker.subtitle": "服务器上的容器、镜像和工作负载",
     "docker.engine": "Docker Engine",
     "docker.running_containers": "运行中的容器",

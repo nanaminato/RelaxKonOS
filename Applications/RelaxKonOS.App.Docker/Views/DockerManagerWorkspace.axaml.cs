@@ -1,24 +1,22 @@
-using RelaxKonOS.App.Docker.Views;
-using RelaxKonOS.App.Docker;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Interactivity;
-using RelaxKonOS.Client.Apps.ComponentCenter;
+using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Docker.Views;
+namespace RelaxKonOS.App.Docker.Views;
 
 /// <summary>Docker Manager shell. Layout lives in AXAML; this class only switches pages.</summary>
-internal partial class DockerManagerWorkspace : UserControl
+public partial class DockerManagerWorkspace : UserControl
 {
-    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    public void AttachWindowHeader(ManagedWindow window)
     {
         Header.DataContext = DataContext;
         Header.Attach(window, HeaderActions);
     }
 
-    private readonly DockerManagerViewModel _viewModel;
     private readonly DockerProxyStatusViewModel _proxyViewModel;
     private readonly DockerImageMirrorsViewModel _imageMirrorsViewModel;
-    private readonly ComponentDependencySettingsViewModel? _dependency;
+    private readonly Func<Control>? _createSettingsPage;
     private readonly Func<Task> _showCreateContainer;
     private readonly Func<Task> _showDeployStack;
     private readonly Func<Task> _showPullImage;
@@ -26,26 +24,23 @@ internal partial class DockerManagerWorkspace : UserControl
     private readonly Func<Task> _showCreateVolume;
     private Button? _selectedButton;
 
-    private DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyStatusViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency)
+    public DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyStatusViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, Func<Control>? createSettingsPage = null)
     {
-        _viewModel = viewModel;
         _proxyViewModel = proxyViewModel;
         _imageMirrorsViewModel = imageMirrorsViewModel;
-        _dependency = dependency;
+        _createSettingsPage = createSettingsPage;
         _showCreateContainer = showCreateContainer;
         _showDeployStack = showDeployStack;
         _showPullImage = showPullImage;
         _showCreateNetwork = showCreateNetwork;
         _showCreateVolume = showCreateVolume;
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        SettingsButton.IsVisible = createSettingsPage is not null;
+        CompactWorkspaceNavigation.Install(this, WorkspaceBody, (Binding)new LocExtension("common.view").ProvideValue(null!));
         SizeChanged += (_, e) => { HeaderStatusLabel.IsVisible = e.NewSize.Width >= 600; HeaderActions.Width = HeaderStatusLabel.IsVisible ? double.NaN : 32; };
         DataContext = viewModel;
         ShowPage("overview", OverviewButton);
     }
-
-    public static DockerManagerWorkspace Create(DockerManagerViewModel viewModel, DockerProxyStatusViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency = null) =>
-        new DockerManagerWorkspace(viewModel, proxyViewModel, imageMirrorsViewModel, showCreateContainer, showDeployStack, showPullImage, showCreateNetwork, showCreateVolume, dependency);
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -64,7 +59,6 @@ internal partial class DockerManagerWorkspace : UserControl
         button.Classes.Add("nav-selected");
         if (section == "proxy") _ = _proxyViewModel.LoadAsync();
         if (section == "mirrors") _ = _imageMirrorsViewModel.LoadAsync();
-        if (_dependency is not null) _ = _dependency.RefreshAsync();
         Control page = section switch
         {
             "containers" => new DockerContainersView(_showCreateContainer),
@@ -74,10 +68,7 @@ internal partial class DockerManagerWorkspace : UserControl
             "proxy" => new DockerProxyView(_proxyViewModel),
             "networks" => new DockerNetworksView(_showCreateNetwork),
             "volumes" => new DockerVolumesView(_showCreateVolume),
-            "settings" => new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView
-            {
-                DataContext = _dependency
-            },
+            "settings" when _createSettingsPage is not null => _createSettingsPage(),
             _ => new DockerOverviewView()
         };
         // Resource lists fill the available workspace; overview, settings and the multi-table

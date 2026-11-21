@@ -154,6 +154,7 @@
     "docker.image.delete_failed": "イメージを削除できませんでした: {0}",
     "docker.workspace": "ワークスペース",
     "docker.overview": "概要",
+    "application.relaxkonos.docker.display_name": "Docker マネージャー",
     "docker.subtitle": "コンテナー、イメージ、ローカルワークロード",
     "docker.engine": "Docker Engine",
     "docker.running_containers": "実行中のコンテナー",

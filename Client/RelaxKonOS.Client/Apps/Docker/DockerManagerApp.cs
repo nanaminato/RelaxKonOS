@@ -1,4 +1,5 @@
 using RelaxKonOS.App.Docker;
+using RelaxKonOS.App.Docker.Views;
 using RelaxKonOS.Client.Apps.Docker.Views;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Client.Services.Privileged;
@@ -41,12 +42,17 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         var proxyViewModel = new DockerProxyStatusViewModel(sdk.DockerResources, text);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(sdk.DockerImageMirrors, text);
         ManagedWindow? window = null;
-        var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
+        var view = new DockerManagerWorkspace(vm, proxyViewModel, imageMirrorsViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowDeployStackAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
-            () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm), dependency);
+            () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm),
+            () =>
+            {
+                _ = dependency.RefreshAsync();
+                return new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency };
+            });
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args)

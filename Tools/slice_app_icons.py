@@ -40,7 +40,7 @@ ICONS = (
     IconSpec("browser.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/browser.png")),
     IconSpec("port-forwarding.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/port-forwarding.png")),
     IconSpec("task-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/taskmanager.png")),
-    IconSpec("docker.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/docker.png")),
+    IconSpec("docker.png", Path("Applications/RelaxKonOS.App.Docker/Assets/docker.png")),
     IconSpec("process-guardian.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/processguardian.png")),
     IconSpec("firewall.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/firewall.png")),
     IconSpec("certificate-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/certificates.png")),

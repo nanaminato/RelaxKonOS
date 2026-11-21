@@ -24,7 +24,6 @@
         "application.relaxkonos.appinstaller.description": "安装或更新 RelaxKonOS 应用程序包。",
         "application.relaxkonos.explorer.description": "远程文件管理器",
         "application.relaxkonos.file-services.description": "管理主机 SMB 控制平面",
-        "application.relaxkonos.docker.display_name": "Docker 管理器",
         "application.relaxkonos.docker.description": "管理 RelaxKonOS Server 本机 Docker Engine",
         "application.relaxkonos.processguardian.display_name": "进程守护程序",
         "application.relaxkonos.processguardian.description": "查看由 RelaxKonOS Guardian Agent 守护的程序",

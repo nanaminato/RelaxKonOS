@@ -24,7 +24,6 @@
         "application.relaxkonos.appinstaller.description": "Install or update RelaxKonOS application packages.",
         "application.relaxkonos.explorer.description": "Remote file manager",
         "application.relaxkonos.file-services.description": "Manage the host SMB control plane",
-        "application.relaxkonos.docker.display_name": "Docker Manager",
         "application.relaxkonos.docker.description": "Manage the local Docker Engine on the RelaxKonOS Server",
         "application.relaxkonos.processguardian.display_name": "Process Guardian",
         "application.relaxkonos.processguardian.description": "View workloads supervised by the RelaxKonOS Guardian Agent",
