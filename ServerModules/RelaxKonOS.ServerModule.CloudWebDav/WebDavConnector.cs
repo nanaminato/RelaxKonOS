@@ -8,7 +8,7 @@ using RelaxKonOS.ModuleHost.Protocol;
 
 namespace RelaxKonOS.ServerModule.CloudWebDav;
 
-internal sealed class WebDavConnector(CloudWebDavRequest connection, HttpClient http)
+internal sealed class WebDavConnector(CloudProviderRequest connection, HttpClient http)
 {
     private static readonly XNamespace Dav = "DAV:";
     private readonly Uri _root = new(connection.Endpoint.TrimEnd('/') + "/");

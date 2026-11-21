@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Encodings.Web;
+using Amazon.Runtime;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -15,27 +16,35 @@ using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.ServerModule.CloudS3;
 using RelaxKonOS.ServerModule.CloudWebDav;
 
-internal static class CloudWebDavPackageAcceptance
+internal static class CloudProviderPackageAcceptance
 {
-    private const string Provider = CloudWebDavProtocol.ProviderModuleId;
-    private const string Cloud = CloudWebDavProtocol.CallerModuleId;
+    private const string Cloud = CloudProviderProtocol.CallerModuleId;
     private const string Actor = "b55180ec-91c4-467e-b838-773d51dbb68d";
     private const string ForeignActor = "044aee35-b657-4812-acd4-064243c8544f";
-    private const string Source = "webdav-acceptance";
+    private const string Source = "cloud-provider-acceptance";
     private const string Origin = "https://fixtures.invalid/";
 
-    internal static async Task RunAsync(string cloudPublish, string davPublish)
+    internal static async Task RunAsync(CloudFileProvider kind, string cloudPublish, string providerPublish, bool liveService = true)
     {
-        var work = Directory.CreateTempSubdirectory("relaxkonos-webdav-packages-");
+        var providerId = CloudProviderProtocol.ModuleId(kind);
+        var providerRoute = CloudProviderProtocol.RequestPath(kind);
+        var webDav = kind == CloudFileProvider.WebDav;
+        var protocolName = webDav ? "WebDAV" : "R2";
+        var config = !liveService
+            ? new CloudConnectionRequest("Local S3 package checks", "s3", "https://s3.invalid/", "auto",
+                "fixture-bucket", "fixture-prefix", "fixture-key", "fixture-secret", EnableWrites: true)
+            : webDav ? new CloudConnectionRequest("WebDAV package acceptance", "webdav",
+            Required("WEBDAV", "ENDPOINT"), null, null, null, Required("WEBDAV", "USER"), Required("WEBDAV", "SECRET"),
+            AllowPrivateWebDav: Environment.GetEnvironmentVariable("RELAXKONOS_WEBDAV_ALLOW_PRIVATE") == "1", EnableWrites: true)
+            : R2Connection();
+        var work = Directory.CreateTempSubdirectory("relaxkonos-cloud-provider-packages-");
         var root = work.FullName;
         var keyPath = Path.Combine(root, "acceptance-key.pem");
-        var remotePath = $"relaxkonos-webdav-package-{Guid.NewGuid():N}/";
-        var config = new CloudConnectionRequest("WebDAV package acceptance", "webdav",
-            Required("ENDPOINT"), null, null, null, Required("USER"), Required("SECRET"),
-            AllowPrivateWebDav: Environment.GetEnvironmentVariable("RELAXKONOS_WEBDAV_ALLOW_PRIVATE") == "1", EnableWrites: true);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+        var remotePath = $"relaxkonos-provider-package-{Guid.NewGuid():N}/";
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = deadline.Token;
         var remoteCreated = false;
         try
@@ -45,14 +54,18 @@ internal static class CloudWebDavPackageAcceptance
             var faultFixture = Directory.CreateDirectory(Path.Combine(root, "unhealthy-fixture"));
             File.Copy(Path.Combine(AppContext.BaseDirectory, "HostFixture.dll"), Path.Combine(faultFixture.FullName, "HostFixture.dll"));
             const string cloudAssembly = "RelaxKonOS.ServerModule.CloudStorage";
-            const string davAssembly = "RelaxKonOS.ServerModule.CloudWebDav";
+            var module = webDav ? "CloudWebDav" : "CloudS3";
+            var assembly = "RelaxKonOS.ServerModule." + module;
+            var fixture = webDav ? "FixtureUnhealthyWebDavEntry" : "FixtureUnhealthyS3Entry";
             var compiled = new[]
             {
                 await BuildAsync(cloudPublish, Cloud, "1.0.0", cloudAssembly, cloudAssembly + ".CloudStorageModule"),
-                await BuildAsync(davPublish, Provider, "1.0.0", davAssembly, davAssembly + ".CloudWebDavModule"),
-                await BuildAsync(davPublish, Provider, "1.1.0", davAssembly, davAssembly + ".CloudWebDavModule"),
-                await BuildAsync(faultFixture.FullName, Provider, "1.2.0", "HostFixture", "HostFixture.FixtureUnhealthyWebDavEntry"),
+                await BuildAsync(providerPublish, providerId, "1.0.0", assembly, assembly + "." + module + "Module"),
+                await BuildAsync(providerPublish, providerId, "1.1.0", assembly, assembly + "." + module + "Module"),
+                await BuildAsync(faultFixture.FullName, providerId, "1.2.0", "HostFixture", "HostFixture." + fixture),
             };
+            Check(compiled.Take(2).All(artifact => !ModulePackageVerifier.SupportsHostApi(
+                artifact.Manifest with { HostApiMinimum = "2.1.0" }, "1.0.0")), "obsolete cloud module ABI cannot be installed");
             var now = DateTimeOffset.UtcNow;
             var catalog = new ModulePackageCatalog(1, Source, 1, now, now.AddHours(1), compiled, [], []);
             var signed = await ModulePackageBuilder.SignCatalogAsync(catalog, "acceptance", keyPath, ct);
@@ -70,7 +83,7 @@ internal static class CloudWebDavPackageAcceptance
                 [prefix + "ArtifactOrigin"] = Origin,
                 [prefix + "MaximumValiditySeconds"] = "3600",
                 [prefix + "AuthorizedModuleIds:0"] = Cloud,
-                [prefix + "AuthorizedModuleIds:1"] = Provider,
+                [prefix + "AuthorizedModuleIds:1"] = providerId,
                 [prefix + "PublicKeysSpki:acceptance"] = signed.PublicKeySpki,
             };
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
@@ -92,26 +105,56 @@ internal static class CloudWebDavPackageAcceptance
                 cloudInstall = (await InstallAsync(staging.Client, compiled[0])).OperationId;
                 providerInstall = (await InstallAsync(staging.Client, compiled[1])).OperationId;
             }
-            SeedDeployment(configuration, [Cloud, Provider]);
             Guid connection;
+            var entries = CloudStorageApi.Route + "/connections";
+            SeedDeployment(configuration, [Cloud]);
+            await using (var cloudOnly = await StartAsync(configuration))
+            {
+                await RunningAsync(cloudOnly, Cloud, "1.0.0");
+                connection = (await PostAsync<CloudConnectionDto>(cloudOnly.Client, entries, config)).Id;
+                await VerifyOfflineAsync(cloudOnly.Client, connection);
+            }
+            SeedDeployment(configuration, [Cloud, providerId]);
             await using (var runtime = await StartAsync(configuration))
             {
-                await RunningAsync(runtime, Provider, "1.0.0");
+                await RunningAsync(runtime, providerId, "1.0.0");
                 await RunningAsync(runtime, Cloud, "1.0.0");
                 await RequireReceiptAsync(runtime.Client, cloudInstall, "Succeeded", null);
                 await RequireReceiptAsync(runtime.Client, providerInstall, "Succeeded", null);
                 var siblingGeneration = Generation(runtime, Cloud);
                 var coreGeneration = runtime.Store.ProcessGeneration;
-                var entries = CloudStorageApi.Route + "/connections";
-                connection = (await PostAsync<CloudConnectionDto>(runtime.Client, entries, config)).Id;
                 var route = $"{entries}/{connection:D}";
-                await PostAsync<CloudCreatedFolder>(runtime.Client, route + "/folders?name=" + remotePath.TrimEnd('/'), null);
-                remoteCreated = true;
-                var payload = new byte[64 * 1024 + 3];
-                RandomNumberGenerator.Fill(payload);
-                var completedUpload = await UploadAsync(runtime.Client, route, remotePath, payload);
-                await VerifyDataAsync(runtime.Client, route, remotePath, payload);
-                Report("signed initial install and WebDAV list/upload/download through the Core proxy and two ModuleHosts");
+                var payload = new byte[liveService ? 64 * 1024 + 3 : 0];
+                string? completedUpload = null;
+                if (liveService)
+                {
+                    if (!webDav)
+                    {
+                        var rootListing = await runtime.Client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries", ct);
+                        Check(rootListing is { Entries.Count: 0 }, "R2 lists the dedicated connection prefix before writing");
+                    }
+                    remoteCreated = true;
+                    await PostAsync<CloudCreatedFolder>(runtime.Client, route + "/folders?name=" + remotePath.TrimEnd('/'), null);
+                    RandomNumberGenerator.Fill(payload);
+                    completedUpload = await StageUploadAsync(runtime.Client, route, payload, "provider-acceptance");
+                    await CommitAsync(runtime.Client, completedUpload, payload, HttpStatusCode.OK);
+                    if (!webDav)
+                    {
+                        var conflict = new byte[] { 1, 2, 3 };
+                        var duplicate = await StageUploadAsync(runtime.Client, route, conflict, "provider-duplicate");
+                        await CommitAsync(runtime.Client, duplicate, conflict, HttpStatusCode.Conflict);
+                        var multipart = new byte[16 * 1024 * 1024 + 3];
+                        RandomNumberGenerator.Fill(multipart);
+                        var multipartUpload = await StageUploadAsync(runtime.Client, route, multipart, "provider-multipart", "multipart.bin");
+                        await CommitAsync(runtime.Client, multipartUpload, multipart, HttpStatusCode.OK);
+                        Report("real R2 completed the 16777219-byte multipart publication");
+                        await VerifyProviderAsync(runtime, route, multipart, "multipart.bin");
+                    }
+                }
+                await VerifyProviderAsync(runtime, route, payload);
+                Report(liveService
+                    ? $"signed initial install and real {protocolName} list/upload/download through the existing Explorer routes"
+                    : "signed initial install and local Explorer upload-session creation through the existing routes");
 
                 using (var foreign = new HttpRequestMessage(HttpMethod.Get, route + "/entries"))
                 {
@@ -125,13 +168,13 @@ internal static class CloudWebDavPackageAcceptance
                     using var denied = await runtime.Client.SendAsync(readOnly, ct);
                     Check(denied.StatusCode == HttpStatusCode.Forbidden, "the Core file write policy applies before proxying");
                 }
-                using (var publicProvider = await runtime.Client.PostAsync(ServerModuleManagementRoutes.ModuleHosts + "/" + Provider
-                    + CloudWebDavProtocol.RequestPath, null, ct))
+                using (var publicProvider = await runtime.Client.PostAsync(ServerModuleManagementRoutes.ModuleHosts + "/" + providerId
+                    + providerRoute, null, ct))
                     Check(publicProvider.StatusCode == HttpStatusCode.NotFound, "provider does not expose a public credential-taking route");
-                var brokerRoute = new Uri(new Uri(runtime.Broker.Url!), CloudWebDavProtocol.RequestPath);
+                var brokerRoute = new Uri(new Uri(runtime.Broker.Url!), providerRoute);
                 using (var directBroker = await runtime.Client.GetAsync(brokerRoute, ct))
                     Check(directBroker.StatusCode == HttpStatusCode.Forbidden, "private relay requires an authenticated ModuleHost");
-                using (var provider = runtime.Hosts.AcquireConnection(Provider)!)
+                using (var provider = runtime.Hosts.AcquireConnection(providerId)!)
                 using (var privateProbe = new HttpRequestMessage(HttpMethod.Get, brokerRoute))
                 {
                     privateProbe.Headers.Add(ModuleHostProtocol.ServiceTokenHeader, provider.ServiceToken);
@@ -148,18 +191,24 @@ internal static class CloudWebDavPackageAcceptance
 
                 var update = await InstallAsync(runtime.Client, compiled[2]);
                 await RequireReceiptAsync(runtime.Client, update.OperationId, "Succeeded", null);
-                await RunningAsync(runtime, Provider, "1.1.0");
-                await VerifyDataAsync(runtime.Client, route, remotePath, payload);
+                await RunningAsync(runtime, providerId, "1.1.0");
+                await VerifyProviderAsync(runtime, route, payload);
                 var broken = await InstallAsync(runtime.Client, compiled[3]);
                 await RequireReceiptAsync(runtime.Client, broken.OperationId, "Failed", "module-host-update-rolled-back");
-                await RunningAsync(runtime, Provider, "1.1.0");
-                await VerifyDataAsync(runtime.Client, route, remotePath, payload);
+                await RunningAsync(runtime, providerId, "1.1.0");
+                await VerifyProviderAsync(runtime, route, payload);
                 Check(Generation(runtime, Cloud) == siblingGeneration && runtime.Store.ProcessGeneration == coreGeneration
                     && await runtime.Client.GetStringAsync("/acceptance-core", ct) == "ready", "Core and CloudStorage generations remain running");
-                Report("online update and startup health-check rollback; the previous provider serves the same connection and bytes");
+                Report(liveService
+                    ? "online update and startup health-check rollback; the previous provider serves the same connection and bytes"
+                    : "online update and startup health-check rollback; the previous provider serves the same connection");
 
-                await DeleteRemoteAsync(runtime.Client, route, remotePath, ct);
-                remoteCreated = false;
+                var pending = await StageUploadAsync(runtime.Client, route, [4, 5, 6], "provider-pending");
+                if (liveService)
+                {
+                    await DeleteRemoteAsync(runtime.Client, route, remotePath, ct);
+                    remoteCreated = false;
+                }
                 var stop = await ManageAsync(runtime, ServerModuleAction.Stop, runtime.Store.DesiredIds);
                 while (stop.State is ServerModuleOperationState.Prepared or ServerModuleOperationState.Applying or ServerModuleOperationState.Verifying)
                 {
@@ -169,9 +218,17 @@ internal static class CloudWebDavPackageAcceptance
                 }
                 Check(stop.State == ServerModuleOperationState.Succeeded, "provider stops under the standard module plan");
                 await VerifyOfflineAsync(runtime.Client, connection);
-                using (var receipt = await runtime.Client.PostAsJsonAsync(completedUpload + "/commit",
-                    new CommitUploadRequest(null), ct))
+                if (completedUpload is not null)
+                {
+                    using var receipt = await runtime.Client.PostAsJsonAsync(completedUpload + "/commit",
+                        new CommitUploadRequest(null), ct);
                     Check(receipt.StatusCode == HttpStatusCode.OK, "a completed upload remains verifiable when the provider is stopped");
+                }
+                using (var unavailable = await runtime.Client.PostAsJsonAsync(pending + "/commit",
+                    new CommitUploadRequest(null), ct))
+                    Check(unavailable.StatusCode == HttpStatusCode.ServiceUnavailable, "provider stop leaves unpublished upload data staged");
+                var pendingSession = await runtime.Client.GetFromJsonAsync<UploadSessionDto>(pending, ct);
+                Check(pendingSession is { Offset: 3 }, "staged upload can still be inspected after provider stop");
                 Check(Generation(runtime, Cloud) == siblingGeneration, "stopping the provider does not restart CloudStorage");
                 var disable = await ManageAsync(runtime, ServerModuleAction.Disable, [Cloud]);
                 Check(disable.State == ServerModuleOperationState.AwaitingRestart, "provider disable follows the existing enable-set lifecycle");
@@ -181,7 +238,7 @@ internal static class CloudWebDavPackageAcceptance
                 await RunningAsync(runtime, Cloud, "1.0.0");
                 var remove = await ManageAsync(runtime, ServerModuleAction.Remove, [Cloud]);
                 Check(remove.State == ServerModuleOperationState.Succeeded
-                    && !InstalledModuleStore.Read(root).Any(record => record.ModuleId == Provider), "provider uninstalls through the standard removal plan");
+                    && !InstalledModuleStore.Read(root).Any(record => record.ModuleId == providerId), "provider uninstalls through the standard removal plan");
                 await VerifyOfflineAsync(runtime.Client, connection);
                 Report("provider uninstall retains the encrypted connection and leaves CloudStorage usable");
             }
@@ -192,11 +249,21 @@ internal static class CloudWebDavPackageAcceptance
             {
                 using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                 using var http = CloudTransport.Create(new Uri(config.Endpoint), config.AllowPrivateWebDav);
-                var dav = new WebDavConnector(new(CloudWebDavAction.Delete, config.Endpoint, config.UserName, config.Secret,
-                    config.AllowPrivateWebDav, remotePath), http);
-                try { await dav.DeleteAsync(remotePath, cleanup.Token); }
+                var operation = new CloudProviderRequest(CloudProviderAction.Delete, config.Endpoint, config.UserName, config.Secret,
+                    config.AllowPrivateWebDav, remotePath, Region: config.Region, Bucket: config.Bucket, Prefix: config.Prefix);
+                try
+                {
+                    if (webDav) await new WebDavConnector(operation, http).DeleteAsync(remotePath, cleanup.Token);
+                    else
+                    {
+                        using var s3 = new S3Connector(operation, http);
+                        await s3.DeleteAsync(remotePath, cleanup.Token);
+                    }
+                }
                 catch (HttpRequestException error) when (error.StatusCode == HttpStatusCode.NotFound) { }
-                catch { Console.Error.WriteLine("WebDAV fixture cleanup could not be confirmed."); }
+                catch (AmazonServiceException error) when (error.StatusCode == HttpStatusCode.NotFound) { }
+                catch (KeyNotFoundException) { }
+                catch { Console.Error.WriteLine("Cloud provider fixture cleanup could not be confirmed."); }
             }
             work.Delete(recursive: true);
         }
@@ -288,7 +355,7 @@ internal static class CloudWebDavPackageAcceptance
         async Task<ServerModuleOperationDto> ManageAsync(Runtime runtime, ServerModuleAction action, IEnumerable<string> enabled)
         {
             var plan = await PostAsync<ServerModulePlanDto>(runtime.Client, ServerModuleManagementRoutes.Plans,
-                new ServerModulePlanRequest(runtime.Store.ServiceId, action, [Provider], enabled.ToArray(), runtime.Store.Revision,
+                new ServerModulePlanRequest(runtime.Store.ServiceId, action, [providerId], enabled.ToArray(), runtime.Store.Revision,
                     Guid.NewGuid().ToString("N")));
             Check(plan.BlockedBy.Count == 0, $"module plan {action}: {string.Join(",", plan.BlockedBy.Select(item => item.ProblemCode))}");
             return await PostAsync<ServerModuleOperationDto>(runtime.Client,
@@ -321,38 +388,74 @@ internal static class CloudWebDavPackageAcceptance
             Check(receipt.State == state && receipt.ProblemCode == problem, $"package receipt: {receipt.State}, {receipt.ProblemCode}");
         }
 
-        async Task<string> UploadAsync(HttpClient client, string route, string directory, byte[] payload)
+        async Task<string> StageUploadAsync(HttpClient client, string route, byte[] payload, string key, string fileName = "round trip.txt")
         {
-            var upload = await PostAsync<UploadSessionDto>(client, $"{route}/uploads?key=provider-acceptance",
-                new CreateUploadRequest(CloudTransport.Reference(directory), "round trip.txt", payload.Length));
+            var upload = await PostAsync<UploadSessionDto>(client, $"{route}/uploads?key={key}",
+                new CreateUploadRequest(CloudTransport.Reference(remotePath), fileName, payload.Length));
             var target = $"{route}/uploads/{upload.UploadId}";
-            using (var patch = await client.PatchAsync($"{target}?offset=0&length={payload.Length}", new ByteArrayContent(payload), ct))
+            for (var offset = 0; offset < payload.Length; offset += FileUploadProtocol.DefaultChunkSize)
+            {
+                var length = Math.Min(FileUploadProtocol.DefaultChunkSize, payload.Length - offset);
+                using var patch = await client.PatchAsync($"{target}?offset={offset}&length={length}",
+                    new ByteArrayContent(payload, offset, length), ct);
                 patch.EnsureSuccessStatusCode();
+            }
+            return target;
+        }
+
+        async Task CommitAsync(HttpClient client, string target, byte[] payload, HttpStatusCode expected)
+        {
+            var hash = new CommitUploadRequest(Convert.ToHexString(SHA256.HashData(payload)));
             while (true)
             {
-                using var response = await client.PostAsJsonAsync(target + "/commit",
-                    new CommitUploadRequest(Convert.ToHexString(SHA256.HashData(payload))), ct);
+                using var response = await client.PostAsJsonAsync(target + "/commit", hash, ct);
                 if (response.StatusCode != HttpStatusCode.Accepted)
                 {
-                    response.EnsureSuccessStatusCode();
-                    return target;
+                    Check(response.StatusCode == expected,
+                        $"publication returned {(int)response.StatusCode}, expected {(int)expected}");
+                    return;
                 }
-                await Task.Delay(35, ct);
+                await Task.Delay(100, ct);
             }
         }
 
-        async Task VerifyDataAsync(HttpClient client, string route, string directory, byte[] bytes)
+        async Task VerifyProviderAsync(Runtime runtime, string route, byte[] bytes, string fileName = "round trip.txt")
         {
-            var listing = await client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries?reference=" + CloudTransport.Reference(directory), ct);
-            var file = listing!.Entries.Single(item => item.Name == "round trip.txt");
-            var output = await client.GetByteArrayAsync(route + "/download?reference=" + file.Reference, ct);
-            Check(bytes.AsSpan().SequenceEqual(output), "WebDAV list and byte-for-byte download");
+            var client = runtime.Client;
+            if (!liveService)
+            {
+                await PostAsync<UploadSessionDto>(client, $"{route}/uploads?key=health-{Guid.NewGuid():N}",
+                    new CreateUploadRequest(CloudTransport.Reference(remotePath), "probe.txt", 0));
+                return;
+            }
+            var listing = await client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries?reference=" + CloudTransport.Reference(remotePath), ct);
+            var file = listing!.Entries.Single(item => item.Name == fileName);
+            using var response = await client.GetAsync(route + "/download?reference=" + file.Reference, HttpCompletionOption.ResponseHeadersRead, ct);
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            var buffer = new byte[64 * 1024];
+            var offset = 0;
+            const int milestone = 4 * 1024 * 1024;
+            var nextMilestone = milestone;
+            int read;
+            while ((read = await stream.ReadAsync(buffer, ct)) != 0)
+            {
+                Check(offset + read <= bytes.Length && bytes.AsSpan(offset, read).SequenceEqual(buffer.AsSpan(0, read)),
+                    $"{protocolName} download preserves the data");
+                offset += read;
+                if (offset >= nextMilestone)
+                {
+                    Console.WriteLine($"Verified {offset} of {bytes.Length} download bytes.");
+                    nextMilestone += milestone;
+                }
+            }
+            Check(offset == bytes.Length, $"{protocolName} download returned the full file");
         }
 
         async Task VerifyOfflineAsync(HttpClient client, Guid id)
         {
             var all = await client.GetFromJsonAsync<CloudConnectionDto[]>(CloudStorageApi.Route + "/connections", ct);
-            Check(all!.Any(item => item.Id == id && item.Protocol == "webdav"), "existing connection keeps its ID when the provider is unavailable");
+            Check(all!.Any(item => item.Id == id && item.Protocol == config.Protocol), "existing connection keeps its ID when the provider is unavailable");
             using var unavailable = await client.GetAsync($"{CloudStorageApi.Route}/connections/{id:D}/entries", ct);
             Check(unavailable.StatusCode == HttpStatusCode.ServiceUnavailable, "missing provider gives an explicit unavailable response");
         }
@@ -362,8 +465,14 @@ internal static class CloudWebDavPackageAcceptance
     {
         using var response = await client.DeleteAsync(route + "/entries?reference=" + CloudTransport.Reference(directory), ct);
         response.EnsureSuccessStatusCode();
-        using var check = await client.GetAsync(route + "/info?reference=" + CloudTransport.Reference(directory), ct);
-        Check(check.StatusCode == HttpStatusCode.NotFound, "the isolated remote acceptance directory was removed");
+        string? cursor = null;
+        do
+        {
+            var page = await client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries"
+                + (cursor is null ? "" : "?cursor=" + Uri.EscapeDataString(cursor)), ct);
+            Check(page!.Entries.All(entry => entry.Name != directory.TrimEnd('/')), "the isolated remote acceptance directory was removed");
+            cursor = page.NextCursor;
+        } while (cursor is not null);
     }
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
@@ -389,9 +498,23 @@ internal static class CloudWebDavPackageAcceptance
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private static string Required(string name) =>
-        Environment.GetEnvironmentVariable("RELAXKONOS_WEBDAV_" + name) is { Length: > 0 } value
-            ? value : throw new InvalidOperationException($"Missing RELAXKONOS_WEBDAV_{name}.");
+    private static string Required(string provider, string name) =>
+        Environment.GetEnvironmentVariable($"RELAXKONOS_{provider}_{name}") is { Length: > 0 } value
+            ? value : throw new InvalidOperationException($"Missing RELAXKONOS_{provider}_{name}.");
+
+    private static CloudConnectionRequest R2Connection()
+    {
+        var endpoint = Required("R2", "ENDPOINT");
+        var prefix = Required("R2", "TEST_PREFIX").Trim('/');
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != "https"
+            || uri.Port != 443 || uri.AbsolutePath != "/" || uri.UserInfo.Length != 0
+            || uri.Query.Length != 0 || uri.Fragment.Length != 0
+            || !uri.IdnHost.EndsWith(".r2.cloudflarestorage.com", StringComparison.OrdinalIgnoreCase)
+            || prefix.Length == 0 || !CloudTransport.ValidPath(prefix))
+            throw new InvalidOperationException("Expected a dedicated HTTPS R2 endpoint and test prefix.");
+        return new("R2 package acceptance", "s3", uri.AbsoluteUri, "auto", Required("R2", "BUCKET"), prefix,
+            Required("R2", "KEY_ID"), Required("R2", "SECRET"), EnableWrites: true);
+    }
 
     private sealed class Runtime(WebApplication app, ModuleManagementStore store, HttpClient client) : IAsyncDisposable
     {
@@ -425,7 +548,7 @@ internal static class CloudWebDavPackageAcceptance
     private sealed class WebHostEnvironmentFixture(string root) : IHostEnvironment
     {
         public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "CloudWebDavAcceptance";
+        public string ApplicationName { get; set; } = "CloudProviderPackageAcceptance";
         public string ContentRootPath { get; set; } = root;
         public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
             new Microsoft.Extensions.FileProviders.NullFileProvider();

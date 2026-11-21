@@ -1,8 +1,9 @@
 using System.Net;
 using Amazon.S3;
 using Amazon.S3.Model;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.Protocol.Files;
-using RelaxKonOS.ServerModule.CloudStorage;
+using RelaxKonOS.ServerModule.CloudS3;
 
 internal static class CloudR2ConditionalDeleteAcceptance
 {
@@ -123,13 +124,15 @@ internal static class CloudR2ConditionalDeleteAcceptance
         var root = $"{settings.Prefix}/relaxkonos-connector-check-{Guid.NewGuid():N}";
         settings = settings with { Prefix = root };
         using var http = new HttpClient();
-        using var connector = new S3Connector(settings, http);
+        using var connector = new S3Connector(new(CloudProviderAction.List, settings.Endpoint, settings.UserName,
+            settings.Secret, false, "", Region: settings.Region, Bucket: settings.Bucket, Prefix: settings.Prefix,
+            SessionToken: settings.SessionToken), http);
         string[] keys = ["source/", "source/empty/", "source/file.txt", "moved/", "moved/empty/", "moved/file.txt",
             "roundtrip/", "roundtrip/empty/", "roundtrip/payload.txt"];
         async Task WriteAsync(string payload, bool replace)
         {
             using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(payload));
-            await connector.UploadAsync("source/file.txt", stream, ct, replace);
+            await connector.UploadAsync("source/file.txt", stream, stream.Length, ct, replace);
         }
         try
         {

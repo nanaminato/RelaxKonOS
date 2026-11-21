@@ -20,7 +20,7 @@
 | 编号 | 候选 | 建议形态 | 值得集成的能力 |
 | --- | --- | --- | --- |
 | APP-007 | [存储空间分析与清理](proposals/StorageAnalysis.md) | 原生应用 + 现有扩展 | 大目录关联应用、容器、缓存和日志 |
-| APP-008 | [云存储管理](proposals/CloudStorage.md) | 外部适配 | 内置 Explorer 复用云存储连接；WebDAV Provider 可独立安装和更新 |
+| APP-008 | [云存储管理](proposals/CloudStorage.md) | 外部适配 | 内置 Explorer 复用云存储连接；WebDAV 与 S3 兼容 Provider 可独立安装和更新 |
 | APP-009 | 分享投递箱 | 文件管理扩展 | 临时分享、收件目录、到期撤销 |
 | APP-010 | 批量文件处理 | 文件管理扩展 | 重命名、校验、归档、解压和任务记录 |
 | APP-011 | 重复文件分析 | 文件管理扩展 | 重复占用、重复依据和清理预览 |

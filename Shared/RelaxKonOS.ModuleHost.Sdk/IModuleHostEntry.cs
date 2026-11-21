@@ -27,14 +27,15 @@ public interface IModuleHostContext
     IModuleHostStorage Storage { get; }
     ILogger Logger { get; }
     IModulePrivilegeBroker Privileges { get; }
-    ICloudWebDavProvider WebDav { get; }
+    ICloudFileProviders CloudProviders { get; }
 }
 
-public interface ICloudWebDavProvider
+public interface ICloudFileProviders
 {
-    ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken);
+    ValueTask<bool> IsAvailableAsync(RelaxKonOS.ModuleHost.Protocol.CloudFileProvider provider, CancellationToken cancellationToken);
     /// <summary>The caller owns the returned response and its content stream.</summary>
-    ValueTask<HttpResponseMessage> SendAsync(RelaxKonOS.ModuleHost.Protocol.CloudWebDavRequest request,
+    ValueTask<HttpResponseMessage> SendAsync(RelaxKonOS.ModuleHost.Protocol.CloudFileProvider provider,
+        RelaxKonOS.ModuleHost.Protocol.CloudProviderRequest request,
         Stream? content, CancellationToken cancellationToken);
 }
 

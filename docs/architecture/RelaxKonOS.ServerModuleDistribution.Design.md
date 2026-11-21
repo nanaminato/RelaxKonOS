@@ -625,7 +625,7 @@ v2 的 `IModuleContext` 只提供：
 
 ### v2 ModuleHost 骨架（2026-10-31）
 
-- `Shared/RelaxKonOS.ModuleHost.Sdk`：`IModuleHostEntry`、`IModuleHostContext`、`IModuleHostHealth`，提供模块生命周期、私有数据和宿主能力。ABI 2.1.0 的 `IModuleHostContext.WebDav` 由受信任的 `cloud-storage` 实例调用，经 Core 的私有令牌通道连接到独立的 `cloud-webdav`。Core 按当前运行代际和来源授权判定两端身份，外部客户端仍经 `cloud-storage` 的原有认证代理访问。
+- `Shared/RelaxKonOS.ModuleHost.Sdk`：`IModuleHostEntry`、`IModuleHostContext`、`IModuleHostHealth`，提供模块生命周期、私有数据和宿主能力。ABI 2.2.0 的 `IModuleHostContext.CloudProviders` 由受信任的 `cloud-storage` 实例调用，经 Core 的固定私有令牌通道连接到 `cloud-webdav` 或 `cloud-s3`。Core 按当前运行代际和来源授权判定两端身份，外部客户端仍经 `cloud-storage` 的原有认证代理访问。
 - `Shared/RelaxKonOS.ModuleHost.Protocol`：行协议 `ready` / `health` / `stopped` / `faulted`，以及 `health` / `shutdown` 命令。
 - `RelaxKonOS.ServerModuleHost`：独立控制台进程，读取 `manifest.json`，逐文件校验长度/SHA-256，使用独立 `AssemblyLoadContext` 加载入口，输出行协议。
 - `ModuleHostProcessClient`：Server 侧启动/超时/健康/关闭客户端；`modules host-probe` 提供本机管理员诊断入口。

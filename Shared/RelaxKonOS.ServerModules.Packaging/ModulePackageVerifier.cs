@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using RelaxKonOS.ModuleHost.Protocol;
 using static RelaxKonOS.ModulePackaging.ModulePackageRules;
 
 namespace RelaxKonOS.ModulePackaging;
@@ -10,6 +11,17 @@ namespace RelaxKonOS.ModulePackaging;
 public static class ModulePackageVerifier
 {
     public static void ValidateManifest(ModulePackageManifest manifest) => Manifest(manifest);
+
+    public static bool SupportsHostApi(ModulePackageManifest manifest, string inProcessApiVersion)
+    {
+        var isolated = manifest.Runtime == "module-host";
+        var host = Version(isolated ? ModuleHostProtocol.HostApiVersion : inProcessApiVersion);
+        var minimum = Version(manifest.HostApiMinimum);
+        if (isolated && (manifest.ModuleId == CloudProviderProtocol.CallerModuleId || CloudProviderProtocol.IsProviderModule(manifest.ModuleId))
+            && minimum < Version(CloudProviderProtocol.HostApiMinimum))
+            return false;
+        return host >= minimum && host < Version(manifest.HostApiMaximumExclusive);
+    }
 
     private const int MetadataLimit = 4 * 1024 * 1024;
     private static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
@@ -123,8 +135,7 @@ public static class ModulePackageVerifier
         Require(!verified.NextHistory.RevokedReleaseIds.Contains(releaseId, StringComparer.Ordinal)
             && !verified.NextHistory.RevokedDigests.Contains(release.ArchiveSha256, StringComparer.Ordinal), "release-revoked");
         Require(m.Rid == context.Rid, "rid-mismatch");
-        var hostVersion = Version(release.Manifest.Runtime == "module-host" ? RelaxKonOS.ModuleHost.Protocol.ModuleHostProtocol.HostApiVersion : context.HostApiVersion);
-        Require(hostVersion >= Version(m.HostApiMinimum) && hostVersion < Version(m.HostApiMaximumExclusive), "host-api-incompatible");
+        Require(SupportsHostApi(m, context.HostApiVersion), "host-api-incompatible");
         Require(archive.CanRead && archive.CanSeek && archive.Length == release.ArchiveBytes, "archive-size");
         archive.Position = 0;
         var digest = Convert.ToHexStringLower(await SHA256.HashDataAsync(archive, cancellationToken));

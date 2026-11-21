@@ -105,7 +105,20 @@ if (args is ["--cloud-webdav-connector-acceptance"])
 
 if (args is ["--cloud-webdav-package-acceptance", var cloudPublish, var davPublish])
 {
-    await CloudWebDavPackageAcceptance.RunAsync(cloudPublish, davPublish);
+    await CloudProviderPackageAcceptance.RunAsync(RelaxKonOS.ModuleHost.Protocol.CloudFileProvider.WebDav, cloudPublish, davPublish);
+    return;
+}
+
+if (args is ["--cloud-r2-package-acceptance", var r2CloudPublish, var r2ProviderPublish])
+{
+    await CloudProviderPackageAcceptance.RunAsync(RelaxKonOS.ModuleHost.Protocol.CloudFileProvider.S3, r2CloudPublish, r2ProviderPublish);
+    return;
+}
+
+if (args is ["--cloud-s3-package-checks", var s3CloudPublish, var s3ProviderPublish])
+{
+    await CloudProviderPackageAcceptance.RunAsync(RelaxKonOS.ModuleHost.Protocol.CloudFileProvider.S3,
+        s3CloudPublish, s3ProviderPublish, liveService: false);
     return;
 }
 

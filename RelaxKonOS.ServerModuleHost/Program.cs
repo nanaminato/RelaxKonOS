@@ -66,7 +66,7 @@ public static class ModuleHostProgram
             var broker = Environment.GetEnvironmentVariable(ModulePrivilegeProtocol.BrokerEnvironment);
             var context = new Context(moduleId, dataPath, new ModuleHostStorage(dataPath),
                 loggerFactory.CreateLogger(moduleId), new ModuleHostPrivilegeClient(broker, serviceToken, accessor),
-                new CloudWebDavProviderClient(broker, serviceToken));
+                new CloudProviderClient(broker, serviceToken));
             await entry.StartAsync(context, CancellationToken.None);
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root });
             builder.Logging.ClearProviders();
@@ -170,8 +170,7 @@ public static class ModuleHostProgram
         ModulePackageVerifier.ValidateManifest(manifest);
         if (manifest.Runtime != "module-host" || manifest.ModuleId != moduleId
             || manifest.Rid != RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid
-            || Version.Parse(HostApiVersion) < Version.Parse(manifest.HostApiMinimum)
-            || Version.Parse(HostApiVersion) >= Version.Parse(manifest.HostApiMaximumExclusive))
+            || !ModulePackageVerifier.SupportsHostApi(manifest, HostApiVersion))
             throw new ModuleHostException("module-host-package-invalid");
         return manifest;
     }
@@ -215,7 +214,7 @@ public static class ModuleHostProgram
     }
 
     private sealed record Context(string ModuleId, string ModuleDataPath, IModuleHostStorage Storage,
-        ILogger Logger, IModulePrivilegeBroker Privileges, ICloudWebDavProvider WebDav) : IModuleHostContext
+        ILogger Logger, IModulePrivilegeBroker Privileges, ICloudFileProviders CloudProviders) : IModuleHostContext
     {
         public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
     }

@@ -10,6 +10,7 @@ using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.ServerModule.CloudStorage;
+using RelaxKonOS.ServerModule.CloudS3;
 using RelaxKonOS.ServerModule.CloudWebDav;
 using RelaxKonOS.ServerModuleHost;
 
@@ -19,8 +20,9 @@ internal static class CloudStorageChecks
         string? parentReference = null)
     {
         var context = new TestContext(root);
-        await using var webDav = settings.Protocol == "webdav"
-            ? await StartProviderAsync(context, new CloudWebDavModule(), ct) : null;
+        var kind = CloudProviderConnection.Kind(settings.Protocol);
+        await using var provider = kind is null ? null : await StartProvidersAsync(context, ct,
+            (kind.Value, kind == CloudFileProvider.WebDav ? new CloudWebDavModule() : new CloudS3Module()));
         var module = new CloudStorageModule();
         await module.StartAsync(context, ct);
         try
@@ -62,8 +64,9 @@ internal static class CloudStorageChecks
         {
             var context = new TestContext(root);
             var upstream = new Upstream(check);
-            await using var webDav = await StartProviderAsync(context,
-                new CloudWebDavModule((_, _) => new HttpClient(upstream, disposeHandler: false)), default);
+            await using var providers = await StartProvidersAsync(context, default,
+                (CloudFileProvider.WebDav, new CloudWebDavModule((_, _) => new HttpClient(upstream, disposeHandler: false))),
+                (CloudFileProvider.S3, new CloudS3Module((_, _) => new HttpClient(upstream, disposeHandler: false))));
             var module = new CloudStorageModule((_, _) => new HttpClient(upstream, disposeHandler: false));
             await module.StartAsync(context, default);
             var builder = WebApplication.CreateSlimBuilder();
@@ -154,6 +157,15 @@ internal static class CloudStorageChecks
                     "test-bucket", "scope", "TESTKEY", "test-secret", EnableWrites: true);
                 var s3 = await CreateAsync(client, settings);
                 var s3Route = $"/cloud/connections/{s3.Id:D}";
+                upstream.S3ListingError = "ExpiredToken";
+                using (var rejected = await client.GetAsync(s3Route + "/entries"))
+                {
+                    var credentials = await rejected.Content.ReadFromJsonAsync<RelaxKonOS.Protocol.Common.ProblemDetails>();
+                    check(rejected.StatusCode == HttpStatusCode.UnprocessableEntity
+                        && credentials?.Type == CloudStorageApi.CredentialsRejectedProblem,
+                        "S3 auth errors survive the private provider boundary without returning credentials");
+                }
+                upstream.S3ListingError = null;
                 var page = await client.GetFromJsonAsync<CloudDirectoryDto>(s3Route + "/entries");
                 check(page is { Entries.Count: 2, NextCursor: "second-page" } && page.Entries.Any(entry => entry.IsDirectory),
                     $"{hostname} lists paged S3 keys and common prefixes");
@@ -427,6 +439,7 @@ internal static class CloudStorageChecks
         private bool _r2ChangedAfterPublication;
         internal Dictionary<string, HashSet<string>> S3DeletedDirectoryKeys { get; } = new(StringComparer.Ordinal);
         internal HttpStatusCode? DavListingError { get; set; }
+        internal string? S3ListingError { get; set; }
         internal bool RejectDavDownload { get; set; }
         internal bool RejectDavUpload { get; set; }
         internal bool PauseNextDavUpload { get; set; }
@@ -603,6 +616,8 @@ internal static class CloudStorageChecks
             }
 
             var region = uri.Host.Contains("r2.", StringComparison.Ordinal) ? "auto" : "us-west-2";
+            if (S3ListingError is { } error)
+                return Xml(HttpStatusCode.Forbidden, $"<Error><Code>{error}</Code></Error>");
             var signature = request.Headers.TryGetValues("Authorization", out var headers) ? headers.Single() : "";
             var scope = signature.Split('/').ElementAtOrDefault(2);
             check(signature.StartsWith("AWS4-HMAC-SHA256 ", StringComparison.Ordinal)
@@ -770,7 +785,7 @@ internal static class CloudStorageChecks
         public string ModuleDataPath => root;
         public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
         public IModuleHostStorage Storage => this;
-        public ICloudWebDavProvider WebDav { get; set; } = null!;
+        public ICloudFileProviders CloudProviders { get; set; } = null!;
         public ILogger Logger => NullLogger.Instance;
         public IModulePrivilegeBroker Privileges => throw new NotSupportedException();
         public ValueTask<byte[]?> ReadAsync(string path, int maximumBytes, CancellationToken ct) =>
@@ -783,16 +798,20 @@ internal static class CloudStorageChecks
         public bool Delete(string path) => Files.Remove(path);
     }
 
-    private static async Task<WebApplication> StartProviderAsync(TestContext context, CloudWebDavModule module, CancellationToken ct)
+    private static async Task<WebApplication> StartProvidersAsync(TestContext context, CancellationToken ct,
+        params (CloudFileProvider Kind, IModuleHostHttp Module)[] entries)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var provider = builder.Build();
-        provider.MapGet(CloudWebDavProtocol.RequestPath, () => Results.NoContent());
-        module.MapEndpoints(provider, context);
+        foreach (var entry in entries)
+        {
+            provider.MapGet(CloudProviderProtocol.RequestPath(entry.Kind), () => Results.NoContent());
+            entry.Module.MapEndpoints(provider, context);
+        }
         await provider.StartAsync(ct);
-        context.WebDav = new CloudWebDavProviderClient(provider.Urls.Single(), new string('a', 64));
+        context.CloudProviders = new CloudProviderClient(provider.Urls.Single(), new string('a', 64));
         return provider;
     }
 }

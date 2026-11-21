@@ -161,12 +161,7 @@ internal sealed class CloudUploadSessions(string dataPath)
         catch (Exception error)
         {
             credentialsRejected = CloudStorageModule.CredentialsRejected(error);
-            var upstream = error switch
-            {
-                HttpRequestException http => http.StatusCode,
-                Amazon.Runtime.AmazonServiceException aws => aws.StatusCode,
-                _ => null,
-            };
+            var upstream = (error as HttpRequestException)?.StatusCode;
             status = upstream is System.Net.HttpStatusCode.PreconditionFailed or System.Net.HttpStatusCode.Conflict ? 409 : 502;
         }
 

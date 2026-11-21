@@ -1,3 +1,4 @@
+using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Server.Startup;
@@ -21,7 +22,6 @@ internal static class ModulePackageReleaseDirectory
         var candidates = verified.Catalog.Releases.Where(r => r.Manifest.ModuleId == moduleId)
             .OrderByDescending(r => Version.Parse(r.Manifest.Version)).ThenBy(r => r.Manifest.Rid, StringComparer.Ordinal)
             .ThenBy(r => r.Manifest.ReleaseId, StringComparer.Ordinal).ToArray();
-        var hostVersion = Version.Parse(context.HostApiVersion);
         var revokedIds = verified.NextHistory.RevokedReleaseIds.ToHashSet(StringComparer.Ordinal);
         var revokedDigests = verified.NextHistory.RevokedDigests.ToHashSet(StringComparer.Ordinal);
         var items = candidates.Skip(offset).Take(limit).Select(release =>
@@ -29,8 +29,7 @@ internal static class ModulePackageReleaseDirectory
             var m = release.Manifest;
             var revoked = revokedIds.Contains(m.ReleaseId) || revokedDigests.Contains(release.ArchiveSha256);
             var rid = m.Rid == context.Rid;
-            var runtimeApi = m.Runtime == "module-host" ? Version.Parse(RelaxKonOS.ModuleHost.Protocol.ModuleHostProtocol.HostApiVersion) : hostVersion;
-            var api = runtimeApi >= Version.Parse(m.HostApiMinimum) && runtimeApi < Version.Parse(m.HostApiMaximumExclusive);
+            var api = ModulePackageVerifier.SupportsHostApi(m, context.HostApiVersion);
             List<ServerModuleBlocker> blockers = [new("module-package-artifact-verification-required", moduleId)];
             if (revoked) blockers.Add(new("module-package-release-revoked", moduleId));
             if (!rid) blockers.Add(new("module-package-rid-mismatch", moduleId));

@@ -4,10 +4,10 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Amazon.Runtime;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using RelaxKonOS.Protocol.Files;
 
@@ -103,50 +103,33 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             return Results.NoContent();
         }));
         group.MapGet("/connections/{id:guid}/entries", (Guid id, string? reference, string? cursor, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, client, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
             {
                 if (cursor?.Length > 8192) throw new ArgumentException("cursor");
-                if (oauth is not null) return Results.Ok(await oauth.ListAsync(path, cursor, ct));
-                if (settings.Protocol == "webdav")
-                    return Results.Ok(await new WebDavProviderConnection(settings, _context.WebDav).ListAsync(path, cursor, ct));
-                using var connector = new S3Connector(settings, client!);
-                return Results.Ok(await connector.ListAsync(path, cursor, ct));
+                var listing = oauth is not null ? await oauth.ListAsync(path, cursor, ct)
+                    : await ConnectProvider(settings).ListAsync(path, cursor, ct);
+                return Results.Ok(listing);
             }));
         group.MapGet("/connections/{id:guid}/info", (Guid id, string? reference, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, client, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
             {
-                if (oauth is not null)
-                {
-                    var metadata = await oauth.InfoAsync(path, ct);
-                    return metadata is null ? Results.NotFound() : Results.Ok(metadata);
-                }
-                if (settings.Protocol == "webdav")
-                {
-                    var info = await new WebDavProviderConnection(settings, _context.WebDav).InfoAsync(path, ct);
-                    return info is null ? Results.NotFound() : Results.Ok(info);
-                }
-                using var connector = new S3Connector(settings, client!);
-                var entry = await connector.InfoAsync(path, ct);
+                var entry = oauth is not null ? await oauth.InfoAsync(path, ct)
+                    : await ConnectProvider(settings).InfoAsync(path, ct);
                 return entry is null ? Results.NotFound() : Results.Ok(entry);
             }));
         group.MapPost("/connections/{id:guid}/folders", (Guid id, string? reference, string name, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, client, parent, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, parent, ct, oauth) =>
             {
                 if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 var path = ChildPath(parent, name) + "/";
                 if (oauth is not null)
                     await WithOAuthWriteAsync(id, () => oauth.CreateFolderAsync(path, ct), ct);
-                else if (settings.Protocol == "webdav")
-                    await new WebDavProviderConnection(settings, _context.WebDav).CreateFolderAsync(path, ct);
                 else
-                {
-                    using var connector = new S3Connector(settings, client!);
-                    await connector.CreateFolderAsync(path, ct);
-                }
+                    await ConnectProvider(settings).CreateFolderAsync(path, ct);
                 return Results.Ok(new CloudCreatedFolder(CloudTransport.Reference(path)));
             }));
         group.MapPost("/connections/{id:guid}/entries/move", (Guid id, string reference, CloudMoveRequest request, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, client, source, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, source, ct, oauth) =>
             {
                 if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 if (source.Length == 0) throw new ArgumentException("source");
@@ -159,38 +142,20 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                     throw new ArgumentException("destination");
                 if (oauth is not null)
                     await WithOAuthWriteAsync(id, () => oauth.MoveAsync(source, destination, ct), ct);
-                else if (settings.Protocol == "webdav")
-                {
-                    var connector = new WebDavProviderConnection(settings, _context.WebDav);
-                    await connector.MoveAsync(source, destination, ct);
-                }
-                else if (settings.Protocol == "s3")
-                {
-                    using var connector = new S3Connector(settings, client!);
-                    await connector.MoveAsync(source, destination, ct);
-                }
-                else return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+                else
+                    await ConnectProvider(settings).MoveAsync(source, destination, ct);
                 return Results.NoContent();
             }));
         group.MapDelete("/connections/{id:guid}/entries", (Guid id, string reference, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, client, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
             {
                 if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 if (path.Length == 0) throw new ArgumentException("reference");
                 if (oauth is not null)
                     await WithOAuthWriteAsync(id, async () =>
                         await oauth.DeleteAsync(await oauth.ResolveMutationPathAsync(path, ct), ct), ct);
-                else if (settings.Protocol == "webdav")
-                {
-                    var connector = new WebDavProviderConnection(settings, _context.WebDav);
-                    await connector.DeleteAsync(path, ct);
-                }
-                else if (settings.Protocol == "s3")
-                {
-                    using var connector = new S3Connector(settings, client!);
-                    await connector.DeleteAsync(path, ct);
-                }
-                else return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+                else
+                    await ConnectProvider(settings).DeleteAsync(path, ct);
                 return Results.NoContent();
             }));
         const string uploads = "/connections/{id:guid}/uploads";
@@ -208,7 +173,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
         group.MapPost(uploads + "/{uploadId}/commit", (Guid id, string uploadId, CommitUploadRequest? request, HttpContext http) =>
             UploadOperation(http, id, uploadId, "commit", contentHash: request?.ContentHash));
         group.MapGet("/connections/{id:guid}/download", (Guid id, string? reference, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, client, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
             {
                 if (oauth is not null)
                 {
@@ -220,21 +185,11 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                     return Results.Empty;
                 }
                 var name = path.Split('/')[^1];
-                if (settings.Protocol == "webdav")
-                {
-                    using var response = await new WebDavProviderConnection(settings, _context.WebDav).DownloadAsync(path, ct);
-                    response.EnsureSuccessStatusCode();
-                    await using var stream = await response.Content.ReadAsStreamAsync(ct);
-                    http.Response.ContentLength = response.Content.Headers.ContentLength;
-                    await Results.Stream(stream, "application/octet-stream", name).ExecuteAsync(http);
-                }
-                else
-                {
-                    using var connector = new S3Connector(settings, client!);
-                    using var response = await connector.DownloadAsync(path, ct);
-                    http.Response.ContentLength = response.ContentLength;
-                    await Results.Stream(response.ResponseStream, "application/octet-stream", name).ExecuteAsync(http);
-                }
+                using var response = await ConnectProvider(settings).DownloadAsync(path, ct);
+                response.EnsureSuccessStatusCode();
+                await using var stream = await response.Content.ReadAsStreamAsync(ct);
+                http.Response.ContentLength = response.Content.Headers.ContentLength;
+                await Results.Stream(stream, "application/octet-stream", name).ExecuteAsync(http);
                 return Results.Empty;
             }));
     }
@@ -246,18 +201,21 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             var item = Volatile.Read(ref _connections).FirstOrDefault(connection => connection.Id == id && connection.Owner == user);
             if (item is null) return Results.NotFound();
             if (!item.Settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (requiresProvider && item.Settings.Protocol == "webdav" && !await ProviderAvailableAsync(http.RequestAborted))
+            if (requiresProvider && CloudProviderConnection.Kind(item.Settings.Protocol) is { } provider
+                && !await ProviderAvailableAsync(provider, http.RequestAborted))
                 return Results.Problem(statusCode: 503, title: CloudStorageApi.ProviderUnavailable);
             var revision = OAuthDriveConnector.Supports(item.Settings.Protocol) ? item.Revision.ToString("N")
                 : Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(item.Settings)));
             return await action(item, revision);
         });
 
-    private async ValueTask<bool> ProviderAvailableAsync(CancellationToken ct)
+    private CloudProviderConnection ConnectProvider(CloudConnectionRequest settings) => new(settings, _context.CloudProviders);
+
+    private async ValueTask<bool> ProviderAvailableAsync(CloudFileProvider provider, CancellationToken ct)
     {
         using var probe = CancellationTokenSource.CreateLinkedTokenSource(ct);
         probe.CancelAfter(TimeSpan.FromSeconds(2));
-        try { return await _context.WebDav.IsAvailableAsync(probe.Token); }
+        try { return await _context.CloudProviders.IsAvailableAsync(provider, probe.Token); }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return false; }
     }
 
@@ -281,24 +239,16 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                     }, deadline.Token);
                     return;
                 }
-                if (settings.Protocol == "webdav")
-                    await new WebDavProviderConnection(settings, _context.WebDav).UploadAsync(path, stream, deadline.Token, replace);
-                else
-                {
-                    using var client = _transport(new Uri(settings.Endpoint), false);
-                    client.Timeout = Timeout.InfiniteTimeSpan;
-                    using var connector = new S3Connector(settings, client);
-                    await connector.UploadAsync(path, stream, deadline.Token, replace);
-                }
-            }, canPublish: item.Settings.Protocol == "webdav" ? ProviderAvailableAsync : null));
+                await ConnectProvider(settings).UploadAsync(path, stream, deadline.Token, replace);
+            }, canPublish: CloudProviderConnection.Kind(item.Settings.Protocol) is { } provider
+                ? ct => ProviderAvailableAsync(provider, ct) : null));
 
     private Task<IResult> WithConnection(HttpContext http, Guid id, string? reference,
-        Func<CloudConnectionRequest, HttpClient?, string, CancellationToken, OAuthDriveConnector?, Task<IResult>> action) =>
+        Func<CloudConnectionRequest, string, CancellationToken, OAuthDriveConnector?, Task<IResult>> action) =>
         WithUser(http, async user =>
         {
             var item = Volatile.Read(ref _connections).FirstOrDefault(connection => connection.Id == id && connection.Owner == user);
             if (item is null) return Results.NotFound();
-            using var client = item.Settings.Protocol == "s3" ? _transport(new Uri(item.Settings.Endpoint), false) : null;
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted);
             if (!http.Request.Path.Value!.EndsWith("/download", StringComparison.Ordinal))
                 deadline.CancelAfter(TimeSpan.FromSeconds(30));
@@ -309,7 +259,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                 var token = await GetOAuthTokenAsync(id, user, item.Settings.Protocol, item.Revision, deadline.Token);
                 oauth = new OAuthDriveConnector(token, _transport);
             }
-            return await action(item.Settings, client, path, deadline.Token, oauth);
+            return await action(item.Settings, path, deadline.Token, oauth);
         });
 
     private async Task WithOAuthWriteAsync(Guid connection, Func<Task> write, CancellationToken ct)
@@ -363,7 +313,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
         if (!Guid.TryParse(http.Request.Headers["X-RelaxKonOS-Module-User"].ToString(), out var user))
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         try { return await action(user); }
-        catch (Exception error) when (http.Response.HasStarted && error is IOException or HttpRequestException or AmazonServiceException)
+        catch (Exception error) when (http.Response.HasStarted && error is (IOException or HttpRequestException))
         {
             http.Abort();
             return Results.Empty;
@@ -373,14 +323,9 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
         catch (KeyNotFoundException) { return Results.NotFound(); }
         catch (OperationCanceledException) when (!http.RequestAborted.IsCancellationRequested)
         { return Results.Problem(statusCode: 504, title: "cloud-storage-timeout"); }
-        catch (Exception error) when (error is HttpRequestException or AmazonServiceException or System.Xml.XmlException or JsonException or InvalidDataException)
+        catch (Exception error) when (error is HttpRequestException or JsonException or InvalidDataException)
         {
-            var status = error switch
-            {
-                HttpRequestException request => request.StatusCode,
-                AmazonServiceException aws => aws.StatusCode,
-                _ => null,
-            };
+            var status = (error as HttpRequestException)?.StatusCode;
             if (CredentialsRejected(error)) return CredentialProblem();
             return status switch
             {
@@ -394,13 +339,8 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
         }
     }
 
-    internal static bool CredentialsRejected(Exception error) => error switch
-    {
-        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } => true,
-        AmazonServiceException aws => aws.StatusCode == HttpStatusCode.Unauthorized
-            || aws.ErrorCode is "ExpiredToken" or "InvalidToken" or "InvalidAccessKeyId" or "SignatureDoesNotMatch",
-        _ => false,
-    };
+    internal static bool CredentialsRejected(Exception error) =>
+        error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized };
 
     internal static IResult CredentialProblem() => Results.Problem(statusCode: 422,
         type: CloudStorageApi.CredentialsRejectedProblem, title: CloudStorageApi.CredentialsRejected);

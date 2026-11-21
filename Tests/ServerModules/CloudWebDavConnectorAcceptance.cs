@@ -17,7 +17,7 @@ internal static class CloudWebDavConnectorAcceptance
         var settings = new CloudConnectionRequest("WebDAV acceptance", "webdav",
             endpoint.AbsoluteUri, null, null, null, Required("USER"), Required("SECRET"), AllowPrivateWebDav: allowPrivate,
             EnableWrites: true);
-        var connector = new WebDavConnector(new(CloudWebDavAction.List, settings.Endpoint, settings.UserName, settings.Secret,
+        var connector = new WebDavConnector(new(CloudProviderAction.List, settings.Endpoint, settings.UserName, settings.Secret,
             settings.AllowPrivateWebDav, ""), http);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var ct = deadline.Token;

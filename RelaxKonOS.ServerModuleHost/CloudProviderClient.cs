@@ -4,27 +4,28 @@ using RelaxKonOS.ModuleHost.Sdk;
 
 namespace RelaxKonOS.ServerModuleHost;
 
-internal sealed class CloudWebDavProviderClient(string? brokerUrl, string? token) : ICloudWebDavProvider
+internal sealed class CloudProviderClient(string? brokerUrl, string? token) : ICloudFileProviders
 {
     private static readonly HttpClient Transport = new(new SocketsHttpHandler
     {
         AllowAutoRedirect = false, UseProxy = false, UseCookies = false, ConnectTimeout = TimeSpan.FromSeconds(10),
     }) { Timeout = Timeout.InfiniteTimeSpan };
 
-    public async ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken)
+    public async ValueTask<bool> IsAvailableAsync(CloudFileProvider provider, CancellationToken cancellationToken)
     {
         try
         {
-            using var request = CreateRequest(HttpMethod.Get);
+            using var request = CreateRequest(provider, HttpMethod.Get);
             using var response = await Transport.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException) { return false; }
     }
 
-    public async ValueTask<HttpResponseMessage> SendAsync(CloudWebDavRequest operation, Stream? content, CancellationToken cancellationToken)
+    public async ValueTask<HttpResponseMessage> SendAsync(CloudFileProvider provider, CloudProviderRequest operation,
+        Stream? content, CancellationToken cancellationToken)
     {
-        using var request = CreateRequest(HttpMethod.Post);
+        using var request = CreateRequest(provider, HttpMethod.Post);
         using var body = new MultipartContent("mixed");
         body.Add(JsonContent.Create(operation, options: ModuleHostProtocol.Json));
         if (content is not null) body.Add(new StreamContent(content));
@@ -32,12 +33,12 @@ internal sealed class CloudWebDavProviderClient(string? brokerUrl, string? token
         return await Transport.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
-    private HttpRequestMessage CreateRequest(HttpMethod method)
+    private HttpRequestMessage CreateRequest(CloudFileProvider provider, HttpMethod method)
     {
         if (!Uri.TryCreate(brokerUrl, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttp
             || !endpoint.IsLoopback || token is not { Length: 64 })
-            throw new HttpRequestException("cloud-webdav-provider-unavailable", null, System.Net.HttpStatusCode.ServiceUnavailable);
-        var request = new HttpRequestMessage(method, new Uri(endpoint, CloudWebDavProtocol.RequestPath));
+            throw new HttpRequestException("cloud-storage-provider-unavailable", null, System.Net.HttpStatusCode.ServiceUnavailable);
+        var request = new HttpRequestMessage(method, new Uri(endpoint, CloudProviderProtocol.RequestPath(provider)));
         request.Headers.Add(ModuleHostProtocol.ServiceTokenHeader, token);
         return request;
     }

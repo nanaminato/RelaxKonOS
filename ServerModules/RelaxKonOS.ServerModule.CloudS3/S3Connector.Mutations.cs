@@ -3,7 +3,7 @@ using System.Net;
 using Amazon.Runtime;
 using Amazon.S3.Model;
 
-namespace RelaxKonOS.ServerModule.CloudStorage;
+namespace RelaxKonOS.ServerModule.CloudS3;
 
 internal sealed partial class S3Connector
 {
@@ -35,7 +35,7 @@ internal sealed partial class S3Connector
     internal async Task CreateFolderAsync(string path, CancellationToken ct)
     {
         await EnsurePrefixUnusedAsync(path, ct);
-        await UploadAsync(path, Stream.Null, ct);
+        await UploadAsync(path, Stream.Null, 0, ct, replace: false);
     }
 
     private async Task EnsurePrefixUnusedAsync(string path, CancellationToken ct)
@@ -94,7 +94,7 @@ internal sealed partial class S3Connector
             throw new HttpRequestException("cloud-storage-source-changed", null, HttpStatusCode.PreconditionFailed);
         if (source.Length == 0)
         {
-            await UploadAsync(target, Stream.Null, ct);
+            await UploadAsync(target, Stream.Null, 0, ct, replace: false);
             return;
         }
 

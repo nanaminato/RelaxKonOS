@@ -96,7 +96,7 @@ sealed class TestContext : IModuleHostContext, IModuleHostStorage
     public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
     public IModuleHostStorage Storage => this;
     public ILogger Logger => NullLogger.Instance;
-    public ICloudWebDavProvider WebDav => throw new NotSupportedException();
+    public ICloudFileProviders CloudProviders => throw new NotSupportedException();
     public IModulePrivilegeBroker Privileges => throw new NotSupportedException();
     public ValueTask<byte[]?> ReadAsync(string path, int maximumBytes, CancellationToken ct) => ValueTask.FromResult(Files.GetValueOrDefault(path));
     public ValueTask WriteAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken ct) { Files[path] = bytes.ToArray(); return ValueTask.CompletedTask; }
