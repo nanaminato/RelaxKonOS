@@ -260,7 +260,10 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 model.AttachPackageInstallation(componentId, task);
                 if (componentId == "nginx")
                     model.ReviewServiceStopAsync = current => ReviewServiceStopAsync(installationClient, current);
-                if (componentId == "nginx" && model.NginxSelection is { } selectedNginx) selectedNginx.Installation = task;
+                if (componentId == "nginx" && model.NginxSelection is { } selectedNginx)
+                    selectedNginx.AttachManagedRuntimeActions(task.DismissInactiveFeedback,
+                        () => task.SubmitAsync(RelaxKonOS.Protocol.Installations.InstallationOperationKind.Uninstall,
+                            new RelaxKonOS.Protocol.Installations.NginxInstallationRequest(true)));
                 _ = task.RestoreAsync(); // Observe only, including after a window is reopened.
             }
             model.ConfirmPackageInstallAsync = freeze =>

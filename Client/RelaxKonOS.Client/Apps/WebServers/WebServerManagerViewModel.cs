@@ -1,6 +1,4 @@
 using RelaxKonOS.App.WebServers;
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Certificates;
@@ -62,7 +60,15 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         catch { SelectedServer = null; StatusText = LocalizedText.Ref("webservers.current.failed"); }
     }
 
-    public InstallationTaskViewModel Installation { get; set; } = null!;
+    private Action? _dismissRuntimeFeedback;
+    private Func<Task>? _uninstallRuntimeAsync;
+
+    internal void AttachManagedRuntimeActions(Action dismissFeedback, Func<Task> uninstallAsync)
+    {
+        _dismissRuntimeFeedback = dismissFeedback;
+        _uninstallRuntimeAsync = uninstallAsync;
+        UninstallManagedCommand.NotifyCanExecuteChanged();
+    }
 
     private readonly IServerWebServers _client;
     private readonly IServerCertificates _certificates;
@@ -404,7 +410,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         var candidate = SelectedIntegrationCandidate;
         if (candidate is null) return;
         if (RequestIntegrationConfirmationAsync is null || !await RequestIntegrationConfirmationAsync()) return;
-        Installation?.DismissInactiveFeedback();
+        _dismissRuntimeFeedback?.Invoke();
         await RunOperationAsync("integrate", ct => _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, candidate.Id,
             () => _client.IntegrateCandidateAsync(candidate.Id, new IntegrateWebServerRequest(true), ct), ct));
     }
@@ -442,8 +448,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [RelayCommand(CanExecute = nameof(CanUninstallManaged))]
     private async Task UninstallManagedAsync()
     {
-        if (RequestManagedUninstallConfirmationAsync is null || !await RequestManagedUninstallConfirmationAsync()) return;
-        await Installation.SubmitAsync(InstallationOperationKind.Uninstall, new NginxInstallationRequest(true));
+        if (_uninstallRuntimeAsync is not { } uninstall || !CanUninstallManaged
+            || RequestManagedUninstallConfirmationAsync is null) return;
+        var original = SelectedServer?.Id;
+        if (!await RequestManagedUninstallConfirmationAsync() || !CanUninstallManaged || SelectedServer?.Id != original) return;
+        await uninstall();
         await RefreshAsync();
     }
 
@@ -924,7 +933,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private bool CanToggleManaged => IsManagedServerRunning ? CanStop : CanStart;
     private bool CanRestart => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRestart == true;
     private bool CanReload => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanReload == true;
-    private bool CanUninstallManaged => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanUninstall == true;
+    private bool CanUninstallManaged => _uninstallRuntimeAsync is not null && HasManagePermission
+        && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanUninstall == true;
     private bool CanManageSites => HasManagePermission && SiteFactsAvailable && !IsSavingSite && !IsLoading && !IsOperationRunning && SelectedServer?.ManagementMode is WebServerManagementMode.Integrated or WebServerManagementMode.Managed;
     private bool CanSaveSite => CanManageSites && _siteEditorOpen && _siteEditorTargetVersion == _siteTargetVersion && SelectedSite?.Id == _siteEditorSiteId;
     private bool CanOpenSiteEditor => CanManageSites;

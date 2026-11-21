@@ -1,6 +1,4 @@
 using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Services.Installation;
-using RelaxKonOS.Protocol.Installations;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;

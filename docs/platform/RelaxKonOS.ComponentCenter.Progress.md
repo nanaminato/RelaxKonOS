@@ -1,5 +1,9 @@
 # 组件中心实施进度
 
+## Nginx 桌面卸载入口（MR-05）
+
+组件中心持有 Nginx 安装任务和回执。Web Server Manager 的共享视图模型通过组件中心提供的操作发起已确认的卸载。确认期间如果连接、权限或所选实例变化，视图模型会停止提交。变更覆盖桌面入口，实机卸载仍待验收。
+
 ## Nginx 下载代理通配符修复（2026-11-18，MR-04 / CC-05）
 
 本机 Nginx 安装操作 `b807b16a-f4ac-4067-8c8c-12fee31115bf` 于 23:12:35 进入 Downloading 后约 6 ms 失败。只读读取原代理排除列表、执行原 `WebProxy.BypassList` 赋值，复现 `RegexParseException / QuantifierAfterNothing`：此前已接受的 `NO_PROXY` 通配符被直接当作正则表达式。并非本次管理员验证拒绝，也未进入 Nginx 原生安装。

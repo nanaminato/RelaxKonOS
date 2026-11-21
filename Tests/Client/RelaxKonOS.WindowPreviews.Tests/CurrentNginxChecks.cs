@@ -23,6 +23,30 @@ internal static class CurrentNginxChecks
         RunPlatform(HostPlatformKind.Linux);
         RunPlatform(HostPlatformKind.Windows);
         VerifyPackagedCapability();
+        VerifyManagedUninstall();
+    }
+
+    private static void VerifyManagedUninstall()
+    {
+        var client = DispatchProxy.Create<IServerWebServers, CurrentNginxClient>();
+        var host = (CurrentNginxClient)(object)client;
+        var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
+        var model = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(session),
+            HostPlatformKind.Windows, new FirewallTestPermissions(), null!) { IsComponentCenter = true };
+        model.SelectedServer = host.Servers[0] with { Capabilities = new(true, true, true, CanUninstall: true) };
+        Check(!model.UninstallManagedCommand.CanExecute(null), "Runtime uninstall requires a Component Center action.");
+        var calls = 0;
+        model.AttachManagedRuntimeActions(() => { }, () => { calls++; return Task.CompletedTask; });
+        model.RequestManagedUninstallConfirmationAsync = () =>
+        {
+            model.SelectedServer = host.Servers[1] with { Capabilities = new(true, true, true, CanUninstall: true) };
+            return Task.FromResult(true);
+        };
+        model.UninstallManagedCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(calls == 0, "Changing the selected Nginx while confirming blocks runtime uninstall.");
+        model.RequestManagedUninstallConfirmationAsync = () => Task.FromResult(true);
+        model.UninstallManagedCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(calls == 1, "Confirmed runtime uninstall dispatches through Component Center.");
     }
 
     private static void VerifyPackagedCapability()
