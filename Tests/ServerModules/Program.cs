@@ -153,16 +153,19 @@ if (args is ["--module-host-checks"])
     return;
 }
 
-if (args is ["--module-lifecycle-checks"])
+if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"])
 {
     void VerifyLifecycle(bool passed, string message)
     {
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
         if (!passed) throw new InvalidOperationException(message);
     }
-    ModuleManagementChecks.Run(VerifyLifecycle);
-    ModuleRemovalChecks.Run(VerifyLifecycle);
-    await ModuleManagementHttpChecks.RunAsync(VerifyLifecycle);
+    if (args[0] == "--module-lifecycle-checks")
+    {
+        ModuleManagementChecks.Run(VerifyLifecycle);
+        ModuleRemovalChecks.Run(VerifyLifecycle);
+        await ModuleManagementHttpChecks.RunAsync(VerifyLifecycle);
+    }
     await ModulePackageHttpChecks.RunAsync(VerifyLifecycle);
     await ModulePackageHttpChecks.RunAsync(VerifyLifecycle, isolated: true);
     return;

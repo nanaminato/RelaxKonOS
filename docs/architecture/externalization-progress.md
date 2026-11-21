@@ -71,4 +71,5 @@
 - Notepad 和 Image Viewer 的 Windows Release 包测试通过，覆盖损坏包启动降级、首次离线预装、重复启动、更新和卸载保留。MSBuild 元数据探针生成了这两个默认应用 ID。
 - Welcome 已独立构建并使用 DevCli 生成 Release 归档。Windows 包测试通过首次预装、更新、坏包拒绝、重启和卸载。窗口测试覆盖中英日、关闭后解除订阅、记事本入口与安装器回退。
 - Welcome 的 Windows Release 回归验证了 Standard 默认读取、Minimal 选择跨启动保留、排除项生效、Developer 选择以及卸载决定保留。尚未验证完整 Developer 工具集和图形化选择。
+- Windows 本机 HTTP 签名包测试通过。两份签名 .rkmodule 中，依赖方可提前生成计划，缺少前置模块时提交被拒绝，安装前置模块后原计划成功写入安装目录。此测试覆盖服务端包操作，桌面 .roapp 尚未参加该场景。
 - Windows/Linux 设备联合部署、Android 和全应用三语言界面验收均待执行。

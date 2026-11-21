@@ -39,16 +39,30 @@ internal static class ModulePackageHttpChecks
             var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;
             var now = DateTimeOffset.UtcNow;
             var releaseId = "fixture-http-1.0.0-" + rid;
-            var built = await ModulePackageBuilder.BuildAsync(new ModulePackageBuildOptions(publish, output, "fixture-http",
+            var packageOptions = new ModulePackageBuildOptions(publish, output, "fixture-http",
                 "1.0.0", releaseId, "fixture", purpose, rid, assembly,
                 isolated ? "HostFixture.FixtureHttpHostEntry" : "FixtureModule.FixtureInstalledModule", "fixture-build", new string('a', 40), "official", 1,
                 "https://modules.example/", keyPath, "builder-key", 3600,
                 HostApiMinimum: isolated ? "2.0.0" : "1.0.0", HostApiMaximumExclusive: isolated ? "3.0.0" : "2.0.0",
                 Runtime: isolated ? "module-host" : "in-process",
                 Privileges: isolated ? [ModuleCapabilityFixtures.Service("fixture.service", "restart")] : [],
-                Ui: new("Sample Module", "", "", null, "UNLICENSED")), now);
+                Ui: new("Sample Module", "", "", null, "UNLICENSED"));
+            var built = await ModulePackageBuilder.BuildAsync(packageOptions, now);
+            var dependent = isolated ? null : await ModulePackageBuilder.BuildAsync(packageOptions with
+            {
+                ModuleId = "fixture-dependent",
+                ReleaseId = "fixture-dependent-1.0.0-" + rid,
+                Dependencies = [new("fixture-http", "1.0.0", "2.0.0")],
+                Ui = new("Dependent Module", "", "", null, "UNLICENSED"),
+            }, now);
+            var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
+                : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
+                    now.AddHours(1), [Release(built), Release(dependent)], [], []), "builder-key", keyPath)).Envelope;
+            static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
+                result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
+                $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
-                "https://modules.example/", ["fixture-http"],
+                "https://modules.example/", dependent is null ? ["fixture-http"] : ["fixture-http", "fixture-dependent"],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -73,7 +87,7 @@ internal static class ModulePackageHttpChecks
                 "a configured remote source is refreshable before first acceptance and exposes no unsigned releases");
             var context = ModulePackageHostConfiguration.Context(serviceId, builder.Configuration, builder.Environment);
             using (var catalog = new ModulePackageCatalogStore(root, serviceId))
-                catalog.Accept(File.ReadAllBytes(built.CatalogPath), policy, context, ModulePackageCatalogStore.InitialRevision,
+                catalog.Accept(envelope, policy, context, ModulePackageCatalogStore.InitialRevision,
                     "package-http", "accept-package-http", now);
 
             using var management = new ModuleManagementStore(builder.Configuration, root);
@@ -107,7 +121,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == 1,
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 2),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -115,6 +129,28 @@ internal static class ModulePackageHttpChecks
                 "official", releaseId, now, downloadHandler);
             check(downloaded.Bytes == built.ArchiveBytes && downloaded.Sha256 == built.ArchiveSha256,
                 "module store download writes the exact catalog artifact into staging");
+
+            string? dependentApplyRoute = null;
+            if (dependent is not null)
+            {
+                using var dependentUpload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
+                    new ByteArrayContent(await File.ReadAllBytesAsync(dependent.ArchivePath)));
+                dependentUpload.EnsureSuccessStatusCode();
+                var stagedDependent = (await dependentUpload.Content.ReadFromJsonAsync<ServerModulePackageUploadDto>(
+                    RelaxKonOSJsonOptions.Default))!;
+                using var dependentPreview = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                    new ServerModulePackageInstallRequest("official", dependent.Manifest.ReleaseId, stagedDependent.UploadId),
+                    RelaxKonOSJsonOptions.Default);
+                dependentPreview.EnsureSuccessStatusCode();
+                var frozenDependent = (await dependentPreview.Content.ReadFromJsonAsync<ServerModulePackagePlanDto>(
+                    RelaxKonOSJsonOptions.Default))!;
+                dependentApplyRoute = ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", frozenDependent.PlanId.ToString());
+                using var premature = await client.PostAsync(dependentApplyRoute, null);
+                using var problem = JsonDocument.Parse(await premature.Content.ReadAsStringAsync());
+                check(!premature.IsSuccessStatusCode && InstalledModuleStore.Read(root).Count == 0
+                    && problem.RootElement.GetProperty("problemCode").GetString() == "module-package-dependency-missing",
+                    "a signed dependent package can be frozen before its predecessor, but cannot apply before installation");
+            }
 
             var upload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
                 new ByteArrayContent(await File.ReadAllBytesAsync(built.ArchivePath)));
@@ -216,6 +252,17 @@ internal static class ModulePackageHttpChecks
                 "HTTP package plan status resolves the original receipt after a lost response");
             check(ModulePackagePlanStore.MarkApplied(root, plan.PlanId, applied.OperationId, now.AddHours(3)).AppliedOperationId == applied.OperationId,
                 "accepted package completion can persist its receipt after the preview expiry");
+            if (dependentApplyRoute is not null)
+            {
+                using var applyDependent = await client.PostAsync(dependentApplyRoute, null);
+                if (!applyDependent.IsSuccessStatusCode)
+                    throw new InvalidOperationException("Dependent package apply failed: " + await applyDependent.Content.ReadAsStringAsync());
+                var installedDependent = (await applyDependent.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(
+                    RelaxKonOSJsonOptions.Default))!;
+                check(installedDependent.Record.ModuleId == "fixture-dependent"
+                    && installedDependent.Record.Requires.SequenceEqual(["fixture-http"]),
+                    "the same frozen dependent plan installs once its signed predecessor has been installed");
+            }
             var retainedPlans = ModulePackagePlanStore.Read(root).Select(item => item with
                 { CreatedAt = now.AddHours(-3), ExpiresAt = now.AddHours(-2) }).ToArray();
             await File.WriteAllBytesAsync(ModulePackagePlanStore.PathFor(root),
