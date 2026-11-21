@@ -84,6 +84,24 @@ internal static class NotepadWorkspaceChecks
             Wait(open);
             Check(model.CurrentPath == "/remote/notes.txt" && model.Text == FileTransport.Original, "Open via the Explorer picker reads the selected server file.");
 
+            var pickerOwner = context.Windows.ShowWindow("Picker tests", new TextBlock());
+            var selectFolder = context.ServerFiles.PickAsync(pickerOwner, new("Open folder", ServerFilePickerMode.SelectFolder));
+            picker = Dialog<ExplorerViewModel>();
+            Check(picker.IsFolderPickerMode && context.ServerFiles.IsPathCaseSensitive, "The SDK exposes folder selection and remote path comparison.");
+            Wait(picker.NavigateToAsync("/remote"));
+            Wait(picker.ConfirmPickerCommand.ExecuteAsync(null));
+            Wait(selectFolder);
+            Check(selectFolder.Result is { Status: AppCapabilityResult.Succeeded, Path: "/remote" },
+                "The SDK returns the directory selected in the host picker.");
+            var filtered = context.ServerFiles.PickAsync(pickerOwner, new("Open file", ServerFilePickerMode.OpenFile,
+                [new("Source", ["*.cs"]), new("Text", ["*.txt"])]));
+            picker = Dialog<ExplorerViewModel>();
+            Check(picker.Filters.Select(filter => filter.Label).SequenceEqual(["Source", "Text"]),
+                "The SDK preserves separate file picker filters and their order.");
+            picker.CancelAction!();
+            Wait(filtered);
+            manager.ForceClose(pickerOwner.Window);
+
             var settingsTask = model.OpenSettingsCommand.ExecuteAsync(null);
             Pump(() => manager.Windows.Any(item => item.View.Content is NotepadSettingsView));
             model.DefaultEncodingName = "UTF-8 BOM";
@@ -235,7 +253,7 @@ public class NotepadAuthFixture : DispatchProxy
         "get_EffectiveBaseUrl" => "http://fixture.invalid",
         "get_Tokens" => new AuthTokens("fixture-token", "fixture-refresh", DateTimeOffset.MaxValue, DateTimeOffset.MaxValue),
         "get_CurrentWorkspace" => _workspace,
-        "get_ServiceId" or "get_CurrentSession" or "get_CurrentUser" or "get_ExecutionEligibility" => null,
+        "get_ServiceId" or "get_CurrentSession" or "get_CurrentUser" or "get_CurrentServer" or "get_ExecutionEligibility" => null,
         _ => throw new NotSupportedException(method?.Name),
     };
 }

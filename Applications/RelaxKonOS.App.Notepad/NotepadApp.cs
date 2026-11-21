@@ -86,9 +86,11 @@ public sealed class NotepadApp : IExternalRemoteApplication, IExternalFileOpenAp
         {
             await RequireAsync(AppPermissions.ServerFilesRead, cancellation);
             if (fileName is not null) await RequireAsync(AppPermissions.ServerFilesWrite, cancellation);
-            var result = await context.ServerFiles.PickFileAsync(owner, new(
-                labels[fileName is null ? "notepad.open_remote_file" : "notepad.save_remote_file"], labels["notepad.text_file_filter"],
-                Extensions.Select(extension => "*" + extension).ToArray(), IncludeExtensionlessFiles: true, SuggestedFileName: fileName));
+            var result = await context.ServerFiles.PickAsync(owner, new(
+                labels[fileName is null ? "notepad.open_remote_file" : "notepad.save_remote_file"],
+                fileName is null ? ServerFilePickerMode.OpenFile : ServerFilePickerMode.SaveFile,
+                [new(labels["notepad.text_file_filter"], Extensions.Select(extension => "*" + extension).ToArray(),
+                    IncludeExtensionlessFiles: true)], SuggestedFileName: fileName));
             CheckResult(result.Status, fileName is null ? "notepad.status.connect_before_open" : "notepad.status.connect_before_save");
             return result.Path;
         }

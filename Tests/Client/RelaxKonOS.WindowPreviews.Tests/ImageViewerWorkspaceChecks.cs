@@ -117,6 +117,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
     public AppPermissionStatus ReadPermission { get; set; } = AppPermissionStatus.Granted;
     public int PermissionRequests { get; private set; }
     public bool IsSshSession { get; set; }
+    public bool IsPathCaseSensitive => true;
     public IAppActivation? Activations { get; set; }
 
     internal void Initialize(IWindowManager manager, ISystemLanguage language, AppId id)
@@ -146,7 +147,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
         => throw new NotSupportedException();
     public Task<ServerFileContentResult> ReadAsync(string path, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
-    public Task<ServerFilePickResult> PickFileAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
+    public Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
         => throw new NotSupportedException();
 
     public AppPermissionStatus GetStatus(string permissionId) => ReadPermission;

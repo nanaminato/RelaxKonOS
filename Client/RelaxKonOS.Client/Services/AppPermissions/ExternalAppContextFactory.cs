@@ -101,7 +101,8 @@ public sealed class ExternalAppContextFactory
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         new ServerFilesCapability(appId, _permissions,
             sshEndpoint is null ? _files.DownloadAsync : (path, ct) => _sshFiles.DownloadAsync(path, sshEndpoint, ct),
-            sshEndpoint is not null, openedFile, _files, fileSession, _windowManager),
+            sshEndpoint is not null, sshEndpoint is not null || _session.CurrentServer?.Platform != RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
+            openedFile, _files, fileSession, _windowManager),
         appId.Value == "relaxkonos.notepad" ? new NotepadEncodingPreferences(_textEncoding, fileSession) : null,
         new ExternalFileApiAccess(appId, _permissions, _session, _capabilities),
         new ExternalMediaService(appId, _permissions, _session, _capabilities),
@@ -585,12 +586,14 @@ public sealed class ExternalAppContextFactory
         IAppPermissionManager permissions,
         Func<string, CancellationToken, Task<(Stream Stream, string FileName)?>> downloadFile,
         bool isSshSession,
+        bool isPathCaseSensitive,
         string? openedFile,
         IExplorerClient files,
         UsageMemoryScope session,
         IWindowManager windows) : IServerFiles
     {
         public bool IsSshSession => isSshSession;
+        public bool IsPathCaseSensitive => isPathCaseSensitive;
         private bool IsServerSession => !isSshSession && session.Session.State == AuthSessionState.Authenticated && session.IsCurrent;
 
         public async Task<ServerFileReadResult> OpenReadAsync(string path, CancellationToken cancellationToken = default)
@@ -639,9 +642,9 @@ public sealed class ExternalAppContextFactory
             return AppCapabilityResult.Succeeded;
         }
 
-        public async Task<ServerFilePickResult> PickFileAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
+        public async Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
         {
-            var save = options.SuggestedFileName is not null;
+            var save = options.Mode == ServerFilePickerMode.SaveFile;
             bool HasGrants() => permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead)
                 && (!save || permissions.IsGranted(appId, CoreAppPermissions.ServerFilesWrite));
 
@@ -650,11 +653,20 @@ public sealed class ExternalAppContextFactory
             if (owner is not ExternalAppWindowHandle handle || handle.Window.Info.OwnerAppId != appId || !windows.Windows.Contains(handle.Window))
                 return new(AppCapabilityResult.InvalidArgument);
 
-            var mode = save ? ExplorerPickerMode.SaveFile : ExplorerPickerMode.OpenFile;
+            var mode = options.Mode switch
+            {
+                ServerFilePickerMode.OpenFile => ExplorerPickerMode.OpenFile,
+                ServerFilePickerMode.SelectFolder => ExplorerPickerMode.SelectFolder,
+                ServerFilePickerMode.SaveFile => ExplorerPickerMode.SaveFile,
+                _ => (ExplorerPickerMode?)null,
+            };
+            if (mode is null || !save && options.SuggestedFileName is not null)
+                return new(AppCapabilityResult.InvalidArgument);
             var path = await handle.ShowDialogAsync<string>(options.Title, dialog =>
             {
-                var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(mode,
-                    Filters: [new ExplorerFileFilter(options.FilterLabel, options.Patterns, options.IncludeExtensionlessFiles)],
+                var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(mode.Value,
+                    Filters: options.Filters?.Select(filter => new ExplorerFileFilter(filter.Label, filter.Patterns,
+                        filter.IncludeExtensionlessFiles)).ToArray(),
                     DefaultFileName: options.SuggestedFileName), paths => dialog.Close(paths[0]),
                     usageMemory: session, memoryPurpose: appId.Value)
                 {
