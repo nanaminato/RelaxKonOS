@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.Tunnels/RelaxKonOS.App.Tunnels.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Browser/RelaxKonOS.App.Browser.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Docker/RelaxKonOS.App.Docker.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.TaskManager/RelaxKonOS.App.TaskManager.csproj" />

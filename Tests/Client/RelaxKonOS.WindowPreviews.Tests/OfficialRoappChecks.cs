@@ -51,7 +51,8 @@ internal static class OfficialRoappChecks
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
         var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
-        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments;
+        var isTunnels = applicationId == "relaxkonos.tunnels";
+        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -185,6 +186,12 @@ internal static class OfficialRoappChecks
                     && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.application-deployments"]
                     && candidate.Manifest.Dependencies?.Required is null or [],
                     "Application Deployments review exposes the deployment and file grants and required server capability.");
+            if (isTunnels)
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerTunnelsRead,
+                    AppPermissions.ServerTunnelsManage, AppPermissions.ServerComponentsRead]
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.tunnels"]
+                    && candidate.Manifest.Dependencies?.Required is null or [],
+                    "Tunnel Manager review exposes the host capability and scoped grants.");
             if (isPortForwarding)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.DesktopPortForwardingManage]
                     && candidate.Manifest.Dependencies?.Required is null or [],
@@ -269,6 +276,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.application-deployments" => "RelaxKonOS.App.ApplicationDeployments.Views.ApplicationDeploymentsWorkspace",
                     "relaxkonos.port-forwarding" => "RelaxKonOS.App.PortForwarding.Views.PortForwardingMainView",
                     "relaxkonos.processguardian" => typeof(DockPanel).FullName,
+                    "relaxkonos.tunnels" => "RelaxKonOS.App.Tunnels.Views.TunnelManagerView",
                     "relaxkonos.firewall" => "RelaxKonOS.App.Firewall.Views.FirewallWorkspace",
                     "relaxkonos.file-services" => "RelaxKonOS.App.FileServices.Views.FileServicesWorkspace",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
@@ -281,6 +289,12 @@ internal static class OfficialRoappChecks
                     Check(model.GetType().FullName == "RelaxKonOS.App.ApplicationDeployments.ApplicationDeploymentsViewModel"
                         && model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
                         "The installed deployment workspace honors a read-only grant.");
+                }
+                if (isTunnels)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    Check(model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
+                        "The installed Tunnel Manager workspace honors a read-only grant.");
                 }
                 if (isGuardian)
                 {
@@ -335,7 +349,9 @@ internal static class OfficialRoappChecks
                 }
             }
 
-            await PublishCandidateAsync(manifest => manifest["version"] = "1.1.0");
+            var installedVersion = Version.Parse(first.Version);
+            var updateVersion = new Version(installedVersion.Major, installedVersion.Minor + 1, 0).ToString(3);
+            await PublishCandidateAsync(manifest => manifest["version"] = updateVersion);
             var update = await installer.InspectLocalAsync(path);
             Check(update.IsUpdate, "The second release should be offered as an update.");
             await File.AppendAllTextAsync(path, "modified after review");
@@ -344,7 +360,7 @@ internal static class OfficialRoappChecks
 
             await PublishCandidateAsync(manifest =>
             {
-                manifest["version"] = "1.1.0";
+                manifest["version"] = updateVersion;
                 manifest["entryType"] = "Fixture.DoesNotExist";
             });
             await RejectAsync(async () => await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path)), "Invalid entry type");
@@ -352,16 +368,16 @@ internal static class OfficialRoappChecks
 
             await PublishCandidateAsync(manifest =>
             {
-                manifest["version"] = "1.1.0";
+                manifest["version"] = updateVersion;
                 manifest["clientPlatforms"] = new JsonArray("unsupported-test-platform");
             });
             await RejectAsync(async () => await installer.InstallAsync(await installer.InspectLocalAsync(path)), "Incompatible client");
 
-            await PublishCandidateAsync(manifest => manifest["version"] = "1.1.0",
+            await PublishCandidateAsync(manifest => manifest["version"] = updateVersion,
                 archive => archive.CreateEntry("../outside.dll"));
             await RejectAsync(async () => await installer.InstallAsync(await installer.InspectLocalAsync(path)), "Unsafe archive path");
 
-            await PublishCandidateAsync(manifest => manifest["version"] = "1.1.0");
+            await PublishCandidateAsync(manifest => manifest["version"] = updateVersion);
             ManagedWindow? guarded = null;
             if (isNotepad)
             {
@@ -377,7 +393,7 @@ internal static class OfficialRoappChecks
             var upgraded = await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path));
             if (guarded is not null)
                 Check(!windows.Windows.Contains(guarded), "The accepted update should retire the old window.");
-            Check(upgraded.Version == "1.1.0" && upgraded.InstallationPath != first.InstallationPath && Directory.Exists(first.InstallationPath),
+            Check(upgraded.Version == updateVersion && upgraded.InstallationPath != first.InstallationPath && Directory.Exists(first.InstallationPath),
                 "The upgrade should leave the previous package version intact.");
 
             if (applicationId == "relaxkonos.welcome")
@@ -454,14 +470,16 @@ internal static class OfficialRoappChecks
             var deployments = isApplicationDeployments
                 ? DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>() : null;
             if (deployments is not null) ((DeploymentHostStub)(object)deployments).Seed();
+            appPermissions.Granted.Add(AppPermissions.ServerTunnelsRead);
+            var tunnels = isTunnels ? DispatchProxy.Create<IServerTunnels, TunnelCapabilityClient>() : null;
             var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall
-                || isGuardian || isPortForwarding || isApplicationDeployments;
+                || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
-                fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments);
+                fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

@@ -13,7 +13,7 @@ public partial class TunnelManagerView : UserControl
         Header.Attach(window, HeaderActions);
     }
 
-    public Func<Control>? CreateDependencySettings { get; init; }
+    public Func<Control?>? CreateDependencySettings { get; init; }
 
     private Button? _selectedButton;
     public TunnelManagerView()

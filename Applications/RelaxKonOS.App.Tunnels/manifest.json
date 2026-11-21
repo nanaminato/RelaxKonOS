@@ -1,0 +1,18 @@
+{
+  "id": "relaxkonos.tunnels",
+  "displayName": "Tunnel Manager",
+  "description": "Manage FRP tunnel desired state and runtime status",
+  "version": "1.1.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Tunnels.dll",
+  "entryType": "RelaxKonOS.App.Tunnels.TunnelManagerPackageApp",
+  "iconGlyph": "↔",
+  "iconPath": "Assets/tunnels.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": ["server.tunnels.read", "server.tunnels.manage", "server.components.read"],
+  "serverRequirements": { "capabilities": ["server.tunnels"] },
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "隧道管理器", "description": "管理 FRP 隧道的期望状态和运行状态" },
+    "ja-JP": { "displayName": "トンネルマネージャー", "description": "FRP トンネルの構成と稼働状態を管理します" }
+  }
+}

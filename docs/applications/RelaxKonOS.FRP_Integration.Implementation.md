@@ -21,6 +21,8 @@
 
 仅接受 `tcp`、`udp`、`http` 和 `https` 期望状态。生成器使用封闭架构：服务端主机/端口、Token 认证、TLS 启用、本地主机/端口、远端端口/域名以及每个代理的传输压缩/加密。它不会输出 `includes`、插件、环境替换、任意 TOML、任意命令参数、OIDC、STCP、XTCP、visitor 或 `frps` 设置。
 
+桌面隧道管理器作为官方可选应用包（relaxkonos.tunnels）交付，可从应用商店安装。启动要求当前 Server 提供 server.tunnels 能力。读取和管理权限分别授权，FRP 运行时仍在组件中心管理。
+
 Avalonia 隧道管理器是包含“概览、隧道、FRP 服务器、运行时”页面的单窗口工作区。配置文件和隧道编辑器在独立窗口打开；每个服务器行可打开独立的自动刷新日志窗口，因此可同时查看多个服务器日志。它会为每个请求使用已认证会话的绝对 Server URL（从不依赖未设置的 `HttpClient.BaseAddress`），支持配置文件/隧道期望状态 CRUD 和显式外部运行时探测，profile 编辑器使用空的替换 Token 字段，不读取已有 Token。运行时安装除了 Server 端确认检查外还需 UI 中明确确认。
 
 ## 运行时信任与发布操作

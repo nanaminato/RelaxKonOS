@@ -15,7 +15,9 @@ This document records the code-level V1 boundary implemented from the FRP integr
 
 Only `tcp`, `udp`, `http`, and `https` desired state is accepted. The generator has a closed schema: server host/port, token authentication, TLS enablement, local host/port, remote port/domain, and per-proxy transport compression/encryption. It emits no `includes`, plugins, environment substitution, arbitrary TOML, arbitrary command arguments, OIDC, STCP, XTCP, visitor, or `frps` settings.
 
-The Avalonia Tunnel Manager is a single-window workspace with Overview, Tunnels, FRP Servers, and Runtime pages. Profile and tunnel editors open in their own windows. Each server row opens an independent, auto-refreshing log window, so several server logs can be viewed at once. It uses the authenticated session's absolute Server URL for every request (it never relies on an unset `HttpClient.BaseAddress`), supports Profile/Tunnel Desired State CRUD and explicit External-runtime probing, and fills the profile editor with the saved Token for direct viewing and editing. Runtime installation requires an explicit in-UI confirmation in addition to the Server-side confirmation check.
+Install Tunnel Manager (relaxkonos.tunnels) from the application store as an official optional package. Launch requires the server.tunnels capability on the connected server. The app requests read and management access separately. Component Center manages the FRP runtime.
+
+The Avalonia Tunnel Manager is a single-window workspace with Overview, Tunnels, FRP Servers, and Runtime pages. Profile and tunnel editors open in their own windows. Each server row opens an independent, auto-refreshing log window, so several server logs can be viewed at once. It uses the authenticated session's absolute Server URL for every request (it never relies on an unset `HttpClient.BaseAddress`), supports Profile/Tunnel Desired State CRUD and explicit External-runtime probing, and opens the profile editor with an empty replacement token field. Runtime installation requires an explicit in-UI confirmation in addition to the Server-side confirmation check.
 
 ## Runtime trust and release operations
 

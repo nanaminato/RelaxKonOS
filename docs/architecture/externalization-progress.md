@@ -38,7 +38,7 @@
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows 包生命周期及 Windows、Linux 隔离模块复用已验，Nginx 业务联调待验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，真实设备业务联调待验 |
-| tunnels | Tunnels | 否 / 否 | 是 | Tunnels capability；组件中心管理 FRP | 可选 | 待验 |
+| tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows Release 包生命周期已验，真实 FRP 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
 | database | Databases | 否 / 否 | 是 | 数据库引擎与组件中心 | 可选 | 待验 |
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
@@ -301,3 +301,4 @@
 - 隧道主视图模型已迁入独立项目，依赖设置页由宿主提供控件工厂。Windows Release 构建与组合工作区回归通过。独立布局测试构建成功，执行在进入隧道用例前因应用安装器主按钮匹配到多个元素而中止。
 - 隧道工作区、档案和定义编辑器、日志和诊断视图均已迁入独立应用程序集。组件中心仍通过宿主工厂提供依赖页。Windows Release 构建和组合工作区回归通过，验证了状态列绑定、日志展开和本地化。
 - 隧道管理器的中、英、日资源已迁入应用程序集，现有启动器从应用资源解析页面、对话框和服务端故障文案。Windows Release 构建、三语资源与组合工作区回归通过。
+- 隧道管理器已实现外置入口和独立包清单。入口使用 SDK 的会话、权限、窗口和组件依赖能力，保留档案与定义编辑、frps 配置与诊断以及独立日志窗口。桌面移除了内置入口与项目引用，将包纳入官方目录和 Developer 交互安装项。Windows Release 使用实际 DevCli 归档验证官方来源、只读启动、升级、拒绝无效升级、重启发现和卸载。隧道 SDK 权限与会话生命周期回归通过。真实 FRP 服务与完整桌面发行待验。
