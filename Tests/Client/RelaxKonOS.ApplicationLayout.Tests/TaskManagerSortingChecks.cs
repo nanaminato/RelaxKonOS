@@ -8,7 +8,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.App.TaskManager;
 using RelaxKonOS.App.TaskManager.ViewModels;
-using RelaxKonOS.Client.Apps.TaskManager.Views;
+using RelaxKonOS.App.TaskManager.Views;
 using RelaxKonOS.Protocol.SystemMonitor;
 
 internal static class TaskManagerSortingChecks

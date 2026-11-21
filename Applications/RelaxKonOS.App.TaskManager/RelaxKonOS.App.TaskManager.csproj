@@ -10,5 +10,6 @@
         <PackageReference Include="Svg.Controls.Avalonia" />
         <AvaloniaResource Include="Assets/taskmanager.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="TaskManager.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="TaskManager.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

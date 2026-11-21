@@ -1,16 +1,18 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.App.TaskManager.ViewModels;assembly=RelaxKonOS.App.TaskManager"
-             xmlns:conv="clr-namespace:RelaxKonOS.Client.Apps.TaskManager.Converters"
-             xmlns:charts="clr-namespace:RelaxKonOS.App.TaskManager.Controls;assembly=RelaxKonOS.App.TaskManager"
-             xmlns:taskConverters="clr-namespace:RelaxKonOS.App.TaskManager.Converters;assembly=RelaxKonOS.App.TaskManager"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.TaskManager"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.TaskManager.ViewModels"
+             xmlns:conv="clr-namespace:RelaxKonOS.App.TaskManager.Converters"
+             xmlns:charts="clr-namespace:RelaxKonOS.App.TaskManager.Controls"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.SystemMonitor;assembly=RelaxKonOS.Protocol"
-             x:Class="RelaxKonOS.Client.Apps.TaskManager.Views.TaskManagerMainView"
+             x:Class="RelaxKonOS.App.TaskManager.Views.TaskManagerMainView"
              x:DataType="vm:TaskManagerViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.Styles>
+        <Style Selector="Button.task-selected">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        </Style>
         <Style Selector="ListBox.performance-nav">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -44,10 +46,10 @@
         <Grid ColumnDefinitions="196,*">
             <Border Grid.Column="0" Classes="app-sidebar" Padding="10,16">
                 <StackPanel Spacing="4">
-                    <Button Classes="workspace-nav" Command="{Binding SwitchToProcessesCommand}" Background="{Binding ActiveTab, Converter={x:Static conv:TabBgConverter.Instance}, ConverterParameter=Processes}" HorizontalContentAlignment="Left" Padding="10,9" ToolTip.Tip="{loc:Loc task_manager.processes}">
+                    <Button Classes="workspace-nav" Command="{Binding SwitchToProcessesCommand}" Classes.task-selected="{Binding ActiveTab, Converter={x:Static conv:TabVisibilityConverter.Instance}, ConverterParameter=Processes}" HorizontalContentAlignment="Left" Padding="10,9" ToolTip.Tip="{loc:Loc task_manager.processes}">
                         <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="▤" FontSize="16" /><TextBlock Text="{loc:Loc task_manager.processes}" VerticalAlignment="Center" /></StackPanel>
                     </Button>
-                    <Button Classes="workspace-nav" Command="{Binding SwitchToPerformanceCommand}" Background="{Binding ActiveTab, Converter={x:Static conv:TabBgConverter.Instance}, ConverterParameter=Performance}" HorizontalContentAlignment="Left" Padding="10,9" ToolTip.Tip="{loc:Loc task_manager.performance}">
+                    <Button Classes="workspace-nav" Command="{Binding SwitchToPerformanceCommand}" Classes.task-selected="{Binding ActiveTab, Converter={x:Static conv:TabVisibilityConverter.Instance}, ConverterParameter=Performance}" HorizontalContentAlignment="Left" Padding="10,9" ToolTip.Tip="{loc:Loc task_manager.performance}">
                         <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="◷" FontSize="16" /><TextBlock Text="{loc:Loc task_manager.performance}" VerticalAlignment="Center" /></StackPanel>
                     </Button>
                 </StackPanel>
@@ -165,7 +167,7 @@
                               SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="None"
                               RowHeight="34" BorderThickness="0" HorizontalScrollBarVisibility="Auto">
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="{loc:Loc common.name}" SortMemberPath="Name" Width="2*" MinWidth="180">
+                            <DataGridTemplateColumn SortMemberPath="Name" Width="2*" MinWidth="180">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate x:DataType="vm:ProcessTreeItemViewModel">
                                         <Grid ColumnDefinitions="20,20,*" Margin="{Binding Indent}" ColumnSpacing="6">
@@ -179,11 +181,11 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="PID" SortMemberPath="Id" Binding="{Binding Process.Id}" Width="80" MinWidth="70" />
-                            <DataGridTextColumn Header="CPU" SortMemberPath="CpuPercent" Binding="{Binding Process.CpuPercent, StringFormat='{}{0:0.0}%'}" Width="90" MinWidth="70" />
-                            <DataGridTextColumn Header="{loc:Loc task_manager.memory}" SortMemberPath="MemoryBytes" Binding="{Binding Process.MemoryBytes, Converter={x:Static taskConverters:BytesConverter.Instance}}" Width="120" MinWidth="70" />
-                            <DataGridTextColumn Header="{loc:Loc task_manager.user}" SortMemberPath="UserName" Binding="{Binding Process.UserName}" Width="120" MinWidth="70" />
-                            <DataGridTextColumn Header="{loc:Loc task_manager.threads}" SortMemberPath="ThreadCount" Binding="{Binding Process.ThreadCount}" Width="85" MinWidth="70" />
+                            <DataGridTextColumn SortMemberPath="Id" Binding="{Binding Process.Id}" Width="80" MinWidth="70" />
+                            <DataGridTextColumn SortMemberPath="CpuPercent" Binding="{Binding Process.CpuPercent, StringFormat='{}{0:0.0}%'}" Width="90" MinWidth="70" />
+                            <DataGridTextColumn SortMemberPath="MemoryBytes" Binding="{Binding Process.MemoryBytes, Converter={x:Static conv:BytesConverter.Instance}}" Width="120" MinWidth="70" />
+                            <DataGridTextColumn SortMemberPath="UserName" Binding="{Binding Process.UserName}" Width="120" MinWidth="70" />
+                            <DataGridTextColumn SortMemberPath="ThreadCount" Binding="{Binding Process.ThreadCount}" Width="85" MinWidth="70" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </Border>

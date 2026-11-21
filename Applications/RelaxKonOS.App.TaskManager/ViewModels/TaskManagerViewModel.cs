@@ -50,6 +50,7 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
 
     public ObservableCollection<ProcessTreeItemViewModel> FilteredProcesses { get; }
     public ObservableCollection<PerformanceResourceItem> PerformanceItems { get; }
+    public TaskManagerText Labels => new(_language);
 
     [ObservableProperty] private PerformanceInfoDto? _info;
     [ObservableProperty] private PerformanceRealtimeSnapshotDto? _snapshot;

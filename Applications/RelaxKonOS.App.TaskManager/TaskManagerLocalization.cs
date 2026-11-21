@@ -31,12 +31,16 @@ public static class TaskManagerLocalization
     private static Dictionary<string, string> Load(string culture)
     {
         using var stream = Open($"TaskManager.Localization.{culture}.json");
-        return JsonSerializer.Deserialize<LanguageFile>(stream)!.Strings;
+        using var common = Open($"TaskManager.PackageLocalization.{culture}.json");
+        var labels = JsonSerializer.Deserialize<LanguageFile>(stream)!.Strings;
+        foreach (var (key, value) in JsonSerializer.Deserialize<LanguageFile>(common)!.Strings)
+            labels.Add(key, value);
+        return labels;
     }
 
     private sealed record LanguageFile(Dictionary<string, string> Strings);
 }
-internal sealed class TaskManagerText(ISystemLanguage language)
+public sealed class TaskManagerText(ISystemLanguage language)
 {
     public string Get(string key) => TaskManagerLocalization.Resolve(language, key);
     public string Format(string key, params object?[] args) => string.Format(CultureInfo.CurrentCulture, Get(key), args);

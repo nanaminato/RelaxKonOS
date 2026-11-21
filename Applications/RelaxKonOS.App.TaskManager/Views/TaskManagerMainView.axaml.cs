@@ -5,8 +5,9 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using System.ComponentModel;
 
-namespace RelaxKonOS.Client.Apps.TaskManager.Views;
+namespace RelaxKonOS.App.TaskManager.Views;
 
 /// <summary>TaskManagerMainView 的 code-behind。处理过滤框按键（Esc 清除）与卸载时停止定时刷新。
 /// 主要逻辑在 <see cref="TaskManagerViewModel"/>；此处仅做轻量 UI 事件桥接。</summary>
@@ -29,7 +30,9 @@ public partial class TaskManagerMainView : UserControl
         ProcessesGrid.AddHandler(PointerPressedEvent, SortHeaderPressed, RoutingStrategies.Tunnel);
         ProcessesGrid.AddHandler(PointerReleasedEvent, SortHeaderReleased, RoutingStrategies.Tunnel);
         Unloaded += OnUnloaded;
-        DataContextChanged += (_, _) => UpdateSortIndicator();
+        DataContextChanged += (_, _) => ObserveModel(this.IsAttachedToVisualTree() ? ViewModel : null);
+        AttachedToVisualTree += (_, _) => ObserveModel(ViewModel);
+        DetachedFromVisualTree += (_, _) => ObserveModel(null);
     }
 
     /// <summary>Moves keyboard focus to the process filter field.</summary>
@@ -40,6 +43,21 @@ public partial class TaskManagerMainView : UserControl
     }
 
     private TaskManagerViewModel? ViewModel => DataContext as TaskManagerViewModel;
+    private TaskManagerViewModel? _observedModel;
+
+    private void ObserveModel(TaskManagerViewModel? model)
+    {
+        if (_observedModel is not null) _observedModel.PropertyChanged -= OnModelChanged;
+        _observedModel = model;
+        if (_observedModel is not null) _observedModel.PropertyChanged += OnModelChanged;
+        UpdateSortIndicator();
+    }
+
+    private void OnModelChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(TaskManagerViewModel.Labels))
+            UpdateSortIndicator();
+    }
 
     private void ProcessIcon_DataContextChanged(object? sender, EventArgs e) => LoadVisibleProcessIcon(sender);
 
@@ -97,10 +115,10 @@ public partial class TaskManagerMainView : UserControl
         {
             var title = column.SortMemberPath switch
             {
-                "Name" => Localization.LocalizedText.Get("common.name"),
-                "MemoryBytes" => Localization.LocalizedText.Get("task_manager.memory"),
-                "UserName" => Localization.LocalizedText.Get("task_manager.user"),
-                "ThreadCount" => Localization.LocalizedText.Get("task_manager.threads"),
+                "Name" => vm.Labels.Get("common.name"),
+                "MemoryBytes" => vm.Labels.Get("task_manager.memory"),
+                "UserName" => vm.Labels.Get("task_manager.user"),
+                "ThreadCount" => vm.Labels.Get("task_manager.threads"),
                 "CpuPercent" => "CPU",
                 _ => "PID",
             };

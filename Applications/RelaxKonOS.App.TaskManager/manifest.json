@@ -1,0 +1,29 @@
+{
+  "id": "relaxkonos.taskmanager",
+  "displayName": "Task Manager",
+  "description": "View CPU, memory, disk, network and GPU usage and the process list; end tasks here",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.TaskManager.dll",
+  "entryType": "RelaxKonOS.App.TaskManager.TaskManagerPackageApp",
+  "iconGlyph": "📊",
+  "iconPath": "Assets/taskmanager.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [
+    "server.metrics.read",
+    "server.processes.manage"
+  ],
+  "serverRequirements": {
+    "capabilities": ["server.metrics", "server.processes"]
+  },
+  "localizedMetadata": {
+    "zh-CN": {
+      "displayName": "任务管理器",
+      "description": "查看服务器资源使用情况和进程列表，并结束任务"
+    },
+    "ja-JP": {
+      "displayName": "タスク マネージャー",
+      "description": "サーバーのリソース使用状況とプロセスを表示し、タスクを終了します"
+    }
+  }
+}

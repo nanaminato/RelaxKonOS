@@ -22,7 +22,7 @@ using RelaxKonOS.App.Notepad;
 using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.App.TaskManager.ViewModels;
-using RelaxKonOS.Client.Apps.TaskManager.Views;
+using RelaxKonOS.App.TaskManager.Views;
 using RelaxKonOS.Client.Apps.Browser.ViewModels;
 using RelaxKonOS.Client.Apps.Browser.Views;
 using Avalonia;
