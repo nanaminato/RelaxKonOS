@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Squid.Views;
 using RelaxKonOS.App.Squid;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
@@ -24,7 +25,7 @@ internal static class SquidWorkspaceChecks
     {
         var id = new AppId("relaxkonos.squid");
         var permissions = new CertificateCapabilityChecks.Permission(id.Value);
-        var session = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var session = DispatchProxy.Create<IAuthSession, SquidCapabilityAuthFixture>();
         var auth = (EventAlertsAuthFixture)(object)session;
         var memory = new UsageMemoryStore(Path.Combine(AppContext.BaseDirectory, "preview-qa", "squid-sdk-memory.json"));
         var transport = new SquidClientStub();
@@ -70,7 +71,7 @@ internal static class SquidWorkspaceChecks
         // The Server answers the gateway contract on every platform, so the manifest must not narrow
         // itself back to Linux: that would hide the only window in which a Windows host can explain
         // itself, and the application must not borrow another application's icon either.
-        var manifest = new SquidApp().Manifest;
+        var manifest = new SquidPackageApp().Manifest;
         Check(manifest.Server.SupportedPlatforms.Count == 0
             && manifest.Server.RequiredCapabilities.SequenceEqual([ServerCapabilities.GatewayProxy]),
             "Squid must reach every host that advertises gateway-proxy regardless of platform.");
@@ -304,7 +305,7 @@ internal static class SquidWorkspaceChecks
         Check(vm.IsReadyToApply && vm.ApplyReadinessText.Resolve() == Text("squid.ready.apply"),
             "With every gate open the publishing card says the configuration can be applied.");
 
-        var view = SquidApp.CreateView(vm);
+        var view = new SquidWorkspace(vm);
         var window = new Window { Width = 960, Height = 760, Content = view };
         window.Show(); Dispatcher.UIThread.RunJobs();
         var previewDirectory = Path.Combine(AppContext.BaseDirectory, "preview-qa"); Directory.CreateDirectory(previewDirectory);
@@ -373,7 +374,7 @@ internal static class SquidWorkspaceChecks
             Complete(noticeVm.RefreshCommand.ExecuteAsync(null));
             Check(noticeVm.ShowRecoveryRequired && noticeVm.ShowReadOnly && noticeVm.ShowAdoptionRequired && !noticeVm.CanEdit,
                 "Recovery, ownership and read-only states render as notices and disable the draft.");
-            var noticeView = SquidApp.CreateView(noticeVm);
+            var noticeView = new SquidWorkspace(noticeVm);
             var noticeWindow = new Window { Width = 960, Height = 520, Content = noticeView };
             noticeWindow.Show(); Dispatcher.UIThread.RunJobs();
             using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 520)))
@@ -412,9 +413,10 @@ internal static class SquidWorkspaceChecks
         task.GetAwaiter().GetResult();
     }
     private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
-    private sealed class SquidClientStub : IServerSquid
+    internal sealed class SquidClientStub : IServerSquid
     {
         public SquidConfigurationSnapshot Snapshot = new(new(new SquidConfiguration { Port = 1270 }, 1, 1, "hash", null), new(true, true, true, true, true, "hash", true), true);
+        public bool CanManage => true;
         public int Reads; public int OperationReads; public bool LoseFirstResponse; public bool OperationFailed;
         public string OperationKind = "squid.configuration.apply";
         public string FailureCode = "squid.package.install_failed";
@@ -449,6 +451,12 @@ internal static class SquidWorkspaceChecks
             OperationReads++; return Task.FromResult(new ProxyOperationDto(id, OperationKind, OperationFailed ? ProxyOperationState.Failed : ProxyOperationState.Succeeded, "completed", OperationFailed ? FailureCode : "", null, DateTimeOffset.UtcNow));
         }
     }
+}
+
+public class SquidCapabilityAuthFixture : EventAlertsAuthFixture
+{
+    protected override object? Invoke(MethodInfo? method, object?[]? args) =>
+        method?.Name == "get_AssignedRole" ? DeviceRole.Controller : base.Invoke(method, args);
 }
 
 public class SquidSessionStub : DispatchProxy

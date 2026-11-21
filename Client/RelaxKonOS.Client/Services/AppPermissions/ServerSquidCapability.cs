@@ -12,6 +12,11 @@ internal sealed class ServerSquidCapability(AppId appId, IAppPermissionManager p
     private readonly Lazy<IServerSquid> _client = new(() =>
         createClient?.Invoke() ?? throw new InvalidOperationException("Squid is unavailable."));
 
+    public bool CanManage => !lifetime.IsCancellationRequested && connection.IsCurrent
+        && permissions.IsGranted(appId, CoreAppPermissions.ServerSquidRead)
+        && permissions.IsGranted(appId, CoreAppPermissions.ServerSquidManage)
+        && connection.Session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
+
     public Task<SquidAccount[]> ReadAccountsAsync(CancellationToken cancellationToken) =>
         InvokeAsync((client, token) => client.ReadAccountsAsync(token), manage: false, cancellationToken);
 
@@ -60,7 +65,7 @@ internal sealed class ServerSquidCapability(AppId appId, IAppPermissionManager p
         if (!connection.IsCurrent)
             throw new InvalidOperationException("The application's Squid connection has changed.");
         if (!permissions.IsGranted(appId, CoreAppPermissions.ServerSquidRead)
-            || manage && !permissions.IsGranted(appId, CoreAppPermissions.ServerSquidManage))
+            || manage && !CanManage)
             throw new UnauthorizedAccessException();
     }
 }

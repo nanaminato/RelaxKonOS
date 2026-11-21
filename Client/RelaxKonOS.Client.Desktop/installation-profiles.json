@@ -20,6 +20,7 @@
       { "appId": "relaxkonos.port-forwarding", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.processguardian", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.tunnels", "minimumVersion": "1.1.0", "installPolicy": "interactive" },
+      { "appId": "relaxkonos.squid", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.git", "minimumVersion": "0.3.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.webservers", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.certificates", "minimumVersion": "1.0.0", "installPolicy": "interactive" },

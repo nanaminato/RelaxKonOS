@@ -1,6 +1,8 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "common.confirm": "Confirm",
+    "common.editor_draft_hint": "Closing keeps the local draft. Only Save, Apply or a confirmed action submits changes to the server.",
     "application.relaxkonos.squid.display_name": "Squid Gateway",
     "common.view": "View",
     "common.refresh": "Refresh",

@@ -118,6 +118,7 @@ public interface IExternalServerConnection
 public interface IExternalAppComponentDependencies
 {
     Control? CreateSettingsView(IExternalAppWindowHandle owner);
+    bool OpenManagement(string componentId);
 }
 
 /// <summary>Scope of an application's persisted configuration document.</summary>

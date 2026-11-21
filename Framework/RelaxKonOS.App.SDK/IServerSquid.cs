@@ -5,6 +5,7 @@ namespace RelaxKonOS.AppSDK;
 
 public interface IServerSquid
 {
+    bool CanManage { get; }
     Task<SquidAccount[]> ReadAccountsAsync(CancellationToken cancellationToken);
     Task<SquidConfigurationSnapshot> ReadAsync(CancellationToken cancellationToken);
     Task<SquidConfigurationPreview> PreviewAsync(SquidConfiguration configuration, CancellationToken cancellationToken);

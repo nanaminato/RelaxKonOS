@@ -267,17 +267,22 @@ public sealed class ExternalAppContextFactory
         IComponentLifecycleClient? lifecycle, IAppPermissionRequestService permissions,
         IAppActivationService activations, IWindowManager windows) : IExternalAppComponentDependencies
     {
+        public bool OpenManagement(string componentId)
+        {
+            if (!connection.IsCurrent || connection.Session.ServiceId is not { } host
+                || ComponentCatalog.LaunchGate(appId.Value)?.ComponentIds.Contains(componentId) is not true)
+                return false;
+            new ExternalAppActivation(appId, activations).Activate(ComponentCenterNavigation.Component(host, appId.Value, componentId));
+            return true;
+        }
+
         public Avalonia.Controls.Control? CreateSettingsView(IExternalAppWindowHandle owner)
         {
             if (!connection.IsCurrent || owner.Window.Info.OwnerAppId != appId || !windows.Windows.Contains(owner.Window))
                 return null;
 
             var model = new ComponentDependencySettingsViewModel(appId.Value, connection.Session, lifecycle,
-                new AppPermissionScope(appId, permissions), componentId =>
-                {
-                    if (connection.IsCurrent && connection.Session.ServiceId is { } host)
-                        new ExternalAppActivation(appId, activations).Activate(ComponentCenterNavigation.Component(host, appId.Value, componentId));
-                });
+                new AppPermissionScope(appId, permissions), componentId => OpenManagement(componentId));
             var view = new ComponentDependencySettingsView { DataContext = model };
             view.AttachedToVisualTree += (_, _) => _ = model.RefreshAsync();
             owner.Closed.Register(model.Dispose);

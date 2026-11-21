@@ -32,7 +32,7 @@
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期和隔离宿主联合部署已验，真实防火墙操作待验 |
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
 | proxy-server | ProxyServer | 否 / 否 | 是 | ProxyServer capability；组件中心管理 sing-box | 可选 | 待验 |
-| squid | Squid | 否 / 否 | 是 | GatewayProxy capability；组件中心管理 Squid | 可选 | 待验 |
+| squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows Release 包生命周期已验，真实 Squid 待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
@@ -301,10 +301,11 @@
 - 隧道主视图模型已迁入独立项目，依赖设置页由宿主提供控件工厂。Windows Release 构建与组合工作区回归通过。独立布局测试构建成功，执行在进入隧道用例前因应用安装器主按钮匹配到多个元素而中止。
 - 隧道工作区、档案和定义编辑器、日志和诊断视图均已迁入独立应用程序集。组件中心仍通过宿主工厂提供依赖页。Windows Release 构建和组合工作区回归通过，验证了状态列绑定、日志展开和本地化。
 - 隧道管理器的中、英、日资源已迁入应用程序集，现有启动器从应用资源解析页面、对话框和服务端故障文案。Windows Release 构建、三语资源与组合工作区回归通过。
-- 隧道管理器已实现外置入口和独立包清单。入口使用 SDK 的会话、权限、窗口和组件依赖能力，保留档案与定义编辑、frps 配置与诊断以及独立日志窗口。桌面移除了内置入口与项目引用，将包纳入官方目录和 Developer 交互安装项。Windows Release 使用实际 DevCli 归档验证官方来源、只读启动、升级、拒绝无效升级、重启发现和卸载。隧道 SDK 权限与会话生命周期回归通过。真实 FRP 服务与完整桌面发行待验。
+- 隧道管理器已实现外置入口和独立包清单。入口使用 SDK 的会话、权限、窗口和组件依赖能力，保留档案与定义编辑、frps 配置与诊断以及独立日志窗口。桌面移除了内置入口与项目引用，将包纳入官方目录和 Developer 交互安装项。Windows Release 使用实际 DevCli 归档验证官方来源、只读启动、升级、拒绝无效升级、重启发现和卸载。隧道 SDK 权限与会话生命周期回归通过。Windows x64 完整桌面发行已生成 19 个官方包，全部通过 SHA-256 核对。发行中的隧道管理器和 Welcome 均通过官方包生命周期回归。真实 FRP 服务待验。
 
 - Squid 管理器已改用应用 SDK 的类型化服务端契约。提交配置、账号和服务动作仍使用既有路由和幂等键，组件中心继续复用状态读取。Windows Release Squid 专项验证了权限、草稿、确认、重试、生命周期和布局。下一步接入外置上下文的会话与授权边界。
 - Squid 外置上下文已接入独立读取和管理授权、按连接获取的传输以及应用结束取消。只读授权无法提交变更，操作回执仅接受 Squid 类型。Windows Release 的 Squid 工作区和 SDK 权限回归通过。下步拆分视图模型、工作区与应用资源。
 - Squid 工作区通过宿主提供的设置页工厂和组件管理命令接入组件中心。视图及视图模型已移除对组件中心具体类型的依赖。Windows Release Squid 工作区和 SDK 回归通过。
 - Squid 工作区视图模型已迁入独立应用项目。本地化通过可注入的查询函数在显示时解析，原桌面入口继续提供当前语言。Windows Release 构建、Squid 工作区和 SDK 回归通过。
 - Squid 工作区视图、图标与中英日本地化资源已迁入应用程序集。弹窗内容搬移复用窗口管理框架，宿主入口提供标题、确认和组件依赖页。Windows Release Squid 工作区和 SDK 回归通过。
+- Squid Gateway 已改为官方可选包，桌面宿主移除了内置注册与应用项目引用。清单通过联合协调器要求 Proxy 模块及网关能力。Windows Release 使用实际 DevCli 归档验证了来源、拒绝绕过联合部署、只读激活、升级、重启发现与卸载。模块执行使用隔离夹具，真实 Squid 和完整桌面发行待验。

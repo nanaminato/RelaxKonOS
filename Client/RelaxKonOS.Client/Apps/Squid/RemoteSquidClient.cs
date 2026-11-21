@@ -13,6 +13,8 @@ namespace RelaxKonOS.Client.Apps.Squid;
 public sealed class RemoteSquidClient(HttpClient http, IAuthSession session) : IServerSquid
 {
     private readonly object? _login = session.CurrentSession;
+    private readonly string? _baseUrl = session.EffectiveBaseUrl;
+    public bool CanManage => session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
     public Task<SquidAccount[]> ReadAccountsAsync(CancellationToken ct) => SendAsync<SquidAccount[]>(HttpMethod.Get, GatewayProxyRoutes.Accounts, null, null, ct);
     public Task<SquidConfigurationSnapshot> ReadAsync(CancellationToken ct) => SendAsync<SquidConfigurationSnapshot>(HttpMethod.Get, GatewayProxyRoutes.Configuration, null, null, ct);
     public Task<SquidConfigurationPreview> PreviewAsync(SquidConfiguration value, CancellationToken ct) => SendAsync<SquidConfigurationPreview>(HttpMethod.Post, GatewayProxyRoutes.Preview, value, null, ct);
@@ -29,7 +31,7 @@ public sealed class RemoteSquidClient(HttpClient http, IAuthSession session) : I
         Verify();
         var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct);
         Verify();
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl!), route.TrimStart('/')))
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(_baseUrl!), route.TrimStart('/')))
         { Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default) };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (key is not null) request.Headers.Add("Idempotency-Key", key);
@@ -51,7 +53,8 @@ public sealed class RemoteSquidClient(HttpClient http, IAuthSession session) : I
     }
     private void Verify()
     {
-        if (_login is null || !ReferenceEquals(_login, session.CurrentSession) || session.State != AuthSessionState.Authenticated)
+        if (_login is null || _baseUrl is null || _baseUrl != session.EffectiveBaseUrl
+            || !ReferenceEquals(_login, session.CurrentSession) || session.State != AuthSessionState.Authenticated)
             throw new InvalidOperationException("squid.session.changed");
     }
 }

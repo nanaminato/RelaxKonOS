@@ -1,6 +1,8 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "common.confirm": "确认",
+    "common.editor_draft_hint": "关闭会保留本地草稿。只有保存、应用或确认操作才会提交到服务器。",
     "application.relaxkonos.squid.display_name": "Squid 网关",
     "common.view": "查看",
     "common.refresh": "刷新",

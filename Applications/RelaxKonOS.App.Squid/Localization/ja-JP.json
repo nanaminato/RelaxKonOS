@@ -1,6 +1,8 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "common.confirm": "確認",
+    "common.editor_draft_hint": "閉じると下書きを保持します。保存、適用、確認済みの操作でのみサーバーへ送信します。",
     "application.relaxkonos.squid.display_name": "Squid ゲートウェイ",
     "common.view": "表示",
     "common.refresh": "更新",
