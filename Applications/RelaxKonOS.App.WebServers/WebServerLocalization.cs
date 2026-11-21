@@ -10,9 +10,12 @@ public static class WebServerLocalization
     private static readonly Lazy<Dictionary<string, string>> Chinese = new(() => Load("zh-CN"));
     private static readonly Lazy<Dictionary<string, string>> Japanese = new(() => Load("ja-JP"));
 
-    public static string Resolve(ISystemLanguage language, string key, string? fallback = null)
+    public static string Resolve(ISystemLanguage language, string key, string? fallback = null) =>
+        Resolve(language.CurrentLanguage, key, fallback);
+
+    internal static string Resolve(string language, string key, string? fallback = null)
     {
-        var labels = language.CurrentLanguage.Split('-', 2)[0].ToLowerInvariant() switch
+        var labels = language.Split('-', 2)[0].ToLowerInvariant() switch
         {
             "zh" => Chinese.Value,
             "ja" => Japanese.Value,

@@ -3,13 +3,14 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.WebServers.Views;
+namespace RelaxKonOS.App.WebServers.Views;
 
-internal partial class WebServerSiteDialogView : UserControl
+public partial class WebServerSiteDialogView : UserControl
 {
     private readonly ModalDialog<bool> _dialog;
 
-    public WebServerSiteDialogView(WebServerManagerViewModel viewModel, ModalDialog<bool> dialog)
+    public WebServerSiteDialogView(WebServerManagerViewModel viewModel, ModalDialog<bool> dialog,
+        Action<ModalDialog<bool>, Func<bool>, Func<bool>> attachDraftGuard)
     {
         _dialog = dialog;
         InitializeComponent();
@@ -18,7 +19,7 @@ internal partial class WebServerSiteDialogView : UserControl
         var initial = CaptureDraft(viewModel);
         var bindings = viewModel.SiteBindings.Select(binding => (binding.Domain, binding.Port)).ToArray();
         var routes = viewModel.SiteRoutes.Select(route => (route.Path, route.Upstream, route.DisableBuffering)).ToArray();
-        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog,
+        attachDraftGuard(dialog,
             () => viewModel.IsSavingSite || viewModel.IsLoading || viewModel.IsOperationRunning,
             () => !initial.SequenceEqual(CaptureDraft(viewModel))
                 || !bindings.SequenceEqual(viewModel.SiteBindings.Select(binding => (binding.Domain, binding.Port)))

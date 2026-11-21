@@ -1,4 +1,6 @@
 using RelaxKonOS.App.WebServers;
+using RelaxKonOS.App.WebServers.Views;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Reflection;
@@ -36,8 +38,7 @@ internal static class WebSiteEditorChecks
         var result = manager.ShowDialogAsync<bool>(owner, "Site", dialog =>
         {
             handle = dialog;
-            var type = typeof(WebServerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteDialogView")!;
-            return (Control)Activator.CreateInstance(type, [vm, dialog])!;
+            return new WebServerSiteDialogView(vm, dialog, DraftDialogGuard.Attach);
         });
         vm.SiteRoutes[0].DisableBuffering = true;
         handle!.Cancel();

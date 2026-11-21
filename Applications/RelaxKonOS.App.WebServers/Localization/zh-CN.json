@@ -1,6 +1,9 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "webservers.cancel": "取消",
+    "webservers.operation_running": "进行中",
+    "webservers.refresh": "刷新",
     "webservers.current.management_hint": "管理服务器运行状态与站点配置。",
     "webservers.current.server_management": "服务器管理",
     "webservers.current.unavailable": "当前 Nginx 不可用，请在组件中心选择或安装 Nginx。",

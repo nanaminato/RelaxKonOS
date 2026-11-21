@@ -1,6 +1,9 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "webservers.cancel": "Cancel",
+    "webservers.operation_running": "In progress",
+    "webservers.refresh": "Refresh",
     "webservers.current.management_hint": "Manage server status and website configuration.",
     "webservers.current.server_management": "Server management",
     "webservers.current.unavailable": "Current Nginx is unavailable. Select or install Nginx in Component Center.",

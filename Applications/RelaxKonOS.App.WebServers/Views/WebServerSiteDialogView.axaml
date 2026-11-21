@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:webservers="clr-namespace:RelaxKonOS.App.WebServers;assembly=RelaxKonOS.App.WebServers" xmlns:draft="clr-namespace:RelaxKonOS.App.WebServers;assembly=RelaxKonOS.App.WebServers"
-             x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteDialogView"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.WebServers"
+             xmlns:webservers="clr-namespace:RelaxKonOS.App.WebServers"
+             x:Class="RelaxKonOS.App.WebServers.Views.WebServerSiteDialogView"
              x:DataType="webservers:WebServerManagerViewModel" Classes="builtin-app">
     <Grid Margin="20" MinWidth="0" MinHeight="0" RowDefinitions="Auto,*,Auto" RowSpacing="12">
         <!-- Fixed description -> scrolling form -> fixed action row. The dialog-level help stays pinned
@@ -35,13 +35,7 @@
                     <TextBlock Text="{loc:Loc webservers.site.dialog.bindings_help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding SiteBindings}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="draft:WebServerSiteBindingEditor">
-                                <Grid ColumnDefinitions="*,130,Auto" ColumnSpacing="8" Margin="0,0,0,4">
-                                    <TextBox Text="{Binding Domain, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.domain_hint}" />
-                                    <NumericUpDown Grid.Column="1" Minimum="1" Maximum="65535" Value="{Binding Port, Mode=TwoWay}" />
-                                    <Button Grid.Column="2" Content="{loc:Loc webservers.site.dialog.remove_binding}" Tag="{Binding}" Click="RemoveBinding_Click" />
-                                </Grid>
-                            </DataTemplate>
+
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <Button Content="{loc:Loc webservers.site.dialog.add_binding}" Command="{Binding AddSiteBindingCommand}" HorizontalAlignment="Left" />
@@ -63,14 +57,7 @@
                     <TextBlock Text="{loc:Loc webservers.site.dialog.routes_help}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <ItemsControl ItemsSource="{Binding SiteRoutes}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="draft:WebServerProxyRouteEditor">
-                                <Grid ColumnDefinitions="130,*,Auto,Auto" ColumnSpacing="8" Margin="0,0,0,4">
-                                    <TextBox Text="{Binding Path, Mode=TwoWay}" PlaceholderText="/api/" />
-                                    <TextBox Grid.Column="1" Text="{Binding Upstream, Mode=TwoWay}" PlaceholderText="http://127.0.0.1:5062" />
-                                    <CheckBox Grid.Column="2" Content="{loc:Loc webservers.site.dialog.disable_buffering}" IsChecked="{Binding DisableBuffering, Mode=TwoWay}" VerticalAlignment="Center" />
-                                    <Button Grid.Column="3" Content="{loc:Loc webservers.site.dialog.remove_route}" Tag="{Binding}" Click="RemoveRoute_Click" />
-                                </Grid>
-                            </DataTemplate>
+
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <Button Content="{loc:Loc webservers.site.dialog.add_route}" Command="{Binding AddSiteRouteCommand}" HorizontalAlignment="Left" />
@@ -85,7 +72,7 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsManagedCertificateSource}">
                         <ComboBox ItemsSource="{Binding Certificates}" SelectedItem="{Binding SelectedSiteCertificate, Mode=TwoWay}"
                                   DisplayMemberBinding="{ReflectionBinding PrimaryDomain}" IsEnabled="{Binding SiteHttpsEnabled}" />
-                        <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCertificatesCommand}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                        <Button Grid.Column="1" Content="{loc:Loc webservers.refresh}" Command="{Binding RefreshCertificatesCommand}" IsEnabled="{Binding SiteHttpsEnabled}" />
                     </Grid>
                     <StackPanel Spacing="6" IsVisible="{Binding IsServerFileCertificateSource}">
                         <TextBlock Text="{loc:Loc webservers.site.dialog.certificate_source_hint}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -105,10 +92,10 @@
         </ScrollViewer>
 
         <StackPanel Grid.Row="2" Spacing="8">
-          <ProgressBar IsVisible="{Binding IsSavingSite}" IsIndeterminate="True" Height="3" AutomationProperties.Name="{loc:Loc common.operation_running}" />
+          <ProgressBar IsVisible="{Binding IsSavingSite}" IsIndeterminate="True" Height="3" AutomationProperties.Name="{loc:Loc webservers.operation_running}" />
           <WrapPanel HorizontalAlignment="Right" IsEnabled="{Binding !IsSavingSite}">
-            <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshSitesCommand}" IsEnabled="{Binding !SiteEditorTargetChanged}" Margin="0,0,8,8" />
-            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc webservers.refresh}" Command="{Binding RefreshSitesCommand}" IsEnabled="{Binding !SiteEditorTargetChanged}" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc webservers.cancel}" Click="Cancel_Click" Margin="0,0,8,8" />
             <Button Classes="primary" Content="{loc:Loc webservers.site.dialog.save_apply}" Command="{Binding SaveSiteCommand}" />
           </WrapPanel>
         </StackPanel>

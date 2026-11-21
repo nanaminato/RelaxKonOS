@@ -1,4 +1,6 @@
 using RelaxKonOS.App.WebServers;
+using RelaxKonOS.App.WebServers.Views;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -78,7 +80,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                     };
                     viewModel.ShowSiteSaveErrorAsync = message => dialog.ShowDialogAsync<bool>(LocalizedText.Get("webservers.site.save_error.title"),
                         errorDialog => new WebServerSiteSaveErrorDialogView(message, errorDialog));
-                    return new WebServerSiteDialogView(viewModel, dialog);
+                    return new WebServerSiteDialogView(viewModel, dialog, DraftDialogGuard.Attach);
                 }, new Size(640, 670));
             }
             finally

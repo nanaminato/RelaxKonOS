@@ -2,9 +2,9 @@ using RelaxKonOS.App.WebServers;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.WebServers.Views;
+namespace RelaxKonOS.App.WebServers.Views;
 
-internal partial class WebServerSitesPageView : UserControl
+public partial class WebServerSitesPageView : UserControl
 {
     public WebServerSitesPageView() => InitializeComponent();
 

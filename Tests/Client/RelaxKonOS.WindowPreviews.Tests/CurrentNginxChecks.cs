@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Avalonia.Headless;
 using RelaxKonOS.Client.Apps.WebServers;
 using RelaxKonOS.Client.Apps.WebServers.Views;
@@ -113,6 +114,8 @@ internal static class CurrentNginxChecks
         Check(typeof(WebServerManagerViewModel).GetProperty("InstallManagedCommand") is null,
             platform + " manager has no application installation command.");
         Check(!manager.SelectCurrentNginxCommand.CanExecute(null), "The manager cannot set the host selection.");
+        Capture(new RelaxKonOS.App.WebServers.Views.WebServerSitesPageView { DataContext = manager },
+            platform + "-sites", 1060);
         foreach (var width in new[] { 1060, 520 })
         {
             Capture(new WebServerInstancesPageView { DataContext = manager }, platform + "-manager-" + width, width);
@@ -136,6 +139,10 @@ internal static class CurrentNginxChecks
         try
         {
             window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+            if (view is RelaxKonOS.App.WebServers.Views.WebServerSitesPageView)
+                Check(view.GetVisualDescendants().OfType<DataGrid>().Single().Columns[0].Header as string
+                    == WebServerLocalization.Resolve(Language, "webservers.site.column.name"),
+                    "The application site table resolves its localized column header.");
             var output = Path.Combine(System.AppContext.BaseDirectory, "current-nginx-previews");
             Directory.CreateDirectory(output);
             using var image = new RenderTargetBitmap(new PixelSize(width, 760));

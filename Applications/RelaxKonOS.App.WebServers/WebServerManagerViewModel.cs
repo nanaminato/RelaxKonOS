@@ -22,6 +22,7 @@ namespace RelaxKonOS.App.WebServers;
 public sealed partial class WebServerManagerViewModel : ObservableObject
 {
     public string InstancesPageTitle => Text("webservers.current.server_management");
+    public string CurrentLanguage => _language.CurrentLanguage;
     public string ActionsTitle => Text("webservers.current.server_management");
     public bool IsComponentCenter { get; set; }
     public bool ShowInstanceSelection => IsComponentCenter;

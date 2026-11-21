@@ -1,6 +1,9 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "webservers.cancel": "キャンセル",
+    "webservers.operation_running": "実行中",
+    "webservers.refresh": "更新",
     "webservers.current.management_hint": "サーバーの稼働状態とサイト設定を管理します。",
     "webservers.current.title": "現在の Nginx",
     "webservers.current.hint": "このホストで使用する Nginx を選択します。Web サーバーマネージャーに反映されます。利用可能なインスタンスが一つの場合は自動的に使用します。外部 Nginx は統合を確認してください。",
