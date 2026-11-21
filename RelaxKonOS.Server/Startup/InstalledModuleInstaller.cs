@@ -80,10 +80,11 @@ internal static class InstalledModuleInstaller
                 throw new ModulePackageException("module-package-dependency-self");
             if (!known.Contains(dependency.ModuleId))
                 throw new ModulePackageException("module-package-dependency-missing");
-            if (!installed.TryGetValue(dependency.ModuleId, out var installedDependency)) continue;
-            if (installedDependency.Quarantined)
+            installed.TryGetValue(dependency.ModuleId, out var installedDependency);
+            if (installedDependency?.Quarantined == true)
                 throw new ModulePackageException("module-package-dependency-quarantined");
-            if (!VersionAllowed(installedDependency.Version, dependency))
+            var version = installedDependency?.Version ?? ServerModules.BundledModuleAssemblyVersion.ToString(3);
+            if (!VersionAllowed(version, dependency))
                 throw new ModulePackageException("module-package-dependency-version");
         }
         var graph = installed.ToDictionary(pair => pair.Key,

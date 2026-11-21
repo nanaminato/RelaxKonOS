@@ -7,6 +7,8 @@ namespace RelaxKonOS.Server.Startup;
 // what residency state each enabled module is in. Inventory queries never load a module.
 internal sealed partial class ServerModules
 {
+    internal static Version BundledModuleAssemblyVersion { get; } = typeof(ServerModules).Assembly.GetName().Version!;
+
     private static readonly Lazy<string?> HostDigest = new(() =>
     {
         var path = typeof(ServerModules).Assembly.Location;
@@ -29,7 +31,7 @@ internal sealed partial class ServerModules
         var managementState = management?.CaptureInventory();
         var desired = managementState?.EnabledIds ?? EnabledIds;
         var observedAt = DateTimeOffset.UtcNow;
-        var version = typeof(ServerModules).Assembly.GetName().Version?.ToString();
+        var version = BundledModuleAssemblyVersion.ToString();
         var inventory = new List<ServerModuleDto>(all.Length);
         var hosts = services.GetService<ModuleHostSupervisor>();
         var hostStatuses = hosts?.Snapshot().ToDictionary(host => host.ModuleId, StringComparer.Ordinal);

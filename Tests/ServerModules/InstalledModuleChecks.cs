@@ -100,11 +100,27 @@ internal static class InstalledModuleChecks
             var dependencyConfiguration = new ConfigurationBuilder().Build();
             Variable("missing");
             Variable("self");
+            var bundledVersion = ServerModules.BundledModuleAssemblyVersion;
+            var nextMajorVersion = new Version(bundledVersion.Major + 1, 0, 0).ToString();
+            var followingMajorVersion = new Version(bundledVersion.Major + 2, 0, 0).ToString();
             InstalledModuleInstaller.ValidateDependencies(root, dependencyConfiguration, fixtureManifest with
             {
-                Dependencies = [new ModulePackageDependency("relaxkonos.git", "1.0.0", "2.0.0")],
+                Dependencies = [new ModulePackageDependency("relaxkonos.git", bundledVersion.ToString(3), nextMajorVersion)],
             });
             check(true, "dependency preflight accepts a known compiled module");
+            try
+            {
+                InstalledModuleInstaller.ValidateDependencies(root, dependencyConfiguration, fixtureManifest with
+                {
+                    Dependencies = [new ModulePackageDependency("relaxkonos.git", nextMajorVersion, followingMajorVersion)],
+                });
+                check(false, "dependency preflight enforces bundled module version ranges");
+            }
+            catch (ModulePackageException error)
+            {
+                check(error.ProblemCode == "module-package-dependency-version",
+                    "dependency preflight enforces bundled module version ranges");
+            }
             void Variable(string kind)
             {
                 var manifest = kind == "missing"
