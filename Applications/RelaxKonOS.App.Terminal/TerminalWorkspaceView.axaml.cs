@@ -1,3 +1,6 @@
+using Avalonia.Automation;
+using Avalonia.Utilities;
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
@@ -5,7 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 /// <summary>Retains each session view in the visual tree while switching the visible tab.</summary>
 public partial class TerminalWorkspaceView : UserControl
@@ -13,15 +16,26 @@ public partial class TerminalWorkspaceView : UserControl
     /// <summary>Distance one wheel notch travels along a strip that only scrolls sideways.</summary>
     private const double TabWheelStep = 60;
 
-    private readonly Dictionary<TerminalViewModel, TerminalView> _views = [];
+    private readonly Dictionary<TerminalTabViewModel, ITerminalTabContent> _views = [];
     private bool _syncingPicker;
     private bool _nativeSurfacesVisible = true;
-    public ObservableCollection<TerminalViewModel> Tabs { get; } = [];
+    public ObservableCollection<TerminalTabViewModel> Tabs { get; } = [];
     public Action? RequestNewTab { get; set; }
-    public Func<TerminalViewModel, Task>? RequestCloseTabAsync { get; set; }
-    public TerminalWorkspaceView()
+    public Func<TerminalTabViewModel, Task>? RequestCloseTabAsync { get; set; }
+    private readonly ISystemLanguage? _language;
+
+    public TerminalWorkspaceView() : this(null)
+    {
+    }
+
+    public TerminalWorkspaceView(ISystemLanguage? language)
     {
         InitializeComponent();
+        _language = language;
+        RefreshLabels();
+        if (language is not null)
+            WeakEventHandlerManager.Subscribe<ISystemLanguage, SystemLanguageChangedEventArgs, TerminalWorkspaceView>(
+                language, nameof(ISystemLanguage.LanguageChanged), OnLanguageChanged);
         TabStrip.ItemsSource = Tabs;
         TabStrip.SelectionChanged += (_, _) => UpdateSelection();
         TabPicker.ItemsSource = Tabs;
@@ -31,22 +45,37 @@ public partial class TerminalWorkspaceView : UserControl
         AddHandler(KeyDownEvent, OnWorkspaceKeyDown, RoutingStrategies.Tunnel);
     }
 
-    public void AddTab(TerminalViewModel model, TerminalView view)
+    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => RefreshLabels();
+
+    private void RefreshLabels()
+    {
+        SetLabel(AddTabButton, "terminal.new_tab");
+        SetLabel(TabPickerButton, "terminal.all_tabs");
+    }
+
+    private void SetLabel(Button button, string key)
+    {
+        var label = TerminalLocalization.Resolve(_language, key);
+        ToolTip.SetTip(button, label);
+        AutomationProperties.SetName(button, label);
+    }
+
+    public void AddTab(TerminalTabViewModel model, ITerminalTabContent view)
     {
         _views.Add(model, view);
         // Hide other controls before adding: inactive sessions keep their connection and scrollback.
-        foreach (var existing in _views.Values) existing.IsVisible = false;
-        SessionHost.Children.Add(view);
+        foreach (var existing in _views.Values) existing.Control.IsVisible = false;
+        SessionHost.Children.Add(view.Control);
         Tabs.Add(model);
         TabStrip.SelectedItem = model;
     }
 
-    public void RemoveTab(TerminalViewModel model)
+    public void RemoveTab(TerminalTabViewModel model)
     {
         if (!_views.Remove(model, out var view)) return;
         var index = Tabs.IndexOf(model);
         var selected = ReferenceEquals(TabStrip.SelectedItem, model);
-        SessionHost.Children.Remove(view);
+        SessionHost.Children.Remove(view.Control);
         Tabs.Remove(model);
         if (selected && Tabs.Count > 0) TabStrip.SelectedItem = Tabs[Math.Min(index, Tabs.Count - 1)];
         UpdateSelection();
@@ -57,12 +86,11 @@ public partial class TerminalWorkspaceView : UserControl
         foreach (var (model, view) in _views)
         {
             var selected = ReferenceEquals(TabStrip.SelectedItem, model);
-            view.IsVisible = selected;
-            // A session drawn in a WebView is an operating-system child window: it has to be
-            // withdrawn for an inactive tab as well, or it would keep covering the active one.
+            view.Control.IsVisible = selected;
+            // Native surfaces must follow selection as well as managed visibility.
             view.SetNativeSurfaceVisible(_nativeSurfacesVisible && selected);
         }
-        if (TabStrip.SelectedItem is TerminalViewModel selectedModel)
+        if (TabStrip.SelectedItem is TerminalTabViewModel selectedModel)
         {
             if (_views.TryGetValue(selectedModel, out var active)) active.FocusSession();
             // A keyboard switch must never leave the newly active session scrolled out of sight.
@@ -82,7 +110,7 @@ public partial class TerminalWorkspaceView : UserControl
             view.SetNativeSurfaceVisible(visible && ReferenceEquals(TabStrip.SelectedItem, model));
     }
 
-    private void ScrollTabIntoView(TerminalViewModel model)
+    private void ScrollTabIntoView(TerminalTabViewModel model)
     {
         if (TabStrip.ContainerFromItem(model) is not Control container) return;
         var extent = TabScroller.Extent.Width;
@@ -124,7 +152,7 @@ public partial class TerminalWorkspaceView : UserControl
 
     private void TabPicker_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_syncingPicker || TabPicker.SelectedItem is not TerminalViewModel model) return;
+        if (_syncingPicker || TabPicker.SelectedItem is not TerminalTabViewModel model) return;
         TabStrip.SelectedItem = model;
         TabPickerButton.Flyout?.Hide();
     }
@@ -132,7 +160,7 @@ public partial class TerminalWorkspaceView : UserControl
     private void AddTab_Click(object? sender, RoutedEventArgs e) => RequestNewTab?.Invoke();
     private async void CloseTab_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: TerminalViewModel model } && RequestCloseTabAsync is { } close)
+        if (sender is Button { DataContext: TerminalTabViewModel model } && RequestCloseTabAsync is { } close)
             await close(model);
         e.Handled = true;
     }
@@ -142,7 +170,7 @@ public partial class TerminalWorkspaceView : UserControl
         if (e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift) && e.Key == Key.T)
         { RequestNewTab?.Invoke(); e.Handled = true; }
         else if (e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift) && e.Key == Key.W
-            && TabStrip.SelectedItem is TerminalViewModel selected && RequestCloseTabAsync is { } close)
+            && TabStrip.SelectedItem is TerminalTabViewModel selected && RequestCloseTabAsync is { } close)
         { e.Handled = true; await close(selected); }
         else if ((e.KeyModifiers == KeyModifiers.Control || e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
             && e.Key == Key.Tab && Tabs.Count > 0)

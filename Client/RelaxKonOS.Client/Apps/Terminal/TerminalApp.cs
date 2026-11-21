@@ -139,7 +139,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         bool isAdministrator = false)
     {
         var settingsClient = context.Services.GetRequiredService<ITerminalSettingsClient>();
-        var workspace = new TerminalWorkspaceView();
+        var workspace = new TerminalWorkspaceView(context.Services.GetService<ISystemLanguage>());
         var window = context.ShowWindow(LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name"), workspace,
             bounds: new Rect(120, 80, 820, 540), iconGlyph: Manifest.IconGlyph);
         // A session rendered in a WebView is an operating-system child window that Avalonia does not

@@ -21,7 +21,7 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// the surface the view-model exposes and forwards the shared chrome actions — clipboard,
 /// select-all, clear-screen and focus.
 /// </summary>
-public partial class TerminalView : UserControl
+public partial class TerminalView : UserControl, ITerminalTabContent
 {
     private readonly TerminalSurfaceFactory _surfaces;
     private readonly MenuItem _copyItem;
@@ -102,6 +102,8 @@ public partial class TerminalView : UserControl
         surface.View.ContextMenu = null;
         _surface = null;
     }
+
+    Control ITerminalTabContent.Control => this;
 
     /// <summary>Hides or restores a native session surface with its window (see <see cref="ITerminalSurface.SetNativeVisible"/>).</summary>
     public void SetNativeSurfaceVisible(bool visible)

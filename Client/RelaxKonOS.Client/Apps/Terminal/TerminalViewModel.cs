@@ -16,7 +16,7 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// RoyalTerminal is the only desktop engine, so the view-model owns the transport lifetime and
 /// hosts the single surface the factory builds.
 /// </summary>
-public partial class TerminalViewModel : TerminalAppearanceViewModel
+public partial class TerminalViewModel : TerminalTabViewModel
 {
     private readonly RelaxKonOS.Client.Services.DesktopDevicePreferences? _devicePreferences;
     protected override void OnVtEngineEdited(string value) =>
@@ -47,8 +47,7 @@ public partial class TerminalViewModel : TerminalAppearanceViewModel
 
     [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
     [ObservableProperty] private bool _hasExited;
-    [ObservableProperty] private string _title = string.Empty;
-    public string DisplayTitle
+    public override string DisplayTitle
     {
         get
         {
@@ -58,7 +57,6 @@ public partial class TerminalViewModel : TerminalAppearanceViewModel
             return IsAdministrator ? LocalizedText.Format("terminal.administrator_shell", name) : name;
         }
     }
-    partial void OnTitleChanged(string value) => OnPropertyChanged(nameof(DisplayTitle));
     public Func<Task>? RequestSettingsAsync { get; set; }
     public Func<Task>? RequestEnvironmentAsync { get; set; }
     public Action? RequestAdministratorTerminal { get; set; }
@@ -79,7 +77,7 @@ public partial class TerminalViewModel : TerminalAppearanceViewModel
     /// and stays available for the next workspace restore — only a deliberate close prompts and
     /// kills it.
     /// </summary>
-    public bool HasLiveSession => _surface is not null && !HasExited && _session is { State: AuthSessionState.Authenticated };
+    public override bool HasLiveSession => _surface is not null && !HasExited && _session is { State: AuthSessionState.Authenticated };
 
     public TerminalViewModel(
         IAuthSession? session,

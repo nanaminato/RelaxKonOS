@@ -11,5 +11,6 @@
         <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia" />
         <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="Terminal.Localization.%(Filename).json" />
+        <InternalsVisibleTo Include="RelaxKonOS.WindowPreviews.Tests" />
     </ItemGroup>
 </Project>

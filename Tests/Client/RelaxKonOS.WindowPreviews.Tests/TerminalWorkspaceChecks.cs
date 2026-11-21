@@ -6,6 +6,7 @@ using Avalonia.VisualTree;
 using System.Text.Json;
 using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Client.Services;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Workspace;
 
 internal static class TerminalWorkspaceChecks
@@ -43,7 +44,7 @@ internal static class TerminalWorkspaceChecks
         workspace.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent,
             Key = Key.T, KeyModifiers = KeyModifiers.Control | KeyModifiers.Shift });
         Check(requested == 1 && workspace.Tabs.Count == 2, "New tab shortcut delegates to the app");
-        TerminalViewModel? closing = null;
+        TerminalTabViewModel? closing = null;
         workspace.RequestCloseTabAsync = model => { closing = model; return Task.CompletedTask; };
         workspace.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent,
             Key = Key.W, KeyModifiers = KeyModifiers.Control | KeyModifiers.Shift });
@@ -237,15 +238,20 @@ internal static class TerminalWorkspaceChecks
         Check(settings.GetVisualDescendants().OfType<ComboBox>().Count() == 4,
             "The terminal settings expose VT engine, font family, size and colour scheme");
         var originalLanguage = shellSettings.Language;
-        foreach (var (language, title) in new[]
+        var workspace = new TerminalWorkspaceView(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
+        var addTab = workspace.FindControl<Button>("AddTabButton")!;
+        foreach (var (language, title, addLabel) in new[]
         {
-            ("en-US", "Terminal settings"), ("zh-CN", "终端设置"), ("ja-JP", "ターミナル設定"),
+            ("en-US", "Terminal settings", "New tab"), ("zh-CN", "终端设置", "新建标签页"),
+            ("ja-JP", "ターミナル設定", "新しいタブ"),
         })
         {
             shellSettings.Language = language;
             Dispatcher.UIThread.RunJobs();
             Check(settings.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == title),
                 $"The installed settings view must follow the application language ({language}).");
+            Check(Avalonia.Automation.AutomationProperties.GetName(addTab) == addLabel,
+                $"The workspace tab controls must follow the application language ({language}).");
         }
         shellSettings.Language = originalLanguage;
         host.Close();

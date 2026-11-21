@@ -31,7 +31,7 @@ public abstract partial class TerminalAppearanceViewModel : ObservableObject
     public string VtEngineDescription => Label("terminal.vt_engine.description");
     public string DoneLabel => Label("terminal.done");
 
-    private string Label(string key) => TerminalLocalization.Resolve(_language, key);
+    protected string Label(string key) => TerminalLocalization.Resolve(_language, key);
 
     public IReadOnlyList<string> VtEngines { get; } = ["Auto", "Managed", "Native"];
     [ObservableProperty] private string _vtEngine = "Auto";
