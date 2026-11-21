@@ -97,10 +97,10 @@ internal static class CertificateCapabilityChecks
         }
     }
 
-    internal sealed class Permission : IAppPermissionManager, IAppPermissionRequestService
+    internal sealed class Permission(string appId = "relaxkonos.certificates") : IAppPermissionManager, IAppPermissionRequestService
     {
         public HashSet<string> Granted { get; } = [];
-        public bool IsGranted(AppId id, string permission) => id.Value == "relaxkonos.certificates" && Granted.Contains(permission);
+        public bool IsGranted(AppId id, string permission) => id.Value == appId && Granted.Contains(permission);
         public AppPermissionStatus GetStatus(AppId id, string permission) =>
             IsGranted(id, permission) ? AppPermissionStatus.Granted : AppPermissionStatus.Denied;
         public void SetStatus(AppId id, string permission, AppPermissionStatus status) => throw new NotSupportedException();

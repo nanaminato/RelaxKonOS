@@ -55,6 +55,7 @@ public sealed class ExternalAppContextFactory
     private readonly IHostElevationBroker? _elevationBroker;
     private readonly IServerRegistry? _registry;
     private readonly IServerCertificates? _certificates;
+    private readonly IServerWebServers? _webServers;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
     private readonly DesktopDevicePreferences? _devicePreferences;
@@ -91,7 +92,8 @@ public sealed class ExternalAppContextFactory
         RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? diagnostics = null,
         DesktopDevicePreferences? devicePreferences = null,
         RelaxKonOS.Client.Apps.Terminal.ITerminalSettingsClient? terminalSettings = null,
-        IServerCertificates? certificates = null)
+        IServerCertificates? certificates = null,
+        IServerWebServers? webServers = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -118,6 +120,7 @@ public sealed class ExternalAppContextFactory
         _elevationBroker = elevationBroker;
         _registry = registry;
         _certificates = certificates;
+        _webServers = webServers;
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
         _diagnostics = diagnostics;
@@ -143,6 +146,7 @@ public sealed class ExternalAppContextFactory
         new ServerProcessesCapability(appId, _permissions, connection, _systemMonitor, _elevationBroker),
         new ServerRegistryCapability(appId, _permissions, connection, _registry),
         new ServerCertificatesCapability(appId, _permissions, connection, _certificates),
+        new ServerWebServersCapability(appId, _permissions, connection, _webServers),
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
         appId.Value == "relaxkonos.browser" && _browserData is not null ? new ExternalBrowserData(_browserData, connection) : null,
@@ -186,6 +190,7 @@ public sealed class ExternalAppContextFactory
         IServerProcesses ServerProcesses,
         IServerRegistry Registry,
         IServerCertificates Certificates,
+        IServerWebServers WebServers,
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,
         ITerminalSessionDiscovery? TerminalSessions,

@@ -62,6 +62,8 @@
 
 ## 测试证据
 
+- Web Server Manager 的 SDK 宿主适配器按应用检查读取和管理权限，并绑定创建窗口时的服务器连接。当前 Nginx 选择继续由组件中心处理。Windows Release 网站专项覆盖读取授权、拒绝只读应用集成实例、已有管理权限时保留组件中心选择权，以及拦截旧连接。独立应用入口尚未接入。
+
 - Web Server Manager 和组件中心共用 SDK 中的 `IServerWebServers` 契约与结构化 HTTP 错误。Windows Release 网站专项通过，覆盖网站编辑、读取恢复、作用域及当前 Nginx 选择。SDK 权限适配、应用界面和发行包仍待迁移。
 
 - Windows Release 的 `--certificate-binding-only` 将生产桌面证书 HTTP 客户端接到隔离宿主的实际证书端点和存储。匿名读取返回 401，使用测试 Bearer 凭据成功读取预置证书及服务端生成的自签名证书。已部署设备上的完整桌面到服务端验收仍待执行。

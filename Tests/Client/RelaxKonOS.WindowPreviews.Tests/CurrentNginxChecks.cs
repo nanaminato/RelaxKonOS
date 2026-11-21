@@ -7,8 +7,11 @@ using Avalonia.Threading;
 using Avalonia.Headless;
 using RelaxKonOS.Client.Apps.WebServers;
 using RelaxKonOS.Client.Apps.WebServers.Views;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
+using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.WebServers;
 
@@ -18,6 +21,37 @@ internal static class CurrentNginxChecks
     {
         RunPlatform(HostPlatformKind.Linux);
         RunPlatform(HostPlatformKind.Windows);
+        VerifyPackagedCapability();
+    }
+
+    private static void VerifyPackagedCapability()
+    {
+        var app = new AppId("relaxkonos.webservers");
+        var permissions = new CertificateCapabilityChecks.Permission(app.Value);
+        var client = DispatchProxy.Create<IServerWebServers, CurrentNginxClient>();
+        var host = (CurrentNginxClient)(object)client;
+        var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var session = (EventAlertsAuthFixture)(object)auth;
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "web-server-memory.json"));
+        var capability = new ServerWebServersCapability(app, permissions, new ExternalServerConnection(memory.Capture(auth)), client);
+        Reject<UnauthorizedAccessException>(() => capability.ListAsync(default).GetAwaiter().GetResult());
+        permissions.Granted.Add(AppPermissions.ServerWebServersRead);
+        Check(capability.ListAsync(default).GetAwaiter().GetResult().Count == 2, "The SDK permits the granted web-server read.");
+        Reject<UnauthorizedAccessException>(() => capability.IntegrateCandidateAsync("external", null!, default).GetAwaiter().GetResult());
+        Check(host.IntegrationCalls == 0, "SDK read permission alone cannot integrate a web server.");
+        permissions.Granted.Add(AppPermissions.ServerWebServersManage);
+        capability.IntegrateCandidateAsync("external", null!, default).GetAwaiter().GetResult();
+        Reject<UnauthorizedAccessException>(() => capability.SelectCurrentNginxAsync(new("second"), default).GetAwaiter().GetResult());
+        Check(host.IntegrationCalls == 1 && host.Current == "first", "SDK management leaves current Nginx selection with Component Center.");
+        session.ServiceId = "http://replacement.invalid";
+        Reject<InvalidOperationException>(() => capability.ListAsync(default).GetAwaiter().GetResult());
+
+        static void Reject<T>(Action call) where T : Exception
+        {
+            try { call(); }
+            catch (T) { return; }
+            throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+        }
     }
     private static void RunPlatform(HostPlatformKind platform)
     {
