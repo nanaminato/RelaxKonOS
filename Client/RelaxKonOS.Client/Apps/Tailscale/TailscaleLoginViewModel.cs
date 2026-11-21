@@ -19,6 +19,8 @@ namespace RelaxKonOS.Client.Apps.Tailscale;
 public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client, ITailscaleOperationReferences references,
     IHostElevationBroker elevation, ISystemLanguage language, Func<string, string, string> localize) : ObservableObject
 {
+    public Func<string, string> Labels => key => localize(key, key);
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ReadFreshness = TimeSpan.FromSeconds(10);
     private CancellationTokenSource? _lifetime;
@@ -119,7 +121,11 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
         if (_lifetime is null || _connection is { } connection && client.IsCurrent(connection)) return;
         Deactivate(); Activate(); _message = "tailscale.session_changed"; Notify();
     });
-    private void LanguageChanged(object? sender, SystemLanguageChangedEventArgs e) => Notify();
+    private void LanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(Labels));
+        Notify();
+    }
     private void Reload()
     {
         Operations.Clear();

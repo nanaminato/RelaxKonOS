@@ -19,6 +19,8 @@ namespace RelaxKonOS.Client.Apps.Tailscale;
 /// </summary>
 public sealed partial class TailscaleViewModel : ObservableObject
 {
+    public Func<string, string> Labels => key => _localize(key, key);
+
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan ControlRefreshInterval = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ControlFreshness = TimeSpan.FromSeconds(3);
@@ -277,6 +279,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     });
     private void LanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
     {
+        OnPropertyChanged(nameof(Labels));
         foreach (var peer in Peers) peer.RefreshLanguage();
         Notify();
     }

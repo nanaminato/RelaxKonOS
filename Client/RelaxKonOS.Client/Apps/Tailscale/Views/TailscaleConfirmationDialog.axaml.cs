@@ -2,14 +2,13 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.Tailscale;
 namespace RelaxKonOS.Client.Apps.Tailscale.Views;
 public partial class TailscaleConfirmationDialog : UserControl
 {
     private readonly Action<bool> _complete;
     public TailscaleConfirmationDialog(TailscaleOperation operation, TailscaleControlSnapshot baseline, string target,
-        LocalizationService language, Action<bool> complete)
+        TailscaleText language, Action<bool> complete)
     {
         InitializeComponent(); _complete = complete;
         var model = new TailscaleConfirmationText(operation, baseline, target, language); DataContext = model;
@@ -20,8 +19,9 @@ public partial class TailscaleConfirmationDialog : UserControl
     private void Confirm(object? sender, RoutedEventArgs e) => _complete(true);
 }
 public sealed class TailscaleConfirmationText(TailscaleOperation operation, TailscaleControlSnapshot baseline, string target,
-    LocalizationService language) : ObservableObject
+    TailscaleText language) : ObservableObject
 {
+    public Func<string, string> Labels => language.Labels;
     public string OperationId => operation.OperationId.ToString("D");
     private string Text(string key) => language.Get(key, key);
     private string Flag(bool value) => Text(value ? "tailscale.enabled" : "tailscale.disabled");
@@ -64,5 +64,5 @@ public sealed class TailscaleConfirmationText(TailscaleOperation operation, Tail
         }
     }
     internal void Changed(object? sender, SystemLanguageChangedEventArgs e)
-    { OnPropertyChanged(nameof(Summary)); OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(Risk)); }
+    { OnPropertyChanged(nameof(Labels)); OnPropertyChanged(nameof(Summary)); OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(Risk)); }
 }

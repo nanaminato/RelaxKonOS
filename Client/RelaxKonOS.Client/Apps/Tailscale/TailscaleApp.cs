@@ -23,6 +23,7 @@ public sealed class TailscaleApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var language = context.Services.GetRequiredService<LocalizationService>();
+        var text = new TailscaleText(language, language.Get);
         var model = new TailscaleViewModel(context.Services.GetRequiredService<IServerTailscale>(),
             context.Services.GetRequiredService<ITailscaleOperationReferences>(), context.Services.GetRequiredService<IHostElevationBroker>(), language, language.Get);
         var login = new TailscaleLoginViewModel(context.Services.GetRequiredService<IServerTailscaleLogin>(),
@@ -38,7 +39,7 @@ public sealed class TailscaleApp : RemoteApplicationBase
         {
             var accepted = false;
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("tailscale.login.title"), dialog =>
-                new TailscaleLoginDialog(target, id, close, login.ObservedBackendState, language, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
+                new TailscaleLoginDialog(target, id, close, login.ObservedBackendState, text, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
             return accepted;
         };
         login.OpenBrowserAsync = uri =>
@@ -58,21 +59,21 @@ public sealed class TailscaleApp : RemoteApplicationBase
             var title = operation.Action == TailscaleAction.Logout
                 ? LocalizedText.Get("tailscale.menu.logout") : LocalizedText.Get("tailscale.preview");
             await context.ShowDialogAsync<bool>(window, title, dialog =>
-                new TailscaleConfirmationDialog(operation, baseline, target, language, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
+                new TailscaleConfirmationDialog(operation, baseline, target, text, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
             return accepted;
         };
         model.ConfirmCloseAsync = async (preview, target) =>
         {
             var accepted = false;
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("tailscale.recovery.close"), dialog =>
-                new TailscaleRecoveryDialog(preview, target, language, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
+                new TailscaleRecoveryDialog(preview, target, text, value => { accepted = value; dialog.Close(value); }), new Size(580, 380));
             return accepted;
         };
         model.EditPreferencesDialogAsync = async (preferences, exitNodes, platform, peersRestricted) =>
         {
             TailscalePreferences? result = null;
             await context.ShowDialogAsync<TailscalePreferences?>(window, LocalizedText.Get("tailscale.preferences.title"), dialog =>
-                new TailscalePreferencesDialog(preferences, exitNodes, platform, peersRestricted, language, value => { result = value; dialog.Close(value); }), new Size(560, 600));
+                new TailscalePreferencesDialog(preferences, exitNodes, platform, peersRestricted, text, value => { result = value; dialog.Close(value); }), new Size(560, 600));
             return result;
         };
         model.OpenAdminConsoleHandler = () =>
@@ -89,7 +90,7 @@ public sealed class TailscaleApp : RemoteApplicationBase
         model.ShowAboutHandler = async () =>
         {
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("tailscale.about.title"), dialog =>
-                new TailscaleAboutDialog(new TailscaleAboutText(language, Manifest.Version, model.Target, model.HostVersion,
+                new TailscaleAboutDialog(new TailscaleAboutText(text, Manifest.Version, model.Target, model.HostVersion,
                     model.DeviceName, model.TailnetDisplay, model.AccountLogin), () => dialog.Close(true)), new Size(520, 360));
         };
 

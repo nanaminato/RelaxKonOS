@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.Tailscale;
 
 namespace RelaxKonOS.Client.Apps.Tailscale.Views;
@@ -12,7 +11,7 @@ public partial class TailscalePreferencesDialog : UserControl
 {
     private readonly Action<TailscalePreferences?> _complete;
     public TailscalePreferencesDialog(TailscalePreferences preferences, IReadOnlyList<TailscaleExitNodeItem> exitNodes,
-        string? platform, bool peersRestricted, LocalizationService language, Action<TailscalePreferences?> complete)
+        string? platform, bool peersRestricted, TailscaleText language, Action<TailscalePreferences?> complete)
     {
         InitializeComponent();
         _complete = complete;
@@ -36,7 +35,8 @@ public sealed record TailscaleExitNodeChoice(string? Ip, string Label)
 
 public sealed partial class TailscalePreferencesEditor : ObservableObject
 {
-    private readonly LocalizationService _language;
+    public Func<string, string> Labels => _language.Labels;
+    private readonly TailscaleText _language;
     private readonly IReadOnlyList<TailscaleExitNodeItem> _candidates;
     [ObservableProperty] private bool _allowIncoming;
     [ObservableProperty] private bool _acceptDns;
@@ -54,7 +54,7 @@ public sealed partial class TailscalePreferencesEditor : ObservableObject
     private readonly string? _platform;
 
     public TailscalePreferencesEditor(TailscalePreferences preferences, IReadOnlyList<TailscaleExitNodeItem> candidates,
-        string? platform, bool peersRestricted, LocalizationService language)
+        string? platform, bool peersRestricted, TailscaleText language)
     {
         _language = language;
         _platform = platform;
@@ -94,6 +94,7 @@ public sealed partial class TailscalePreferencesEditor : ObservableObject
     internal void Changed(object? sender, SystemLanguageChangedEventArgs e)
     {
         // The choice labels are proper nouns; only the "none" entry is localized.
+        OnPropertyChanged(nameof(Labels));
         OnPropertyChanged(nameof(ExitNodeChoices));
         OnPropertyChanged(nameof(CanEditUnattended));
         OnPropertyChanged(nameof(NoCandidates));

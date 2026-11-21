@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using RelaxKonOS.Client.Controls;
+using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.Client.Apps.Tailscale.Views;
 
@@ -15,7 +15,7 @@ public partial class TailscaleWorkspace : UserControl
         _login = login;
         InitializeComponent();
         DataContext = model;
-        CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        CompactWorkspaceNavigation.Install(this, WorkspaceBody, LocExtension.CreateBinding(this, "common.view"));
         Show("devices", Devices);
         AttachedToVisualTree += async (_, _) =>
         {

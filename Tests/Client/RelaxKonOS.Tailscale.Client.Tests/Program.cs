@@ -38,10 +38,11 @@ async Task RunChecksAsync()
 {
 var checks = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; }
+var text = new TailscaleText(language, language.Get);
 var emptyPreferences = new TailscalePreferences(true, false, false, null, false, false, false, false);
-var emptyEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", false, language);
+var emptyEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", false, text);
 Check(emptyEditor.NoCandidates && !emptyEditor.PeersRestricted, "authorized empty exit-node list is not a permission failure");
-var restrictedEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", true, language);
+var restrictedEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", true, text);
 Check(!restrictedEditor.NoCandidates && restrictedEditor.PeersRestricted, "restricted exit-node list has a distinct explanation");
 Check(new TailscaleApp().Manifest.IconPath?.EndsWith("/tailscale.png") == true, "Tailscale uses a packaged application icon");
 
@@ -323,13 +324,13 @@ try
             DateTimeOffset.UtcNow.AddMinutes(5), DateTimeOffset.UtcNow);
         var dialogIndex = 0;
         foreach (var dialog in new Control[] {
-            new TailscaleConfirmationDialog(plan, layoutClient.Control, "test-host", language, _ => { }),
-            new TailscaleConfirmationDialog(logoutPlan, layoutClient.Control, "test-host", language, _ => { }),
-            new TailscalePreferencesDialog(layoutClient.Control.Preferences!, [], "windows", false, language, _ => { }),
-            new TailscaleAboutDialog(new TailscaleAboutText(language, "0.1.0", "test-host", "1.test", "host", "example.ts.net", "owner@example.com"), () => { }),
-            new TailscaleRecoveryDialog(new(plan.OperationId,layoutClient.Control,true,ExpiresAt:DateTimeOffset.UtcNow.AddMinutes(5)),"test-host",language,_=>{ }),
-            new TailscaleLoginDialog("test-host", plan.OperationId, false, "", language, _=>{}),
-            new TailscaleLoginDialog("test-host", plan.OperationId, true, "Running", language, _=>{}) })
+            new TailscaleConfirmationDialog(plan, layoutClient.Control, "test-host", text, _ => { }),
+            new TailscaleConfirmationDialog(logoutPlan, layoutClient.Control, "test-host", text, _ => { }),
+            new TailscalePreferencesDialog(layoutClient.Control.Preferences!, [], "windows", false, text, _ => { }),
+            new TailscaleAboutDialog(new TailscaleAboutText(text, "0.1.0", "test-host", "1.test", "host", "example.ts.net", "owner@example.com"), () => { }),
+            new TailscaleRecoveryDialog(new(plan.OperationId,layoutClient.Control,true,ExpiresAt:DateTimeOffset.UtcNow.AddMinutes(5)),"test-host",text,_=>{ }),
+            new TailscaleLoginDialog("test-host", plan.OperationId, false, "", text, _=>{}),
+            new TailscaleLoginDialog("test-host", plan.OperationId, true, "Running", text, _=>{}) })
         {
             var host = new Window { Content = dialog, Width = 560, Height = 600 }; host.Show(); Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
             var buttons = dialog.GetVisualDescendants().OfType<Button>().ToArray();
