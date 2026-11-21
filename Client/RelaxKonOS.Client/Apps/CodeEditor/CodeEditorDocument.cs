@@ -2,7 +2,7 @@ using RelaxKonOS.UI.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Files;
 using Avalonia.Media;
-using RelaxKonOS.Client.Controls.Diff;
+using RelaxKonOS.UI.TextEditing.Diff;
 using AvaloniaEdit.Document;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;

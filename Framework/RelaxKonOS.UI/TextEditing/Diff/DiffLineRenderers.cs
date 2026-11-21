@@ -3,7 +3,7 @@ using Avalonia.Media;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
 
-namespace RelaxKonOS.Client.Controls.Diff;
+namespace RelaxKonOS.UI.TextEditing.Diff;
 
 /// <summary>
 /// Fills the full width of a changed row, gutter band included when the gutter draws its own.

@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using AvaloniaEdit.Rendering;
 
-namespace RelaxKonOS.Client.Controls.Diff;
+namespace RelaxKonOS.UI.TextEditing.Diff;
 
 /// <summary>
 /// Read-only unified diff: a two-column gutter, full-width row bands and red/green line ink.
@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Controls.Diff;
 /// the invariant enforced in <see cref="DiffRowMap"/>: one document line per patch line, which is
 /// what lets a renderer index its metadata by document line number.
 /// </remarks>
-internal partial class DiffView : UserControl
+public partial class DiffView : UserControl
 {
     public static readonly StyledProperty<DiffDocument?> DocumentProperty =
         AvaloniaProperty.Register<DiffView, DiffDocument?>(nameof(Document));

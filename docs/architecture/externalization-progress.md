@@ -88,4 +88,5 @@
 - Code Editor 和 Git 共用的编辑器工作区通过 `IEditorWorkspaceFiles` 声明六项文件操作。Code Editor 的服务器工作区通过 SDK 创建主窗口、读写文件、管理目录树和打开宿主选择器。Windows Release 回归验证源文件与图片过滤器、目录选择和另存为建议名称。SSH 工作区和 Git 项目编辑器通过现有 Explorer 客户端适配。
 - Code Editor 的服务器工作区通过 SDK 打开编码、设置、文件树操作和放弃草稿对话框，并使用 SDK 窗口确认和关闭通知保护所有标签页及释放工作区。应用界面和独立发行包仍待迁移。
 - Code Editor 使用 `RelaxKonOS.UI` 中的文件内容检测与文件图标分类。Explorer 和编辑器共享分类规则。图标渲染与编辑器视图仍在桌面宿主。
+- Code Editor 和 Git 的差异视图、补丁解析和渲染器统一由 `RelaxKonOS.UI` 提供。两个应用沿用同一套主题资源和显示规则。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

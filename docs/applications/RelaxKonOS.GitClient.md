@@ -348,7 +348,7 @@ GitClientViewModel
 | `ShowRegisterRepositoryDialogAsync` | 仓库名 + 路径 | `GitRepositoryRegistration?` |
 | `ShowConfirmAsync` | 危险操作二次确认 | `bool` |
 
-### 5.6 diff 视图（`Client/RelaxKonOS.Client/Controls/Diff/`）
+### 5.6 diff 视图（`Framework/RelaxKonOS.UI/TextEditing/Diff/`）
 
 diff 的解析与渲染与对话框解耦，放在共享控件目录里，不再由弹窗内联实现：
 

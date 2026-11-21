@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace RelaxKonOS.Client.Controls.Diff;
+namespace RelaxKonOS.UI.TextEditing.Diff;
 
 /// <summary>
 /// Turns the raw patch text the server returns into a <see cref="DiffFile"/> list.

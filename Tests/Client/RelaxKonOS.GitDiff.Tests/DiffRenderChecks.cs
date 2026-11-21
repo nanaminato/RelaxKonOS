@@ -15,7 +15,7 @@ using AvaloniaEdit.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Apps.Git;
 using RelaxKonOS.Client.Apps.Git.Views;
-using RelaxKonOS.Client.Controls.Diff;
+using RelaxKonOS.UI.TextEditing.Diff;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;

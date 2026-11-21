@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
-             xmlns:diff="clr-namespace:RelaxKonOS.Client.Controls.Diff"
+             xmlns:diff="clr-namespace:RelaxKonOS.UI.TextEditing.Diff;assembly=RelaxKonOS.UI"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitDiffPane"
              x:Name="PaneRoot"
              x:DataType="git:GitDiffPresentation">

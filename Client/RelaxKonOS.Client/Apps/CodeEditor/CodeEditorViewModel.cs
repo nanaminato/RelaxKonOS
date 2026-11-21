@@ -8,7 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.UI.Imaging;
 using Avalonia.Media;
-using RelaxKonOS.Client.Controls.Diff;
+using RelaxKonOS.UI.TextEditing.Diff;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Git;

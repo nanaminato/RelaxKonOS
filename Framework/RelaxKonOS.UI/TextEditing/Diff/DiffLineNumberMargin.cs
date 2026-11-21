@@ -5,7 +5,7 @@ using Avalonia.Media;
 using AvaloniaEdit.Editing;
 using AvaloniaEdit.Rendering;
 
-namespace RelaxKonOS.Client.Controls.Diff;
+namespace RelaxKonOS.UI.TextEditing.Diff;
 
 /// <summary>
 /// Two-column gutter: the old line number on the left, the new one on the right.

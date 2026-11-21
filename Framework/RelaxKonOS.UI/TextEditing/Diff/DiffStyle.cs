@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Styling;
 
-namespace RelaxKonOS.Client.Controls.Diff;
+namespace RelaxKonOS.UI.TextEditing.Diff;
 
 /// <summary>
 /// The brushes a diff view draws with, resolved from the theme tokens of the control that owns it.

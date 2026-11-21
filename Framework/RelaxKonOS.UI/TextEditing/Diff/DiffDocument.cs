@@ -1,4 +1,4 @@
-namespace RelaxKonOS.Client.Controls.Diff;
+namespace RelaxKonOS.UI.TextEditing.Diff;
 
 /// <summary>The role a single line plays inside a unified diff.</summary>
 public enum DiffLineKind

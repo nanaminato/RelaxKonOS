@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace RelaxKonOS.Client.Controls.Diff;
+namespace RelaxKonOS.UI.TextEditing.Diff;
 
 /// <summary>One rendered patch line: what it is and which numbers its two gutter columns show.</summary>
 /// <param name="Kind">The role the line plays in the patch.</param>

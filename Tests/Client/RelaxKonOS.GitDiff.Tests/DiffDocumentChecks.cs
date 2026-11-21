@@ -1,4 +1,4 @@
-using RelaxKonOS.Client.Controls.Diff;
+using RelaxKonOS.UI.TextEditing.Diff;
 
 namespace RelaxKonOS.GitDiff.Tests;
 

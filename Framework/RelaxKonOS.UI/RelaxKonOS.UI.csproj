@@ -10,9 +10,14 @@
 
     <ItemGroup>
         <PackageReference Include="Avalonia" />
+        <PackageReference Include="Avalonia.AvaloniaEdit" />
         <PackageReference Include="Avalonia.Themes.Fluent" />
         <PackageReference Include="Avalonia.Controls.DataGrid" />
         <PackageReference Include="Svg.Controls.Avalonia" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="RelaxKonOS.GitDiff.Tests" />
     </ItemGroup>
 
     <ItemGroup>
