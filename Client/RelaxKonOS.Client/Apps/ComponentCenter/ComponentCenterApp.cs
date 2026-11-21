@@ -90,7 +90,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                     new(RelaxKonOS.Deployment.DeploymentPackageKind.ServerModule, moduleId)) ?? [],
             };
         _model = model;
-        if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient)) is RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient web
+        if (context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerWebServers)) is RelaxKonOS.AppSDK.IServerWebServers web
             && context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerCertificates)) is RelaxKonOS.AppSDK.IServerCertificates certificates
             && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker)) is RelaxKonOS.Client.Services.Privileged.IHostElevationBroker elevations)
         {

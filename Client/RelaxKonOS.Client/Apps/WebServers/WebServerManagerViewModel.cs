@@ -66,7 +66,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     public InstallationTaskViewModel Installation { get; set; } = null!;
 
-    private readonly IRemoteWebServerClient _client;
+    private readonly IServerWebServers _client;
     private readonly IServerCertificates _certificates;
     private readonly IAuthSession _session;
     private readonly IAppPermissionScope _permissions;
@@ -116,7 +116,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private string _lastOperationLogText = string.Empty;
     private CancellationTokenSource? _operationCts;
 
-    public WebServerManagerViewModel(IRemoteWebServerClient client, IServerCertificates certificates, IAuthSession session,
+    public WebServerManagerViewModel(IServerWebServers client, IServerCertificates certificates, IAuthSession session,
         IAppPermissionScope permissions, IHostElevationBroker elevations)
     {
         _client = client;

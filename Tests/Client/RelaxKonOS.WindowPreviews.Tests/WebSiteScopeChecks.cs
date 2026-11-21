@@ -14,7 +14,7 @@ internal static class WebSiteScopeChecks
     {
         var auth = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         var session = (SiteEditorSession)(object)auth;
-        var client = DispatchProxy.Create<IRemoteWebServerClient, SiteEditorClient>();
+        var client = DispatchProxy.Create<IServerWebServers, SiteEditorClient>();
         var stub = (SiteEditorClient)(object)client;
         var broker = DispatchProxy.Create<IHostElevationBroker, DelayedSiteElevation>();
         var grant = (DelayedSiteElevation)(object)broker;
@@ -89,7 +89,7 @@ internal static class WebSiteScopeChecks
         Check(opened == 0, "Changing sites while certificates load cannot open the wrong edit target.");
         Console.WriteLine("Website scope checks passed.");
     }
-    private static WebServerManagerViewModel Create(IRemoteWebServerClient client, IAuthSession auth, IHostElevationBroker broker)
+    private static WebServerManagerViewModel Create(IServerWebServers client, IAuthSession auth, IHostElevationBroker broker)
     {
         var vm = new WebServerManagerViewModel(client, null!, auth, new FirewallTestPermissions(), broker);
         vm.SelectedServer = new("first", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,

@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Reflection;
 using Avalonia.Controls;
@@ -14,7 +15,7 @@ internal static class WebSiteEditorChecks
 {
     public static void Run()
     {
-        var client = DispatchProxy.Create<IRemoteWebServerClient, SiteEditorClient>();
+        var client = DispatchProxy.Create<IServerWebServers, SiteEditorClient>();
         var stub = (SiteEditorClient)(object)client;
         var vm = new WebServerManagerViewModel(client, null!, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions(),
             DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>());
@@ -52,10 +53,7 @@ internal static class WebSiteEditorChecks
         vm.SiteName = "later-input";
         Check(stub.Request is { Name: "draft", Routes: [{ DisableBuffering: true }] },
             "The request freezes the submitted scalar fields and nested routes.");
-        var refusalType = typeof(WebServerManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.WebServers.WebServerApiException")!;
-        stub.Pending.SetException((Exception)Activator.CreateInstance(refusalType,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
-            ["webserver.site.invalid", HttpStatusCode.BadRequest], null)!);
+        stub.Pending.SetException(new WebServerApiException("webserver.site.invalid", HttpStatusCode.BadRequest));
         PumpUntil(() => saving.IsCompleted);
         saving.GetAwaiter().GetResult();
         Check(!vm.IsSavingSite && !result.IsCompleted && vm.SiteName == "later-input" && vm.SiteRoutes[0].DisableBuffering,

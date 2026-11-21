@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.WebServers;
@@ -10,7 +11,7 @@ internal static class WebSiteReadRecoveryChecks
 {
     public static void Run()
     {
-        var client = DispatchProxy.Create<IRemoteWebServerClient, SiteEditorClient>();
+        var client = DispatchProxy.Create<IServerWebServers, SiteEditorClient>();
         var stub = (SiteEditorClient)(object)client;
         var vm = new WebServerManagerViewModel(client, null!, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions(),
             DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>());

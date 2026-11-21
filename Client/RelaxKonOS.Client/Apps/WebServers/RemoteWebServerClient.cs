@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -10,11 +11,11 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Client.Apps.WebServers;
 
 /// <summary>
-/// HTTP implementation of <see cref="IRemoteWebServerClient"/>. Mutating endpoints require an
+/// HTTP implementation of <see cref="IServerWebServers"/>. Mutating endpoints require an
 /// Idempotency-Key header (server-enforced); each call generates a fresh key so retries never
 /// duplicate an operation. 202 Accepted responses carry the operation dto in the body.
 /// </summary>
-public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session) : IRemoteWebServerClient
+public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session) : IServerWebServers
 {
     public Task<CurrentNginxDto> GetCurrentNginxAsync(CancellationToken cancellationToken = default)
         => SendAsync<CurrentNginxDto>(HttpMethod.Get, WebServerApiRoutes.CurrentNginx, null, null, cancellationToken);
@@ -131,11 +132,4 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
         => $"webserver.http_{(int)statusCode}";
 
     private sealed record WebServerProblemDetails(string? ProblemCode);
-}
-
-/// <summary>Structured server failure exposed to the view model as a stable problem code.</summary>
-internal sealed class WebServerApiException(string problemCode, HttpStatusCode statusCode)
-    : HttpRequestException(problemCode, null, statusCode)
-{
-    public string ProblemCode { get; } = problemCode;
 }

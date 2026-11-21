@@ -213,7 +213,7 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.AppSDK.IServerCertificates, RelaxKonOS.Client.Apps.Certificates.RemoteCertificateClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "certificates"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
-        services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerWebServers, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "webservers"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         // 组件中心对该组件只读观测：Nginx 的安装仍由 Web 服务器管理器拥有，

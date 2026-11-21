@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.WebServers;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.WebServers;
@@ -26,7 +27,7 @@ public interface IComponentHostObserver
 /// service on Linux, a RelaxKonOS-managed archive with its own service on Windows). The observer
 /// therefore reports that domain's own facts instead of inventing a component ledger.
 /// </summary>
-public sealed class WebServerComponentObserver(IRemoteWebServerClient client) : IComponentHostObserver
+public sealed class WebServerComponentObserver(IServerWebServers client) : IComponentHostObserver
 {
     public bool CanObserve(string componentId) => componentId == "nginx";
 

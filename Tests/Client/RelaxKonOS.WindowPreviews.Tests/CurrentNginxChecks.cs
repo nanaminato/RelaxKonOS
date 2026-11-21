@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -20,7 +21,7 @@ internal static class CurrentNginxChecks
     }
     private static void RunPlatform(HostPlatformKind platform)
     {
-        var client = DispatchProxy.Create<IRemoteWebServerClient, CurrentNginxClient>();
+        var client = DispatchProxy.Create<IServerWebServers, CurrentNginxClient>();
         var host = (CurrentNginxClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         ((SiteEditorSession)(object)session).Platform = platform;
@@ -65,7 +66,7 @@ internal static class CurrentNginxChecks
         try
         {
             window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-            var output = Path.Combine(AppContext.BaseDirectory, "current-nginx-previews");
+            var output = Path.Combine(System.AppContext.BaseDirectory, "current-nginx-previews");
             Directory.CreateDirectory(output);
             using var image = new RenderTargetBitmap(new PixelSize(width, 760));
             image.Render(window); image.Save(Path.Combine(output, name + ".png"), new PngBitmapEncoderOptions());

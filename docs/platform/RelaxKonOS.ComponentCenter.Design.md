@@ -427,7 +427,7 @@ CC-02 的「可更新」页现在区分安装观察未知、非受管安装、�
 
 **Nginx 的只读主机实测**（本切片不新增任何执行能力）：
 
-- Nginx 不是台账化运行时，它的安装与配置由 Web 服务器管理器以实例方式拥有，且平台分支（Linux 发行版包 + `nginx.service`／Windows 受管归档 + 自有服务）已在 MR-05 的既有代码里。因此组件中心不伪造组件台账，而是新增 `IComponentHostObserver` 抽象与 `WebServerComponentObserver`，通过既有 `IRemoteWebServerClient` 读取实例列表、集成候选与运行状态。
+- Nginx 不是台账化运行时，它的安装与配置由 Web 服务器管理器以实例方式拥有，且平台分支（Linux 发行版包 + `nginx.service`／Windows 受管归档 + 自有服务）已在 MR-05 的既有代码里。因此组件中心不伪造组件台账，而是新增 `IComponentHostObserver` 抽象与 `WebServerComponentObserver`，通过既有 `IServerWebServers` 读取实例列表、集成候选与运行状态。
 - 面板只显示：平台、管理方式（宿主系统包已接入／RelaxKonOS 受管安装／宿主安装待接入）、已装版本、运行状态与一句说明。显式点「读取主机状态」才发起读取；面板没有任何安装、规划或审批入口，说明文案也写明这一点。
 - 目前只有 Nginx 有观测器；Docker、Squid、Samba、frp 仍只有目录项与「打开应用」。给它们加观测器必须复用各自领域已报告的只读事实，不得新开写路径。
 

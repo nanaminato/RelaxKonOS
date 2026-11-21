@@ -1,13 +1,21 @@
+using System.Net;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Installations;
 
-namespace RelaxKonOS.Client.Apps.WebServers;
+namespace RelaxKonOS.AppSDK;
+
+/// <summary>A web server operation rejected with a stable problem code.</summary>
+public sealed class WebServerApiException(string problemCode, HttpStatusCode statusCode)
+    : HttpRequestException(problemCode, null, statusCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}
 
 /// <summary>
 /// Client-side facade for the host-global web server API. Discovery and read are stateless;
 /// integrate/reload start long-running operations tracked by an operation id.
 /// </summary>
-public interface IRemoteWebServerClient
+public interface IServerWebServers
 {
     Task<CurrentNginxDto> GetCurrentNginxAsync(CancellationToken cancellationToken = default);
     Task<CurrentNginxDto> SelectCurrentNginxAsync(CurrentNginxDto request, CancellationToken cancellationToken = default);
