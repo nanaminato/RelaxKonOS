@@ -1,6 +1,9 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "webservers.discard_title": "変更を破棄しますか？",
+    "webservers.discard_message": "未保存の変更を破棄してエディターを閉じますか？",
+    "webservers.discard": "破棄",
     "webservers.title": "Web サーバーマネージャー",
     "webservers.view": "表示",
     "webservers.operation_log": "操作ログ",

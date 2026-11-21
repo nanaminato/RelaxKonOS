@@ -19,7 +19,7 @@ namespace RelaxKonOS.App.WebServers;
 /// providers); integrate/reload are explicitly confirmed, marker-owned operations polled to
 /// a terminal state. The server never accepts shell text or elevation credentials over HTTP.
 /// </summary>
-public sealed partial class WebServerManagerViewModel : ObservableObject
+public sealed partial class WebServerManagerViewModel : ObservableObject, IDisposable
 {
     public string InstancesPageTitle => Text("webservers.current.server_management");
     public string CurrentLanguage => _language.CurrentLanguage;
@@ -1018,6 +1018,13 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         new(() => arguments.Length == 0 ? Text(key) : string.Format(CultureInfo.CurrentCulture, Text(key), arguments));
 
     private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);
+
+    public void Dispose()
+    {
+        _connectionObservation.Dispose();
+        _siteSaveCancellation?.Cancel();
+        _operationCts?.Cancel();
+    }
 
     // nginx -t + reload is fast; a tighter poll keeps the UI responsive without spamming the host.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(750);

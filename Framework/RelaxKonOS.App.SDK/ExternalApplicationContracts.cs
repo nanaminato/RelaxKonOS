@@ -3,6 +3,7 @@ using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.WindowManager;
 using Avalonia.Controls;
 using System.Text.Json;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.AppSDK;
 
@@ -99,6 +100,7 @@ public interface ITerminalWorkspacePreferences
 public interface IExternalServerConnection
 {
     bool IsCurrent { get; }
+    HostPlatformKind? Platform { get; }
     IDisposable ObserveInvalidation(Action invalidated);
 }
 

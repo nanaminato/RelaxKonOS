@@ -1,6 +1,7 @@
 using Avalonia.Utilities;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Apps.WebServers;
 
@@ -10,6 +11,7 @@ internal sealed class WebServerWindowConnection(IAuthSession session) : IExterna
     private readonly object? _login = session.CurrentSession;
     private readonly object? _user = session.CurrentUser;
     private readonly bool _authenticated = session.State == AuthSessionState.Authenticated;
+    public HostPlatformKind? Platform { get; } = session.CurrentServer?.Platform;
 
     public bool IsCurrent => _authenticated && _serviceId is { Length: > 0 }
         && _login is not null && _user is not null

@@ -1,0 +1,24 @@
+{
+  "id": "relaxkonos.webservers",
+  "displayName": "Web Server Manager",
+  "description": "Manage web servers on the RelaxKonOS Server",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.WebServers.dll",
+  "entryType": "RelaxKonOS.App.WebServers.WebServerPackageApp",
+  "iconGlyph": "🌐",
+  "iconPath": "Assets/webservers.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [
+    "server.webservers.read",
+    "server.webservers.manage",
+    "server.components.read",
+    "server.certificates.read",
+    "server.files.read"
+  ],
+  "serverRequirements": { "capabilities": ["server.web-server"] },
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "Web 服务器管理器", "description": "管理 RelaxKonOS Server 上的 Web 服务器" },
+    "ja-JP": { "displayName": "Web サーバーマネージャー", "description": "RelaxKonOS Server の Web サーバーを管理します" }
+  }
+}

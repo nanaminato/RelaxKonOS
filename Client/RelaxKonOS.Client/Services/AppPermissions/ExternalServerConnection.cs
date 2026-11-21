@@ -1,5 +1,6 @@
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Services.AppPermissions;
 
@@ -8,6 +9,7 @@ internal sealed class ExternalServerConnection(UsageMemoryScope scope) : IExtern
     private readonly string? _server = scope.Session.ServiceId;
     private readonly bool _authenticated = scope.Session.State == AuthSessionState.Authenticated;
     internal IAuthSession Session => scope.Session;
+    public HostPlatformKind? Platform => IsCurrent ? scope.Session.CurrentServer?.Platform : null;
 
     public bool IsCurrent => _authenticated && _server is not null && scope.Session.State == AuthSessionState.Authenticated
         && scope.Session.ServiceId == _server && scope.IsCurrent;

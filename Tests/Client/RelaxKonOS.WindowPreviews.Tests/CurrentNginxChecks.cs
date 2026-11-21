@@ -10,10 +10,12 @@ using Avalonia.VisualTree;
 using Avalonia.Headless;
 using RelaxKonOS.Client.Apps.WebServers;
 using RelaxKonOS.Client.Apps.WebServers.Views;
+using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Privileged;
@@ -29,7 +31,31 @@ internal static class CurrentNginxChecks
         RunPlatform(HostPlatformKind.Linux);
         RunPlatform(HostPlatformKind.Windows);
         VerifyPackagedCapability();
+        VerifyPackageEntry();
         VerifyManagedUninstall();
+    }
+
+    private static void VerifyPackageEntry()
+    {
+        var entry = new WebServerPackageApp();
+        var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var permissions = new CertificateCapabilityChecks.Permission(entry.Manifest.Id.Value);
+        permissions.Granted.Add(AppPermissions.ServerWebServersRead);
+        var windows = new RelaxKonOS.WindowManager.WindowManager();
+        windows.Attach(new Canvas { Width = 1280, Height = 800 });
+        var settings = new ShellSettings(null!);
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "web-entry-memory.json"));
+        using var http = new HttpClient();
+        var factory = new ExternalAppContextFactory(permissions, permissions, Language, settings, null!, auth,
+            null!, windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
+            null!, null!, null!, null!, null!, memory, null!, null!, null!, null!,
+            webServers: DispatchProxy.Create<IServerWebServers, CurrentNginxClient>());
+        entry.ActivateAsync(factory.Create(entry.Manifest)).GetAwaiter().GetResult();
+        var window = windows.Windows.Single();
+        Check(window.View.Content is WebServerManagerWorkspace
+            { DataContext: WebServerManagerViewModel { SelectedServer.Id: "first" } },
+            "The Web Server package entry opens its SDK workspace and reads the current Nginx.");
+        windows.ForceClose(window);
     }
 
     private static void VerifyManagedUninstall()

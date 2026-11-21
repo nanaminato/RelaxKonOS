@@ -1,6 +1,9 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "webservers.discard_title": "放弃修改？",
+    "webservers.discard_message": "放弃未保存的修改并关闭编辑器？",
+    "webservers.discard": "放弃修改",
     "webservers.title": "Web 服务器管理器",
     "webservers.view": "查看",
     "webservers.operation_log": "操作日志",

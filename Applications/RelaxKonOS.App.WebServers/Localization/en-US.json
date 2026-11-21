@@ -1,6 +1,9 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "webservers.discard_title": "Discard changes?",
+    "webservers.discard_message": "Discard unsaved changes and close this editor?",
+    "webservers.discard": "Discard",
     "webservers.title": "Web Server Manager",
     "webservers.view": "View",
     "webservers.operation_log": "Operation log",
