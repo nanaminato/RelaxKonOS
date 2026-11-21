@@ -1,15 +1,23 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.ManagedRuntimes;
 using Drive = RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 
 namespace RelaxKonOS.Client.Services.AppPackages;
 
-/// <summary>Provisions the offline defaults declared by the desktop distribution once per app ID.</summary>
+/// <summary>Provisions the selected desktop distribution profile once per app ID.</summary>
 internal sealed class BundledApplicationProvisioner(DeveloperPackageManager packages, AppPackageInstallerService installer, Drive drive)
 {
-    public async Task RunAsync(CancellationToken cancellationToken = default)
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        var manifest = packages.OfficialSource.BundledDefaultsPath;
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+    };
+
+    public async Task RunAsync(IEnumerable<string>? arguments = null, CancellationToken cancellationToken = default)
+    {
+        var manifest = packages.OfficialSource.BundledProfilesPath;
         if (!File.Exists(manifest)) return;
 
         try
@@ -17,12 +25,23 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             if (new FileInfo(manifest).Length > 8192 || (File.GetAttributes(manifest) & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidDataException("Invalid bundled application defaults.");
 
-            var ids = await File.ReadAllLinesAsync(manifest, cancellationToken);
-            if (ids.Distinct(StringComparer.Ordinal).Count() != ids.Length || ids.Any(id => !OfficialDesktopPackages.IsExternalOfficialId(id)))
-                throw new InvalidDataException("Invalid bundled application defaults.");
+            await using var input = File.OpenRead(manifest);
+            var profiles = await JsonSerializer.DeserializeAsync<ProfileDocument>(input, Json, cancellationToken);
+            if (profiles is not { SchemaVersion: 1, DefaultProfile: "standard", Profiles.Count: >= 3 and <= 16 }
+                || !new[] { "minimal", "standard", "developer" }.All(profiles.Profiles.ContainsKey)
+                || profiles.Profiles.Values.Any(entries => !ValidEntries(entries)))
+                throw new InvalidDataException("Invalid bundled application profiles.");
 
-            foreach (var id in ids)
+            var selectionPath = drive.ResolveRootChild("System/installation-profile.json");
+            var saved = File.Exists(selectionPath) ? await drive.ReadJsonAsync<ProfileSelection>(selectionPath, cancellationToken) : null;
+            var selection = SelectProfile(profiles, saved, arguments ?? []);
+            if (selection != saved)
+                await drive.WriteJsonAtomicallyAsync(selectionPath, selection, cancellationToken);
+
+            foreach (var entry in profiles.Profiles[selection.Profile])
             {
+                var id = entry.AppId;
+                if (selection.Excluded.Contains(id, StringComparer.Ordinal)) continue;
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
@@ -35,6 +54,8 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
                         var candidate = await installer.InspectLocalAsync(path, cancellationToken: cancellationToken);
                         if (candidate.Manifest.Id != id || candidate.ExpectedSha256 is null)
                             throw new InvalidDataException("Invalid bundled application identity.");
+                        if (!MeetsVersion(candidate.Manifest.Version, entry.MinimumVersion))
+                            throw new InvalidDataException("The bundled release does not meet the profile version.");
 
                         var platforms = ApplicationPlatformNames.Normalize(candidate.Manifest.ClientPlatforms);
                         var requirements = candidate.Manifest.ServerRequirements;
@@ -45,6 +66,8 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
 
                         existing = await installer.InstallAsync(candidate, cancellationToken);
                     }
+                    else if (!MeetsVersion(existing.Version, entry.MinimumVersion))
+                        throw new InvalidOperationException("The installed application needs an interactive update.");
 
                     await drive.WriteJsonAtomicallyAsync(receipt, new ProvisionedApplication(id, existing.Version), cancellationToken);
                 }
@@ -60,5 +83,36 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         }
     }
 
+    private static bool ValidEntries(ProfileApplication[]? entries) => entries is { Length: <= 128 }
+        && entries.All(entry => entry is not null && OfficialDesktopPackages.IsExternalOfficialId(entry.AppId)
+            && RuntimeSemanticVersion.TryParse(entry.MinimumVersion, out _))
+        && entries.Select(entry => entry.AppId).Distinct(StringComparer.Ordinal).Count() == entries.Length;
+
+    private static bool MeetsVersion(string version, string minimum) =>
+        RuntimeSemanticVersion.TryParse(version, out var release)
+        && RuntimeSemanticVersion.TryParse(minimum, out var floor) && release.CompareTo(floor) >= 0;
+
+    private static ProfileSelection SelectProfile(ProfileDocument document, ProfileSelection? saved, IEnumerable<string> arguments)
+    {
+        const string profileFlag = "--installation-profile=";
+        const string excludeFlag = "--exclude-bundled-app=";
+        var options = arguments.ToArray();
+        var requested = options.Where(option => option.StartsWith(profileFlag, StringComparison.Ordinal))
+            .Select(option => option[profileFlag.Length..]).ToArray();
+        var exclusions = options.Where(option => option.StartsWith(excludeFlag, StringComparison.Ordinal))
+            .Select(option => option[excludeFlag.Length..]).Distinct(StringComparer.Ordinal).ToArray();
+        if (requested.Length > 1) throw new InvalidDataException("Choose one installation profile.");
+        var profile = requested.SingleOrDefault() ?? saved?.Profile ?? document.DefaultProfile;
+        if (profile is null || !document.Profiles.TryGetValue(profile, out var entries)
+            || exclusions.Any(id => !entries.Any(entry => entry.AppId == id)))
+            throw new InvalidDataException("Invalid installation profile selection.");
+        if (saved is not null && requested.Length == 0 && exclusions.Length == 0)
+            return saved.Excluded is not null ? saved : throw new InvalidDataException("Invalid saved installation profile.");
+        return new(profile, exclusions);
+    }
+
+    private sealed record ProfileDocument(int SchemaVersion, string DefaultProfile, Dictionary<string, ProfileApplication[]> Profiles);
+    private sealed record ProfileApplication(string AppId, string MinimumVersion);
+    private sealed record ProfileSelection(string Profile, string[] Excluded);
     private sealed record ProvisionedApplication(string Id, string Version);
 }

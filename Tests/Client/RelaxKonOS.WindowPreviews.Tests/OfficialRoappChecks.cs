@@ -50,13 +50,25 @@ internal static class OfficialRoappChecks
 
             var candidate = await installer.InspectLocalAsync(path);
             Check(candidate.IconData is { Length: > 0 } && candidate.ExpectedSha256 is not null, "Review should contain an icon and a frozen digest.");
-            await File.WriteAllTextAsync(Path.Combine(source, "defaults.txt"), applicationId + Environment.NewLine);
+            var entry = new[] { new { appId = applicationId, minimumVersion = "1.0.0" } };
+            await File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    schemaVersion = 1, defaultProfile = "standard",
+                    profiles = new { minimal = Array.Empty<object>(), standard = entry, developer = entry },
+                }));
             var provisioner = new BundledApplicationProvisioner(packages, installer, drive);
             await File.AppendAllTextAsync(path, "corrupted distribution package");
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "A broken bundled package must not prevent startup or register an app.");
             File.Copy(artifact, path, overwrite: true);
+            await provisioner.RunAsync(["--installation-profile=minimal"]);
             await provisioner.RunAsync();
+            Check(packages.FindInstalled(applicationId) is null, "The Minimal choice survives a restart.");
+            await provisioner.RunAsync(["--installation-profile=standard", $"--exclude-bundled-app={applicationId}"]);
+            await provisioner.RunAsync();
+            Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
+            await provisioner.RunAsync(["--installation-profile=developer"]);
             var first = packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) == first, "Provisioning must not reinstall the same application.");

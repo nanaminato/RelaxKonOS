@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前第三个独立包 Welcome 已从桌面宿主移出。桌面发行构建将 Welcome、Notepad 和 Image Viewer 放进 `OfficialApps`，并从打包项目元数据生成默认预装清单。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。包含服务端要求或必需依赖的包须经交互部署。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前第三个独立包 Welcome 已从桌面宿主移出。桌面发行构建将 Welcome、Notepad 和 Image Viewer 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这三个应用，Minimal 跳过预装并保留应用安装器入口，Developer 暂与 Standard 同集，等开发者应用外置后扩充。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。包含服务端要求或必需依赖的包须经交互部署。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -70,4 +70,5 @@
 - 模块管理桌面 `--modules-only` 回归通过，覆盖本机应用依赖阻止停用及卸载，以及预览后新增依赖阻止确认。
 - Notepad 和 Image Viewer 的 Windows Release 包测试通过，覆盖损坏包启动降级、首次离线预装、重复启动、更新和卸载保留。MSBuild 元数据探针生成了这两个默认应用 ID。
 - Welcome 已独立构建并使用 DevCli 生成 Release 归档。Windows 包测试通过首次预装、更新、坏包拒绝、重启和卸载。窗口测试覆盖中英日、关闭后解除订阅、记事本入口与安装器回退。
+- Welcome 的 Windows Release 回归验证了 Standard 默认读取、Minimal 选择跨启动保留、排除项生效、Developer 选择以及卸载决定保留。尚未验证完整 Developer 工具集和图形化选择。
 - Windows/Linux 设备联合部署、Android 和全应用三语言界面验收均待执行。

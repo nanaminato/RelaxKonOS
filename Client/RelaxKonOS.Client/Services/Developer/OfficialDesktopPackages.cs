@@ -7,7 +7,7 @@ namespace RelaxKonOS.Client.Services.Developer;
 internal sealed partial class OfficialDesktopPackages(string directory, HttpClient? client = null)
 {
     public const string OriginFileName = "package-origin.json";
-    public string BundledDefaultsPath => Path.Combine(directory, "defaults.txt");
+    public string BundledProfilesPath => Path.Combine(directory, "installation-profiles.json");
 
     public static bool IsReserved(string? appId) => appId?.StartsWith("relaxkonos.", StringComparison.Ordinal) == true;
 

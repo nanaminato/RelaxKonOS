@@ -14,6 +14,8 @@
 
 在 Windows 上，安装器会限次重试移动被短暂占用的暂存目录。重试耗尽时保留当前活动版本并报告包存储不可用。
 
+桌面发行版在 `OfficialApps/installation-profiles.json` 中列出预装应用和最低版本。默认使用 Standard。首次启动可传入 `--installation-profile=minimal` 跳过预装，也可以用 `--exclude-bundled-app=relaxkonos.welcome` 排除指定应用。可重复传入排除参数。客户端保存选择及首次处理记录，重启后保留卸载决定。Minimal 仍可通过应用安装器安装随包制品。当前 Developer 与 Standard 使用同一应用集合，开发者工具迁出宿主后再加入。
+
 桌面发行版可用 `-p:OfficialDesktopCatalogUri=https://<发行站点>/desktop/stable/catalog.json` 生成 `OfficialApps/catalog-source.json`。配置由发行版提供。目录和制品必须使用同一预配置的 HTTPS 地址范围，客户端拒绝重定向。`relaxkonos.*` 仍需匹配应用 ID 许可集合，目录或 manifest 的声明不能授予内置身份。下载按长度、SHA-256、ID 和版本校验，安装前重新检查来源和同一份暂存文件。桌面发行不要求新增签名密钥。
 
 用现有 DevCli 的 `pack` 生成各个 `.roapp`，再运行 `official-catalog --output <静态目录> <包1.roapp> <包2.roapp>`。工具从 manifest 读取名称和版本，发布 `catalog.json` 与 `<appId>/<version>.roapp`，已有版本的制品字节保持固定。向工具提供希望出现在本次目录的所有版本。将制品先部署至固定 HTTPS 目录，再发布目录文件。

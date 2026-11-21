@@ -457,7 +457,8 @@ public static class Bootstrapper
 
         // Development packages follow the same runtime registry as built-in applications.
         await provider.GetRequiredService<DeveloperPackageManager>().LoadInstalledAsync();
-        await provider.GetRequiredService<BundledApplicationProvisioner>().RunAsync();
+        await provider.GetRequiredService<BundledApplicationProvisioner>()
+            .RunAsync((app.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Args);
         provider.GetRequiredService<DeveloperBridgeService>();
 
         // Build the desktop / start menu entries.
