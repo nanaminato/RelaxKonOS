@@ -423,6 +423,8 @@ public sealed partial class DeveloperPackageManager
 
             if (verifyDependencies && HasFileHandlers(record) && application is not IExternalFileOpenApplication)
                 throw new InvalidOperationException("The manifest declares file handlers but its entry type does not implement IExternalFileOpenApplication.");
+            if (record.Id == "relaxkonos.terminal" && application is not IExternalTerminalApplication)
+                throw new InvalidOperationException("The official terminal entry must implement terminal activation.");
             if (verifyDependencies && record.SupportedUriSchemes is { Count: > 0 } && application is not IExternalAppActivationHandler)
                 throw new InvalidOperationException("The manifest declares URI schemes but its entry type does not implement IExternalAppActivationHandler.");
 
@@ -445,9 +447,14 @@ public sealed partial class DeveloperPackageManager
     }
 
     private ExternalApplicationAdapter CreateAdapter(DeveloperAppRecord record) =>
-        HasFileHandlers(record)
+        record.Id == "relaxkonos.terminal" ? new ExternalTerminalApplicationAdapter(record, this, _contextFactory)
+        : HasFileHandlers(record)
             ? new ExternalFileApplicationAdapter(record, this, _contextFactory)
             : new ExternalApplicationAdapter(record, this, _contextFactory);
+
+    internal Task RestoreTerminalSessionsAsync(CancellationToken cancellationToken) =>
+        _applications.Get(new AppId("relaxkonos.terminal")) is ExternalTerminalApplicationAdapter terminal
+            ? terminal.RestoreAsync(cancellationToken) : Task.CompletedTask;
 
     private static bool HasFileHandlers(DeveloperAppRecord record) =>
         record.SupportedFileExtensions.Count > 0 || record.SupportedFileNames is { Count: > 0 }
@@ -1063,6 +1070,23 @@ public sealed partial class DeveloperPackageManager
         }
 
         private static string FormatUri(Uri uri) => $"{uri.Scheme}://{uri.Host}{uri.AbsolutePath}";
+    }
+
+    private sealed class ExternalTerminalApplicationAdapter(DeveloperAppRecord record, DeveloperPackageManager owner,
+        ExternalAppContextFactory contextFactory)
+        : ExternalApplicationAdapter(record, owner, contextFactory), IOpenTerminalApplication
+    {
+        public void OpenTerminal(AppContext context, string workingDirectory)
+        {
+            try { ((IExternalTerminalApplication)GetOrLoad()).OpenAt(CreateContext(), workingDirectory); }
+            catch (Exception exception) { ShowFailure(context, exception); }
+        }
+
+        public async Task RestoreAsync(CancellationToken cancellationToken)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(Lifetime, cancellationToken);
+            await ((IExternalTerminalApplication)GetOrLoad()).RestoreAsync(CreateContext(), linked.Token);
+        }
     }
 
     private sealed class ExternalFileApplicationAdapter(DeveloperAppRecord record, DeveloperPackageManager owner, ExternalAppContextFactory contextFactory)

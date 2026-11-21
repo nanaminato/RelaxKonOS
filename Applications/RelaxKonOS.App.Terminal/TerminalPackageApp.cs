@@ -4,7 +4,7 @@ using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.App.Terminal;
 
-public sealed class TerminalPackageApp : IExternalRemoteApplication
+public sealed class TerminalPackageApp : IExternalRemoteApplication, IExternalTerminalApplication
 {
     public ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.terminal"), "Terminal", "1.0.0", "🖥", "Remote terminal",

@@ -34,6 +34,7 @@
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Registry" AppId="relaxkonos.registry" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.TaskManager" AppId="relaxkonos.taskmanager" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Terminal" AppId="relaxkonos.terminal" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Welcome" AppId="relaxkonos.welcome" />
     </ItemGroup>
 

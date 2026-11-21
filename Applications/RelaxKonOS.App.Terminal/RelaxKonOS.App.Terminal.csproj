@@ -8,8 +8,7 @@
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
-        <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia" />
-        <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty" />
+        <PackageReference Include="Avalonia" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="Terminal.Localization.%(Filename).json" />
         <InternalsVisibleTo Include="RelaxKonOS.WindowPreviews.Tests" />
     </ItemGroup>

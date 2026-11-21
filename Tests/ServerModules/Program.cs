@@ -422,7 +422,7 @@ Check(defaults.IsEnabled(ServerModules.WebServerId), "default enables web server
 Check(defaults.IsEnabled(ServerModules.ProxyId), "default enables proxy");
 Check(ServerModules.ConfigurationName(ServerModules.SystemPerformanceId) == "SystemPerformance",
     "configuration name is derived from the module ID so the two cannot drift");
-Check(new RelaxKonOS.Client.Apps.Terminal.TerminalApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Terminal),
+Check(new RelaxKonOS.App.Terminal.TerminalPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Terminal),
     "desktop terminal requires server terminal capability");
 Check(new RelaxKonOS.App.TaskManager.TaskManagerPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Metrics)
     && new RelaxKonOS.App.TaskManager.TaskManagerPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Processes),

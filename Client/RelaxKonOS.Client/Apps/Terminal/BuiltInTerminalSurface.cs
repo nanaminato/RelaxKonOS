@@ -8,7 +8,7 @@ using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Services;
 using RoyalTerminal.Terminal.Transport.Ssh;
 
-namespace RelaxKonOS.App.Terminal;
+namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>
 /// The in-process terminal control (RoyalTerminal) drawn with Skia inside the Avalonia window.
@@ -60,7 +60,7 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
         _control.Rows = InitialRows;
         _control.ScrollbackLimit = _appearance.ScrollbackLines;
         _control.TerminalFontSize = TerminalSettingsDto.Default.FontSize;
-        _control.FontFamilyName = TerminalAppearance.ResolveFontFamily(TerminalSettingsDto.Default.FontFamily);
+        _control.FontFamilyName = ResolveFontFamily(TerminalSettingsDto.Default.FontFamily);
         _control.ProcessExited += OnProcessExited;
         _control.TitleChanged += OnTitleChanged;
         _control.SelectionFinalized += OnSelectionFinalized;
@@ -141,7 +141,7 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
             _control.WriteOutput(System.Text.Encoding.ASCII.GetBytes(CursorSequence(appearance)));
             _cursorApplied = true;
         }
-        _control.FontFamilyName = TerminalAppearance.ResolveFontFamily(appearance.FontFamily);
+        _control.FontFamilyName = ResolveFontFamily(appearance.FontFamily);
         _control.TerminalFontSize = Math.Clamp(appearance.FontSize, MinimumSupportedFontSize, MaximumSupportedFontSize);
 
         // Renderer palette APIs differ between RoyalTerminal renderers; apply values when present.
@@ -195,5 +195,25 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
                 property.SetValue(target, parse.Invoke(null, [value]));
         }
         catch { /* unsupported renderer palette value */ }
+    }
+
+    /// <summary>
+    /// Picks an installed monospace face for the requested family. Cascadia/Consolas are normally
+    /// absent on Linux, and passing a missing family to the Skia renderer produces poor metrics.
+    /// </summary>
+    private static string ResolveFontFamily(string requested)
+    {
+        var installed = FontManager.Current.SystemFonts
+            .Select(font => font.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(requested) && installed.Contains(requested))
+            return requested;
+
+        foreach (var fallback in new[] { "DejaVu Sans Mono", "Noto Mono", "Liberation Mono", "JetBrains Mono", "Cascadia Mono", "Consolas" })
+            if (installed.Contains(fallback))
+                return fallback;
+
+        return FontManager.Current.DefaultFontFamily.Name;
     }
 }

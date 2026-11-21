@@ -330,7 +330,7 @@ internal static class TerminalWorkspaceChecks
         // explicit preference and the desktop assembly ships one Avalonia surface.
         Check(typeof(TerminalSurfaceFactory).GetMethod(nameof(TerminalSurfaceFactory.Create))?.GetParameters().Single().ParameterType == typeof(RoyalTerminal.Terminal.VtProcessorPreference),
             "The surface factory must accept the RoyalTerminal VT preference");
-        Check(new[] { typeof(TerminalSurfaceFactory).Assembly, typeof(BuiltInTerminalSurface).Assembly }
+        Check(new[] { typeof(TerminalSurfaceFactory).Assembly, typeof(TerminalView).Assembly }
                 .SelectMany(assembly => assembly.GetTypes())
                 .All(type => !type.Name.Contains("xterm", StringComparison.OrdinalIgnoreCase)),
             "The desktop client must not ship an xterm.js surface");

@@ -1,40 +1,26 @@
-using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Services.DesktopRestore;
 using RelaxKonOS.Client.Services.Auth;
-using RelaxKonOS.AppSDK;
-using RelaxKonOS.WindowManager;
-using AppContext = RelaxKonOS.AppSDK.AppContext;
+using RelaxKonOS.Client.Services.DesktopRestore;
+using RelaxKonOS.Client.Services.Developer;
+using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Runtime;
 
 namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>Restores already-running server PTYs when an authenticated desktop becomes ready.</summary>
-public sealed class TerminalDesktopRestoreParticipant : IDesktopRestoreParticipant
+public sealed class TerminalDesktopRestoreParticipant(DeveloperPackageManager packages,
+    ApplicationManager applications, DesktopDevicePreferences preferences) : IDesktopRestoreParticipant
 {
-    private readonly TerminalApp _terminal;
-    private readonly IWindowManager _windowManager;
-    private readonly IServiceProvider _services;
-
-    public TerminalDesktopRestoreParticipant(
-        TerminalApp terminal,
-        IWindowManager windowManager,
-        IServiceProvider services)
-    {
-        _terminal = terminal;
-        _windowManager = windowManager;
-        _services = services;
-    }
+    private static readonly AppId Terminal = new("relaxkonos.terminal");
 
     public int Order => 100;
 
     public Task RestoreAsync(DesktopRestoreContext context, CancellationToken cancellationToken)
     {
-        if (context.Session.State != AuthSessionState.Authenticated
-            || !_services.GetRequiredService<DesktopDevicePreferences>().Value.RestoreTerminals
-            || !_services.GetRequiredService<ApplicationCompatibilityService>().Evaluate(_terminal.Manifest).IsCompatible)
+        if (context.Session.State != AuthSessionState.Authenticated || !preferences.Value.RestoreTerminals
+            || applications.GetManifest(Terminal) is not { } manifest || !applications.EvaluateCompatibility(manifest).IsCompatible)
             return Task.CompletedTask;
 
-        var appContext = new AppContext(_terminal.Manifest.Id, _windowManager, _services);
-        return _terminal.RestoreExistingSessionsAsync(appContext, cancellationToken);
+        return packages.RestoreTerminalSessionsAsync(cancellationToken);
     }
 }

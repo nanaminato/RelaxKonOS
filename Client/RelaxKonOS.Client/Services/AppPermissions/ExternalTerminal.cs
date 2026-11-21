@@ -1,4 +1,3 @@
-using RelaxKonOS.App.Terminal;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Client.Services.Diagnostics;

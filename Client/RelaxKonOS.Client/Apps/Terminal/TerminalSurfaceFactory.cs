@@ -1,4 +1,3 @@
-using RelaxKonOS.App.Terminal;
 using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Transport.Ssh;
 

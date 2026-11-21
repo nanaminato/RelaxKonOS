@@ -45,6 +45,7 @@ internal static class OfficialRoappChecks
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
+        var isTerminal = applicationId == "relaxkonos.terminal";
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -181,7 +182,7 @@ internal static class OfficialRoappChecks
             if (isTaskManager)
                 Check(!await packages.LaunchAsync(applicationId), "The preinstalled Task Manager must refuse launch without server capabilities.");
             compatibility.TaskManagerServerAvailable = true;
-            if (isDocker || isTaskManager || isRegistry || isBrowser)
+            if (isDocker || isTaskManager || isRegistry || isBrowser || isTerminal)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
                 Check(await packages.LaunchAsync(applicationId), "The application must launch from its installed package.");
@@ -193,6 +194,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.registry" => "RelaxKonOS.App.Registry.RegistryView",
                     "relaxkonos.taskmanager" => "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView",
                     "relaxkonos.browser" => typeof(TextBlock).FullName,
+                    "relaxkonos.terminal" => "RelaxKonOS.App.Terminal.TerminalWorkspaceView",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
@@ -210,6 +212,14 @@ internal static class OfficialRoappChecks
                     }
                 }
                 windows.Close(workspace);
+                if (isTerminal)
+                {
+                    Check(applications.OpenTerminal("/workspace"), "The installed Terminal handles directory activation.");
+                    var terminal = windows.Windows.Single();
+                    Check(terminal.Info.OwnerAppId == id && terminal.View.Content?.GetType().FullName == workspaceType,
+                        "Opening a directory uses the installed Terminal workspace.");
+                    windows.Close(terminal);
+                }
                 if (isBrowser)
                 {
                     settings.Language = "en-US";
@@ -318,6 +328,8 @@ internal static class OfficialRoappChecks
             var apps = new ApplicationManager(windows, services);
             var permissions = new RoappCatalogChecks.Permissions();
             var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+            if (isTerminal)
+                ((EventAlertsAuthFixture)(object)auth).State = AuthSessionState.Unauthenticated;
             if (isBrowser)
             {
                 browserAuth = (EventAlertsAuthFixture)(object)auth;
@@ -326,7 +338,7 @@ internal static class OfficialRoappChecks
             var memory = new UsageMemoryStore(Path.Combine(root, "usage-memory.json"));
             var context = new ExternalAppContextFactory(permissions, null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
-                null!, null!, null!, null!, null!, memory, null!, null!, null!, null!,
+                null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
                 browserData: isBrowser ? browserData : null);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }

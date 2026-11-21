@@ -17,7 +17,7 @@
 | welcome | RelaxKonOS.App.Welcome | 是 / 是 | 否 | 使用 SDK 激活记事本或安装器 | 基础 | Windows 已验 |
 | settings | Settings | 否 / 否 | 是 | 工作区设置与宿主设置 | 基础 | 待验 |
 | explorer | Explorer | 否 / 否 | 是 | 文件 API；调用存储提供者的聚合入口 | 基础 | 待验 |
-| terminal | Terminal；RelaxKonOS.App.Terminal | 是 / 否 | 是 | Terminal capability | 基础 | Windows 渲染层回归通过 |
+| terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 官方包已验，服务端恢复待验 |
 | server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
 | component-center | ComponentCenter | 否 / 否 | 是 | 组件、可信来源、模块及任务 API | 基础 | 待验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Code Editor 和 Docker 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前七个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Terminal、Code Editor 和 Docker 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前八个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -131,7 +131,7 @@
 - Terminal 恢复占用会在连接启动失败、关闭标签或关闭窗口时释放。Windows 回归验证恢复标签的视图尚未加载时关闭，也允许之后重新发现该会话。
 - Terminal VT 首选项通过仅官方 Terminal 可用的 SDK 接口读取和保存。宿主选择桌面或 SSH 设备存储，并校验 VT 取值。Windows 回归使用实际设备首选项文件验证保存与重新加载。
 - Terminal 工作区配色和设备内边距通过 SDK 读取。宿主复用现有的外观订阅和设置写入，能力绑定创建时的登录。Windows 终端回归用模拟设置传输验证当前连接可保存、替换服务器后原能力停止写入。
-- Terminal 会话视图模型和 SDK 入口已迁入应用程序集。宿主提供会话控制、绑定连接并解析登录令牌及 SSH 凭据。DevCli 已生成 Terminal 1.0.0 `.roapp`，桌面仍通过内置注册接入文件目录启动与工作区恢复，官方安装及发行预装待接入。
+- Terminal 会话视图模型和 SDK 入口已迁入应用程序集。宿主提供会话控制、原生渲染、连接绑定和凭据解析。Terminal 1.0.0 官方 `.roapp` 约 7.1 MiB，由 Standard 和 Developer 离线预装。Windows Release 使用实际 DevCli 归档验证了预装、窗口启动、从目录打开、更新、失败保留版本、重启和卸载。桌面恢复经已安装的包入口转发，真实服务器恢复待验。
 - 设置主题的颜色扫描已覆盖 Terminal 新项目。全局扫描仍报告 Proxy、Shell、Git、UI 样式和示例项目中的既有硬编码颜色。
 - 服务端替换或回退模块活动版本时，从依赖方的已安装清单校验版本约束。Windows HTTP 签名包回归证实排他上界阻止升级并保留原版本，包完整性与热替换回归通过。手动回退会重新检查归档版本的前置依赖。缺少依赖时保留当前版本，自动启动恢复会隔离失败更新并留下回执，避免激活不兼容的旧包。两条路径均通过 Windows 测试。
 - Windows 模块包回归验证了随宿主编译的 Git 模块也受依赖版本区间约束，兼容区间通过，要求更高版本的包被拒绝。

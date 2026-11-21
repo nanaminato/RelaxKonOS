@@ -125,12 +125,18 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
 
     private static DeploymentPackageKey App(string id) => new(DeploymentPackageKind.Application, id);
 
-    // The shipped Task Manager needs the server only at launch and installs no server dependencies.
+    // These shipped applications need server capabilities at launch and install no server dependencies.
     internal static bool AllowsBundledLaunchRequirements(AppPackageCandidate candidate, DeveloperPackageManager packages) =>
-        candidate.ExpectedSha256 is not null && candidate.Manifest.Id == "relaxkonos.taskmanager"
+        candidate.ExpectedSha256 is not null
         && candidate.Manifest.Dependencies?.Required is not { Count: > 0 }
         && candidate.Manifest.ServerRequirements is { SupportedPlatforms.Count: 0 } requirements
-        && requirements.RequiredCapabilities.ToHashSet(StringComparer.Ordinal).SetEquals([ServerCapabilities.Metrics, ServerCapabilities.Processes])
+        && (candidate.Manifest.Id switch
+        {
+            "relaxkonos.taskmanager" => requirements.RequiredCapabilities.ToHashSet(StringComparer.Ordinal)
+                .SetEquals([ServerCapabilities.Metrics, ServerCapabilities.Processes]),
+            "relaxkonos.terminal" => requirements.RequiredCapabilities is [ServerCapabilities.Terminal],
+            _ => false,
+        })
         && string.Equals(Path.GetFullPath(candidate.LocalPath), Path.GetFullPath(packages.OfficialSource.BundledPath(candidate.Manifest.Id)),
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 

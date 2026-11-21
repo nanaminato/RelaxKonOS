@@ -54,3 +54,9 @@ public interface IExternalTerminalSession : IDisposable
     string? SessionId { get; }
     Task StartAsync(CancellationToken cancellationToken);
 }
+
+public interface IExternalTerminalApplication
+{
+    Task RestoreAsync(IExternalAppContext context, CancellationToken cancellationToken);
+    void OpenAt(IExternalAppContext context, string workingDirectory);
+}

@@ -10,6 +10,7 @@
       { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.registry", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.taskmanager", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.terminal", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }
     ],
     "developer": [
@@ -21,6 +22,7 @@
       { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.registry", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.taskmanager", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.terminal", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }
     ]
   }
