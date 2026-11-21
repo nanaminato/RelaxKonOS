@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.WebServers;assembly=RelaxKonOS.Protocol"
-             xmlns:webservers="clr-namespace:RelaxKonOS.Client.Apps.WebServers"
+             xmlns:webservers="clr-namespace:RelaxKonOS.App.WebServers;assembly=RelaxKonOS.App.WebServers"
              x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSitesPageView"
              x:DataType="webservers:WebServerManagerViewModel"
              MinWidth="0"

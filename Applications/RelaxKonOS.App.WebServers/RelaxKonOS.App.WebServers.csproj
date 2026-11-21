@@ -5,7 +5,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
+    <PackageReference Include="Avalonia" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <EmbeddedResource Include="Localization/*.json" LogicalName="WebServers.Localization.%(Filename).json" />
   </ItemGroup>

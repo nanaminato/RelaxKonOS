@@ -1,3 +1,4 @@
+using RelaxKonOS.App.WebServers;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia;
@@ -18,6 +19,9 @@ using RelaxKonOS.Protocol.WebServers;
 
 internal static class CurrentNginxChecks
 {
+    internal static ISystemLanguage Language =>
+        (LocalizationService)RelaxKonOS.Client.App.Services.GetService(typeof(LocalizationService))!;
+
     public static void Run()
     {
         RunPlatform(HostPlatformKind.Linux);
@@ -32,7 +36,7 @@ internal static class CurrentNginxChecks
         var host = (CurrentNginxClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         var model = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(session),
-            HostPlatformKind.Windows, new FirewallTestPermissions(), null!) { IsComponentCenter = true };
+            HostPlatformKind.Windows, new FirewallTestPermissions(), null!, CurrentNginxChecks.Language) { IsComponentCenter = true };
         model.SelectedServer = host.Servers[0] with { Capabilities = new(true, true, true, CanUninstall: true) };
         Check(!model.UninstallManagedCommand.CanExecute(null), "Runtime uninstall requires a Component Center action.");
         var calls = 0;
@@ -92,7 +96,7 @@ internal static class CurrentNginxChecks
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         ((SiteEditorSession)(object)session).Platform = platform;
         WebServerManagerViewModel Model(bool center) => new(client, null!, new WebServerWindowConnection(session), platform, new FirewallTestPermissions(),
-            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>())) { IsComponentCenter = center };
+            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()), CurrentNginxChecks.Language) { IsComponentCenter = center };
         var manager = Model(false);
         var center = Model(true);
         manager.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();

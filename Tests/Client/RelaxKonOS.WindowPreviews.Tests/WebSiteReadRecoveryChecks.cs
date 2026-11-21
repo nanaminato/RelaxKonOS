@@ -1,3 +1,4 @@
+using RelaxKonOS.App.WebServers;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Threading;
@@ -15,7 +16,7 @@ internal static class WebSiteReadRecoveryChecks
         var stub = (SiteEditorClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         var vm = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(session), session.CurrentServer?.Platform, new FirewallTestPermissions(),
-            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()));
+            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()), CurrentNginxChecks.Language);
         var server = new WebServerDto("first", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,
             "/nginx", "/nginx.conf", "test", DateTimeOffset.UtcNow, new(true, true, true));
         vm.SelectedServer = server;

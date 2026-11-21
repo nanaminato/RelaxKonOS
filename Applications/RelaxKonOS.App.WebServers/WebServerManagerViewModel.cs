@@ -1,9 +1,7 @@
-using RelaxKonOS.App.WebServers;
+using System.Globalization;
+using Avalonia.Utilities;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Apps.Certificates;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
@@ -14,21 +12,20 @@ using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Workspace;
 
-namespace RelaxKonOS.Client.Apps.WebServers;
+namespace RelaxKonOS.App.WebServers;
 
 /// <summary>
 /// Window-local web server manager state. Discovery probes the host for Nginx (and future
 /// providers); integrate/reload are explicitly confirmed, marker-owned operations polled to
 /// a terminal state. The server never accepts shell text or elevation credentials over HTTP.
 /// </summary>
-public sealed partial class WebServerManagerViewModel : LocalizedObservableObject
+public sealed partial class WebServerManagerViewModel : ObservableObject
 {
-    public string InstancesPageTitle => LocalizedText.Get("webservers.current.server_management");
-    public string ActionsTitle => LocalizedText.Get("webservers.current.server_management");
+    public string InstancesPageTitle => Text("webservers.current.server_management");
+    public string ActionsTitle => Text("webservers.current.server_management");
     public bool IsComponentCenter { get; set; }
     public bool ShowInstanceSelection => IsComponentCenter;
     /// <summary>Nginx installation lives in Component Center; settings only observes and navigates.</summary>
-    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
     [RelayCommand(CanExecute = nameof(CanSelectCurrentNginx))] private async Task SelectCurrentNginxAsync()
     {
         if (!CanSelectCurrentNginx || SelectedServer is not { } server) return;
@@ -37,9 +34,9 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         {
             await _client.SelectCurrentNginxAsync(new(server.Id));
             if (_windowConnection.IsCurrent)
-                StatusText = LocalizedText.Ref("webservers.current.saved");
+                StatusText = Status("webservers.current.saved");
         }
-        catch { StatusText = LocalizedText.Ref("webservers.current.failed"); }
+        catch { StatusText = Status("webservers.current.failed"); }
         finally { IsLoading = false; }
     }
 
@@ -57,13 +54,13 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             SelectedServer = null;
             await RefreshAsync();
         }
-        catch { SelectedServer = null; StatusText = LocalizedText.Ref("webservers.current.failed"); }
+        catch { SelectedServer = null; StatusText = Status("webservers.current.failed"); }
     }
 
     private Action? _dismissRuntimeFeedback;
     private Func<Task>? _uninstallRuntimeAsync;
 
-    internal void AttachManagedRuntimeActions(Action dismissFeedback, Func<Task> uninstallAsync)
+    public void AttachManagedRuntimeActions(Action dismissFeedback, Func<Task> uninstallAsync)
     {
         _dismissRuntimeFeedback = dismissFeedback;
         _uninstallRuntimeAsync = uninstallAsync;
@@ -75,6 +72,9 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private readonly HostPlatformKind? _serverPlatform;
     private readonly IAppPermissionScope _permissions;
     private readonly IWebServerAuthorization _authorization;
+    private readonly ISystemLanguage _language;
+
+    public Func<string?, string?>? FormatHostProblem { get; set; }
     private readonly IExternalServerConnection _windowConnection;
     private readonly IDisposable _connectionObservation;
     private long _siteTargetVersion;
@@ -85,7 +85,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private WebServerSiteDto? _siteEditorSnapshot;
     public bool SiteEditorTargetChanged => _siteEditorOpen && (_siteEditorTargetVersion != _siteTargetVersion
         || SelectedSite?.Id != _siteEditorSiteId || !_windowConnection.IsCurrent);
-    public string SiteEditorTargetChangeText => LocalizedText.Get(_windowConnection.IsCurrent
+    public string SiteEditorTargetChangeText => Text(_windowConnection.IsCurrent
         ? "webservers.site.editor_target_changed" : "webservers.site.editor_connection_changed");
 
     public void BeginSiteEditing()
@@ -109,7 +109,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     }
     [ObservableProperty] private bool _isOperationLogExpanded;
     [ObservableProperty] private string _operationLog = string.Empty;
-    partial void OnOperationTextChanged(LocalizedStatus value)
+    partial void OnOperationTextChanged(WebServerStatusText value)
     {
         var text = value.Resolve();
         if (string.IsNullOrWhiteSpace(text) || text == _lastOperationLogText) return;
@@ -122,14 +122,23 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private CancellationTokenSource? _operationCts;
 
     public WebServerManagerViewModel(IServerWebServers client, IServerCertificates certificates, IExternalServerConnection connection, HostPlatformKind? serverPlatform,
-        IAppPermissionScope permissions, IWebServerAuthorization authorization)
+        IAppPermissionScope permissions, IWebServerAuthorization authorization, ISystemLanguage language)
     {
         _client = client;
+        _language = language;
+        _statusText = Status("webservers.status.loading");
+        WeakEventHandlerManager.Subscribe<ISystemLanguage, SystemLanguageChangedEventArgs, WebServerManagerViewModel>(
+            language, nameof(ISystemLanguage.LanguageChanged), OnLanguageChanged);
         _certificates = certificates;
         _serverPlatform = serverPlatform;
         _permissions = permissions;
         _authorization = authorization;
         _windowConnection = connection;
+        SiteCertificateSources =
+        [
+            new(SiteCertificateSource.Managed, Text("webservers.site.certificate_source.managed")),
+            new(SiteCertificateSource.ServerFiles, Text("webservers.site.certificate_source.files")),
+        ];
         SelectedSiteCertificateSource = SiteCertificateSources[0];
         _connectionObservation = connection.ObserveInvalidation(OnConnectionInvalidated);
     }
@@ -141,11 +150,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public ObservableCollection<CertificateDto> Certificates { get; } = [];
     public ObservableCollection<WebServerSiteBindingEditor> SiteBindings { get; } = [];
     public ObservableCollection<WebServerProxyRouteEditor> SiteRoutes { get; } = [];
-    public IReadOnlyList<SiteCertificateSourceOption> SiteCertificateSources { get; } =
-    [
-        new(SiteCertificateSource.Managed, LocalizedText.Get("webservers.site.certificate_source.managed")),
-        new(SiteCertificateSource.ServerFiles, LocalizedText.Get("webservers.site.certificate_source.files")),
-    ];
+    public IReadOnlyList<SiteCertificateSourceOption> SiteCertificateSources { get; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
@@ -157,11 +162,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private WebServerIntegrationCandidateDto? _selectedIntegrationCandidate;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(EditSiteCommand))]
     private WebServerSiteDto? _selectedSite;
-    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("webservers.status.loading");
+    [ObservableProperty] private WebServerStatusText _statusText;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
-    private LocalizedStatus _operationText = string.Empty;
-    [ObservableProperty] private LocalizedStatus _testResultText = string.Empty;
-    [ObservableProperty] private LocalizedStatus _selectedStatusText = string.Empty;
+    private WebServerStatusText _operationText = string.Empty;
+    [ObservableProperty] private WebServerStatusText _testResultText = string.Empty;
+    [ObservableProperty] private WebServerStatusText _selectedStatusText = string.Empty;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ToggleManagedCommand))]
     [NotifyPropertyChangedFor(nameof(IsManagedServerRunning), nameof(ManagedLifecycleActionText), nameof(ManagedRuntimeStateLabel), nameof(ManagedRuntimeStateDescription))]
@@ -187,7 +192,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [NotifyCanExecuteChangedFor(nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     private bool _siteFactsAvailable;
     private long _siteReadVersion;
-    [ObservableProperty] private LocalizedStatus _siteStatusText = string.Empty;
+    [ObservableProperty] private WebServerStatusText _siteStatusText = string.Empty;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
     [NotifyCanExecuteChangedFor(nameof(SelectCurrentNginxCommand))]
@@ -216,20 +221,20 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public bool IsManagedServerRunning => IsManagedServer && SelectedRuntimeState == WebServerRuntimeState.Running;
     public bool IsManagedInstallAvailable => !HasManagedInstallation;
     public string ManagedLifecycleActionText => IsManagedServerRunning
-        ? LocalizedText.Get("webservers.action.stop")
-        : LocalizedText.Get("webservers.action.start");
+        ? Text("webservers.action.stop")
+        : Text("webservers.action.start");
     public string ManagedRuntimeStateLabel => RuntimeStateText(SelectedRuntimeState);
     public string ManagedRuntimeStateDescription => SelectedRuntimeState switch
     {
-        WebServerRuntimeState.Running => LocalizedText.Get("webservers.runtime.running_hint"),
-        WebServerRuntimeState.Stopped => LocalizedText.Get("webservers.runtime.stopped_hint"),
-        _ => LocalizedText.Get("webservers.runtime.unknown_hint"),
+        WebServerRuntimeState.Running => Text("webservers.runtime.running_hint"),
+        WebServerRuntimeState.Stopped => Text("webservers.runtime.stopped_hint"),
+        _ => Text("webservers.runtime.unknown_hint"),
     };
-    public string ManagementHint => !IsComponentCenter ? LocalizedText.Get("webservers.current.management_hint") : SelectedServer?.ManagementMode switch
+    public string ManagementHint => !IsComponentCenter ? Text("webservers.current.management_hint") : SelectedServer?.ManagementMode switch
     {
-        WebServerManagementMode.Integrated => LocalizedText.Get("webservers.management_hint.integrated"),
-        WebServerManagementMode.Managed => LocalizedText.Get("webservers.management_hint.managed"),
-        _ => LocalizedText.Get("webservers.management_hint.none"),
+        WebServerManagementMode.Integrated => Text("webservers.management_hint.integrated"),
+        WebServerManagementMode.Managed => Text("webservers.management_hint.managed"),
+        _ => Text("webservers.management_hint.none"),
     };
 
     /// <summary>Supplied by the application shell so the view model never constructs UI directly.</summary>
@@ -266,7 +271,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             SelectedIntegrationCandidate = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             HasManagedInstallation = false;
-            StatusText = LocalizedText.Ref("webservers.permission.read_required");
+            StatusText = Status("webservers.permission.read_required");
             return;
         }
 
@@ -281,7 +286,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             if (!IsComponentCenter || current is not null)
             {
                 SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
-                if (!IsComponentCenter) StatusText = LocalizedText.Ref(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
+                if (!IsComponentCenter) StatusText = Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
             }
         }
         catch (Exception)
@@ -293,7 +298,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             SelectedIntegrationCandidate = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             HasManagedInstallation = false;
-            StatusText = LocalizedStatus.Format("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
+            StatusText = Status("webservers.status.failed", Text("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -302,7 +307,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private async Task DiscoverAsync()
     {
         IsLoading = true;
-        StatusText = LocalizedText.Ref("webservers.discover.running");
+        StatusText = Status("webservers.discover.running");
         try
         {
             var servers = await _client.DiscoverAsync() ?? [];
@@ -313,12 +318,12 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             if (!IsComponentCenter || current is not null)
             {
                 SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
-                if (!IsComponentCenter) StatusText = LocalizedText.Ref(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
+                if (!IsComponentCenter) StatusText = Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
             }
         }
         catch (Exception)
         {
-            StatusText = LocalizedStatus.Format("webservers.discover.failed", LocalizedText.Get("webservers.error.request_failed"));
+            StatusText = Status("webservers.discover.failed", Text("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -342,8 +347,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         var integratedCount = servers.Count(server => server.ManagementMode == WebServerManagementMode.Integrated);
         HasManagedInstallation = managedCount > 0;
         StatusText = IsLinuxServer && !IsComponentCenter
-            ? LocalizedText.Ref(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready")
-            : LocalizedText.Ref(
+            ? Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready")
+            : Status(
             "webservers.discovery.summary",
             servers.Count + candidates.Count,
             managedCount,
@@ -366,17 +371,17 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             if (SelectedServer?.Id != server.Id) return;
             SelectedRuntimeState = status?.RuntimeState ?? WebServerRuntimeState.Unknown;
             SelectedStatusText = status is null
-                ? LocalizedText.Ref("webservers.status.unavailable")
+                ? Status("webservers.status.unavailable")
                 : string.IsNullOrWhiteSpace(status.ProblemCode)
-                    ? LocalizedStatus.Literal(RuntimeStateText(status.RuntimeState))
-                    : LocalizedStatus.Format("webservers.status.detail", RuntimeStateText(status.RuntimeState), ProblemText(status.ProblemCode));
+                    ? WebServerStatusText.Literal(RuntimeStateText(status.RuntimeState))
+                    : Status("webservers.status.detail", RuntimeStateText(status.RuntimeState), ProblemText(status.ProblemCode));
             if (status is not null) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(status.ProblemCode);
         }
         catch (Exception)
         {
             if (SelectedServer?.Id != server.Id) return;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
-            SelectedStatusText = LocalizedStatus.Format("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
+            SelectedStatusText = Status("webservers.status.failed", Text("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -386,20 +391,20 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     {
         if (SelectedServer is null) return;
         IsLoading = true;
-        TestResultText = LocalizedText.Ref("webservers.test.running");
+        TestResultText = Status("webservers.test.running");
         try
         {
             var result = await _client.TestConfigurationAsync(SelectedServer.Id);
             TestResultText = result is null
-                ? LocalizedText.Ref("webservers.test.unavailable")
+                ? Status("webservers.test.unavailable")
                 : result.Valid
-                    ? LocalizedText.Ref("webservers.test.valid")
-                    : LocalizedStatus.Format("webservers.test.invalid", ProblemText(result.ProblemCode));
+                    ? Status("webservers.test.valid")
+                    : Status("webservers.test.invalid", ProblemText(result.ProblemCode));
             if (result is not null && !result.Valid) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
         }
         catch (Exception)
         {
-            TestResultText = LocalizedStatus.Format("webservers.test.failed", LocalizedText.Get("webservers.error.request_failed"));
+            TestResultText = Status("webservers.test.failed", Text("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -465,7 +470,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         var selectionVersion = _siteSelectionVersion;
         await LoadCertificatesAsync();
         if (!CanOpenSiteEditor || targetVersion != _siteTargetVersion || selectionVersion != _siteSelectionVersion) return;
-        SiteStatusText = LocalizedText.Ref("webservers.site.new_status");
+        SiteStatusText = Status("webservers.site.new_status");
         if (ShowSiteEditorAsync is not null) await ShowSiteEditorAsync(false);
     }
 
@@ -512,7 +517,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             || (SiteHttpsEnabled && (SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed
                 ? SelectedSiteCertificate is null : string.IsNullOrWhiteSpace(SiteCertificatePath))))
         {
-            await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.validation_required"));
+            await ReportSiteSaveErrorAsync(Status("webservers.site.validation_required"));
             return;
         }
         try
@@ -527,7 +532,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                     ? _client.UpsertSiteAsync(server.Id, request)
                     : Task.FromException<WebServerSiteDto?>(new OperationCanceledException("The site editor target changed.")));
             if (!IsCurrent()) return;
-            if (saved is null) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); return; }
+            if (saved is null) { await ReportSiteSaveErrorAsync(Status("webservers.site.save_failed")); return; }
             var refreshed = await LoadSitesAsync();
             if (!IsCurrentConnection()) return;
             if (!refreshed)
@@ -537,20 +542,20 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                 Sites.Add(saved);
             }
             SelectedSite = Sites.FirstOrDefault(site => site.Id == saved.Id);
-            SiteStatusText = LocalizedText.Ref(refreshed ? "webservers.site.save_succeeded" : "webservers.site.save_refresh_failed");
+            SiteStatusText = Status(refreshed ? "webservers.site.save_succeeded" : "webservers.site.save_refresh_failed");
             if (CloseSiteEditorAsync is not null) await CloseSiteEditorAsync();
         }
         catch (WebServerApiException exception)
         {
             if (!IsCurrent()) return;
             var message = IsConfigurationElevationRequired(exception)
-                ? LocalizedText.Get("webservers.problem.site_elevation_required")
+                ? Text("webservers.problem.site_elevation_required")
                 : SiteSaveProblemText(exception.ProblemCode);
-            await ReportSiteSaveErrorAsync(LocalizedStatus.Literal(message));
+            await ReportSiteSaveErrorAsync(WebServerStatusText.Literal(message));
         }
         catch (Exception)
         {
-            if (IsCurrent()) await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed"));
+            if (IsCurrent()) await ReportSiteSaveErrorAsync(Status("webservers.site.save_failed"));
         }
     }
 
@@ -570,14 +575,14 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             });
             ResetSiteEditor();
             await LoadSitesAsync();
-            SiteStatusText = LocalizedText.Ref("webservers.site.delete_succeeded");
+            SiteStatusText = Status("webservers.site.delete_succeeded");
         }
         catch (WebServerApiException exception) when (IsConfigurationElevationRequired(exception))
         {
-            SiteStatusText = LocalizedText.Ref("webservers.problem.site_elevation_required");
+            SiteStatusText = Status("webservers.problem.site_elevation_required");
         }
-        catch (WebServerApiException exception) { SiteStatusText = LocalizedStatus.Literal(ProblemText(exception.ProblemCode)); }
-        catch (Exception) { SiteStatusText = LocalizedText.Ref("webservers.site.delete_failed"); }
+        catch (WebServerApiException exception) { SiteStatusText = WebServerStatusText.Literal(ProblemText(exception.ProblemCode)); }
+        catch (Exception) { SiteStatusText = Status("webservers.site.delete_failed"); }
     }
 
     private static bool IsConfigurationElevationRequired(WebServerApiException exception) =>
@@ -628,7 +633,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         OnPropertyChanged(nameof(SiteEditorTargetChangeText));
         SiteFactsAvailable = false;
         _siteReadVersion++;
-        SelectedStatusText = LocalizedStatus.Literal(ManagementHint);
+        SelectedStatusText = WebServerStatusText.Literal(ManagementHint);
         SelectedRuntimeState = WebServerRuntimeState.Unknown;
         TestResultText = string.Empty;
         SelectedSite = null;
@@ -746,26 +751,26 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             if (!HasReadPermission || version != _siteReadVersion || SelectedServer?.Id != server.Id) return false;
             if (sites is null)
             {
-                SiteStatusText = LocalizedText.Ref("webservers.site.list_failed");
+                SiteStatusText = Status("webservers.site.list_failed");
                 return false;
             }
             Sites.Clear();
             foreach (var site in sites) Sites.Add(site);
             SiteFactsAvailable = true;
             SiteStatusText = Sites.Count == 0
-                ? LocalizedText.Ref("webservers.site.list_empty")
-                : LocalizedText.Ref("webservers.site.list_ready", Sites.Count);
+                ? Status("webservers.site.list_empty")
+                : Status("webservers.site.list_ready", Sites.Count);
             return true;
         }
         catch (Exception)
         {
             if (HasReadPermission && version == _siteReadVersion && SelectedServer?.Id == server.Id)
-                SiteStatusText = LocalizedText.Ref("webservers.site.list_failed");
+                SiteStatusText = Status("webservers.site.list_failed");
             return false;
         }
     }
 
-    private async Task ReportSiteSaveErrorAsync(LocalizedStatus message)
+    private async Task ReportSiteSaveErrorAsync(WebServerStatusText message)
     {
         SiteStatusText = message;
         if (ShowSiteSaveErrorAsync is not null) await ShowSiteSaveErrorAsync(message.Resolve());
@@ -836,7 +841,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     {
         if (!HasManagePermission)
         {
-            StatusText = LocalizedText.Ref("webservers.permission.manage_required");
+            StatusText = Status("webservers.permission.manage_required");
             return;
         }
 
@@ -846,18 +851,18 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         OperationLog = string.Empty;
         _lastOperationLogText = string.Empty;
         IsOperationRunning = true;
-        OperationText = LocalizedStatus.Format("webservers.operation.starting", OperationName(kindKey));
+        OperationText = Status("webservers.operation.starting", OperationName(kindKey));
         try
         {
             var operation = await start(token);
             if (operation is null)
             {
-                OperationText = LocalizedText.Ref("webservers.operation.not_found");
+                OperationText = Status("webservers.operation.not_found");
                 return;
             }
             if (operation.OperationId == Guid.Empty)
             {
-                OperationText = LocalizedStatus.Format("webservers.operation.rejected", ProblemText(operation.ProblemCode));
+                OperationText = Status("webservers.operation.rejected", ProblemText(operation.ProblemCode));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
                 return;
             }
@@ -865,21 +870,21 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             operation = await PollOperationAsync(operation, token);
             if (operation.State == WebServerOperationState.Succeeded)
             {
-                OperationText = LocalizedStatus.Format("webservers.operation.succeeded", OperationName(kindKey));
+                OperationText = Status("webservers.operation.succeeded", OperationName(kindKey));
                 if (kindKey == "integrate") await RefreshAsync();
                 else await RefreshStatusAsync();
             }
             else if (operation.State == WebServerOperationState.Cancelled)
-                OperationText = LocalizedText.Ref("webservers.operation.cancelled");
+                OperationText = Status("webservers.operation.cancelled");
             else
             {
-                OperationText = LocalizedStatus.Format("webservers.operation.failed", OperationName(kindKey), ProblemText(operation.ProblemCode));
+                OperationText = Status("webservers.operation.failed", OperationName(kindKey), ProblemText(operation.ProblemCode));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
             }
         }
         catch (OperationCanceledException)
         {
-            OperationText = LocalizedText.Ref("webservers.operation.cancelled");
+            OperationText = Status("webservers.operation.cancelled");
         }
         catch (WebServerApiException exception) when (exception.ProblemCode == rethrowApiProblemCode)
         {
@@ -887,12 +892,12 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         }
         catch (WebServerApiException exception)
         {
-            OperationText = LocalizedStatus.Format("webservers.operation.failed", OperationName(kindKey), ProblemText(exception.ProblemCode));
+            OperationText = Status("webservers.operation.failed", OperationName(kindKey), ProblemText(exception.ProblemCode));
             await ShowPrivilegedHelperUnavailableAsyncIfNeeded(exception.ProblemCode);
         }
         catch (Exception)
         {
-            OperationText = LocalizedStatus.Format("webservers.operation.exception", OperationName(kindKey), LocalizedText.Get("webservers.error.request_failed"));
+            OperationText = Status("webservers.operation.exception", OperationName(kindKey), Text("webservers.error.request_failed"));
         }
         finally
         {
@@ -907,7 +912,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     {
         while (operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
         {
-            OperationText = LocalizedStatus.Format("webservers.operation.progress", OperationName(operation.Kind), OperationStage(operation.Kind, operation.Stage));
+            OperationText = Status("webservers.operation.progress", OperationName(operation.Kind), OperationStage(operation.Kind, operation.Stage));
             try { await Task.Delay(PollInterval, cancellationToken); }
             catch (OperationCanceledException) { return operation; }
             var updated = await _client.GetOperationAsync(operation.OperationId, cancellationToken);
@@ -942,56 +947,63 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private bool CanDeleteSite => CanManageSites && SelectedSite is not null;
     private bool CanCancelOperation => IsOperationRunning;
 
-    private static string OperationName(string kind) => kind switch
+    private string OperationName(string kind) => kind switch
     {
-        "install" => LocalizedText.Get("webservers.operation.kind.install"),
-        "integrate" => LocalizedText.Get("webservers.operation.kind.integrate"),
-        "uninstall" => LocalizedText.Get("webservers.operation.kind.uninstall"),
-        "start" => LocalizedText.Get("webservers.operation.kind.start"),
-        "stop" => LocalizedText.Get("webservers.operation.kind.stop"),
-        "restart" => LocalizedText.Get("webservers.operation.kind.restart"),
-        "reload" => LocalizedText.Get("webservers.operation.kind.reload"),
-        "enable-acme-http01" => LocalizedText.Get("webservers.operation.kind.enable_acme_http01"),
-        _ => LocalizedText.Get("webservers.operation.kind.unknown"),
+        "install" => Text("webservers.operation.kind.install"),
+        "integrate" => Text("webservers.operation.kind.integrate"),
+        "uninstall" => Text("webservers.operation.kind.uninstall"),
+        "start" => Text("webservers.operation.kind.start"),
+        "stop" => Text("webservers.operation.kind.stop"),
+        "restart" => Text("webservers.operation.kind.restart"),
+        "reload" => Text("webservers.operation.kind.reload"),
+        "enable-acme-http01" => Text("webservers.operation.kind.enable_acme_http01"),
+        _ => Text("webservers.operation.kind.unknown"),
     };
 
-    private static string RuntimeStateText(WebServerRuntimeState state) => state switch
+    private string RuntimeStateText(WebServerRuntimeState state) => state switch
     {
-        WebServerRuntimeState.Running => LocalizedText.Get("webservers.enum.runtime.running"),
-        WebServerRuntimeState.Stopped => LocalizedText.Get("webservers.enum.runtime.stopped"),
-        _ => LocalizedText.Get("webservers.enum.runtime.unknown"),
+        WebServerRuntimeState.Running => Text("webservers.enum.runtime.running"),
+        WebServerRuntimeState.Stopped => Text("webservers.enum.runtime.stopped"),
+        _ => Text("webservers.enum.runtime.unknown"),
     };
 
-    private static string OperationStage(string kind, string stage) => (kind, stage) switch
+    private string OperationStage(string kind, string stage) => (kind, stage) switch
     {
-        (_, "queued") => LocalizedText.Get("webservers.operation.stage.queued"),
-        (_, "running" or "native-reload-dispatch") => LocalizedText.Get("webservers.operation.stage.running"),
+        (_, "queued") => Text("webservers.operation.stage.queued"),
+        (_, "running" or "native-reload-dispatch") => Text("webservers.operation.stage.running"),
         (_, "native-recovery-required") => ProblemText("webserver.native_recovery_required"),
-        ("install", "installer_running") => LocalizedText.Get("webservers.operation.stage.installer_running"),
-        ("install", "installing_package") => LocalizedText.Get("webservers.operation.stage.installing_package"),
-        ("install", "downloading") => LocalizedText.Get("webservers.operation.stage.downloading"),
-        ("install", "extracting") => LocalizedText.Get("webservers.operation.stage.extracting"),
-        ("install", "removing_existing_installation") => LocalizedText.Get("webservers.operation.stage.removing_existing_installation"),
-        ("install", "verifying_layout") => LocalizedText.Get("webservers.operation.stage.verifying_layout"),
-        ("install", "validating_configuration") => LocalizedText.Get("webservers.operation.stage.validating_configuration"),
-        ("install", "finalizing") => LocalizedText.Get("webservers.operation.stage.finalizing"),
-        _ => LocalizedText.Get("webservers.operation.stage.unknown"),
+        ("install", "installer_running") => Text("webservers.operation.stage.installer_running"),
+        ("install", "installing_package") => Text("webservers.operation.stage.installing_package"),
+        ("install", "downloading") => Text("webservers.operation.stage.downloading"),
+        ("install", "extracting") => Text("webservers.operation.stage.extracting"),
+        ("install", "removing_existing_installation") => Text("webservers.operation.stage.removing_existing_installation"),
+        ("install", "verifying_layout") => Text("webservers.operation.stage.verifying_layout"),
+        ("install", "validating_configuration") => Text("webservers.operation.stage.validating_configuration"),
+        ("install", "finalizing") => Text("webservers.operation.stage.finalizing"),
+        _ => Text("webservers.operation.stage.unknown"),
     };
 
-    private static string ProblemText(string? problemCode)
+    private string ProblemText(string? problemCode)
     {
-        if (PrivilegedHelperProblemText.TryFormat(problemCode, out var helperMessage)) return helperMessage;
+        if (FormatHostProblem?.Invoke(problemCode) is { } helperMessage) return helperMessage;
         if (string.IsNullOrWhiteSpace(problemCode) || !problemCode.StartsWith("webserver.", StringComparison.Ordinal))
-            return LocalizedText.Get("webservers.problem.unknown");
-        return LocalizedText.Get($"webservers.problem.{problemCode["webserver.".Length..]}", LocalizedText.Get("webservers.problem.unknown"));
+            return Text("webservers.problem.unknown");
+        return Text($"webservers.problem.{problemCode["webserver.".Length..]}", Text("webservers.problem.unknown"));
     }
 
-    private static string SiteSaveProblemText(string problemCode) => ProblemText(problemCode);
+    private string SiteSaveProblemText(string problemCode) => ProblemText(problemCode);
 
     private Task ShowPrivilegedHelperUnavailableAsyncIfNeeded(string? problemCode) =>
-        PrivilegedHelperProblemText.TryFormat(problemCode, out _)
+        FormatHostProblem?.Invoke(problemCode) is not null
             ? ShowPrivilegedHelperUnavailableAsync?.Invoke(problemCode) ?? Task.CompletedTask
             : Task.CompletedTask;
+
+    private string Text(string key, string? fallback = null) => WebServerLocalization.Resolve(_language, key, fallback);
+
+    private WebServerStatusText Status(string key, params object?[] arguments) =>
+        new(() => arguments.Length == 0 ? Text(key) : string.Format(CultureInfo.CurrentCulture, Text(key), arguments));
+
+    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);
 
     // nginx -t + reload is fast; a tighter poll keeps the UI responsive without spamming the host.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(750);

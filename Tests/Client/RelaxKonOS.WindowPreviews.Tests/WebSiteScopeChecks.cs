@@ -1,3 +1,4 @@
+using RelaxKonOS.App.WebServers;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Threading;
@@ -69,7 +70,7 @@ internal static class WebSiteScopeChecks
         var certificates = DispatchProxy.Create<IServerCertificates, PendingSiteCertificates>();
         var certificateReads = (PendingSiteCertificates)(object)certificates;
         vm = new WebServerManagerViewModel(client, certificates, new WebServerWindowConnection(auth), auth.CurrentServer?.Platform, new FirewallTestPermissions(),
-            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()));
+            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()), CurrentNginxChecks.Language);
         var server = new WebServerDto("first", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,
             "/nginx", "/nginx.conf", "test", DateTimeOffset.UtcNow, new(true, true, true));
         vm.SelectedServer = server;
@@ -91,7 +92,7 @@ internal static class WebSiteScopeChecks
     }
     private static WebServerManagerViewModel Create(IServerWebServers client, IAuthSession auth, IHostElevationBroker broker)
     {
-        var vm = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(auth), auth.CurrentServer?.Platform, new FirewallTestPermissions(), new WebServerAuthorization(broker));
+        var vm = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(auth), auth.CurrentServer?.Platform, new FirewallTestPermissions(), new WebServerAuthorization(broker), CurrentNginxChecks.Language);
         vm.SelectedServer = new("first", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,
             "/nginx", "/nginx.conf", "test", DateTimeOffset.UtcNow, new(true, true, true));
         vm.SiteName = "draft";

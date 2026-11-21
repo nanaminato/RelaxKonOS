@@ -1,3 +1,4 @@
+using RelaxKonOS.App.WebServers;
 using RelaxKonOS.Client.Services;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -44,11 +45,11 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
             return;
         }
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
-        var viewModel = new WebServerManagerViewModel(client, certificates, new WebServerWindowConnection(session), session.CurrentServer?.Platform, context.Permissions, new WebServerAuthorization(elevations))
+        var viewModel = new WebServerManagerViewModel(client, certificates, new WebServerWindowConnection(session), session.CurrentServer?.Platform, context.Permissions, new WebServerAuthorization(elevations), (ISystemLanguage)context.Services.GetService(typeof(ISystemLanguage))!)
         {
-            Dependency = dependency
+            FormatHostProblem = WebServerAuthorization.FormatProblem
         };
-        var view = WebServerManagerWorkspace.Create(viewModel);
+        var view = WebServerManagerWorkspace.Create(viewModel, dependency);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
             view, new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
         view.AttachWindowHeader(window);

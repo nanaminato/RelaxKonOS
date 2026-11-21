@@ -1,3 +1,4 @@
+using RelaxKonOS.App.WebServers;
 using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Reflection;
@@ -19,7 +20,7 @@ internal static class WebSiteEditorChecks
         var stub = (SiteEditorClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         var vm = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(session), session.CurrentServer?.Platform, new FirewallTestPermissions(),
-            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()));
+            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()), CurrentNginxChecks.Language);
         vm.SelectedServer = new("test-instance", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,
             "/nginx", "/nginx.conf", "test", DateTimeOffset.UtcNow, new(true, true, true));
         vm.SiteName = "draft";
@@ -35,7 +36,7 @@ internal static class WebSiteEditorChecks
         var result = manager.ShowDialogAsync<bool>(owner, "Site", dialog =>
         {
             handle = dialog;
-            var type = typeof(WebServerManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteDialogView")!;
+            var type = typeof(WebServerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteDialogView")!;
             return (Control)Activator.CreateInstance(type, [vm, dialog])!;
         });
         vm.SiteRoutes[0].DisableBuffering = true;
