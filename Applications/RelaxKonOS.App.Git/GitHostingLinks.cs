@@ -1,9 +1,9 @@
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 /// <summary>Maps Git remotes to their hosting web UI without ever forwarding clone credentials.</summary>
-internal static class GitHostingLinks
+public static class GitHostingLinks
 {
     public static Uri? Resolve(IEnumerable<GitRemoteDto> remotes, string provider, string page)
     {

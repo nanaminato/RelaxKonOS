@@ -1,10 +1,9 @@
-using RelaxKonOS.App.Git;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal sealed partial class GitToolTab(string kind, Control view, GitClientViewModel? session = null, string? path = null) : ObservableObject
+public sealed partial class GitToolTab(string kind, Control view, GitClientViewModel? session = null, string? path = null) : ObservableObject
 {
     public string Kind { get; } = kind;
     public Control View { get; } = view;

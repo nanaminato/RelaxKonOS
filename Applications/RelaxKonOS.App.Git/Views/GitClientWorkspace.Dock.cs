@@ -1,15 +1,12 @@
-using RelaxKonOS.App.Git;
-using RelaxKonOS.App.Git.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal partial class GitClientWorkspace
+public partial class GitClientWorkspace
 {
     public ObservableCollection<GitToolTab> GitTabs { get; } = [];
     public GitToolTab? SelectedGitTab { get; private set; }
@@ -64,13 +61,13 @@ internal partial class GitClientWorkspace
         {
             tab.CanClose = !_viewModel.IsBusy;
             if (tab.View is GitConsoleView console) console.RefreshLocalization();
-            if (tab.Kind == "history") tab.Title = LocalizedText.Format("git.dock.history_title", tab.Path?.Replace('\\', '/').Split('/').Last() ?? "");
+            if (tab.Kind == "history") tab.Title = _viewModel.FormatLabel("git.dock.history_title", tab.Path?.Replace('\\', '/').Split('/').Last() ?? "");
             else if (tab.Kind == "log")
             {
                 var reference = tab.Session?.SelectedLogBranch?.Value;
-                tab.Title = string.IsNullOrEmpty(reference) ? LocalizedText.Get("git.page.log") : LocalizedText.Format("git.editor.log_tab", reference);
+                tab.Title = string.IsNullOrEmpty(reference) ? _viewModel.Labels("git.page.log") : _viewModel.FormatLabel("git.editor.log_tab", reference);
             }
-            else tab.Title = LocalizedText.Get(tab.Kind switch { "console" => "git.dock.console", "branches" => "git.editor.branches", "remotes" => "git.page.remotes", "worktrees" => "git.workspace.worktrees", "stashes" => "git.workspace.stashes", _ => "git.page.overview" });
+            else tab.Title = _viewModel.Labels(tab.Kind switch { "console" => "git.dock.console", "branches" => "git.editor.branches", "remotes" => "git.page.remotes", "worktrees" => "git.workspace.worktrees", "stashes" => "git.workspace.stashes", _ => "git.page.overview" });
         }
     }
     private GitToolTab AddGitTab(string kind, Control control, GitClientViewModel? session = null, string? path = null)
@@ -165,7 +162,7 @@ internal partial class GitClientWorkspace
             _consoleAfter = Math.Max(_consoleAfter, entries.Max(entry => entry.Sequence));
             if (revision != _consoleRevision) return;
             var tab = GitTabs.FirstOrDefault(tab => tab.Kind == "console");
-            if (tab is null) tab = AddGitTab("console", new GitConsoleView(LocalizedText.Get));
+            if (tab is null) tab = AddGitTab("console", new GitConsoleView(_viewModel.Labels));
             ((GitConsoleView)tab.View).Append(entries);
         }
         catch (OperationCanceledException) { }
@@ -178,7 +175,7 @@ internal partial class GitClientWorkspace
     private async void DuplicateGitLog_Click(object? sender, RoutedEventArgs e) => await NewLogTabAsync(duplicate: true);
     private void ShowGitConsole_Click(object? sender, RoutedEventArgs e)
     {
-        var tab = GitTabs.FirstOrDefault(tab => tab.Kind == "console") ?? AddGitTab("console", new GitConsoleView(LocalizedText.Get));
+        var tab = GitTabs.FirstOrDefault(tab => tab.Kind == "console") ?? AddGitTab("console", new GitConsoleView(_viewModel.Labels));
         SelectGitTab(tab); _ = RefreshGitConsoleAsync();
     }
     private void GitTabList_Click(object? sender, RoutedEventArgs e)

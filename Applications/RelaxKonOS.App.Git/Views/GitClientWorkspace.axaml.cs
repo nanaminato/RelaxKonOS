@@ -1,5 +1,3 @@
-using RelaxKonOS.App.Git;
-using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.App.CodeEditor;
 using System.ComponentModel;
 using Avalonia;
@@ -7,13 +5,11 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Apps.CodeEditor;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 /// <summary>IDE-style tool windows: the editor stays mounted and the Git log spans the bottom.</summary>
-internal partial class GitClientWorkspace : UserControl
+public partial class GitClientWorkspace : UserControl
 {
     private readonly GitClientViewModel _viewModel;
     private readonly ProjectEditorViewModel _project;
@@ -137,7 +133,7 @@ internal partial class GitClientWorkspace : UserControl
             ProjectPopup.RecordCurrentProject();
         }
         if (e.PropertyName == nameof(ProjectEditorViewModel.ProjectName))
-            Header.Title = _project.ProjectName ?? LocalizedText.Get("git.title");
+            Header.Title = _project.ProjectName ?? _viewModel.Labels("git.title");
         if (e.PropertyName == nameof(ProjectEditorViewModel.IsGitVisible) && _project.IsGitVisible) ShowTool();
         UpdateLayoutState();
     }
@@ -230,7 +226,7 @@ internal partial class GitClientWorkspace : UserControl
                 "worktrees" or "stashes" => new GitWorkspaceMaintenanceView(_viewModel, kind),
                 "remotes" => new GitRemotesView(_viewModel),
                 "overview" => new GitOverviewView(_viewModel),
-                "console" => new GitConsoleView(LocalizedText.Get),
+                "console" => new GitConsoleView(_viewModel.Labels),
                 _ => new GitLogView(_viewModel),
             };
             tab = AddGitTab(kind, view, kind == "log" ? _viewModel : null);
@@ -320,7 +316,7 @@ internal partial class GitClientWorkspace : UserControl
     }
     private async void Shortcuts_Click(object? sender, RoutedEventArgs e)
     {
-        if (_viewModel.ShowMessageAsync is not null) await _viewModel.ShowMessageAsync(LocalizedText.Get("git.workspace.shortcuts_text"));
+        if (_viewModel.ShowMessageAsync is not null) await _viewModel.ShowMessageAsync(_viewModel.Labels("git.workspace.shortcuts_text"));
     }
     private int FindNavigationTarget(int direction)
     {

@@ -1,13 +1,11 @@
-using RelaxKonOS.App.Git;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 internal sealed class GitWorkspaceMaintenanceView : UserControl
 {
@@ -16,13 +14,13 @@ internal sealed class GitWorkspaceMaintenanceView : UserControl
         var stash = kind == "stashes";
         var root = new Grid { RowDefinitions = new("Auto,*"), Margin = new(10) };
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new(0, 0, 0, 8) };
-        var refresh = new Button { Content = LocalizedText.Get("git.refresh") };
+        var refresh = new Button { Content = vm.Labels("git.refresh") };
         refresh.Click += async (_, _) => await vm.RefreshWorkspaceReferencesAsync();
         toolbar.Children.Add(refresh);
-        toolbar.Children.Add(new Button { Content = LocalizedText.Get(stash ? "git.workspace.stash_save" : "git.workspace.new_worktree"), Command = stash ? vm.SaveStashCommand : vm.NewWorktreeCommand });
+        toolbar.Children.Add(new Button { Content = vm.Labels(stash ? "git.workspace.stash_save" : "git.workspace.new_worktree"), Command = stash ? vm.SaveStashCommand : vm.NewWorktreeCommand });
         root.Children.Add(toolbar);
         var list = new ListBox();
-        Button Action(string key, ICommand command, object parameter) => new() { Content = LocalizedText.Get(key), Command = command, CommandParameter = parameter, Padding = new(8, 3) };
+        Button Action(string key, ICommand command, object parameter) => new() { Content = vm.Labels(key), Command = command, CommandParameter = parameter, Padding = new(8, 3) };
         if (stash)
         {
             list.ItemsSource = vm.Stashes;

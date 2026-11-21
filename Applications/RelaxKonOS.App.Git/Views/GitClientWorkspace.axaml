@@ -1,13 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
-             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git" xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git"
              xmlns:editorApp="clr-namespace:RelaxKonOS.App.CodeEditor;assembly=RelaxKonOS.App.CodeEditor"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Git.Views"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
-             xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
-             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views" xmlns:gitAppViews="clr-namespace:RelaxKonOS.App.Git.Views;assembly=RelaxKonOS.App.Git"
-             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
+             xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI"
+             xmlns:views="clr-namespace:RelaxKonOS.App.Git.Views"
+             x:Class="RelaxKonOS.App.Git.Views.GitClientWorkspace"
              x:DataType="gitApp:GitClientViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <UserControl.Styles>
@@ -171,7 +171,7 @@
                         <TextBlock x:Name="ProjectNameLabel" Text="{Binding #Header.Title}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M2 3 L6 7 L10 3" Width="8" Height="5" Stretch="Uniform"/>
                     </StackPanel>
-                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><gitAppViews:GitHeaderProjectPopup x:Name="ProjectPopup"/></Flyout></Button.Flyout>
+                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><views:GitHeaderProjectPopup x:Name="ProjectPopup"/></Flyout></Button.Flyout>
                 </Button>
                 <Button x:Name="BranchBadge" Classes="header-action" Padding="7,3" MinHeight="24" MaxWidth="230" ToolTip.Tip="{loc:Loc git.editor.branches}" AutomationProperties.Name="{loc:Loc git.editor.branches}">
                     <StackPanel Orientation="Horizontal" Spacing="7">
@@ -179,7 +179,7 @@
                         <TextBlock Text="{Binding Status.Branch}" MaxWidth="175" TextTrimming="CharacterEllipsis"/>
                         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M2 3 L6 7 L10 3" Width="8" Height="5" Stretch="Uniform"/>
                     </StackPanel>
-                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><gitAppViews:GitHeaderBranchPopup x:Name="BranchPopup"/></Flyout></Button.Flyout>
+                    <Button.Flyout><Flyout Placement="BottomEdgeAlignedLeft"><views:GitHeaderBranchPopup x:Name="BranchPopup"/></Flyout></Button.Flyout>
                 </Button>
             </StackPanel>
             <StackPanel x:Name="HeaderActions" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -220,7 +220,7 @@
                             </Border>
                             <ContentControl x:Name="ProjectToolHost" Grid.Row="1" />
                         </Grid>
-                        <gitAppViews:GitCommitToolView x:Name="CommitTool" IsVisible="False" />
+                        <views:GitCommitToolView x:Name="CommitTool" IsVisible="False" />
                     </Grid>
                 </Border>
                 <GridSplitter x:Name="CommitSplitter" Grid.Column="1" Width="4" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" />
@@ -266,7 +266,7 @@
                 </Grid>
             </Border>
         </Grid>
-        <gitAppViews:GitProjectPickerView Grid.Row="1" IsVisible="{Binding IsPickerMode}" x:Name="PickerHost" />
+        <views:GitProjectPickerView Grid.Row="1" IsVisible="{Binding IsPickerMode}" x:Name="PickerHost" />
         <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <TextBlock x:Name="StatusLine" Text="{Binding StatusText}" FontSize="11" TextTrimming="CharacterEllipsis" />
