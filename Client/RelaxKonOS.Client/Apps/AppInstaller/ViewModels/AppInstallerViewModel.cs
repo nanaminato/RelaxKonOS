@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Deployment;
 
 namespace RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 
@@ -18,6 +19,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     private readonly AppPackageInstallerService _installer;
     private readonly LocalizationService _localization;
     private readonly Queue<AppPackageCandidate> _pending = new();
+    private JointAppDeploymentService.Review? _jointReview;
 
     public AppInstallerViewModel(AppPackageInstallerService installer)
     {
@@ -30,6 +32,9 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     public bool AllowPackageSelection { get; init; } = true;
     public Func<Task<IReadOnlyList<string>>>? RequestServerPackagesAsync { get; set; }
     public Func<string, string, Task>? ShowMessageAsync { get; set; }
+    internal JointAppDeploymentService? JointDeployment { get; set; }
+    internal Func<IReadOnlyList<DeploymentRequirement>, Task<IReadOnlyList<DeploymentRequirement>?>>? SelectOptionalAsync { get; set; }
+    internal Func<DeploymentPlan, Task<bool>>? ConfirmDeploymentAsync { get; set; }
 
     [ObservableProperty] private AppPackageCandidate? _currentPackage;
     [ObservableProperty] private LocalizedStatus _status;
@@ -102,7 +107,26 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         IsBusy = true;
         try
         {
-            var installed = await _installer.InstallAsync(CurrentPackage);
+            var candidate = CurrentPackage;
+            if (CurrentPackage.Manifest.Dependencies is { } dependencies && JointDeployment is { } joint)
+            {
+                if (_jointReview is null)
+                {
+                    var optional = dependencies.Optional ?? [];
+                    var selected = optional.Count == 0 ? optional
+                        : SelectOptionalAsync is { } select ? await select(optional) : null;
+                    if (selected is null || ConfirmDeploymentAsync is null) return;
+                    if (selected.Count > 0 || dependencies.Required is { Count: > 0 })
+                    {
+                        var review = await joint.PrepareAsync(candidate, selected, _storeLifetime.Token);
+                        if (!await ConfirmDeploymentAsync(review.Plan)) return;
+                        _jointReview = review;
+                    }
+                }
+            }
+            var installed = _jointReview is { } confirmed && JointDeployment is { } deployment
+                ? await deployment.ExecuteAsync(confirmed, _storeLifetime.Token)
+                : await _installer.InstallAsync(candidate);
             Status = LocalizedText.Ref(CurrentPackage.IsRepair ? "app_installer.status.repaired"
                 : CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
             CurrentPackage = null;
@@ -118,7 +142,10 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         }
         catch (Exception exception)
         {
-            Status = LocalizedText.Ref("app_installer.status.install_failed", exception.Message);
+            if (exception.Message is "deployment-plan-expired" or "deployment-snapshot-changed"
+                or "deployment-module-plan-expired")
+                _jointReview = null;
+            Status = LocalizedText.Ref("app_installer.status.install_failed", DeploymentProblem(exception.Message));
             await ReportAsync(LocalizedText.Get("app_installer.error.install_title"), Status);
         }
         finally { IsBusy = false; }
@@ -136,8 +163,17 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     private bool CanInstall() => CurrentPackage is not null && !IsBusy;
     private bool CanSkip() => CurrentPackage is not null && !IsBusy;
 
+    private static string DeploymentProblem(string problem) => problem switch
+    {
+        "deployment-module-AwaitingRestart" => LocalizedText.Get("app_installer.deployment.restart_pending"),
+        "deployment-module-not-effective" => LocalizedText.Get("app_installer.deployment.activation_pending"),
+        "module-http-403" => LocalizedText.Get("app_installer.deployment.no_permission"),
+        _ => problem,
+    };
+
     partial void OnCurrentPackageChanged(AppPackageCandidate? value)
     {
+        _jointReview = null;
         (PackageIcon as IDisposable)?.Dispose();
         PackageIcon = null;
         if (value?.IconData is { Length: > 0 } data)

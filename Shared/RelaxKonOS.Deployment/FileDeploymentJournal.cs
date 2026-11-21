@@ -36,6 +36,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
                     release.Version,
                     release.ArtifactIdentity,
                     release.Satisfied,
+                    release.CurrentVersion,
                     release.Requires,
                     Capabilities = release.Capabilities.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 })

@@ -13,7 +13,10 @@ public sealed record DeploymentRequirement(DeploymentPackageKey Package,
 
 public sealed record DeploymentRelease(DeploymentPackageKey Package, string Version, string ArtifactIdentity,
     bool Satisfied, ImmutableArray<DeploymentRequirement> Requires,
-    ImmutableDictionary<string, string> Capabilities);
+    ImmutableDictionary<string, string> Capabilities)
+{
+    public string? CurrentVersion { get; init; }
+}
 
 public sealed record DeploymentResolution(ImmutableArray<DeploymentRelease> OrderedReleases, string? Problem)
 {

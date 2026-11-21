@@ -32,7 +32,7 @@ public sealed class AppPackageInstallerService
         var installed = _packages.FindInstalled(manifest.Id);
         return new AppPackageCandidate(
             localPath,
-            displayName ?? (officialSha256 is null ? Path.GetFileName(localPath) : "OfficialApps / " + Path.GetFileName(localPath)),
+            displayName ?? (OfficialDesktopPackages.IsReserved(manifest.Id) ? "OfficialApps / " + Path.GetFileName(localPath) : Path.GetFileName(localPath)),
             manifest,
             installed?.Version,
             deleteWhenFinished,
@@ -72,7 +72,11 @@ public sealed class AppPackageInstallerService
         }
     }
 
-    public async Task<DeveloperAppInfo> InstallAsync(AppPackageCandidate candidate, CancellationToken cancellationToken = default)
+    public Task<DeveloperAppInfo> InstallAsync(AppPackageCandidate candidate, CancellationToken cancellationToken = default) =>
+        InstallAsync(candidate, cancellationToken, null);
+
+    internal async Task<DeveloperAppInfo> InstallAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
+        Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment)
     {
         await _installLock.WaitAsync(cancellationToken);
         try
@@ -84,7 +88,8 @@ public sealed class AppPackageInstallerService
                 if (OfficialDesktopPackages.IsReserved(candidate.Manifest.Id) && candidate.ExpectedSha256 is { } officialSha256)
                 {
                     installed = await _packages.InstallOfficialAsync(package, candidate.LocalPath, candidate.Manifest.Id, officialSha256,
-                        candidate.InstalledVersion, cancellationToken, candidate.OfficialRelease, candidate.ExpectedInstalledPath);
+                        candidate.InstalledVersion, cancellationToken, candidate.OfficialRelease, candidate.ExpectedInstalledPath,
+                        verifyDeployment);
                 }
                 else
                 {
@@ -92,7 +97,7 @@ public sealed class AppPackageInstallerService
                     if (candidate.ExpectedSha256 is not null && _packages.FindInstalled(candidate.Manifest.Id)?.Version != candidate.InstalledVersion)
                         throw new InvalidOperationException("component.state_revision_conflict");
                     authorization?.Revalidate();
-                    installed = await _packages.InstallAsync(package, launch: false, cancellationToken);
+                    installed = await _packages.InstallAsync(package, launch: false, cancellationToken, verifyDeployment);
                 }
             }
             // Dispose before deleting a staged file on Windows.

@@ -67,12 +67,19 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                 throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
         }
 
+        await VerifyAsync(plan, release, cancellationToken);
+    }
+
+    public async Task VerifyAsync(DeploymentPlan plan, DeploymentRelease release, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         var facts = await RequireServerAsync(plan.Target.ServerIdentity);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
+        var identity = release.ArtifactIdentity.Split('/')[^1];
         if (module is not { EffectiveEnabled: true, RestartRequired: false, RecoveryState: "none" }
             || module.EffectiveVersion != release.Version
             || !release.Capabilities.Keys.All(capability => module.Capabilities.Contains(capability, StringComparer.Ordinal))
-            || !release.Satisfied && module.ArtifactDigest != release.ArtifactIdentity.Split('/')[^1])
+            || identity.Length == 64 && module.ArtifactDigest != identity)
             throw new InvalidOperationException("deployment-module-not-effective");
 
         var health = await client.CheckHealthAsync();

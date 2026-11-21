@@ -337,6 +337,9 @@ public static class Bootstrapper
         services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-catalog-sources"), "desktop-user"));
         services.AddSingleton<AppPackageInstallerService>();
+        services.AddSingleton(_ => new RelaxKonOS.Deployment.FileDeploymentJournal(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "joint-deployment")));
+        services.AddSingleton<JointAppDeploymentService>();
         services.AddSingleton<DeveloperBridgeService>();
         // Port forwarding owns local ssh processes and a device-local, non-secret settings file.
         // It is intentionally not part of Workspace preference synchronization.

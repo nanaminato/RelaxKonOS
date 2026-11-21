@@ -76,6 +76,7 @@ public sealed partial class DeveloperPackageManager
     }
 
     internal OfficialDesktopPackages OfficialSource => _official;
+    internal IReadOnlyList<DeveloperAppRecord> InstalledRecords => _catalog.Values.ToArray();
 
     public IReadOnlyList<DeveloperAppInfo> Installed => _catalog.Values
         .OrderBy(record => record.DisplayName)
@@ -96,7 +97,9 @@ public sealed partial class DeveloperPackageManager
         if (!OfficialDesktopPackages.IsReserved(manifest.Id))
         {
             ValidateManifest(manifest, PackageOrigin.LocalPackage);
-            return (manifest, null);
+            if (manifest.Dependencies is null) return (manifest, null);
+            package.Position = 0;
+            return (manifest, Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(package, cancellationToken)));
         }
 
         ValidateManifest(manifest, PackageOrigin.OfficialDistribution);
@@ -184,13 +187,31 @@ public sealed partial class DeveloperPackageManager
         NotifyPackagesChanged();
     }
 
-    public async Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken = default)
+    public Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken = default) =>
+        InstallAsync(package, launch, cancellationToken, null);
+
+    internal async Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken,
+        Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment)
     {
         await _mutations.WaitAsync(cancellationToken);
         try
         {
             var record = await StageAsync((staging, ct) => ExtractAndReadManifestAsync(package, staging, ct),
-                PackageOrigin.LocalPackage, cancellationToken);
+                PackageOrigin.LocalPackage, cancellationToken, verifyDeployment);
+            if (verifyDeployment is not null)
+            {
+                try
+                {
+                    var result = await PromoteAsync(record, launch: false, writePointer: true, cancellationToken);
+                    if (!result.Ok) throw new InvalidOperationException(result.Message ?? result.Code);
+                    return ToInfo(record);
+                }
+                finally
+                {
+                    if (_catalog.GetValueOrDefault(record.Id)?.Path != record.Path)
+                        TryDeleteDirectory(record.Path);
+                }
+            }
             await CommitVersionAsync(record, cancellationToken);
             if (launch && !IsDesktopShellPackage(record.Path)) await LaunchAsync(record.Id);
             return ToInfo(record);
@@ -200,7 +221,7 @@ public sealed partial class DeveloperPackageManager
 
     internal async Task<DeveloperAppInfo> InstallOfficialAsync(Stream package, string path, string appId, string expectedSha256,
         string? installedVersion, CancellationToken cancellationToken, OfficialDesktopRelease? release = null,
-        string? installedPath = null)
+        string? installedPath = null, Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment = null)
     {
         await _mutations.WaitAsync(cancellationToken);
         try
@@ -223,7 +244,7 @@ public sealed partial class DeveloperPackageManager
                     throw new InvalidOperationException("component.package_expectation_changed");
                 if (release is not null) RequireReleaseManifest(release, manifest);
                 return manifest;
-            }, PackageOrigin.OfficialDistribution, cancellationToken);
+            }, PackageOrigin.OfficialDistribution, cancellationToken, verifyDeployment);
             try
             {
                 var result = await PromoteAsync(record, launch: false, writePointer: true, cancellationToken);
@@ -240,7 +261,8 @@ public sealed partial class DeveloperPackageManager
     }
 
     private async Task<DeveloperAppRecord> StageAsync(
-        Func<string, CancellationToken, Task<DeveloperPackageManifest>> extract, PackageOrigin origin, CancellationToken cancellationToken)
+        Func<string, CancellationToken, Task<DeveloperPackageManifest>> extract, PackageOrigin origin, CancellationToken cancellationToken,
+        Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment = null)
     {
         var staging = _drive.ResolveUnder(_root, $".staging/{Guid.NewGuid():N}");
         string? destination = null;
@@ -249,7 +271,9 @@ public sealed partial class DeveloperPackageManager
             Directory.CreateDirectory(staging);
             var manifest = await extract(staging, cancellationToken);
             ValidateManifest(manifest, origin);
-            if (manifest.Dependencies?.Required is { Count: > 0 })
+            if (verifyDeployment is not null)
+                await verifyDeployment(manifest, cancellationToken);
+            else if (manifest.Dependencies?.Required is { Count: > 0 })
                 throw new InvalidOperationException("This package requires joint deployment before installation.");
 
             // Keep every deployment in a distinct folder. A currently loaded DLL can be locked on

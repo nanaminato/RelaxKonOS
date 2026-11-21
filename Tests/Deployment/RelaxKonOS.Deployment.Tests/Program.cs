@@ -18,6 +18,12 @@ Check(resolved.Succeeded && resolved.OrderedReleases.Length == 4
     && resolved.OrderedReleases[0].Package == Key("shared") && resolved.OrderedReleases[1].Version == "1.0.0");
 Check(DeploymentResolver.Resolve(root, [Release("a", "1.0.0", new DeploymentRequirement(root.Package)),
     Release("b", "1.0.0")], []).Problem == "deployment-dependency-cycle");
+var optional = new DeploymentRequirement(Key("optional"));
+var withOptional = candidates.Append(Release("optional", "1.0.0") with { Satisfied = true });
+var selected = DeploymentResolver.Resolve(root, withOptional, [optional]);
+Check(selected.Succeeded && selected.OrderedReleases.Single(release => release.Package == optional.Package).Satisfied);
+Check(DeploymentResolver.Resolve(root, withOptional, []).OrderedReleases.All(release => release.Package != optional.Package));
+Check(!DeploymentResolver.Resolve(root, withOptional.Where(release => release.Package != Key("b")), []).Succeeded);
 var backend = new Backend();
 var journal = new FileDeploymentJournal(Path.Combine(Path.GetTempPath(), "rk-deployment-" + Guid.NewGuid().ToString("N")));
 var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);

@@ -49,7 +49,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                 continue;
             var identity = package is { Active: true, Quarantined: false } && package.Version == module.EffectiveVersion
                 ? Identity(package.SourceId, package.ReleaseId, package.ArtifactSha256)
-                : module.ArtifactDigest ?? module.ProcessGeneration!;
+                : module.ArtifactDigest ?? $"bundled/{module.Id}/{module.EffectiveVersion}";
             var dependencies = store.TryGetValue(identity, out var signedRelease)
                 ? signedRelease.Dependencies.Select(ToRequirement)
                 : module.Requires.Select(id => new DeploymentRequirement(Key(id)));
@@ -61,7 +61,11 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         {
             var release = entry.Value;
             releases.Add(new(Key(release.ModuleId), release.Version, entry.Key, false,
-                [..release.Dependencies.Select(ToRequirement)], Capabilities(release.Capabilities)));
+                [..release.Dependencies.Select(ToRequirement)], Capabilities(release.Capabilities))
+            {
+                CurrentVersion = modules.SingleOrDefault(item => item.Id == release.ModuleId)?.EffectiveVersion
+                    ?? installed.SingleOrDefault(item => item.ModuleId == release.ModuleId)?.Version,
+            });
         }
 
         return new(target, releases.ToImmutable(), store.ToImmutable());
