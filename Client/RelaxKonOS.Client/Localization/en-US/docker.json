@@ -21,6 +21,7 @@
     "docker.setup_guide.production_note": "This path is suitable for development, personal self-hosting, and validation. For unattended or production deployments, prefer a separate Linux host or VM and complete deployment acceptance there.",
     "docker.status.failed": "Docker status request failed: {0}",
     "docker.status.unavailable_operation": "Docker is unavailable. This operation was not performed.",
+    "docker.error.manage_permission": "Allow this app to manage Docker resources.",
     "docker.error.read_permission": "Allow this app to read Docker inventory.",
     "docker.error.not_signed_in": "You are not signed in to RelaxKonOS.",
     "docker.error.empty_response": "RelaxKonOS returned an empty response.",

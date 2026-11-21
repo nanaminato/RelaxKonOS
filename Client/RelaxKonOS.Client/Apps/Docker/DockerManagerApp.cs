@@ -35,8 +35,8 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.docker");
-        var inventory = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest).DockerInventory;
-        var vm = new DockerManagerViewModel(client) { Dependency = dependency, Inventory = inventory };
+        var resources = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest).DockerResources;
+        var vm = new DockerManagerViewModel(client) { Dependency = dependency, Resources = resources };
         var proxyViewModel = new DockerProxyViewModel(client, readOnly: true);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
         ManagedWindow? window = null;

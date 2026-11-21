@@ -19,7 +19,7 @@ internal static class DockerInventoryCapabilityChecks
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "docker-memory.json"));
         using var transport = new StatusTransport();
         using var http = new HttpClient(transport);
-        IServerDockerInventory capability = new ServerDockerInventoryCapability(new AppId("relaxkonos.docker"), grants,
+        IServerDockerResources capability = new ServerDockerResourcesCapability(new AppId("relaxkonos.docker"), grants,
             memory.Capture(auth), new RemoteDockerClient(http, auth));
 
         await RejectAsync<UnauthorizedAccessException>(() => capability.GetStatusAsync());
@@ -28,10 +28,18 @@ internal static class DockerInventoryCapabilityChecks
         var status = await capability.GetStatusAsync();
         Check(status is { IsAvailable: true, ServerVersion: "fixture" } && transport.Requests == 1,
             "The captured connection did not return Docker status.");
+        await RejectAsync<UnauthorizedAccessException>(() => capability.ApplyContainerActionAsync(
+            "fixture-container", "stop", new(Confirmed: true)));
+        Check(transport.Requests == 1, "The Docker read grant must not authorize a management request.");
+        grants.Manage = true;
+        var operation = await capability.ApplyContainerActionAsync("fixture-container", "stop", new(Confirmed: true));
+        Check(operation.Success && transport.Requests == 2, "A Docker management grant must forward the typed operation.");
         transport.BeforeResponse = () => session.ServiceId = "https://replacement.invalid";
         await RejectAsync<InvalidOperationException>(() => capability.GetStatusAsync());
         await RejectAsync<InvalidOperationException>(() => capability.GetStatusAsync());
-        Check(transport.Requests == 2, "A stale capability contacted the replacement server.");
+        await RejectAsync<InvalidOperationException>(() => capability.ApplyContainerActionAsync(
+            "fixture-container", "stop", new(Confirmed: true)));
+        Check(transport.Requests == 3, "A stale capability contacted the replacement server.");
         Console.WriteLine("Docker inventory SDK permission checks and connection binding passed.");
     }
 
@@ -54,11 +62,18 @@ internal static class DockerInventoryCapabilityChecks
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Check(request.Method == HttpMethod.Get && request.RequestUri?.Host == "fixture.invalid"
-                && request.RequestUri.AbsolutePath == DockerApiRoutes.Status && request.Headers.Authorization?.Parameter == "fixture-token",
-                "The Docker inventory did not use the authenticated read route.");
+            Check(request.RequestUri?.Host == "fixture.invalid" && request.Headers.Authorization?.Parameter == "fixture-token",
+                "The Docker capability did not use the captured authenticated connection.");
             Requests++;
             BeforeResponse?.Invoke();
+            if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == DockerApiRoutes.ContainerAction
+                .Replace("{id}", "fixture-container").Replace("{action}", "stop"))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new DockerOperationResult(true, "")),
+                });
+            Check(request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == DockerApiRoutes.Status,
+                "The Docker capability did not use the expected read or management route.");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = JsonContent.Create(new DockerStatusDto(true, "", "fixture", "linux", "x64")),
@@ -69,8 +84,10 @@ internal static class DockerInventoryCapabilityChecks
     private sealed class Permission : IAppPermissionManager
     {
         public bool Granted { get; set; }
+        public bool Manage { get; set; }
         public bool IsGranted(AppId id, string permission) =>
-            Granted && id.Value == "relaxkonos.docker" && permission == AppPermissions.ServerDockerRead;
+            id.Value == "relaxkonos.docker" && (permission == AppPermissions.ServerDockerRead && Granted
+                || permission == AppPermissions.ServerDockerManage && Manage);
         public AppPermissionStatus GetStatus(AppId id, string permission) =>
             IsGranted(id, permission) ? AppPermissionStatus.Granted : AppPermissionStatus.Denied;
         public void SetStatus(AppId id, string permission, AppPermissionStatus status) => throw new NotSupportedException();

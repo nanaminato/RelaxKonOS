@@ -11,7 +11,7 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// <summary>State and safe, typed operations for the server-local Docker Manager.</summary>
 public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) : ObservableObject
 {
-    public IServerDockerInventory Inventory { get; init; } = client;
+    public IServerDockerResources Resources { get; init; } = client;
     /// <summary>Docker Engine installation lives in Component Center; settings only observes and navigates.</summary>
     public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
 
@@ -115,12 +115,12 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         IsLoading = true;
         try
         {
-            var statusTask = Inventory.GetStatusAsync();
-            var containersTask = Inventory.ListContainersAsync();
-            var imagesTask = Inventory.ListImagesAsync();
-            var networksTask = Inventory.ListNetworksAsync();
-            var volumesTask = Inventory.ListVolumesAsync();
-            var stacksTask = Inventory.ListStacksAsync();
+            var statusTask = Resources.GetStatusAsync();
+            var containersTask = Resources.ListContainersAsync();
+            var imagesTask = Resources.ListImagesAsync();
+            var networksTask = Resources.ListNetworksAsync();
+            var volumesTask = Resources.ListVolumesAsync();
+            var stacksTask = Resources.ListStacksAsync();
             await Task.WhenAll(statusTask, containersTask, imagesTask, networksTask, volumesTask, stacksTask);
             var status = await statusTask;
             IsDockerAvailable = status.IsAvailable;
@@ -228,7 +228,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var container = SelectedContainer; if (container is null) return;
         await RunQuietReadAsync(LocalizedText.Get("docker.container.logs"), async () =>
         {
-            var logs = await client.GetContainerLogsAsync(container.Id);
+            var logs = await Resources.GetContainerLogsAsync(container.Id);
             if (logs is null) return false;
             ContainerLogs = string.Join(Environment.NewLine, logs.Lines);
             StatusText = LocalizedText.Ref("docker.action.succeeded", OperationText("logs"), container.Names);
@@ -240,7 +240,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var container = SelectedContainer; if (container is null) return;
         await RunQuietReadAsync(LocalizedText.Get("docker.container.stats"), async () =>
         {
-            var stats = await client.GetContainerStatsAsync(container.Id);
+            var stats = await Resources.GetContainerStatsAsync(container.Id);
             if (stats is null) return false;
             ContainerStats = LocalizedText.Format("docker.stats.summary", stats.CpuPercent, stats.MemoryUsage, stats.NetworkIo, stats.BlockIo);
             StatusText = LocalizedText.Ref("docker.action.succeeded", OperationText("stats"), container.Names);
@@ -279,7 +279,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         if (container is null) return;
         await RunQuietReadAsync(LocalizedText.Get("docker.resource.details"), async () =>
         {
-            var details = await client.GetContainerAsync(container.Id);
+            var details = await Resources.GetContainerAsync(container.Id);
             ContainerDetails = details;
             if (details is null) return false;
             ContainerDetailsText = FormatContainerDetails(details);
@@ -303,13 +303,13 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         if (action is "start" or "stop" or "restart" or "pause" or "unpause")
         {
             await RunQuietOperationAsync(
-                () => client.ApplyContainerActionAsync(container.Id, action, new DockerContainerActionRequest(Confirmed: confirmed)),
+                () => Resources.ApplyContainerActionAsync(container.Id, action, new DockerContainerActionRequest(Confirmed: confirmed)),
                 result => result.Success,
                 status);
             return;
         }
         await RunOperationAsync(
-            () => client.ApplyContainerActionAsync(container.Id, action, new DockerContainerActionRequest(Confirmed: confirmed)),
+            () => Resources.ApplyContainerActionAsync(container.Id, action, new DockerContainerActionRequest(Confirmed: confirmed)),
             status,
             operationName: LocalizedText.Format("docker.operation.container_action", OperationText(action), container.Names));
     }
@@ -322,7 +322,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var name = ContainerName.Trim();
         if (name.Equals(container.Names, StringComparison.Ordinal)) return true;
         return await RunOperationAsync(
-            () => client.UpdateContainerAsync(container.Id, new DockerContainerUpdateRequest(name)),
+            () => Resources.UpdateContainerAsync(container.Id, new DockerContainerUpdateRequest(name)),
             result => result.Success ? LocalizedText.Ref("docker.container.updated", name) : LocalizedText.Ref("docker.container.update_failed", ProblemText(result.ProblemCode)),
             operationName: LocalizedText.Format("docker.operation.update_container", container.Names));
     }
@@ -340,7 +340,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var name = StackName.Trim();
         await RunQuietReadAsync(LocalizedText.Get("docker.stack.validate"), async () =>
         {
-            var preview = await client.PreviewStackAsync(new DockerStackDefinitionDto(name, ComposeYaml));
+            var preview = await Resources.PreviewStackAsync(new DockerStackDefinitionDto(name, ComposeYaml));
             StackPreviewText = FormatPreview(preview);
             StatusText = LocalizedText.Ref("docker.stack.preview_succeeded", name, preview.Services.Count, preview.Volumes.Count, preview.Networks.Count);
             return true;
@@ -362,9 +362,9 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
             // The deployment carries the identity of the exact document the operator approved, so an
             // approval given for a different file is refused instead of applied. The parse is repeated
             // here rather than reusing an earlier click's answer.
-            var preview = await client.PreviewStackAsync(definition);
+            var preview = await Resources.PreviewStackAsync(definition);
             AppendOperationLog(Lines(FormatPreview(preview)));
-            var operation = await client.DeployStackAsync(
+            var operation = await Resources.DeployStackAsync(
                 new DockerStackDeployRequest(definition, preview.DefinitionVersion),
                 StackKey(DockerStackOperationKind.Deploy, name, preview.DefinitionVersion));
             _ = TrackAcceptedDeploymentAsync(operation);
@@ -400,8 +400,8 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         if (stack is null) return;
         await RunQuietReadAsync(LocalizedText.Get("docker.stack.services"), async () =>
         {
-            Replace(StackServices, await client.ListStackServicesAsync(stack.Name));
-            Replace(StackOperations, (await client.ListStackOperationsAsync(stack.Name)).Select(operation => new StackOperationRow(operation)));
+            Replace(StackServices, await Resources.ListStackServicesAsync(stack.Name));
+            Replace(StackOperations, (await Resources.ListStackOperationsAsync(stack.Name)).Select(operation => new StackOperationRow(operation)));
             StatusText = LocalizedText.Ref("docker.stack.services_loaded", stack.Name, StackServices.Count);
             return true;
         });
@@ -425,7 +425,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         DockerStackDefinitionDto? definition = null;
         await RunQuietReadAsync(LocalizedText.Get("docker.stack.edit"), async () =>
         {
-            definition = await client.GetStackDefinitionAsync(stack.Name);
+            definition = await Resources.GetStackDefinitionAsync(stack.Name);
             if (definition is null) return false;
             StatusText = LocalizedText.Ref("docker.stack.source_loaded", stack.Name);
             return true;
@@ -473,7 +473,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     {
         try
         {
-            var operation = await client.ApplyStackActionAsync(name, kind, new DockerStackActionRequest(confirmed),
+            var operation = await Resources.ApplyStackActionAsync(name, kind, new DockerStackActionRequest(confirmed),
                 StackKey(kind, name, confirmed.ToString()));
             await TrackStackOperationAsync(operation);
         }
@@ -496,7 +496,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         if (string.IsNullOrWhiteSpace(ImageReference)) { StatusText = LocalizedText.Ref("docker.image.required"); return false; }
         var imageReference = ImageReference.Trim();
         return await RunOperationAsync(
-            () => client.PullImageAsync(new DockerImageOperationRequest(imageReference)),
+            () => Resources.PullImageAsync(new DockerImageOperationRequest(imageReference)),
             result => result.Success ? LocalizedText.Ref("docker.image.pull_succeeded", imageReference) : LocalizedText.Ref("docker.image.pull_failed", ProblemText(result.ProblemCode)),
             onSuccess: () => ImageReference = string.Empty,
             operationName: LocalizedText.Format("docker.operation.pull", imageReference));
@@ -511,7 +511,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         if (string.IsNullOrWhiteSpace(ContainerName) || string.IsNullOrWhiteSpace(ContainerImage)) { StatusText = LocalizedText.Ref("docker.container.required"); return false; }
         var name = ContainerName.Trim();
         return await RunOperationAsync(
-            () => client.CreateContainerAsync(new DockerContainerCreateRequest(
+            () => Resources.CreateContainerAsync(new DockerContainerCreateRequest(
                 name, ContainerImage.Trim(), Lines(ContainerArguments), Lines(ContainerPorts), Lines(ContainerEnvironment), Lines(ContainerMounts), ContainerNetwork, ContainerRestartPolicy)),
             result => result.Success ? LocalizedText.Ref("docker.container.created", name) : LocalizedText.Ref("docker.container.create_failed", ProblemText(result.ProblemCode)),
             onSuccess: () =>
@@ -527,7 +527,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var image = SelectedImage; if (image is null) return;
         if (!await ConfirmDeletionAsync(LocalizedText.Format("docker.image.delete_confirmation", image.Repository))) return;
         await RunOperationAsync(
-            () => client.DeleteImageAsync(image.Id, new DockerImageOperationRequest(image.Id, true)),
+            () => Resources.DeleteImageAsync(image.Id, new DockerImageOperationRequest(image.Id, true)),
             result => result.Success ? LocalizedText.Ref("docker.image.deleted", image.Repository) : LocalizedText.Ref("docker.image.delete_failed", ProblemText(result.ProblemCode)),
             operationName: LocalizedText.Format("docker.operation.delete_image", image.Repository));
     }
@@ -543,7 +543,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         if (string.IsNullOrWhiteSpace(NetworkName)) { StatusText = LocalizedText.Ref("docker.network.required"); return false; }
         var name = NetworkName.Trim();
         return await RunOperationAsync(
-            () => client.CreateNetworkAsync(new DockerNetworkCreateRequest(name, SelectedNetworkDriver)),
+            () => Resources.CreateNetworkAsync(new DockerNetworkCreateRequest(name, SelectedNetworkDriver)),
             result => result.Success ? LocalizedText.Ref("docker.network.created", name) : LocalizedText.Ref("docker.network.create_failed", ProblemText(result.ProblemCode)),
             onSuccess: () => NetworkName = string.Empty,
             operationName: LocalizedText.Format("docker.operation.create_network", name));
@@ -553,7 +553,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var network = SelectedNetwork; if (network is null) return;
         if (!await ConfirmDeletionAsync(LocalizedText.Format("docker.network.delete_confirmation", network.Name))) return;
         await RunOperationAsync(
-            () => client.DeleteNetworkAsync(network.Id, true),
+            () => Resources.DeleteNetworkAsync(network.Id, true),
             result => result.Success ? LocalizedText.Ref("docker.network.deleted", network.Name) : LocalizedText.Ref("docker.network.delete_failed", ProblemText(result.ProblemCode)),
             operationName: LocalizedText.Format("docker.operation.delete_network", network.Name));
     }
@@ -566,7 +566,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         ResourceDetailsText = string.Empty;
         await RunQuietReadAsync(LocalizedText.Get("docker.resource.details"), async () =>
         {
-            var details = await client.GetNetworkAsync(network.Id);
+            var details = await Resources.GetNetworkAsync(network.Id);
             if (details is null) return false;
 
             ResourceDetailsTitle = LocalizedText.Format("docker.resource.network_details", network.Name);
@@ -594,7 +594,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         if (string.IsNullOrWhiteSpace(VolumeName)) { StatusText = LocalizedText.Ref("docker.volume.required"); return false; }
         var name = VolumeName.Trim();
         return await RunOperationAsync(
-            () => client.CreateVolumeAsync(new DockerVolumeCreateRequest(name, SelectedVolumeDriver)),
+            () => Resources.CreateVolumeAsync(new DockerVolumeCreateRequest(name, SelectedVolumeDriver)),
             result => result.Success ? LocalizedText.Ref("docker.volume.created", name) : LocalizedText.Ref("docker.volume.create_failed", ProblemText(result.ProblemCode)),
             onSuccess: () => VolumeName = string.Empty,
             operationName: LocalizedText.Format("docker.operation.create_volume", name));
@@ -604,7 +604,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var volume = SelectedVolume; if (volume is null) return;
         if (!await ConfirmDeletionAsync(LocalizedText.Format("docker.volume.delete_confirmation", volume.Name))) return;
         await RunOperationAsync(
-            () => client.DeleteVolumeAsync(volume.Name, true),
+            () => Resources.DeleteVolumeAsync(volume.Name, true),
             result => result.Success ? LocalizedText.Ref("docker.volume.deleted", volume.Name) : LocalizedText.Ref("docker.volume.delete_failed", ProblemText(result.ProblemCode)),
             operationName: LocalizedText.Format("docker.operation.delete_volume", volume.Name));
     }
@@ -617,7 +617,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         ResourceDetailsText = string.Empty;
         await RunQuietReadAsync(LocalizedText.Get("docker.resource.details"), async () =>
         {
-            var details = await client.GetVolumeAsync(volume.Name);
+            var details = await Resources.GetVolumeAsync(volume.Name);
             if (details is null) return false;
 
             ResourceDetailsTitle = LocalizedText.Format("docker.resource.volume_details", volume.Name);
@@ -684,7 +684,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         while (current.State is DockerStackOperationState.Queued or DockerStackOperationState.Running)
         {
             await Task.Delay(TimeSpan.FromSeconds(1));
-            current = await client.GetStackOperationAsync(current.OperationId) ?? current;
+            current = await Resources.GetStackOperationAsync(current.OperationId) ?? current;
             StatusText = LocalizedText.Ref("docker.stack.operation_running", action, current.ProjectName, current.Stage.ToString());
             OperationStatus = StatusText;
             if (lastStage != current.Stage.ToString())
@@ -694,7 +694,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
             }
             try
             {
-                var live = await client.GetStackOperationDiagnosticsAsync(current.OperationId);
+                var live = await Resources.GetStackOperationDiagnosticsAsync(current.OperationId);
                 if (live is not null) diagnosticSnapshot = string.Join(Environment.NewLine, live.Lines);
             }
             catch (Exception) { /* A diagnostic read must not interrupt tracking the operation. */ }
@@ -703,7 +703,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
 
         try
         {
-            var diagnostics = await client.GetStackOperationDiagnosticsAsync(current.OperationId);
+            var diagnostics = await Resources.GetStackOperationDiagnosticsAsync(current.OperationId);
             if (diagnostics is not null)
                 OperationLog = string.Join(Environment.NewLine, new[] { operationPrefix }.Concat(diagnostics.Lines));
         }
@@ -816,7 +816,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     {
         try
         {
-            var status = await Inventory.GetStatusAsync();
+            var status = await Resources.GetStatusAsync();
             if (status.IsAvailable) return;
             IsDockerAvailable = false;
             StatusText = LocalizedText.Ref("docker.status.unavailable", status.ProblemCode);
