@@ -1,4 +1,5 @@
 using RelaxKonOS.App.Certificates;
+using RelaxKonOS.App.Certificates.Views;
 using RelaxKonOS.Client.Apps.Certificates.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;

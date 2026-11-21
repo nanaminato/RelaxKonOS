@@ -1,4 +1,5 @@
 using RelaxKonOS.App.Certificates;
+using RelaxKonOS.App.Certificates.Views;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Controls;
@@ -6,6 +7,7 @@ using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.WindowManager;
 using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
@@ -32,9 +34,9 @@ internal static class CertificateEditorChecks
             var result = manager.ShowDialogAsync<bool>(owner, "Certificate", dialog =>
             {
                 handle = dialog;
-                var name = selfSigned ? "SelfSignedCertificateDialogView" : "CertificateRequestDialogView";
-                var type = typeof(CertificateManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Certificates.Views." + name)!;
-                editor = (Control)Activator.CreateInstance(type, [vm, dialog])!;
+                editor = selfSigned
+                    ? new SelfSignedCertificateDialogView(vm, dialog, DraftDialogGuard.Attach)
+                    : new CertificateRequestDialogView(vm, dialog, DraftDialogGuard.Attach);
                 return editor;
             });
             if (selfSigned) vm.SelfSignedValidityDays = 366;
@@ -55,6 +57,10 @@ internal static class CertificateEditorChecks
             vm.SelectedKeyAlgorithm = vm.KeyAlgorithms[0];
             var submitted = selfSigned ? vm.TryCreateSelfSignedCertificateAsync() : vm.TryRequestCertificateAsync();
             Check(vm.IsOperationRunning && !vm.CanEditCertificateDraft, "Certificate submission locks fields.");
+            Dispatcher.UIThread.RunJobs();
+            Check(editor.FindControl<Button>("StopOperationButton") is { IsVisible: true, Content: string stop }
+                && stop == LocalizedText.Get("common.stop"),
+                "The certificate editor localizes the stop action while an operation is running.");
             var repeated = selfSigned ? vm.TryCreateSelfSignedCertificateAsync() : vm.TryRequestCertificateAsync();
             Check(!repeated.GetAwaiter().GetResult() && stub.Calls == 1, "Direct repeated certificate submission is blocked.");
             manager.Close(handle.Window!);

@@ -3,14 +3,15 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Certificates.Views;
+namespace RelaxKonOS.App.Certificates.Views;
 
-internal partial class CertificateRequestDialogView : UserControl
+public partial class CertificateRequestDialogView : UserControl
 {
     private readonly CertificateManagerViewModel _viewModel;
     private readonly ModalDialog<bool> _dialog;
 
-    public CertificateRequestDialogView(CertificateManagerViewModel viewModel, ModalDialog<bool> dialog)
+    public CertificateRequestDialogView(CertificateManagerViewModel viewModel, ModalDialog<bool> dialog,
+        Action<ModalDialog<bool>, Func<bool>, Func<bool>> attachDraftGuard)
     {
         _viewModel = viewModel;
         _dialog = dialog;
@@ -19,7 +20,7 @@ internal partial class CertificateRequestDialogView : UserControl
         viewModel.EditorStatus = default;
         var initial = (viewModel.Domains, viewModel.ContactEmail, viewModel.SelectedChallengeType?.Value,
             viewModel.SelectedKeyAlgorithm?.Value, viewModel.AcceptedTerms, viewModel.PublicReachabilityConfirmed);
-        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanEditCertificateDraft,
+        attachDraftGuard(dialog, () => !viewModel.CanEditCertificateDraft,
             () => initial != (viewModel.Domains, viewModel.ContactEmail, viewModel.SelectedChallengeType?.Value,
                 viewModel.SelectedKeyAlgorithm?.Value, viewModel.AcceptedTerms, viewModel.PublicReachabilityConfirmed));
     }

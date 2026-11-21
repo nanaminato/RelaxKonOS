@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:certificateApp="clr-namespace:RelaxKonOS.App.Certificates;assembly=RelaxKonOS.App.Certificates"
-             x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateRequestDialogView"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Certificates"
+             xmlns:certificateApp="clr-namespace:RelaxKonOS.App.Certificates"
+             x:Class="RelaxKonOS.App.Certificates.Views.CertificateRequestDialogView"
              x:DataType="certificateApp:CertificateManagerViewModel" Classes="builtin-app">
     <!-- The form scrolls independently, so the decision controls remain visible at the lower right. -->
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
@@ -56,8 +56,8 @@
           <WrapPanel HorizontalAlignment="Right">
             <Button Content="{loc:Loc certificates.request.preflight}" Command="{Binding PreflightCommand}" HorizontalContentAlignment="Center" />
             <Button Classes="primary" Content="{loc:Loc certificates.request.submit}" Click="Request_Click" HorizontalContentAlignment="Center" IsEnabled="{Binding CanEditCertificateDraft}" />
-            <Button Content="{loc:Loc common.stop}" Command="{Binding CancelOperationCommand}" IsVisible="{Binding IsOperationRunning}" />
-            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" IsEnabled="{Binding CanEditCertificateDraft}" />
+            <Button x:Name="StopOperationButton" Content="{loc:Loc certificates.stop}" Command="{Binding CancelOperationCommand}" IsVisible="{Binding IsOperationRunning}" />
+            <Button Content="{loc:Loc certificates.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" IsEnabled="{Binding CanEditCertificateDraft}" />
           </WrapPanel>
         </StackPanel>
     </Grid>

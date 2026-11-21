@@ -3,14 +3,15 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Certificates.Views;
+namespace RelaxKonOS.App.Certificates.Views;
 
-internal partial class SelfSignedCertificateDialogView : UserControl
+public partial class SelfSignedCertificateDialogView : UserControl
 {
     private readonly CertificateManagerViewModel _viewModel;
     private readonly ModalDialog<bool> _dialog;
 
-    public SelfSignedCertificateDialogView(CertificateManagerViewModel viewModel, ModalDialog<bool> dialog)
+    public SelfSignedCertificateDialogView(CertificateManagerViewModel viewModel, ModalDialog<bool> dialog,
+        Action<ModalDialog<bool>, Func<bool>, Func<bool>> attachDraftGuard)
     {
         _viewModel = viewModel;
         _dialog = dialog;
@@ -18,7 +19,7 @@ internal partial class SelfSignedCertificateDialogView : UserControl
         DataContext = viewModel;
         viewModel.EditorStatus = default;
         var initial = (viewModel.SelfSignedDomains, viewModel.SelfSignedValidityDays, viewModel.SelectedKeyAlgorithm?.Value);
-        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanEditCertificateDraft,
+        attachDraftGuard(dialog, () => !viewModel.CanEditCertificateDraft,
             () => initial != (viewModel.SelfSignedDomains, viewModel.SelfSignedValidityDays, viewModel.SelectedKeyAlgorithm?.Value));
     }
 

@@ -1,6 +1,8 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "certificates.stop": "停止",
+    "certificates.cancel": "キャンセル",
     "certificates.delete": "削除",
     "certificates.refresh": "更新",
     "certificates.subtitle": "TLS 証明書を要求・デプロイ",

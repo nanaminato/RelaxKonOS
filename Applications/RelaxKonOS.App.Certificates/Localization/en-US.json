@@ -1,6 +1,8 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "certificates.stop": "Stop",
+    "certificates.cancel": "Cancel",
     "certificates.delete": "Delete",
     "certificates.refresh": "Refresh",
     "certificates.subtitle": "Request and deploy TLS certificates",
