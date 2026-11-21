@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using RelaxKonOS.Client.Localization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -110,6 +111,17 @@ internal static class OfficialStoreChecks
                 Check(first is { Version: "1.0.0" }, $"Install should activate version 1.0.0. {model.Status}");
                 Check(applications.SupportsFile(id, "/files/README"), "Install registers the Notepad file association.");
                 Check(!File.Exists(firstReview!.LocalPath), "Install removes the downloaded artifact.");
+
+                Check(model.DownloadOfficialCommand.CanExecute(null)
+                    && model.OfficialActionLabel == LocalizedText.Get("app_installer.action.repair"),
+                    "The trusted installed version is available for repair.");
+                await model.DownloadOfficialCommand.ExecuteAsync(null);
+                Check(model.CurrentPackage?.IsRepair == true, "Repair requires a same-version package review.");
+                await model.InstallCommand.ExecuteAsync(null);
+                var repaired = packages.FindInstalled(AppIdText);
+                Check(repaired is { Version: "1.0.0" } && repaired.InstallationPath != first!.InstallationPath
+                    && Directory.Exists(first.InstallationPath) && applications.IsRegistered(id),
+                    "Repair verifies and promotes a fresh version directory while preserving the version and registration.");
 
                 releases = [Release("1.0.0", v1), Release("1.1.0", v2)];
                 await model.RefreshOfficialCommand.ExecuteAsync(null);

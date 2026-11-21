@@ -162,8 +162,8 @@ public sealed class AppPackageInstallerService
     internal async Task<AppPackageCandidate> StageOfficialAsync(OfficialDesktopRelease release, CancellationToken ct)
     {
         var installed = _packages.FindInstalled(release.AppId);
-        if (!IsNewer(release, installed))
-            throw new InvalidOperationException("Choose a newer official desktop release.");
+        if (!CanInstallRelease(release, installed))
+            throw new InvalidOperationException("Choose the installed version or a newer official desktop release.");
         if (release.CatalogUri is null)
         {
             var candidate = await InspectLocalAsync(_packages.OfficialSource.BundledPath(release.AppId), cancellationToken: ct);
@@ -198,7 +198,8 @@ public sealed class AppPackageInstallerService
 
     internal Task<bool> UninstallOfficialAsync(DeveloperAppInfo reviewed) => _packages.UninstallOfficialAsync(reviewed);
 
-    internal static bool IsNewer(OfficialDesktopRelease release, DeveloperAppInfo? installed) => installed is null
+    internal static bool CanInstallRelease(OfficialDesktopRelease release, DeveloperAppInfo? installed) => installed is null
+        || release.Version == installed.Version
         || Version.TryParse(installed.Version, out var current) && Version.Parse(release.Version) > current;
 
     internal static bool IsStoreFailure(Exception error) => error is IOException or InvalidDataException or InvalidOperationException

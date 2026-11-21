@@ -248,9 +248,8 @@ public sealed partial class DeveloperPackageManager
             var installed = FindInstalled(appId);
             if (installed?.Version != installedVersion || release is not null && installed?.InstallationPath != installedPath)
                 throw new InvalidOperationException("component.state_revision_conflict");
-            if (release is not null && installed is not null
-                && (!Version.TryParse(installed.Version, out var current) || Version.Parse(release.Version) <= current))
-                throw new InvalidOperationException("Choose a newer official desktop release.");
+            if (release is not null && !AppPackages.AppPackageInstallerService.CanInstallRelease(release, installed))
+                throw new InvalidOperationException("Choose the installed version or a newer official desktop release.");
 
             var record = await StageAsync(async (staging, ct) =>
             {

@@ -18,7 +18,9 @@ public sealed partial class AppInstallerViewModel
     public bool ShowPackageSecurityWarning => CurrentPackage is { } package
         && !OfficialDesktopPackages.IsExternalOfficialId(package.Manifest.Id);
     public string OfficialActionLabel => LocalizedText.Get(SelectedOfficialApp?.Installed is null
-        ? "app_installer.store.download" : "app_installer.store.download_update");
+        ? "app_installer.store.download"
+        : SelectedOfficialApp.Installed.Version == SelectedOfficialApp.Release?.Version
+            ? "app_installer.action.repair" : "app_installer.store.download_update");
 
     [ObservableProperty] private IReadOnlyList<OfficialAppListing> _officialApps = [];
     [ObservableProperty] private OfficialAppListing? _selectedOfficialApp;
@@ -26,7 +28,7 @@ public sealed partial class AppInstallerViewModel
 
     private bool CanRefreshOfficial() => ShowOfficialStore && !IsBusy && !_disposed;
     private bool CanDownloadOfficial() => CanRefreshOfficial() && SelectedOfficialApp is { } row
-        && row.Release is { } release && AppPackageInstallerService.IsNewer(release, row.Installed);
+        && row.Release is { } release && AppPackageInstallerService.CanInstallRelease(release, row.Installed);
     private bool CanUninstallOfficial() => CanRefreshOfficial() && SelectedOfficialApp?.Installed is not null
         && ConfirmUninstallAsync is not null;
 
