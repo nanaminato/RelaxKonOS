@@ -1,0 +1,13 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "common.back": "后退",
+    "common.close": "关闭",
+    "common.forward": "前进",
+    "common.home": "主页",
+    "common.refresh": "刷新",
+    "common.save": "保存",
+    "common.settings_ellipsis": "设置...",
+    "common.stop": "停止"
+  }
+}

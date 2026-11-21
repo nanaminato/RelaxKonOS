@@ -8,7 +8,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Browser;
 using RelaxKonOS.App.Browser.ViewModels;
-using RelaxKonOS.Client.Apps.Browser.Views;
+using RelaxKonOS.App.Browser.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Protocol.Desktop;
@@ -163,6 +163,8 @@ internal static class BrowserChecks
         popup.ShowAt(more); Dispatcher.UIThread.RunJobs();
         var items = popup.Items.OfType<MenuItem>().ToArray();
         Check(items.All(item => item.DataContext is BookmarkDto), "Row menus inherit their bookmark rather than the browser VM");
+        Check(items.Single(item => item.Tag as string == "copy").Header as string == model.Text.Get("browser.copy_link"),
+            "The bookmark popup resolves its action labels through the browser workspace.");
         var bookmark = (BookmarkDto)items[0].DataContext!;
         Uri? navigated = null;
         model.ViewNavigateRequested = uri => navigated = uri;
@@ -185,6 +187,8 @@ internal static class BrowserChecks
         popup.ShowAt(more); Dispatcher.UIThread.RunJobs();
         items = popup.Items.OfType<MenuItem>().ToArray();
         Check(items.All(item => item.DataContext is BrowserHistoryRow), "History row menus inherit their presentation record");
+        Check(items.Single(item => item.Tag as string == "delete").Header as string == model.Text.Get("browser.delete_history"),
+            "The history popup resolves its action labels through the browser workspace.");
         var history = ((BrowserHistoryRow)items[0].DataContext!).Item;
         tabs = model.Tabs.Count;
         items.Single(item => item.Tag as string == "new-tab").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));

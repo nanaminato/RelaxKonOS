@@ -166,7 +166,8 @@ public sealed partial class BrowserViewModel : BrowserLocalizedObject
     }
 
     [ObservableProperty] private string _addressText = string.Empty;
-    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(LoadingStatusText))] private bool _isLoading;
+    public string LoadingStatusText => Text.Get(IsLoading ? "browser.status.loading" : "browser.status.ready");
     [ObservableProperty] private BrowserLabel _statusText;
     [ObservableProperty] private bool _canGoBack;
     [ObservableProperty] private bool _canGoForward;

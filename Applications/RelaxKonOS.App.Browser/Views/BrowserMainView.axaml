@@ -1,10 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.App.Browser.ViewModels;assembly=RelaxKonOS.App.Browser"
-             xmlns:conv="clr-namespace:RelaxKonOS.Client.Apps.Browser.Converters"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Browser"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.Browser.ViewModels"
+             xmlns:conv="clr-namespace:RelaxKonOS.App.Browser.Converters"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.Browser;assembly=RelaxKonOS.Protocol"
-             x:Class="RelaxKonOS.Client.Apps.Browser.Views.BrowserMainView" x:Name="Root"
+             x:Class="RelaxKonOS.App.Browser.Views.BrowserMainView" x:Name="Root"
              x:DataType="vm:BrowserViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
@@ -18,7 +18,7 @@
     </UserControl.Resources>
 
     <UserControl.Styles>
-        <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Browser/Views/BrowserChromeStyles.axaml" />
+        <StyleInclude Source="avares://RelaxKonOS.App.Browser/Views/BrowserChromeStyles.axaml" />
         <Style Selector="Button.browser-entry">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -93,7 +93,7 @@
         </Grid>
 
         <Border x:Name="NavigationHeader" DockPanel.Dock="Top" Padding="4,8" SizeChanged="NavigationHeader_SizeChanged">
-            <Border.Styles><StyleInclude Source="avares://RelaxKonOS.Client/Apps/Browser/Views/BrowserChromeStyles.axaml" /></Border.Styles>
+            <Border.Styles><StyleInclude Source="avares://RelaxKonOS.App.Browser/Views/BrowserChromeStyles.axaml" /></Border.Styles>
             <Grid x:Name="NavigationToolbar" ColumnDefinitions="Auto,*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,0,6,0">
                     <Button Classes="browser-action" Content="←" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" AutomationProperties.Name="{loc:Loc common.back}" />
@@ -154,7 +154,7 @@
                 <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="12" Opacity="0.7" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <ProgressBar IsIndeterminate="True" Width="120" Height="3" IsVisible="{Binding IsLoading}" />
-                    <TextBlock Text="{Binding IsLoading, Converter={x:Static conv:LoadingStatusConverter.Instance}}" FontSize="12" Opacity="0.6" IsVisible="{Binding IsLoading}" />
+                    <TextBlock Text="{Binding LoadingStatusText}" FontSize="12" Opacity="0.6" IsVisible="{Binding IsLoading}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -223,15 +223,15 @@
                                             </StackPanel>
                                         </Grid>
                                     </Button>
-                                    <Button Grid.Column="1" Classes="browser-action" VerticalAlignment="Center" ToolTip.Tip="{loc:Loc browser.entry_options}" AutomationProperties.Name="{loc:Loc browser.entry_options}">
+                                    <Button Grid.Column="1" Classes="browser-action" VerticalAlignment="Center" ToolTip.Tip="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.entry_options}" AutomationProperties.Name="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.entry_options}">
                                         <PathIcon Width="16" Height="16" Data="{StaticResource BrowserMoreIcon}" />
                                         <Button.Flyout>
                                             <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
-                                                <MenuItem Header="{loc:Loc browser.open}" Tag="open" Click="EntryMenu_Click" />
-                                                <MenuItem Header="{loc:Loc browser.open_new_tab}" Tag="new-tab" Click="EntryMenu_Click" />
-                                                <MenuItem Header="{loc:Loc browser.copy_link}" Tag="copy" Click="EntryMenu_Click" />
+                                                <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.open}" Tag="open" Click="EntryMenu_Click" />
+                                                <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.open_new_tab}" Tag="new-tab" Click="EntryMenu_Click" />
+                                                <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.copy_link}" Tag="copy" Click="EntryMenu_Click" />
                                                 <Separator />
-                                                <MenuItem Header="{loc:Loc browser.delete_bookmark}" Tag="delete" Click="EntryMenu_Click" />
+                                                <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.delete_bookmark}" Tag="delete" Click="EntryMenu_Click" />
                                             </MenuFlyout>
                                         </Button.Flyout>
                                     </Button>
@@ -255,15 +255,15 @@
                                                 </StackPanel>
                                             </Grid>
                                         </Button>
-                                        <Button Grid.Column="1" Classes="browser-action" VerticalAlignment="Center" ToolTip.Tip="{loc:Loc browser.entry_options}" AutomationProperties.Name="{loc:Loc browser.entry_options}">
+                                        <Button Grid.Column="1" Classes="browser-action" VerticalAlignment="Center" ToolTip.Tip="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.entry_options}" AutomationProperties.Name="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.entry_options}">
                                             <PathIcon Width="16" Height="16" Data="{StaticResource BrowserMoreIcon}" />
                                             <Button.Flyout>
                                                 <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
-                                                    <MenuItem Header="{loc:Loc browser.open}" Tag="open" Click="EntryMenu_Click" />
-                                                    <MenuItem Header="{loc:Loc browser.open_new_tab}" Tag="new-tab" Click="EntryMenu_Click" />
-                                                    <MenuItem Header="{loc:Loc browser.copy_link}" Tag="copy" Click="EntryMenu_Click" />
+                                                    <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.open}" Tag="open" Click="EntryMenu_Click" />
+                                                    <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.open_new_tab}" Tag="new-tab" Click="EntryMenu_Click" />
+                                                    <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.copy_link}" Tag="copy" Click="EntryMenu_Click" />
                                                     <Separator />
-                                                    <MenuItem Header="{loc:Loc browser.delete_history}" Tag="delete" Click="EntryMenu_Click" />
+                                                    <MenuItem Header="{ReflectionBinding #Root.DataContext.Text, Converter={x:Static loc:LocExtension.Converter}, ConverterParameter=browser.delete_history}" Tag="delete" Click="EntryMenu_Click" />
                                                 </MenuFlyout>
                                             </Button.Flyout>
                                         </Button>

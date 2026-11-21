@@ -6,10 +6,10 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using System.ComponentModel;
 using System.Diagnostics;
-using RelaxKonOS.Client.Apps.Browser;
+using RelaxKonOS.App.Browser;
 using RelaxKonOS.Protocol.Browser;
 
-namespace RelaxKonOS.Client.Apps.Browser.Views;
+namespace RelaxKonOS.App.Browser.Views;
 
 /// <summary>Bridges browser navigation to the view-model and selects the supported native host per platform.</summary>
 public partial class BrowserMainView : UserControl

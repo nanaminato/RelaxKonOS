@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Browser;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -5,7 +6,7 @@ using Avalonia.Threading;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.App.Browser.ViewModels;
-using RelaxKonOS.Client.Apps.Browser.Views;
+using RelaxKonOS.App.Browser.Views;
 using RelaxKonOS.Client.Services.Auth;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services.AppPermissions;

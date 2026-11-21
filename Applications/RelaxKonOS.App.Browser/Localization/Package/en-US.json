@@ -1,0 +1,13 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "common.back": "Back",
+    "common.close": "Close",
+    "common.forward": "Forward",
+    "common.home": "Home",
+    "common.refresh": "Refresh",
+    "common.save": "Save",
+    "common.settings_ellipsis": "Settings...",
+    "common.stop": "Stop"
+  }
+}

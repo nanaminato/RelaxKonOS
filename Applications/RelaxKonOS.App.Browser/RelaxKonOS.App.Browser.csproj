@@ -6,7 +6,11 @@
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
+        <ProjectReference Include="../../Framework/RelaxKonOS.UI/RelaxKonOS.UI.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
+        <PackageReference Include="Avalonia.Controls.WebView" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="Browser.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="Browser.PackageLocalization.%(Filename).json" />
+        <InternalsVisibleTo Include="RelaxKonOS.WindowPreviews.Tests" />
     </ItemGroup>
 </Project>

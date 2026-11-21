@@ -33,7 +33,11 @@ public static class BrowserLocalization
     private static Dictionary<string, string> Load(string culture)
     {
         using var stream = Open($"Browser.Localization.{culture}.json");
-        return JsonSerializer.Deserialize<LanguageFile>(stream)!.Strings;
+        using var common = Open($"Browser.PackageLocalization.{culture}.json");
+        var labels = JsonSerializer.Deserialize<LanguageFile>(stream)!.Strings;
+        foreach (var (key, value) in JsonSerializer.Deserialize<LanguageFile>(common)!.Strings)
+            labels.Add(key, value);
+        return labels;
     }
 
     private sealed record LanguageFile(Dictionary<string, string> Strings);
@@ -56,15 +60,17 @@ public readonly struct BrowserLabel(Func<string> resolve)
 
 public abstract class BrowserLocalizedObject : ObservableObject
 {
+    private readonly ISystemLanguage? _language;
+
     protected BrowserLocalizedObject(ISystemLanguage? language)
     {
-        Text = new BrowserText(language);
+        _language = language;
         if (language is not null)
             WeakEventHandlerManager.Subscribe<ISystemLanguage, SystemLanguageChangedEventArgs, BrowserLocalizedObject>(
                 language, nameof(ISystemLanguage.LanguageChanged), OnLanguageChanged);
     }
 
-    public BrowserText Text { get; }
+    public BrowserText Text => new(_language);
 
     private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);
 }

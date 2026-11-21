@@ -1,14 +1,14 @@
 using System.Diagnostics;
 using Avalonia.Threading;
 
-namespace RelaxKonOS.Client.Apps.Browser;
+namespace RelaxKonOS.App.Browser;
 
 /// <summary>
 /// Durable, privacy-conscious diagnostics for the platform WebView. Native WebView traffic
 /// does not pass through the application's HttpClient diagnostics pipeline, so a separate
 /// trace is required when investigating UI hangs during navigation.
 /// </summary>
-internal static class BrowserDiagnostics
+public static class BrowserDiagnostics
 {
     private static readonly object FileGate = new();
     private static readonly string LogPath = Path.Combine(

@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Browser.Views;
+namespace RelaxKonOS.App.Browser.Views;
 
 public partial class BrowserSettingsView : UserControl
 {

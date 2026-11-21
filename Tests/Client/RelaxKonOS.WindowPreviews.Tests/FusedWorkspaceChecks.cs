@@ -24,7 +24,7 @@ using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.App.TaskManager.ViewModels;
 using RelaxKonOS.App.TaskManager.Views;
 using RelaxKonOS.App.Browser.ViewModels;
-using RelaxKonOS.Client.Apps.Browser.Views;
+using RelaxKonOS.App.Browser.Views;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;

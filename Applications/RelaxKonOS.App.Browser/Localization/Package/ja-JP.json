@@ -1,0 +1,13 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "common.back": "戻る",
+    "common.close": "閉じる",
+    "common.forward": "進む",
+    "common.home": "ホーム",
+    "common.refresh": "更新",
+    "common.save": "保存",
+    "common.settings_ellipsis": "設定...",
+    "common.stop": "停止"
+  }
+}
