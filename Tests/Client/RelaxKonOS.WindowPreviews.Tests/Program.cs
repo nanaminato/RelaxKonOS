@@ -261,6 +261,7 @@ if (args.Contains("--host-titlebar-only"))
     HostTitleBarChecks.Run(settings, localization);
     return;
 }
+if (args.Contains("--forward-submission-only")) { PortForwardSubmissionChecks.Run(); return; }
 if (args.Contains("--forward-runtime-only"))
 {
     SynchronizationContext.SetSynchronizationContext(null);

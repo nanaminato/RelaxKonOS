@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding.ViewModels"
-             xmlns:forward="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding"
+             xmlns:forward="clr-namespace:RelaxKonOS.AppSDK;assembly=RelaxKonOS.App.SDK"
              x:Class="RelaxKonOS.Client.Apps.PortForwarding.Views.PortForwardingForwardsView"
              x:DataType="vm:PortForwardingViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" RowSpacing="14">
