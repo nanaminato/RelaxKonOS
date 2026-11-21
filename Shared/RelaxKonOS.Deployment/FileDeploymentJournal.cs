@@ -50,25 +50,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
         var fileLock = new FileStream(path + ".lock", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
         try
         {
-            var identity = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                plan.Id,
-                plan.Target,
-                plan.ExpiresAt,
-                plan.PreparedSteps,
-                plan.ClientBinding,
-                Releases = plan.OrderedReleases.Select(release => new
-                {
-                    release.Package,
-                    release.Version,
-                    release.ArtifactIdentity,
-                    release.Satisfied,
-                    release.CurrentVersion,
-                    release.ActivationOnly,
-                    release.Requires,
-                    Capabilities = release.Capabilities.OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                })
-            })));
+            var identity = ComputeIdentity(plan);
             Entry? entry = null;
             if (File.Exists(path))
             {
@@ -85,12 +67,41 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
         }
     }
 
+    private static string ComputeIdentity(DeploymentPlan plan) =>
+        Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            plan.Id,
+            plan.Target,
+            plan.ExpiresAt,
+            plan.PreparedSteps,
+            plan.ClientBinding,
+            Releases = plan.OrderedReleases.Select(release => new
+            {
+                release.Package,
+                release.Version,
+                release.ArtifactIdentity,
+                release.Satisfied,
+                release.CurrentVersion,
+                release.ActivationOnly,
+                release.Requires,
+                Capabilities = release.Capabilities.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            })
+        })));
+
     private static async Task<Entry> ReadAsync(string path, CancellationToken cancellationToken)
     {
         await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         var entry = await JsonSerializer.DeserializeAsync<Entry>(input, cancellationToken: cancellationToken);
-        return entry is { Plan: not null, Checkpoint: not null }
-            ? entry : throw new InvalidDataException("Missing deployment checkpoint.");
+        if (entry is not { Plan: not null, Checkpoint: not null }
+            || entry.Plan.OrderedReleases.IsDefaultOrEmpty
+            || entry.Plan.PreparedSteps.IsDefault
+            || entry.Checkpoint.CompletedSteps < 0 || entry.Checkpoint.CompletedSteps > entry.Plan.OrderedReleases.Length
+            || entry.Checkpoint.Verified && entry.Checkpoint.CompletedSteps != entry.Plan.OrderedReleases.Length
+            || entry.Plan.OrderedReleases.Any(release => release is null || release.Capabilities is null || release.Requires.IsDefault))
+            throw new InvalidDataException("Invalid deployment checkpoint.");
+        if (!string.Equals(entry.Identity, ComputeIdentity(entry.Plan), StringComparison.Ordinal))
+            throw new InvalidDataException("Deployment checkpoint does not match its plan identity.");
+        return entry;
     }
 
     private sealed record Entry(string Identity, DeploymentPlan Plan, DeploymentCheckpoint Checkpoint);

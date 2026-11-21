@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Nodes;
 using RelaxKonOS.Deployment;
 
 DeploymentPackageKey Key(string id) => new(DeploymentPackageKind.ServerModule, id);
@@ -74,6 +75,16 @@ Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, "di
     binding.AccountId, binding.ConnectionIdentity) is null);
 Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
     binding.AccountId, "another-connection") is null);
+var checkpointPath = Path.Combine(journalDirectory, plan.Id.ToString("N"));
+var checkpointJson = await File.ReadAllTextAsync(checkpointPath);
+var corrupt = JsonNode.Parse(checkpointJson)!.AsObject();
+corrupt["Plan"]!["OrderedReleases"]![0]!["ActivationOnly"] = true;
+await File.WriteAllTextAsync(checkpointPath, corrupt.ToJsonString());
+Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
+    binding.AccountId, binding.ConnectionIdentity) is null);
+try { await reopenedJournal.FindStartedPlanAsync(plan.Id); throw new Exception("Expected corrupt plan rejection."); }
+catch (InvalidDataException) { }
+await File.WriteAllTextAsync(checkpointPath, checkpointJson);
 var persisted = await journal.FindStartedPlanAsync(plan.Id) ?? throw new Exception("Missing persisted plan.");
 await coordinator.ExecuteAsync(persisted);
 await coordinator.ExecuteAsync(plan);
