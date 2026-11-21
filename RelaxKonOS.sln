@@ -80,6 +80,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.ServerModule.Clo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.ServerModule.CloudBaidu", "ServerModules\RelaxKonOS.ServerModule.CloudBaidu\RelaxKonOS.ServerModule.CloudBaidu.csproj", "{F30C6BC6-A019-4CF3-90F6-5BEF5FF2F33C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Deployment", "Shared\RelaxKonOS.Deployment\RelaxKonOS.Deployment.csproj", "{B0ED70FB-8D17-4405-A991-486E69120C98}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -534,6 +536,18 @@ Global
 		{F30C6BC6-A019-4CF3-90F6-5BEF5FF2F33C}.Release|x64.Build.0 = Release|Any CPU
 		{F30C6BC6-A019-4CF3-90F6-5BEF5FF2F33C}.Release|x86.ActiveCfg = Release|Any CPU
 		{F30C6BC6-A019-4CF3-90F6-5BEF5FF2F33C}.Release|x86.Build.0 = Release|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Debug|x64.Build.0 = Debug|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Debug|x86.Build.0 = Debug|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Release|x64.ActiveCfg = Release|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Release|x64.Build.0 = Release|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Release|x86.ActiveCfg = Release|Any CPU
+		{B0ED70FB-8D17-4405-A991-486E69120C98}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -561,5 +575,6 @@ Global
 		{7B7DBCDE-9544-4923-B784-CB1111645351} = {A809C279-753C-14CF-05EC-B199CC73BAF0}
 		{FFD9FD9F-7B3F-4D88-B52F-039D37ACA540} = {A809C279-753C-14CF-05EC-B199CC73BAF0}
 		{F30C6BC6-A019-4CF3-90F6-5BEF5FF2F33C} = {A809C279-753C-14CF-05EC-B199CC73BAF0}
+		{B0ED70FB-8D17-4405-A991-486E69120C98} = {4F52FD11-658E-A102-6CD3-7D7C16FFA15B}
 	EndGlobalSection
 EndGlobal
