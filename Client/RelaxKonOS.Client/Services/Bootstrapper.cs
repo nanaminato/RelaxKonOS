@@ -365,7 +365,7 @@ public static class Bootstrapper
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-tasks")));
         services.AddSingleton(new RelaxKonOS.Client.Services.Modules.ServerModuleReferenceStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "module-operations")));
-        services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IProxyServerClient, RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerProxyServer, RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient>()
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskPlanPreviewClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskPlanPreviewClient>()
             .RemoveAllLoggers();

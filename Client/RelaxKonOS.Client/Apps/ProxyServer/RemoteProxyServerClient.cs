@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Proxy;
@@ -8,26 +9,14 @@ using RelaxKonOS.Protocol.ProxyServer;
 
 namespace RelaxKonOS.Client.Apps.ProxyServer;
 
-public interface IProxyServerClient
-{
-    Task<ProxyServerSnapshot> ReadAsync(CancellationToken ct);
-    Task<ProxyServerStatus> StatusAsync(CancellationToken ct);
-    Task<IReadOnlyList<ProxyServerRuntimeRelease>> ReleasesAsync(CancellationToken ct);
-    Task<ProxyServerValidation> ValidateAsync(CancellationToken ct);
-    Task<IReadOnlyList<ProxyServerExportFormatOption>> ExportFormatsAsync(Guid credentialId, CancellationToken ct);
-    Task<ProxyServerExport> ExportAsync(Guid credentialId, string format, CancellationToken ct);
-    Task<ProxyServerSubscriptionIssued> IssueSubscriptionAsync(IssueProxyServerSubscription request, CancellationToken ct);
-    Task<ProxyOperationAcceptedDto> SubmitAsync(HttpMethod method, string route, object body, string key, CancellationToken ct);
-    Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct);
-}
-
 /// <summary>
 /// Routes are closed to the management prefix: a view model cannot turn this client into a generic
 /// request proxy. A stale window can never send using another login or host.
 /// </summary>
-public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession session) : IProxyServerClient
+public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession session) : IServerProxyServer
 {
     private readonly object? _login = session.CurrentSession;
+    private readonly string? _baseUrl = session.EffectiveBaseUrl;
 
     public Task<ProxyServerSnapshot> ReadAsync(CancellationToken ct) =>
         SendAsync<ProxyServerSnapshot>(HttpMethod.Get, ProxyServerRoutes.Configuration, null, null, ct);
@@ -47,13 +36,44 @@ public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession sessio
     public Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct) =>
         SendAsync<ProxyOperationDto>(HttpMethod.Get, WithId(ProxyServerRoutes.OperationPattern, id), null, null, ct);
 
-    public Task<ProxyOperationAcceptedDto> SubmitAsync(HttpMethod method, string route, object body, string key, CancellationToken ct)
+    public Task<ProxyOperationAcceptedDto> SaveConfigurationAsync(SaveProxyServerConfiguration request, string key, CancellationToken ct) =>
+        SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Put, ProxyServerRoutes.Configuration, request, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> SavePrincipalAsync(SaveProxyServerPrincipal request, string key, CancellationToken ct) =>
+        request.Id is { } id
+            ? SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Put, WithId(ProxyServerRoutes.PrincipalPattern, id), request, key, ct)
+            : SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, ProxyServerRoutes.Principals, request, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> DeletePrincipalAsync(Guid id, string key, CancellationToken ct) =>
+        SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Delete, WithId(ProxyServerRoutes.PrincipalPattern, id), new { }, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> SaveCredentialAsync(ProxyServerCredentialRequest request, string key, CancellationToken ct) =>
+        request.Id is { } id
+            ? SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Put, WithId(ProxyServerRoutes.CredentialPattern, id), request, key, ct)
+            : SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, ProxyServerRoutes.Credentials, request, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> RotateCredentialAsync(Guid id, ProxyServerCredentialRotation request, string key, CancellationToken ct) =>
+        SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, WithId(ProxyServerRoutes.CredentialRotatePattern, id), request, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> DeleteCredentialAsync(Guid id, string key, CancellationToken ct) =>
+        SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Delete, WithId(ProxyServerRoutes.CredentialPattern, id), new { }, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> ApplyAsync(string key, CancellationToken ct) =>
+        SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, ProxyServerRoutes.Apply, new { }, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> RollbackAsync(string key, CancellationToken ct) =>
+        SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, ProxyServerRoutes.Rollback, new { }, key, ct);
+
+    public Task<ProxyOperationAcceptedDto> RunLifecycleAsync(ProxyServerAction action, string key, CancellationToken ct)
     {
-        if (!route.StartsWith(ProxyServerRoutes.Root + "/", StringComparison.Ordinal)
-            || route.Contains('{', StringComparison.Ordinal) || route.Length > 256)
-            throw new ArgumentException(nameof(route));
-        return SendAsync<ProxyOperationAcceptedDto>(method, route, body, key, ct);
+        if (action is not (ProxyServerAction.Start or ProxyServerAction.Stop or ProxyServerAction.Restart or ProxyServerAction.Enable or ProxyServerAction.Disable))
+            throw new ArgumentOutOfRangeException(nameof(action));
+        return SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post,
+            ProxyServerRoutes.RuntimeActions + "/" + action.ToString().ToLowerInvariant(), new { }, key, ct);
     }
+
+    public Task<ProxyOperationAcceptedDto> RevokeSubscriptionAsync(Guid id, string key, CancellationToken ct) =>
+        SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Delete, WithId(ProxyServerRoutes.SubscriptionPattern, id), new { }, key, ct);
 
     private static string WithId(string pattern, Guid id) => pattern.Replace("{id:guid}", id.ToString("D"), StringComparison.Ordinal);
 
@@ -62,7 +82,7 @@ public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession sessio
         Verify();
         var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct);
         Verify();
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl!), route.TrimStart('/')))
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(_baseUrl!), route.TrimStart('/')))
         { Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default) };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (key is not null) request.Headers.Add("Idempotency-Key", key);
@@ -89,7 +109,8 @@ public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession sessio
 
     private void Verify()
     {
-        if (_login is null || !ReferenceEquals(_login, session.CurrentSession) || session.State != AuthSessionState.Authenticated)
+        if (_login is null || _baseUrl is null || _baseUrl != session.EffectiveBaseUrl
+            || !ReferenceEquals(_login, session.CurrentSession) || session.State != AuthSessionState.Authenticated)
             throw new InvalidOperationException("proxy_server.session_changed");
     }
 }

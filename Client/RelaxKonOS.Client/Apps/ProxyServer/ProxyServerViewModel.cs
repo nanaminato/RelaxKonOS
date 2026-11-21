@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -35,7 +36,7 @@ public sealed record ProtocolChoice(ProxyServerProtocol Protocol)
     public LocalizedStatus Label => LocalizedStatus.Key("proxy_server.protocol." + Protocol);
 }
 
-public partial class ProxyServerViewModel(IProxyServerClient client) : ObservableObject, IDisposable
+public partial class ProxyServerViewModel(IServerProxyServer client) : ObservableObject, IDisposable
 {
     /// <summary>sing-box installation lives in Component Center; settings only observes and navigates.</summary>
     public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
@@ -274,8 +275,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         var all = _snapshot.Configuration.Inbounds.Where(i => i.Id != inbound.Id).Append(inbound).ToArray();
         var validation = SingBoxConfiguration.Validate(new(_snapshot.Configuration.Revision, all, NullIfEmpty(SubscriptionBaseUrl)));
         if (!validation.Valid) throw new InvalidOperationException(validation.Problems[0]);
-        await SubmitAsync(HttpMethod.Put, ProxyServerRoutes.Configuration,
-            new SaveProxyServerConfiguration(_snapshot.Configuration.Revision, all, NullIfEmpty(SubscriptionBaseUrl)), "proxy_server.saved");
+        await SubmitAsync(key => client.SaveConfigurationAsync(new SaveProxyServerConfiguration(_snapshot.Configuration.Revision, all, NullIfEmpty(SubscriptionBaseUrl)), key, _lifetime.Token), "proxy_server.saved");
         HasUnsavedChanges = false;
         SelectedInbound = Inbounds.FirstOrDefault(i => i.Id == inbound.Id);
     });
@@ -295,8 +295,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         if (_snapshot is null || SelectedInbound is null) return;
         if (!await ConfirmDestructiveAsync("proxy_server.delete_inbound", "proxy_server.delete_inbound_warning")) return;
         var all = _snapshot.Configuration.Inbounds.Where(i => i.Id != SelectedInbound.Id).ToArray();
-        await SubmitAsync(HttpMethod.Put, ProxyServerRoutes.Configuration,
-            new SaveProxyServerConfiguration(_snapshot.Configuration.Revision, all, NullIfEmpty(SubscriptionBaseUrl)), "proxy_server.saved");
+        await SubmitAsync(key => client.SaveConfigurationAsync(new SaveProxyServerConfiguration(_snapshot.Configuration.Revision, all, NullIfEmpty(SubscriptionBaseUrl)), key, _lifetime.Token), "proxy_server.saved");
         HasUnsavedChanges = false;
         SelectedInbound = null;
     });
@@ -305,9 +304,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
     {
         RequireManage();
         if (_snapshot is null) return;
-        await SubmitAsync(HttpMethod.Put, ProxyServerRoutes.Configuration,
-            new SaveProxyServerConfiguration(_snapshot.Configuration.Revision, _snapshot.Configuration.Inbounds, NullIfEmpty(SubscriptionBaseUrl)),
-            "proxy_server.saved");
+        await SubmitAsync(key => client.SaveConfigurationAsync(new SaveProxyServerConfiguration(_snapshot.Configuration.Revision, _snapshot.Configuration.Inbounds, NullIfEmpty(SubscriptionBaseUrl)), key, _lifetime.Token), "proxy_server.saved");
         HasUnsavedChanges = false;
     });
 
@@ -321,9 +318,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
     {
         RequireManage();
         if (string.IsNullOrWhiteSpace(PrincipalName)) throw new InvalidOperationException("proxy_server.principal_invalid");
-        await SubmitAsync(SelectedPrincipal is null ? HttpMethod.Post : HttpMethod.Put,
-            SelectedPrincipal is null ? ProxyServerRoutes.Principals : WithId(ProxyServerRoutes.PrincipalPattern, SelectedPrincipal.Id),
-            new SaveProxyServerPrincipal(SelectedPrincipal?.Id, PrincipalName.Trim(), NullIfEmpty(PrincipalUserId)), "proxy_server.saved");
+        await SubmitAsync(key => client.SavePrincipalAsync(new SaveProxyServerPrincipal(SelectedPrincipal?.Id, PrincipalName.Trim(), NullIfEmpty(PrincipalUserId)), key, _lifetime.Token), "proxy_server.saved");
         HasUnsavedChanges = false;
     });
 
@@ -332,7 +327,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         RequireManage();
         if (SelectedPrincipal is null) return;
         if (!await ConfirmDestructiveAsync("proxy_server.delete_principal", "proxy_server.delete_principal_warning")) return;
-        await SubmitAsync(HttpMethod.Delete, WithId(ProxyServerRoutes.PrincipalPattern, SelectedPrincipal.Id), new { }, "proxy_server.saved");
+        await SubmitAsync(key => client.DeletePrincipalAsync(SelectedPrincipal.Id, key, _lifetime.Token), "proxy_server.saved");
         HasUnsavedChanges = false;
     });
 
@@ -354,9 +349,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         if (grants.Length == 0) throw new InvalidOperationException("proxy_server.grants_required");
         var expires = ParseExpiry(CredentialExpiresAt);
         var request = new ProxyServerCredentialRequest(SelectedCredential?.Id, SelectedPrincipal.Id, CredentialName.Trim(), grants, CredentialEnabled, expires);
-        await SubmitAsync(SelectedCredential is null ? HttpMethod.Post : HttpMethod.Put,
-            SelectedCredential is null ? ProxyServerRoutes.Credentials : WithId(ProxyServerRoutes.CredentialPattern, SelectedCredential.Id),
-            request, "proxy_server.credential_saved");
+        await SubmitAsync(key => client.SaveCredentialAsync(request, key, _lifetime.Token), "proxy_server.credential_saved");
         HasUnsavedChanges = false;
     });
 
@@ -366,7 +359,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         if (SelectedCredential is null) return;
         if (!await ConfirmDestructiveAsync("proxy_server.rotate", "proxy_server.rotate_warning")) return;
         var rotation = new ProxyServerCredentialRotation(CredentialEnabled, ParseExpiry(CredentialExpiresAt), string.IsNullOrWhiteSpace(CredentialExpiresAt));
-        await SubmitAsync(HttpMethod.Post, WithId(ProxyServerRoutes.CredentialRotatePattern, SelectedCredential.Id), rotation, "proxy_server.credential_saved");
+        await SubmitAsync(key => client.RotateCredentialAsync(SelectedCredential.Id, rotation, key, _lifetime.Token), "proxy_server.credential_saved");
         ClearExport();
     });
 
@@ -375,7 +368,7 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         RequireManage();
         if (SelectedCredential is null) return;
         if (!await ConfirmDestructiveAsync("proxy_server.delete_credential", "proxy_server.delete_credential_warning")) return;
-        await SubmitAsync(HttpMethod.Delete, WithId(ProxyServerRoutes.CredentialPattern, SelectedCredential.Id), new { }, "proxy_server.credential_saved");
+        await SubmitAsync(key => client.DeleteCredentialAsync(SelectedCredential.Id, key, _lifetime.Token), "proxy_server.credential_saved");
         HasUnsavedChanges = false;
     });
 
@@ -392,22 +385,24 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
     {
         RequireManage();
         if (!await ConfirmDestructiveAsync("proxy_server.apply", "proxy_server.apply_warning")) return;
-        await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.Apply, new { }, "proxy_server.published");
+        await SubmitAsync(key => client.ApplyAsync(key, _lifetime.Token), "proxy_server.published");
     });
 
     [RelayCommand] private Task RollbackAsync() => RunAsync(async () =>
     {
         RequireManage();
         if (!await ConfirmDestructiveAsync("proxy_server.rollback", "proxy_server.rollback_warning")) return;
-        await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.Rollback, new { }, "proxy_server.rolled_back");
+        await SubmitAsync(key => client.RollbackAsync(key, _lifetime.Token), "proxy_server.rolled_back");
     });
 
     [RelayCommand] private Task RuntimeAsync(string? action) => RunAsync(async () =>
     {
         RequireManage();
-        if (!Enum.TryParse<ProxyServerAction>(action, true, out var parsed)) return;
+        if (!Enum.TryParse<ProxyServerAction>(action, true, out var parsed)
+            || parsed is not (ProxyServerAction.Start or ProxyServerAction.Stop or ProxyServerAction.Restart or ProxyServerAction.Enable or ProxyServerAction.Disable))
+            return;
         if (parsed is ProxyServerAction.Restart && !await ConfirmDestructiveAsync("proxy_server.restart", "proxy_server.restart_warning")) return;
-        await SubmitAsync(HttpMethod.Post, ProxyServerRoutes.RuntimeActions + "/" + parsed.ToString().ToLowerInvariant(), new { }, "proxy_server.action_done");
+        await SubmitAsync(key => client.RunLifecycleAsync(parsed, key, _lifetime.Token), "proxy_server.action_done");
     });
 
     [RelayCommand] private Task LoadExportFormatsAsync() => RunAsync(UpdateExportFormatsAsync);
@@ -469,13 +464,12 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
     {
         if (SelectedSubscription is null) return;
         if (!await ConfirmDestructiveAsync("proxy_server.revoke", "proxy_server.revoke_warning")) return;
-        await SubmitAsync(HttpMethod.Delete, WithId(ProxyServerRoutes.SubscriptionPattern, SelectedSubscription.Id),
-            new { }, "proxy_server.subscription_revoke_done");
+        await SubmitAsync(key => client.RevokeSubscriptionAsync(SelectedSubscription.Id, key, _lifetime.Token), "proxy_server.subscription_revoke_done");
     });
 
-    private async Task SubmitAsync(HttpMethod method, string route, object body, string successKey)
+    private async Task SubmitAsync(Func<string, Task<ProxyOperationAcceptedDto>> submit, string successKey)
     {
-        var accepted = await client.SubmitAsync(method, route, body, Guid.NewGuid().ToString("N"), _lifetime.Token);
+        var accepted = await submit(Guid.NewGuid().ToString("N"));
         OperationText = LocalizedStatus.Format("proxy_server.operation_pending", accepted.OperationId.ToString("D"));
         for (var attempt = 0; attempt < 180; attempt++)
         {
@@ -519,7 +513,6 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
         return parsed.ToUniversalTime();
     }
 
-    private static string WithId(string pattern, Guid id) => pattern.Replace("{id:guid}", id.ToString("D"), StringComparison.Ordinal);
     private static LocalizedStatus FormatLabel(string format) => LocalizedStatus.Key("proxy_server.format." + format.Replace('-', '_'));
 
     internal static LocalizedStatus ProblemText(string code) => LocalizedStatus.Key("proxy_server.problem." + code.Replace("proxy_server.", ""), code);

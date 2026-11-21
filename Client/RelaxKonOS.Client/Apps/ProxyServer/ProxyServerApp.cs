@@ -26,7 +26,7 @@ public sealed class ProxyServerApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
-        var client = (IProxyServerClient?)context.Services.GetService(typeof(IProxyServerClient));
+        var client = (IServerProxyServer?)context.Services.GetService(typeof(IServerProxyServer));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
         var vm = new ProxyServerViewModel(client) { Dependency = dependency };
