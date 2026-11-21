@@ -72,6 +72,7 @@ internal static class InstalledModuleInstaller
     internal static void ValidateDependencies(string contentRoot, IConfiguration configuration, ModulePackageManifest manifest)
     {
         var installed = InstalledModuleStore.Read(contentRoot).ToDictionary(module => module.ModuleId, StringComparer.Ordinal);
+        ValidateDependentVersions(contentRoot, manifest.ModuleId, manifest.Version, installed.Values);
         var known = ServerModules.Create(configuration, InstalledModuleCatalog.Load(contentRoot)).KnownModuleIds;
         foreach (var dependency in manifest.Dependencies)
         {
@@ -82,9 +83,7 @@ internal static class InstalledModuleInstaller
             if (!installed.TryGetValue(dependency.ModuleId, out var installedDependency)) continue;
             if (installedDependency.Quarantined)
                 throw new ModulePackageException("module-package-dependency-quarantined");
-            var version = System.Version.Parse(installedDependency.Version);
-            if (version < System.Version.Parse(dependency.MinimumVersion)
-                || version >= System.Version.Parse(dependency.MaximumVersionExclusive))
+            if (!VersionAllowed(installedDependency.Version, dependency))
                 throw new ModulePackageException("module-package-dependency-version");
         }
         var graph = installed.ToDictionary(pair => pair.Key,
@@ -102,6 +101,25 @@ internal static class InstalledModuleInstaller
             return false;
         }
         if (Visit(manifest.ModuleId)) throw new ModulePackageException("module-package-dependency-cycle");
+    }
+
+    private static void ValidateDependentVersions(string contentRoot, string moduleId, string version,
+        IEnumerable<InstalledModuleRecord> installed)
+    {
+        foreach (var dependent in installed.Where(item => item.ModuleId != moduleId
+            && item.Requires.Contains(moduleId, StringComparer.Ordinal)))
+        {
+            var manifest = InstalledModuleStore.ReadVerifiedManifest(contentRoot, dependent);
+            if (manifest.Dependencies.Any(dependency => dependency.ModuleId == moduleId && !VersionAllowed(version, dependency)))
+                throw new ModulePackageException("module-package-dependency-version");
+        }
+    }
+
+    private static bool VersionAllowed(string value, ModulePackageDependency dependency)
+    {
+        var version = System.Version.Parse(value);
+        return version >= System.Version.Parse(dependency.MinimumVersion)
+            && version < System.Version.Parse(dependency.MaximumVersionExclusive);
     }
 
     internal static async Task<InstalledModuleRecord> InstallVerifiedAsync(string contentRoot, string sourceId,
@@ -196,6 +214,7 @@ internal static class InstalledModuleInstaller
     internal static void Activate(string contentRoot, InstalledModuleRecord record)
     {
         var modules = InstalledModuleStore.Read(contentRoot).Where(module => module.ModuleId != record.ModuleId).ToList();
+        ValidateDependentVersions(contentRoot, record.ModuleId, record.Version, modules);
         modules.Add(record);
         InstalledModuleStore.Write(contentRoot, modules);
     }
@@ -211,6 +230,7 @@ internal static class InstalledModuleInstaller
         if (target.ModuleId != moduleId || target.Version != version || target.InstalledAt == default)
             throw new ModulePackageException("module-package-install-metadata-invalid");
         InstalledModuleStore.VerifyPackage(contentRoot, target);
+        ValidateDependentVersions(contentRoot, target.ModuleId, target.Version, modules);
         modules[index] = target;
         InstalledModuleStore.Write(contentRoot, modules);
         return Task.FromResult(target);

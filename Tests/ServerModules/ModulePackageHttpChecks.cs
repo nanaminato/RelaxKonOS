@@ -48,6 +48,10 @@ internal static class ModulePackageHttpChecks
                 Privileges: isolated ? [ModuleCapabilityFixtures.Service("fixture.service", "restart")] : [],
                 Ui: new("Sample Module", "", "", null, "UNLICENSED"));
             var built = await ModulePackageBuilder.BuildAsync(packageOptions, now);
+            var incompatible = isolated ? null : await ModulePackageBuilder.BuildAsync(packageOptions with
+            {
+                Version = "2.0.0", ReleaseId = "fixture-http-2.0.0-" + rid,
+            }, now);
             var dependent = isolated ? null : await ModulePackageBuilder.BuildAsync(packageOptions with
             {
                 ModuleId = "fixture-dependent",
@@ -57,7 +61,7 @@ internal static class ModulePackageHttpChecks
             }, now);
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
-                    now.AddHours(1), [Release(built), Release(dependent)], [], []), "builder-key", keyPath)).Envelope;
+                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
@@ -114,14 +118,15 @@ internal static class ModulePackageHttpChecks
             {
                 var store = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
                     ServerModuleManagementRoutes.ModuleStoreSearch + "?q=" + Uri.EscapeDataString(query), RelaxKonOSJsonOptions.Default);
-                check(store?.Items.Count == 1 && store.Items[0].SourceId == "official"
-                    && store.Items[0].ModuleId == "fixture-http" && store.Items[0].ArtifactSha256 == built.ArchiveSha256,
+                check(store?.Items.Count == (incompatible is null ? 1 : 2)
+                    && store.Items.Any(item => item.SourceId == "official"
+                        && item.ModuleId == "fixture-http" && item.ArtifactSha256 == built.ArchiveSha256),
                     $"module store search finds the accepted signed release for '{query}'");
             }
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 2),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 3),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -262,6 +267,25 @@ internal static class ModulePackageHttpChecks
                 check(installedDependent.Record.ModuleId == "fixture-dependent"
                     && installedDependent.Record.Requires.SequenceEqual(["fixture-http"]),
                     "the same frozen dependent plan installs once its signed predecessor has been installed");
+            }
+            if (incompatible is not null)
+            {
+                using var updateUpload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
+                    new ByteArrayContent(await File.ReadAllBytesAsync(incompatible.ArchivePath)));
+                updateUpload.EnsureSuccessStatusCode();
+                var uploadedUpdate = (await updateUpload.Content.ReadFromJsonAsync<ServerModulePackageUploadDto>(
+                    RelaxKonOSJsonOptions.Default))!;
+                using var updatePreview = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                    new ServerModulePackageInstallRequest("official", incompatible.Manifest.ReleaseId, uploadedUpdate.UploadId),
+                    RelaxKonOSJsonOptions.Default);
+                updatePreview.EnsureSuccessStatusCode();
+                var update = (await updatePreview.Content.ReadFromJsonAsync<ServerModulePackagePlanDto>(RelaxKonOSJsonOptions.Default))!;
+                using var denied = await client.PostAsync(ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", update.PlanId.ToString()), null);
+                using var problem = JsonDocument.Parse(await denied.Content.ReadAsStringAsync());
+                check(!denied.IsSuccessStatusCode
+                    && problem.RootElement.GetProperty("problemCode").GetString() == "module-package-dependency-version"
+                    && InstalledModuleStore.Read(root).Single(record => record.ModuleId == "fixture-http").Version == "1.0.0",
+                    "module upgrade respects the version range of an installed dependent and preserves the active version");
             }
             var retainedPlans = ModulePackagePlanStore.Read(root).Select(item => item with
                 { CreatedAt = now.AddHours(-3), ExpiresAt = now.AddHours(-2) }).ToArray();

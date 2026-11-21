@@ -136,7 +136,7 @@ GET /api/v1.0/server/module-hosts/{moduleId}/{**path}
 
 上传要求服务器管理授权，原始 body 最大 1 GiB，返回 uploadId/字节数/SHA-256；上传本身不验证包。plans 重新按已接纳签名目录验证 sourceId/releaseId/上传文件，生成十分钟有效的冻结计划，绑定 module/version/publisher/归档摘要/manifest 摘要；plans/auto 通过上传摘要在所有已接纳来源中查找唯一 release，找到多个不同模块/版本时返回 `module-package-upload-ambiguous`。plan apply 重新验证计划和上传文件仍为同一目标，然后安装；重复 apply 返回原 operationId，不重复安装。rollback 重新核对目标版本文件哈希，切换 `installed.json` 当前版本。
 
-精确来源的包计划先验证签名、来源、版本与归档身份，可在联合部署的前置依赖尚未安装时生成。应用计划时重新验证归档和实际已安装依赖，再写入版本目录。
+精确来源的包计划先验证签名、来源、版本与归档身份，可在联合部署的前置依赖尚未安装时生成。应用计划时重新验证归档和实际已安装依赖，再写入版本目录。替换活动版本或回退时，服务端还会读取已安装使用方的完整性校验清单，检查目标版本是否满足其已声明的区间。
 
 对已启用且由监督器管理的 `module-host` 应用另一版本时，`module-packages/plans/{planId}/apply` 使用 [ModuleHost 在线生命周期](RelaxKonOS.ServerModuleDistribution.Design.md#modulehost-在线生命周期)。`module-package-operations` 可查询 `update` 回执及其 `Applying`、`Succeeded` 或 `Failed` 状态。应用结果中的 `record.active` 指示该候选是否已被选为生效版本。首次安装及进程内模块继续使用待 Core 重启回执。
 

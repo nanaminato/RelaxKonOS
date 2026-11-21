@@ -158,6 +158,29 @@ internal static class InstalledModuleStore
     internal static ModulePackageManifest VerifyPackage(string contentRoot, InstalledModuleRecord record)
     {
         var root = ResolvePackageRoot(contentRoot, record.PackagePath);
+        var manifest = ReadManifestAtRoot(root, record);
+        foreach (var file in manifest.Files)
+        {
+            var path = Path.GetFullPath(Path.Combine(root, file.Path));
+            if (!path.StartsWith(root + Path.DirectorySeparatorChar, PathComparison)) throw new ModulePackageException("module-package-installed-path-invalid");
+            RequireRegularFile(path);
+            for (var ancestor = Path.GetDirectoryName(path); ancestor is not null && ancestor.StartsWith(root, PathComparison); ancestor = Path.GetDirectoryName(ancestor))
+                if ((File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) != 0)
+                    throw new ModulePackageException("module-package-installed-path-invalid");
+            var fileInfo = new FileInfo(path);
+            if (fileInfo.Length != file.Length) throw new ModulePackageException("module-package-installed-integrity");
+            using var stream = File.OpenRead(path);
+            var digest = Convert.ToHexStringLower(SHA256.HashData(stream));
+            if (digest != file.Sha256) throw new ModulePackageException("module-package-installed-integrity");
+        }
+        return manifest;
+    }
+
+    internal static ModulePackageManifest ReadVerifiedManifest(string contentRoot, InstalledModuleRecord record) =>
+        ReadManifestAtRoot(ResolvePackageRoot(contentRoot, record.PackagePath), record);
+
+    private static ModulePackageManifest ReadManifestAtRoot(string root, InstalledModuleRecord record)
+    {
         var manifestPath = Path.Combine(root, "manifest.json");
         RequireRegularFile(manifestPath);
         var info = new FileInfo(manifestPath);
@@ -178,20 +201,9 @@ internal static class InstalledModuleStore
             || manifest.EntryAssembly != record.EntryAssembly || manifest.EntryType != record.EntryType
             || !manifest.Files.Any(file => file.Path == record.EntryAssembly))
             throw new ModulePackageException("module-package-installed-identity");
-        foreach (var file in manifest.Files)
-        {
-            var path = Path.GetFullPath(Path.Combine(root, file.Path));
-            if (!path.StartsWith(root + Path.DirectorySeparatorChar, PathComparison)) throw new ModulePackageException("module-package-installed-path-invalid");
-            RequireRegularFile(path);
-            for (var ancestor = Path.GetDirectoryName(path); ancestor is not null && ancestor.StartsWith(root, PathComparison); ancestor = Path.GetDirectoryName(ancestor))
-                if ((File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) != 0)
-                    throw new ModulePackageException("module-package-installed-path-invalid");
-            var fileInfo = new FileInfo(path);
-            if (fileInfo.Length != file.Length) throw new ModulePackageException("module-package-installed-integrity");
-            using var stream = File.OpenRead(path);
-            var digest = Convert.ToHexStringLower(SHA256.HashData(stream));
-            if (digest != file.Sha256) throw new ModulePackageException("module-package-installed-integrity");
-        }
+        if (!record.Requires.ToHashSet(StringComparer.Ordinal)
+            .SetEquals(manifest.Dependencies.Select(dependency => dependency.ModuleId)))
+            throw new ModulePackageException("module-package-installed-identity");
         return manifest;
     }
 
