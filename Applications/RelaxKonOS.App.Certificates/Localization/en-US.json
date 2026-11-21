@@ -1,6 +1,7 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "certificates.delete": "Delete",
     "certificates.refresh": "Refresh",
     "certificates.subtitle": "Request and deploy TLS certificates",
     "certificates.login_required": "Sign in to a RelaxKonOS Server to manage its TLS certificates.",

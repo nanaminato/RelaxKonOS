@@ -1,9 +1,11 @@
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Interactivity;
+using RelaxKonOS.Protocol.Certificates;
 
-namespace RelaxKonOS.Client.Apps.Certificates.Views;
+namespace RelaxKonOS.App.Certificates.Views;
 
-internal partial class CertificateListView : UserControl
+public partial class CertificateListView : UserControl
 {
     private readonly Action _showRenewalHistory;
     private readonly Func<Task> _showRequestCertificate;
@@ -15,6 +17,19 @@ internal partial class CertificateListView : UserControl
         _showCreateSelfSignedCertificate = showCreateSelfSignedCertificate;
         _showRenewalHistory = showRenewalHistory;
         InitializeComponent();
+        foreach (var column in CertificatesGrid.Columns.OfType<DataGridTextColumn>()
+            .Where(column => column.SortMemberPath is nameof(CertificateDto.Kind) or nameof(CertificateDto.Status) or nameof(CertificateDto.ChallengeType)))
+        {
+            column.Binding = new MultiBinding
+            {
+                Converter = CertificateEnumTextConverter.Instance,
+                Bindings =
+                {
+                    new Binding(column.SortMemberPath),
+                    new Binding($"DataContext.{nameof(CertificateManagerViewModel.CurrentLanguage)}") { Source = this },
+                },
+            };
+        }
     }
 
     private void RenewalHistory_Click(object? sender, RoutedEventArgs e) => _showRenewalHistory();

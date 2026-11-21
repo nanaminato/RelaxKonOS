@@ -324,11 +324,15 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
         && !certificateVm.SelectedRenewalText.Contains("{0}") && !certificateVm.SelectedRenewalText.Contains("[missing:"),
         "Renewal failure has localized source, status and formatted times.");
     var historyRequested = false;
-    var renewalView = (Control)Activator.CreateInstance(typeof(RelaxKonOS.Client.Apps.Certificates.CertificateManagerApp).Assembly
-        .GetType("RelaxKonOS.Client.Apps.Certificates.Views.CertificateListView")!, new object[] { (Func<Task>)(() => Task.CompletedTask), (Func<Task>)(() => Task.CompletedTask), (Action)(() => historyRequested = true) })!;
-    renewalView.DataContext = certificateVm;
+    var renewalView = new RelaxKonOS.App.Certificates.Views.CertificateListView(
+        () => Task.CompletedTask, () => Task.CompletedTask, () => historyRequested = true) { DataContext = certificateVm };
     host.Content = renewalView; host.Width = 800; host.Height = 650;
     Dispatcher.UIThread.RunJobs();
+    Check(renewalView.GetVisualDescendants().OfType<DataGrid>().Single().Columns[0].Header as string
+        == LocalizedText.Get("certificates.column.domain"), "The application assembly resolves the certificate grid headers.");
+    Check(renewalView.GetVisualDescendants().OfType<TextBlock>()
+        .Any(text => text.Text == LocalizedText.Get("certificates.status_value.active")),
+        "The application assembly resolves the certificate status cells.");
     Check(!renewalView.GetVisualDescendants().OfType<Expander>().Any(), "Renewal history is a separate view and preserves certificate table space.");
     var historyButton = renewalView.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == LocalizedText.Get("certificates.renewal.title"));
     historyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

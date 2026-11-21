@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "certificates.delete": "删除",
     "certificates.refresh": "刷新",
     "certificates.subtitle": "申请并部署 TLS 证书",
     "certificates.login_required": "登录 RelaxKonOS Server 后才能管理 TLS 证书。",
