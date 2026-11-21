@@ -1,3 +1,5 @@
+using Avalonia.LogicalTree;
+using RelaxKonOS.App.ApplicationDeployments.ViewModels;
 using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.AppPermissions;
@@ -12,6 +14,7 @@ using Avalonia.VisualTree;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ApplicationDeployments;
 using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
+using RelaxKonOS.App.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.ApplicationDeployments;
@@ -73,6 +76,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
             EmptyState(settings, output);
             CatalogReceipt();
             ManagedCatalogForm();
+            WizardView();
             CatalogUpgradeOptions();
             RetainedActions();
             BusyState(settings, output);
@@ -86,6 +90,27 @@ internal static class ApplicationDeploymentsWorkspaceChecks
             Dispatcher.UIThread.RunJobs();
         }
         Console.WriteLine("Application deployment workspace checks passed (" + output + ").");
+    }
+
+    private static void WizardView()
+    {
+        var client = DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>();
+        var wizard = new DeploymentWizardViewModel(client, DeploymentWizardIntent.Create, [],
+            RelaxKonOS.Client.Localization.LocalizedText.Get);
+        var manager = new RelaxKonOS.WindowManager.WindowManager();
+        manager.Attach(new Canvas { Width = 1000, Height = 800 });
+        var owner = manager.Create(new WindowCreateOptions(new("test.wizard"), "Owner", new TextBlock(),
+            new RelaxKonOS.Core.Primitives.Rect(0, 0, 800, 600)));
+        DeploymentWizardView? view = null;
+        var result = manager.ShowDialogAsync<bool>(owner, "Wizard", dialog => view = new DeploymentWizardView(wizard, dialog));
+        Dispatcher.UIThread.RunJobs();
+        var expectedTitle = RelaxKonOS.Client.Localization.LocalizedText.Get("application_deployments.wizard.title");
+        Check(view is not null && ReferenceEquals(view.DataContext, wizard)
+            && view.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == expectedTitle),
+            "The application-owned wizard resolves its title and binds the draft model.");
+        wizard.CloseRequested?.Invoke();
+        Check(result.IsCompletedSuccessfully, "The application-owned wizard can close its managed dialog.");
+        manager.Close(owner);
     }
 
     private static void ManagedCatalogForm()

@@ -2,14 +2,14 @@ using Avalonia.Controls;
 using RelaxKonOS.App.ApplicationDeployments.ViewModels;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
+namespace RelaxKonOS.App.ApplicationDeployments.Views;
 
 /// <summary>
 /// The deployment wizard dialog. It owns the dialog handle, so closing is the view's concern: the
 /// view model only raises <see cref="DeploymentWizardViewModel.CloseRequested"/> once it has stopped
 /// observing the operation.
 /// </summary>
-internal partial class DeploymentWizardView : UserControl
+public partial class DeploymentWizardView : UserControl
 {
     // Leave space for the vertical scrollbar and a small visual gutter. A ScrollViewer otherwise
     // measures its vertical content at infinite width, which turns star columns into Auto columns.

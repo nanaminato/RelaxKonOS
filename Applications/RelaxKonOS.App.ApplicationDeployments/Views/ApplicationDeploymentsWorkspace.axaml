@@ -1,10 +1,10 @@
 <UserControl xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:apps="clr-namespace:RelaxKonOS.App.ApplicationDeployments;assembly=RelaxKonOS.App.ApplicationDeployments"
-             xmlns:viewModels="clr-namespace:RelaxKonOS.App.ApplicationDeployments.ViewModels;assembly=RelaxKonOS.App.ApplicationDeployments"
-             xmlns:dconv="clr-namespace:RelaxKonOS.Client.Apps.ApplicationDeployments.Converters"
-             x:Class="RelaxKonOS.Client.Apps.ApplicationDeployments.Views.ApplicationDeploymentsWorkspace"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.ApplicationDeployments.Views"
+             xmlns:apps="clr-namespace:RelaxKonOS.App.ApplicationDeployments"
+             xmlns:viewModels="clr-namespace:RelaxKonOS.App.ApplicationDeployments.ViewModels"
+             xmlns:dconv="clr-namespace:RelaxKonOS.App.ApplicationDeployments.Converters"
+             x:Class="RelaxKonOS.App.ApplicationDeployments.Views.ApplicationDeploymentsWorkspace"
              x:DataType="apps:ApplicationDeploymentsViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <UserControl.Styles>
@@ -119,7 +119,7 @@
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
             <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application_deployments.title}"
                                           Subtitle="{loc:Loc application_deployments.subtitle}"
-                                          IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/application-deployments.png" />
+                                          IconAsset="avares://RelaxKonOS.App.ApplicationDeployments/Assets/application-deployments.png" />
             <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh"
                     Command="{Binding RefreshCommand}" IsEnabled="{Binding CanRead}"
                     ToolTip.Tip="{loc:Loc application_deployments.refresh}"

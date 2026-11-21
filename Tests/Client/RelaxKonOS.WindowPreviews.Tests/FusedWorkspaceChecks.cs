@@ -23,7 +23,7 @@ using RelaxKonOS.App.WebServers.Views;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.App.Certificates.Views;
 using RelaxKonOS.Client.Apps.ApplicationDeployments;
-using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
+using RelaxKonOS.App.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Client.Apps.FileServices.Views;
 using RelaxKonOS.App.Notepad;

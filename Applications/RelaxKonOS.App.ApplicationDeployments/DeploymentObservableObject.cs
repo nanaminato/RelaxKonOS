@@ -7,6 +7,7 @@ namespace RelaxKonOS.App.ApplicationDeployments;
 public abstract class DeploymentObservableObject(Func<string, string> localize) : ObservableObject
 {
     protected Func<string, string> Localize { get; } = localize;
+    public Func<string, string> Labels => key => Localize(key);
 
     protected string Format(string key, params object?[] arguments) =>
         string.Format(CultureInfo.CurrentCulture, Localize(key), arguments);

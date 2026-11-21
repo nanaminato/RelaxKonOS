@@ -2,14 +2,14 @@ using RelaxKonOS.App.ApplicationDeployments;
 using System.ComponentModel;
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
+namespace RelaxKonOS.App.ApplicationDeployments.Views;
 
 /// <summary>
 /// Application-deployment shell. The layout lives in AXAML and binds straight to the view model; this
 /// class only attaches the data context and decides whether a narrow window shows the list or the
 /// selected application, because a 300px list column on a 560px window leaves nothing to read.
 /// </summary>
-internal partial class ApplicationDeploymentsWorkspace : UserControl
+public partial class ApplicationDeploymentsWorkspace : UserControl
 {
     private const double CompactWidth = 900;
 

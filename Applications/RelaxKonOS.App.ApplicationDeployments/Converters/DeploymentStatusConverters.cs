@@ -2,16 +2,16 @@ using RelaxKonOS.App.ApplicationDeployments;
 using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
-using RelaxKonOS.Client.Services.Theming;
+using RelaxKonOS.UI.Themes;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments.Converters;
+namespace RelaxKonOS.App.ApplicationDeployments.Converters;
 
 /// <summary>
 /// An observed state to one brush of its colour family. <c>ConverterParameter</c> selects the role:
 /// the literal <c>foreground</c> yields the text colour, anything else the border and dot colour.
 ///
-/// The brushes come from <see cref="ThemeBrushes"/>, so they follow the active theme rather than
+/// The brushes come from <see cref="ThemeResources"/>, so they follow the active theme rather than
 /// freezing the colours that were current when the row was created.
 /// </summary>
 public sealed class DeploymentStateBrushConverter : IValueConverter
@@ -25,7 +25,7 @@ public sealed class DeploymentStateBrushConverter : IValueConverter
         var key = parameter as string == "foreground"
             ? DeploymentStatusVisual.ForegroundKey(family)
             : DeploymentStatusVisual.AccentKey(family);
-        return ThemeBrushes.Get(key);
+        return ThemeResources.Brush(key);
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
@@ -58,7 +58,7 @@ public sealed class FlagBrushConverter : IValueConverter
         var keys = (parameter as string ?? string.Empty).Split('|');
         if (keys.Length == 0 || string.IsNullOrEmpty(keys[0])) return Brushes.Transparent;
         var index = value is true || keys.Length == 1 ? 0 : 1;
-        return ThemeBrushes.Get(keys[index]);
+        return ThemeResources.Brush(keys[index]);
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>

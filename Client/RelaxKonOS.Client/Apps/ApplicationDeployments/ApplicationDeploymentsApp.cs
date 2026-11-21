@@ -9,6 +9,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.App.ApplicationDeployments.ViewModels;
 using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
+using RelaxKonOS.App.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
