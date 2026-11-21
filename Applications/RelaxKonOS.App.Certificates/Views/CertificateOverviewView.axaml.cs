@@ -1,9 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Certificates.Views;
+namespace RelaxKonOS.App.Certificates.Views;
 
-internal partial class CertificateOverviewView : UserControl
+public partial class CertificateOverviewView : UserControl
 {
     private readonly Func<Task> _showRequestCertificate;
     private readonly Func<Task> _showCreateSelfSignedCertificate;

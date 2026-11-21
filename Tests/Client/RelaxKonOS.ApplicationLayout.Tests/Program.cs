@@ -340,6 +340,18 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
         renewalBitmap.Render(renewalView);
         renewalBitmap.Save(Path.Combine(output, $"CertificateRenewal-{mode}.png"), PngBitmapEncoderOptions.Default);
     }
+    var overview = new RelaxKonOS.App.Certificates.Views.CertificateOverviewView(
+        () => Task.CompletedTask, () => Task.CompletedTask) { DataContext = certificateVm };
+    host.Content = overview;
+    Dispatcher.UIThread.RunJobs();
+    Check(overview.GetVisualDescendants().OfType<TextBlock>()
+        .Any(text => text.Text == LocalizedText.Get("certificates.overview.total")),
+        "The application assembly resolves the overview labels.");
+    var runs = new RelaxKonOS.App.Certificates.Views.CertificateRenewalRunsView { DataContext = certificateVm };
+    host.Content = runs;
+    Dispatcher.UIThread.RunJobs();
+    Check(runs.GetVisualDescendants().OfType<DataGrid>().Single().Columns[0].Header as string
+        == LocalizedText.Get("certificates.renewal.source"), "The application assembly resolves the renewal grid headers.");
     host.Content = httpsView;
     if (culture == "zh-CN")
     {

@@ -57,6 +57,8 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
         SelectedKeyAlgorithm = KeyAlgorithms[0];
     }
 
+    public string CurrentLanguage => _language.CurrentLanguage;
+
     public ObservableCollection<CertificateRenewalRunRow> RenewalRuns { get; } = [];
     [ObservableProperty] private CertificateStatusText _renewalRunsStatus;
     [ObservableProperty] private bool _isRenewalRunsLoading;
