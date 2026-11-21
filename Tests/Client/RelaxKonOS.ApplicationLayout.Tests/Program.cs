@@ -382,7 +382,7 @@ if (certificatesOnly)
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 {
     settings.Language = culture;
-    using var tunnels = new RelaxKonOS.App.Tunnels.TunnelManagerViewModel(null!, true, RelaxKonOS.Client.Localization.LocalizedText.Get);
+    using var tunnels = new RelaxKonOS.App.Tunnels.TunnelManagerViewModel(null!, true, key => RelaxKonOS.App.Tunnels.TunnelsLocalization.Resolve(localization, key, key));
     tunnels.IsBusy = true;
     tunnels.StatusText = new(() => "Applying tunnel");
     var tunnelView = new RelaxKonOS.App.Tunnels.Views.TunnelManagerView { DataContext = tunnels };

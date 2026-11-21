@@ -9,5 +9,7 @@
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <PackageReference Include="Avalonia.Controls.DataGrid" />
         <AvaloniaResource Include="Assets/tunnels.png" />
+        <EmbeddedResource Include="Localization/*.json" LogicalName="Tunnels.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="Tunnels.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

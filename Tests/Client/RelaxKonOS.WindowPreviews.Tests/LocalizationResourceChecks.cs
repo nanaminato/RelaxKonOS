@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Tunnels;
 using RelaxKonOS.App.ApplicationDeployments;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
@@ -22,7 +23,7 @@ internal static class LocalizationResourceChecks
             var files = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Localization", culture), "*.json");
             if (files.Length == 0) throw new Exception("No shipped localization files for " + culture);
             foreach (var file in files.Concat([$"Git.Localization.{culture}.json", $"FileServices.Localization.{culture}.json",
-                $"Firewall.Localization.{culture}.json", $"ProcessGuardian.Localization.{culture}.json", $"PortForwarding.Localization.{culture}.json", $"ApplicationDeployments.Localization.{culture}.json"]))
+                $"Firewall.Localization.{culture}.json", $"ProcessGuardian.Localization.{culture}.json", $"PortForwarding.Localization.{culture}.json", $"ApplicationDeployments.Localization.{culture}.json", $"Tunnels.Localization.{culture}.json"]))
             {
                 using var source = Path.IsPathRooted(file) ? File.OpenRead(file)
                     : file.StartsWith("Git.", StringComparison.Ordinal) ? GitLocalization.Open(file)
@@ -30,7 +31,8 @@ internal static class LocalizationResourceChecks
                     : file.StartsWith("Firewall.", StringComparison.Ordinal) ? FirewallLocalization.Open(file)
                     : file.StartsWith("ProcessGuardian.", StringComparison.Ordinal) ? ProcessGuardianLocalization.Open(file)
                     : file.StartsWith("PortForwarding.", StringComparison.Ordinal) ? PortForwardingLocalization.Open(file)
-                    : ApplicationDeploymentsLocalization.Open(file);
+                    : file.StartsWith("ApplicationDeployments.", StringComparison.Ordinal) ? ApplicationDeploymentsLocalization.Open(file)
+                    : TunnelsLocalization.Open(file);
                 using var json = JsonDocument.Parse(source);
                 var root = json.RootElement;
                 var rootKeys = new HashSet<string>();
@@ -107,6 +109,10 @@ internal static class LocalizationResourceChecks
                     .Concat(["common.operation_log", "common.close", "application.relaxkonos.application-deployments.display_name"]))
                     if (ApplicationDeploymentsLocalization.Resolve(localization, key, key) != tables[culture][key])
                         throw new Exception("Incorrect application deployment translation " + culture + ": " + key);
+                foreach (var key in tables[culture].Keys.Where(key => key.StartsWith("tunnels.", StringComparison.Ordinal))
+                    .Concat(["common.cancel", "common.operation_log", "application.relaxkonos.tunnels.display_name"]))
+                    if (TunnelsLocalization.Resolve(localization, key, key) != tables[culture][key])
+                        throw new Exception("Incorrect tunnel translation " + culture + ": " + key);
                 _ = LocalizedText.Format("code_editor.context.delete_confirm", "/work/example");
                 _ = LocalizedText.Format("code_editor.context.operation_failed", "failure");
             }

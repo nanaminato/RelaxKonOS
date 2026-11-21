@@ -1,0 +1,14 @@
+{
+  "Strings": {
+    "application.relaxkonos.tunnels.display_name": "Tunnel Manager",
+    "common.cancel": "Cancel",
+    "common.close": "Close",
+    "common.delete": "Delete",
+    "common.operation_log": "Operation log",
+    "common.operation_running": "In progress",
+    "common.refresh": "Refresh",
+    "common.save": "Save",
+    "common.settings": "Settings",
+    "common.view": "View"
+  }
+}
