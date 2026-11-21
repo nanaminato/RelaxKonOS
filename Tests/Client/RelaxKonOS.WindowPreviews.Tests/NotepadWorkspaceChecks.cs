@@ -178,6 +178,18 @@ internal static class NotepadWorkspaceChecks
                 Check(picker.IsFolderPickerMode, "Code Editor requests the SDK folder picker.");
                 picker.CancelAction!();
                 Wait(chooseFolder);
+                var hostContext = new RelaxKonOS.AppSDK.AppContext(app.Manifest.Id, manager,
+                    RelaxKonOS.Client.App.Services, app.Manifest);
+                CodeEditorSessionDialogs.ConfigureEditorDialogs(hostContext, pickerOwner.Window, editor, pickerOwner);
+                using var draft = new CodeEditorDocument(null, "draft", "UTF-8", "draft.cs");
+                var discard = editor.RequestDiscardChangesAsync!(draft);
+                var confirmation = Dialog<ConfirmDialogViewModel>();
+                Check(manager.Windows.Single(item => item.IsModalDialog).Info.OwnerAppId == app.Manifest.Id,
+                    "Code Editor's SDK confirmation belongs to the editor window's application.");
+                confirmation.NoCommand.Execute(null);
+                Wait(discard);
+                Check(!discard.Result && manager.Windows.Contains(pickerOwner.Window),
+                    "Cancelling the SDK confirmation keeps the editor window open.");
             }
             manager.ForceClose(pickerOwner.Window);
 

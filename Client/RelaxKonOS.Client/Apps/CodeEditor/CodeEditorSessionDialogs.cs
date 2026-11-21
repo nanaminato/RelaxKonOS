@@ -1,3 +1,5 @@
+using Avalonia.Controls;
+using RelaxKonOS.WindowManager;
 using RelaxKonOS.UI.Imaging;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
@@ -24,41 +26,12 @@ internal static class CodeEditorSessionDialogs
     public static void Configure(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window, CodeEditorViewModel viewModel,
         IExplorerClient? files, IServerFiles? sdkFiles = null, IExternalAppWindowHandle? sdkWindow = null)
     {
-        viewModel.ShowTreeOperationErrorAsync = async message =>
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("code_editor.context.operation_error"), dialog =>
-                new Avalonia.Controls.ScrollViewer
-                {
-                    Content = new Avalonia.Controls.StackPanel
-                    {
-                        Margin = new Avalonia.Thickness(20), Spacing = 16,
-                        Children =
-                        {
-                            new Avalonia.Controls.TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                            new Avalonia.Controls.Button
-                            {
-                                Content = LocalizedText.Get("common.ok"),
-                                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
-                                Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => dialog.Close(true)),
-                            },
-                        },
-                    },
-                }, new Size(480, 240));
-        viewModel.RequestEntryNameAsync = (prompt, initial) => context.ShowDialogAsync<string>(window, prompt, dialog =>
-            new TextInputDialogView { DataContext = new TextInputDialogViewModel(prompt, initial,
-                value => { if (value is null) dialog.Cancel(); else dialog.Close(value); }, validate: CodeEditorViewModel.IsValidEntryName) },
-            new Size(420, 180));
-        viewModel.RequestDeleteEntryAsync = path => context.ShowDialogAsync<bool>(window,
-            LocalizedText.Get("code_editor.context.delete"), dialog =>
-                new ConfirmDialogView { DataContext = new ConfirmDialogViewModel(
-                    LocalizedText.Format("code_editor.context.delete_confirm", path), dialog.Close,
-                    LocalizedText.Get("code_editor.context.delete")) }, new Size(460, 200));
-
         if (sdkFiles is not null && sdkWindow is not null)
             ConfigureSdkPickers(viewModel, sdkFiles, sdkWindow);
         else
             ConfigureExplorerPickers(context, window, viewModel, files);
 
-        ConfigureEditorDialogs(context, window, viewModel);
+        ConfigureEditorDialogs(context, window, viewModel, sdkWindow);
     }
 
     internal static void ConfigureSdkPickers(CodeEditorViewModel viewModel, IServerFiles files, IExternalAppWindowHandle owner)
@@ -137,9 +110,42 @@ internal static class CodeEditorSessionDialogs
         }, GetFilePickerBounds(window));
     }
 
-    private static void ConfigureEditorDialogs(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window, CodeEditorViewModel viewModel)
+    internal static void ConfigureEditorDialogs(AppContext context, ManagedWindow window, CodeEditorViewModel viewModel,
+        IExternalAppWindowHandle? sdkWindow)
     {
-        viewModel.RequestEncodingActionAsync = () => context.ShowDialogAsync<EncodingDialogAction?>(window,
+        Task<T?> ShowDialogAsync<T>(string title, Func<ModalDialog<T>, Control> content, Size size) =>
+            sdkWindow is null ? context.ShowDialogAsync(window, title, content, size) : sdkWindow.ShowDialogAsync(title, content, size);
+
+        viewModel.ShowTreeOperationErrorAsync = async message =>
+            await ShowDialogAsync<bool>(LocalizedText.Get("code_editor.context.operation_error"), dialog =>
+                new Avalonia.Controls.ScrollViewer
+                {
+                    Content = new Avalonia.Controls.StackPanel
+                    {
+                        Margin = new Avalonia.Thickness(20), Spacing = 16,
+                        Children =
+                        {
+                            new Avalonia.Controls.TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                            new Avalonia.Controls.Button
+                            {
+                                Content = LocalizedText.Get("common.ok"),
+                                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                                Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => dialog.Close(true)),
+                            },
+                        },
+                    },
+                }, new Size(480, 240));
+        viewModel.RequestEntryNameAsync = (prompt, initial) => ShowDialogAsync<string>(prompt, dialog =>
+            new TextInputDialogView { DataContext = new TextInputDialogViewModel(prompt, initial,
+                value => { if (value is null) dialog.Cancel(); else dialog.Close(value); }, validate: CodeEditorViewModel.IsValidEntryName) },
+            new Size(420, 180));
+        viewModel.RequestDeleteEntryAsync = path => ShowDialogAsync<bool>(
+            LocalizedText.Get("code_editor.context.delete"), dialog =>
+                new ConfirmDialogView { DataContext = new ConfirmDialogViewModel(
+                    LocalizedText.Format("code_editor.context.delete_confirm", path), dialog.Close,
+                    LocalizedText.Get("code_editor.context.delete")) }, new Size(460, 200));
+
+        viewModel.RequestEncodingActionAsync = () => ShowDialogAsync<EncodingDialogAction?>(
             LocalizedText.Get("common.file_encoding"), dialog =>
                 new EncodingActionDialogView { DataContext = new EncodingActionDialogViewModel(action =>
                 {
@@ -147,7 +153,7 @@ internal static class CodeEditorSessionDialogs
                     else dialog.Cancel();
                 }) },
             new Size(420, 220));
-        viewModel.RequestEncodingAsync = () => context.ShowDialogAsync<string>(window,
+        viewModel.RequestEncodingAsync = () => ShowDialogAsync<string>(
             LocalizedText.Get("common.file_encoding"), dialog =>
                 new EncodingDialogView { DataContext = new EncodingDialogViewModel(viewModel.EncodingName, encoding =>
                 {
@@ -157,7 +163,7 @@ internal static class CodeEditorSessionDialogs
             new Size(420, 330));
         viewModel.RequestSettingsAsync = async () =>
         {
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("code_editor.settings.title"), dialog =>
+            await ShowDialogAsync<bool>(LocalizedText.Get("code_editor.settings.title"), dialog =>
             {
                 viewModel.CloseSettingsAction = () => dialog.Close(true);
                 return new CodeEditorSettingsView { DataContext = viewModel };
@@ -166,7 +172,7 @@ internal static class CodeEditorSessionDialogs
         viewModel.RequestDiscardChangesAsync = async document =>
         {
             var discard = false;
-            await context.ShowDialogAsync<bool?>(window,
+            await ShowDialogAsync<bool?>(
                 LocalizedText.Get("code_editor.close_dirty_title"), dialog =>
             {
                 var dialogViewModel = new ConfirmDialogViewModel(
@@ -174,7 +180,7 @@ internal static class CodeEditorSessionDialogs
                     confirmed => { discard = confirmed; dialog.Close(confirmed); },
                     LocalizedText.Get("code_editor.discard_changes"));
                 return new ConfirmDialogView { DataContext = dialogViewModel };
-            });
+            }, new Size(460, 320));
             return discard;
         };
 
