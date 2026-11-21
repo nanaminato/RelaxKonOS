@@ -153,6 +153,12 @@ if (args is ["--module-host-checks"])
     return;
 }
 
+if (args is ["--joint-deployment-acceptance", var desktopPackage])
+{
+    JointDeploymentAcceptance.Run(desktopPackage);
+    return;
+}
+
 if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"])
 {
     void VerifyLifecycle(bool passed, string message)
