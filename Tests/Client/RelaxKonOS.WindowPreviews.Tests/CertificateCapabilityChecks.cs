@@ -1,4 +1,7 @@
 using System.Reflection;
+using Avalonia.Controls;
+using RelaxKonOS.App.Certificates;
+using RelaxKonOS.App.Certificates.Views;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services;
@@ -19,8 +22,10 @@ internal static class CertificateCapabilityChecks
         var permissions = new Permission();
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "certificate-memory.json"));
         using var http = new HttpClient();
-        var factory = new ExternalAppContextFactory(permissions, null!, language, settings, null!, auth,
-            null!, null!, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings), null!, null!, null!,
+        var windows = new RelaxKonOS.WindowManager.WindowManager();
+        windows.Attach(new Canvas { Width = 1280, Height = 900 });
+        var factory = new ExternalAppContextFactory(permissions, permissions, language, settings, null!, auth,
+            null!, windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings), null!, null!, null!,
             null!, null!, memory, null!, null!, null!, null!, certificates: client);
         var capability = factory.Create(new ApplicationManifest(new AppId("relaxkonos.certificates"), "Certificates")).Certificates;
 
@@ -37,6 +42,16 @@ internal static class CertificateCapabilityChecks
         await RejectAsync<InvalidOperationException>(() => capability.ListAsync());
         if (calls.Count != 3) throw new InvalidOperationException("The stale capability issued a certificate call.");
         Console.WriteLine("Certificate SDK read/manage grants and connection binding passed.");
+
+        calls.BeforeResponse = null;
+        session.ServiceId = "http://fixture.invalid";
+        var entry = new CertificatePackageApp();
+        await entry.ActivateAsync(factory.Create(entry.Manifest));
+        var window = windows.Windows.Single();
+        if (window.View.Content is not CertificateManagerWorkspace || calls.Count != 4)
+            throw new InvalidOperationException("The package entry did not open the certificate workspace and load its list.");
+        windows.ForceClose(window);
+        Console.WriteLine("Certificate package entry opens the SDK workspace and reads the certificate list.");
     }
 
     private static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
@@ -46,7 +61,7 @@ internal static class CertificateCapabilityChecks
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
-    private sealed class Permission : IAppPermissionManager
+    private sealed class Permission : IAppPermissionManager, IAppPermissionRequestService
     {
         public HashSet<string> Granted { get; } = [];
         public bool IsGranted(AppId id, string permission) => id.Value == "relaxkonos.certificates" && Granted.Contains(permission);
@@ -55,6 +70,9 @@ internal static class CertificateCapabilityChecks
         public void SetStatus(AppId id, string permission, AppPermissionStatus status) => throw new NotSupportedException();
         public void SetGranted(AppId id, string permission, bool granted) => throw new NotSupportedException();
         public void Clear(AppId id) => throw new NotSupportedException();
+        public Task<AppPermissionStatus> RequestAsync(AppId id, string permission, CancellationToken token) => throw new NotSupportedException();
+        public Task RequestUndecidedAsync(AppId id, CancellationToken token) => throw new NotSupportedException();
+        public Task OpenSettingsAsync(AppId id) => throw new NotSupportedException();
     }
 }
 

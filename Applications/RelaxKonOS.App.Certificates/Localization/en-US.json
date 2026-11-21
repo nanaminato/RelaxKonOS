@@ -1,6 +1,9 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "certificates.discard_title": "Discard changes?",
+    "certificates.discard_message": "Discard unsaved changes and close this editor?",
+    "certificates.discard": "Discard",
     "certificates.title": "Certificate Manager",
     "certificates.view": "View",
     "certificates.operation_log": "Operation log",

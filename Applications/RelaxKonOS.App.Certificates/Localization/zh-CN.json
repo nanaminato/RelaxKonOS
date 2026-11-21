@@ -1,6 +1,9 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "certificates.discard_title": "放弃修改？",
+    "certificates.discard_message": "放弃未保存的修改并关闭编辑器？",
+    "certificates.discard": "放弃修改",
     "certificates.title": "证书管理器",
     "certificates.view": "查看",
     "certificates.operation_log": "操作日志",

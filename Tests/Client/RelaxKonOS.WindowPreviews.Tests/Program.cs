@@ -106,7 +106,7 @@ if (args.Contains("--certificates-only"))
         Console.WriteLine("Certificate Manager resources resolved in all three languages.");
     }
     finally { settings.Language = previousLanguage; }
-    Task.Run(() => CertificateCapabilityChecks.RunAsync(settings, localization)).GetAwaiter().GetResult();
+    CertificateCapabilityChecks.RunAsync(settings, localization).GetAwaiter().GetResult();
     CertificateEditorChecks.Run(localization);
     return;
 }
