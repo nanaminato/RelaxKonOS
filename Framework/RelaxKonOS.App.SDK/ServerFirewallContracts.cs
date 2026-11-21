@@ -1,8 +1,8 @@
 using RelaxKonOS.Protocol.Firewall;
 
-namespace RelaxKonOS.Client.Apps.Firewall;
+namespace RelaxKonOS.AppSDK;
 
-public interface IRemoteFirewallClient
+public interface IServerFirewall
 {
     Task<FirewallStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<FirewallRuleDto>> ListRulesAsync(CancellationToken cancellationToken = default);

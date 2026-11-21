@@ -27,7 +27,7 @@ Firewall 是 RelaxKonOS 的内置宿主防火墙编辑器。它读取并修改�
 | 层 | 职责 |
 | --- | --- |
 | Protocol | `Firewall*` DTO 与 `/api/v1.0/firewall/*` 路由，传输结构化策略和规则，不传 shell 命令。 |
-| Client | Avalonia 本地窗口、状态和操作确认；`IRemoteFirewallClient` 经统一 `IHostElevationBroker` 授权并带 JWT 调用服务端。 |
+| Client | Avalonia 本地窗口、状态和操作确认；`IServerFirewall` 经统一 `IHostElevationBroker` 授权并带 JWT 调用服务端。 |
 | Server | `IHostElevationSessionStore` 统一检查动态管理员资格或精确临时授权；`IHostFirewallService` 为宿主防火墙边界。 |
 | Linux Provider | `LinuxUfwFirewallService` 经 `IFirewallHostOperations` 请求封闭 Firewall 操作，由 Host 适配器发送原 `FirewallUfw*` 请求；Helper 使用固定 UFW 路径，规则的动作、方向、协议、端口和 IP/CIDR 均经过白名单/范围校验。 |
 

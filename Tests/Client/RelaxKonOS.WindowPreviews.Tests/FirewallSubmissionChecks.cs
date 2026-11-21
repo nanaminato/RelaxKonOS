@@ -1,6 +1,10 @@
 using System.Reflection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Firewall;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Firewall;
 
 internal static class FirewallSubmissionChecks
@@ -11,7 +15,39 @@ internal static class FirewallSubmissionChecks
         ConfirmationGates();
         DefaultPolicies();
         DraftValidation();
+        CapabilityGrantsAsync().GetAwaiter().GetResult();
         Console.WriteLine("Firewall submission checks passed.");
+    }
+
+    private static async Task CapabilityGrantsAsync()
+    {
+        var host = Host();
+        var id = new AppId("relaxkonos.firewall");
+        var grants = new CertificateCapabilityChecks.Permission(id.Value);
+        var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "firewall-memory.json"));
+        using var lifetime = new CancellationTokenSource();
+        IServerFirewall firewall = new ServerFirewallCapability(id, grants, new ExternalServerConnection(memory.Capture(auth)),
+            host.Client, lifetime.Token);
+        await RejectAsync<UnauthorizedAccessException>(() => firewall.GetStatusAsync());
+        grants.Granted.Add(AppPermissions.ServerFirewallRead);
+        await firewall.GetStatusAsync();
+        await RejectAsync<UnauthorizedAccessException>(() => firewall.SetEnabledAsync(new(true)));
+        Check(host.Stub.EnabledCalls == 0, "Read authorization cannot change firewall state.");
+        grants.Granted.Add(AppPermissions.ServerFirewallManage);
+        Check((await firewall.SetEnabledAsync(new(true))).Success && host.Stub.EnabledCalls == 1,
+            "The scope delegates an authorized firewall request to its test client.");
+        ((EventAlertsAuthFixture)(object)auth).ServiceId = "http://replacement.invalid";
+        await RejectAsync<InvalidOperationException>(() => firewall.GetStatusAsync());
+        lifetime.Cancel();
+        await RejectAsync<OperationCanceledException>(() => firewall.GetStatusAsync());
+
+        static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
+        {
+            try { await operation(); }
+            catch (T) { return; }
+            throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+        }
     }
 
     /// <summary>A write freezes the rule number and draft it was launched with, and a second write
@@ -130,9 +166,9 @@ internal static class FirewallSubmissionChecks
         Check(vm.Rules.Count == 4 && !vm.HasFilter, "Clearing the filter restores every host rule.");
     }
 
-    private static (IRemoteFirewallClient Client, FirewallHostStub Stub) Host()
+    private static (IServerFirewall Client, FirewallHostStub Stub) Host()
     {
-        var client = DispatchProxy.Create<IRemoteFirewallClient, FirewallHostStub>();
+        var client = DispatchProxy.Create<IServerFirewall, FirewallHostStub>();
         return (client, (FirewallHostStub)(object)client);
     }
 

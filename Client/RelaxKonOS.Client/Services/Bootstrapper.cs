@@ -205,7 +205,7 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "process-guardian"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
-        services.AddHttpClient<RelaxKonOS.Client.Apps.Firewall.IRemoteFirewallClient, RelaxKonOS.Client.Apps.Firewall.RemoteFirewallClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerFirewall, RelaxKonOS.Client.Apps.Firewall.RemoteFirewallClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "firewall"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         // Certificates（证书管理器）与 WebServers（Web 服务器管理器）：typed HttpClient（JWT from IAuthSession，与 Firewall 同模式）。

@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -8,7 +9,7 @@ using RelaxKonOS.Client.Services.Privileged;
 
 namespace RelaxKonOS.Client.Apps.Firewall;
 
-public sealed class RemoteFirewallClient(HttpClient http, IAuthSession session, IHostElevationBroker elevation) : IRemoteFirewallClient
+public sealed class RemoteFirewallClient(HttpClient http, IAuthSession session, IHostElevationBroker elevation) : IServerFirewall
 {
     public Task<FirewallStatusDto> GetStatusAsync(CancellationToken cancellationToken = default) => SendAsync<FirewallStatusDto>(HttpMethod.Get, FirewallApiRoutes.Status, null, cancellationToken);
     public Task<IReadOnlyList<FirewallRuleDto>> ListRulesAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<FirewallRuleDto>>(HttpMethod.Get, FirewallApiRoutes.Rules, null, cancellationToken);

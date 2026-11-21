@@ -238,7 +238,7 @@ internal static class FirewallWorkspaceChecks
             }
             finally { window.Close(); }
 
-            var client = DispatchProxy.Create<IRemoteFirewallClient, FirewallHostStub>();
+            var client = DispatchProxy.Create<IServerFirewall, FirewallHostStub>();
             var readOnly = new FirewallViewModel(client, new FirewallReadOnlyPermissions());
             readOnly.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             var readOnlyView = new FirewallWorkspace(readOnly);
@@ -299,7 +299,7 @@ internal static class FirewallWorkspaceChecks
 
     private static FirewallViewModel Model(out FirewallHostStub stub)
     {
-        var client = DispatchProxy.Create<IRemoteFirewallClient, FirewallHostStub>();
+        var client = DispatchProxy.Create<IServerFirewall, FirewallHostStub>();
         stub = (FirewallHostStub)(object)client;
         var vm = new FirewallViewModel(client, new FirewallTestPermissions());
         vm.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();

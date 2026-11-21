@@ -19,7 +19,7 @@ namespace RelaxKonOS.Client.Apps.Firewall;
 /// </summary>
 public sealed partial class FirewallViewModel : LocalizedObservableObject
 {
-    private readonly IRemoteFirewallClient _client;
+    private readonly IServerFirewall _client;
     private readonly IAppPermissionScope _permissions;
     private readonly List<FirewallRuleRow> _allRules = [];
     private readonly IReadOnlyList<FirewallOption> _directions;
@@ -30,7 +30,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     private string? _hostIncoming;
     private string? _hostOutgoing;
 
-    public FirewallViewModel(IRemoteFirewallClient client, IAppPermissionScope permissions)
+    public FirewallViewModel(IServerFirewall client, IAppPermissionScope permissions)
     {
         _client = client;
         _permissions = permissions;

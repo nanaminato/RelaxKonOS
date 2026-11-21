@@ -58,6 +58,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerWebServers? _webServers;
     private readonly IServerGit? _git;
     private readonly IServerFileServices? _fileServices;
+    private readonly IServerFirewall? _firewall;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
     private readonly DesktopDevicePreferences? _devicePreferences;
@@ -97,7 +98,8 @@ public sealed class ExternalAppContextFactory
         IServerCertificates? certificates = null,
         IServerWebServers? webServers = null,
         IServerGit? git = null,
-        IServerFileServices? fileServices = null)
+        IServerFileServices? fileServices = null,
+        IServerFirewall? firewall = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -127,6 +129,7 @@ public sealed class ExternalAppContextFactory
         _webServers = webServers;
         _git = git;
         _fileServices = fileServices;
+        _firewall = firewall;
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
         _diagnostics = diagnostics;
@@ -155,6 +158,7 @@ public sealed class ExternalAppContextFactory
         new ServerWebServersCapability(appId, _permissions, connection, _webServers, _elevationBroker),
         new ServerGitCapability(appId, _permissions, connection, _git, lifetime),
         new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
+        new ServerFirewallCapability(appId, _permissions, connection, _firewall, lifetime),
         appId.Value == "relaxkonos.file-services" ? new FileServicesAdministratorPrompt(appId, _permissions, connection, fileSession, _windowManager) : null,
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
@@ -202,6 +206,7 @@ public sealed class ExternalAppContextFactory
         IServerWebServers WebServers,
         IServerGit Git,
         IServerFileServices FileServices,
+        IServerFirewall Firewall,
         IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt,
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,

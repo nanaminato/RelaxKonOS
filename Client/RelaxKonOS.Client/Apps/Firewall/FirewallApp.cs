@@ -26,7 +26,7 @@ public sealed class FirewallApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IRemoteFirewallClient)) as IRemoteFirewallClient;
+        var client = context.Services.GetService(typeof(IServerFirewall)) as IServerFirewall;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"),
