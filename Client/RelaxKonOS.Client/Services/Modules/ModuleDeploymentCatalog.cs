@@ -15,13 +15,13 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
 {
     public async Task<ModuleDeploymentSnapshot> ReadAsync(CancellationToken cancellationToken)
     {
-        var sources = await client.StoreSourcesAsync();
+        var sources = await client.StoreSourcesAsync(cancellationToken);
         var store = ImmutableDictionary.CreateBuilder<string, ServerModuleStoreItemDto>(StringComparer.Ordinal);
         for (int? offset = 0; offset is { } position;)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (position > 2048) throw new InvalidOperationException("deployment-module-catalog-limit");
-            var page = await client.SearchStoreAsync(null, offset: position);
+            var page = await client.SearchStoreAsync(null, offset: position, cancellationToken: cancellationToken);
             foreach (var item in page.Items)
             {
                 if (!item.RidCompatible || !item.HostApiCompatible || item.Revoked || item.BlockedBy.Count != 0)
@@ -32,10 +32,10 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             offset = page.NextOffset;
         }
 
-        var modules = await client.ReadAsync();
-        var installed = (await client.InstalledPackagesAsync()).Items;
-        var verifiedModules = await client.ReadAsync();
-        var verifiedSources = await client.StoreSourcesAsync();
+        var modules = await client.ReadAsync(cancellationToken);
+        var installed = (await client.InstalledPackagesAsync(cancellationToken)).Items;
+        var verifiedModules = await client.ReadAsync(cancellationToken);
+        var verifiedSources = await client.StoreSourcesAsync(cancellationToken);
         var target = Target(modules, sources);
         if (target != Target(verifiedModules, verifiedSources))
             throw new InvalidOperationException("deployment-snapshot-changed");
@@ -72,10 +72,10 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         return new(target, releases.ToImmutable(), store.ToImmutable());
     }
 
-    public async Task<DeploymentTarget> ObserveAsync()
+    public async Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken)
     {
-        var modules = await client.ReadAsync();
-        var sources = await client.StoreSourcesAsync();
+        var modules = await client.ReadAsync(cancellationToken);
+        var sources = await client.StoreSourcesAsync(cancellationToken);
         return Target(modules, sources);
     }
 

@@ -130,9 +130,9 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
             && (review && consent.State == "AwaitingConfirmation" ? ValidDigest(consent.ConfirmationToken) : consent.ConfirmationToken == ""));
     }
 
-    public async Task<IReadOnlyList<ServerModuleDto>> ReadAsync()
+    public async Task<IReadOnlyList<ServerModuleDto>> ReadAsync(CancellationToken cancellationToken = default)
     {
-        var facts = await SendAsync<IReadOnlyList<ServerModuleDto>>(HttpMethod.Get, ServerApiRoutes.Modules);
+        var facts = await SendAsync<IReadOnlyList<ServerModuleDto>>(HttpMethod.Get, ServerApiRoutes.Modules, cancellationToken: cancellationToken);
         if (facts.Count is 0 or > 128 || facts.Any(x => string.IsNullOrEmpty(x.Id) || string.IsNullOrEmpty(x.ServiceId)
             || string.IsNullOrEmpty(x.DesiredRevision) || string.IsNullOrEmpty(x.ProcessGeneration))
             || facts.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != facts.Count
@@ -147,10 +147,10 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         _serverIdentity = identity;
         return facts;
     }
-    public async Task<ServerModulePlanDto> PreviewAsync(ServerModulePlanRequest request)
+    public async Task<ServerModulePlanDto> PreviewAsync(ServerModulePlanRequest request, CancellationToken cancellationToken = default)
     {
         Require(_serverIdentity is not null && request.ServiceId == _serverIdentity && ValidIds(request.ModuleIds) && ValidIds(request.EnabledModuleIds));
-        var plan = await SendAsync<ServerModulePlanDto>(HttpMethod.Post, ServerModuleManagementRoutes.Plans, request);
+        var plan = await SendAsync<ServerModulePlanDto>(HttpMethod.Post, ServerModuleManagementRoutes.Plans, request, cancellationToken: cancellationToken);
         ValidatePlan(plan);
         ServerModulePlanRequest Canonical(ServerModulePlanRequest target) => target with
         { ModuleIds = target.ModuleIds.Order(StringComparer.Ordinal).ToArray(), EnabledModuleIds = target.EnabledModuleIds.Order(StringComparer.Ordinal).ToArray() };
@@ -169,9 +169,9 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         }
         return result;
     }
-    public async Task<ServerModuleOperationDto> ApplyAsync(Guid planId)
+    public async Task<ServerModuleOperationDto> ApplyAsync(Guid planId, CancellationToken cancellationToken = default)
     {
-        var result = await SendAsync<ServerModuleOperationDto>(HttpMethod.Post, ServerModuleManagementRoutes.Plans + "/" + planId + "/apply");
+        var result = await SendAsync<ServerModuleOperationDto>(HttpMethod.Post, ServerModuleManagementRoutes.Plans + "/" + planId + "/apply", cancellationToken: cancellationToken);
         ValidateOperation(result); Require(result.PlanId == planId);
         return result;
     }
@@ -189,9 +189,9 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(page.Items.Select(x => x.OperationId).Distinct().Count() == page.Items.Count);
         return page;
     }
-    public async Task<ServerInstalledModulePageDto> InstalledPackagesAsync()
+    public async Task<ServerInstalledModulePageDto> InstalledPackagesAsync(CancellationToken cancellationToken = default)
     {
-        var page = await SendAsync<ServerInstalledModulePageDto>(HttpMethod.Get, ServerModuleManagementRoutes.InstalledPackages);
+        var page = await SendAsync<ServerInstalledModulePageDto>(HttpMethod.Get, ServerModuleManagementRoutes.InstalledPackages, cancellationToken: cancellationToken);
         Require(page.Items is { Count: <= 128 }
             && page.Items.All(module => module is not null && ValidIds([module.ModuleId]) && module.Version is { Length: > 0 and <= 32 }
                 && module.ReleaseId is { Length: > 0 and <= 128 } && ValidDigest(module.ArtifactSha256)
@@ -209,9 +209,9 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
                 && ValidDigest(module.ArtifactSha256) && module.InstalledAt != default));
         return page;
     }
-    public async Task<ServerPackageOperationPageDto> PackageOperationsAsync()
+    public async Task<ServerPackageOperationPageDto> PackageOperationsAsync(CancellationToken cancellationToken = default)
     {
-        var page = await SendAsync<ServerPackageOperationPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.PackageOperations);
+        var page = await SendAsync<ServerPackageOperationPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.PackageOperations, cancellationToken: cancellationToken);
         Require(page.Items is { Count: <= 128 }
             && page.Items.All(operation => operation is not null && operation.OperationId != Guid.Empty
                 && operation.Action is "install" or "rollback" or "update" && ValidIds([operation.ModuleId])
@@ -221,13 +221,13 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return page;
     }
 
-    public async Task<ServerModuleStorePageDto> SearchStoreAsync(string? query, string? sourceId = null, int offset = 0)
+    public async Task<ServerModuleStorePageDto> SearchStoreAsync(string? query, string? sourceId = null, int offset = 0, CancellationToken cancellationToken = default)
     {
         Require((query is null or { Length: <= 128 }) && (sourceId is null || ValidIds([sourceId])) && offset >= 0);
         var route = FormattableString.Invariant($"{ServerModuleManagementRoutes.ModuleStoreSearch}?limit=25&offset={offset}");
         if (!string.IsNullOrWhiteSpace(query)) route += "&q=" + Uri.EscapeDataString(query);
         if (!string.IsNullOrWhiteSpace(sourceId)) route += "&sourceId=" + Uri.EscapeDataString(sourceId);
-        var page = await SendAsync<ServerModuleStorePageDto>(HttpMethod.Get, route);
+        var page = await SendAsync<ServerModuleStorePageDto>(HttpMethod.Get, route, cancellationToken: cancellationToken);
         Require(page.Items is { Count: <= 25 } && (page.NextOffset is null || page.NextOffset > offset)
             && page.BlockedBy is { Count: <= 64 }
             && page.Items.All(item => item is not null && ValidIds([item.SourceId]) && ValidIds([item.ModuleId])
@@ -237,10 +237,10 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return page;
     }
 
-    public async Task<ServerModuleStoreSourcePageDto> StoreSourcesAsync()
+    public async Task<ServerModuleStoreSourcePageDto> StoreSourcesAsync(CancellationToken cancellationToken = default)
     {
         var page = await SendAsync<ServerModuleStoreSourcePageDto>(HttpMethod.Get,
-            ServerModuleManagementRoutes.ModuleStoreSources);
+            ServerModuleManagementRoutes.ModuleStoreSources, cancellationToken: cancellationToken);
         Require((page.CatalogRevision == "uninitialized" || page.CatalogRevision is { Length: 32 }
                 && page.CatalogRevision.All(char.IsAsciiHexDigitLower))
             && page.Sources is { Count: <= 16 } && page.Sources.All(source => source is not null
@@ -267,19 +267,19 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return receipt;
     }
 
-    public async Task<ServerModulePackageUploadDto> DownloadStorePackageAsync(string sourceId, string releaseId)
+    public async Task<ServerModulePackageUploadDto> DownloadStorePackageAsync(string sourceId, string releaseId, CancellationToken cancellationToken = default)
     {
         Require(ValidIds([sourceId]) && ValidIds([releaseId]));
         var upload = await SendAsync<ServerModulePackageUploadDto>(HttpMethod.Post,
-            ServerModuleManagementRoutes.ModuleStoreDownload, new ServerModuleStoreDownloadRequest(sourceId, releaseId));
+            ServerModuleManagementRoutes.ModuleStoreDownload, new ServerModuleStoreDownloadRequest(sourceId, releaseId), cancellationToken: cancellationToken);
         Require(upload is not null && upload.UploadId is { Length: 32 } && upload.UploadId.All(char.IsAsciiHexDigitLower)
             && upload.Bytes > 0 && ValidDigest(upload.Sha256));
         return upload;
     }
 
-    public async Task<ServerModuleHealthPageDto> CheckHealthAsync()
+    public async Task<ServerModuleHealthPageDto> CheckHealthAsync(CancellationToken cancellationToken = default)
     {
-        var report = await SendAsync<ServerModuleHealthPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.ModuleHealth);
+        var report = await SendAsync<ServerModuleHealthPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.ModuleHealth, cancellationToken: cancellationToken);
         Require(report is not null && report.CheckedAt != default && report.Modules is { Count: <= 256 }
             && report.Modules.All(module => module is not null && ValidIds([module.ModuleId])
                 && module.Status is "host" or "loaded" or "healthy" or "unhealthy" or "quarantined" or "load-failed"
@@ -310,12 +310,12 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return plan;
     }
 
-    public async Task<ServerModulePackagePlanDto> PreparePackageAsync(ServerModuleStoreItemDto release)
+    public async Task<ServerModulePackagePlanDto> PreparePackageAsync(ServerModuleStoreItemDto release, CancellationToken cancellationToken = default)
     {
-        var upload = await DownloadStorePackageAsync(release.SourceId, release.ReleaseId);
+        var upload = await DownloadStorePackageAsync(release.SourceId, release.ReleaseId, cancellationToken);
         Require(upload.Sha256 == release.ArtifactSha256 && upload.Bytes == release.ArchiveBytes);
         var plan = await SendAsync<ServerModulePackagePlanDto>(HttpMethod.Post, ServerModuleManagementRoutes.PackagePlans,
-            new ServerModulePackageInstallRequest(release.SourceId, release.ReleaseId, upload.UploadId));
+            new ServerModulePackageInstallRequest(release.SourceId, release.ReleaseId, upload.UploadId), cancellationToken: cancellationToken);
         ValidatePackagePlan(plan);
         Require(plan.SourceId == release.SourceId && plan.ReleaseId == release.ReleaseId
             && plan.ModuleId == release.ModuleId && plan.Version == release.Version
@@ -324,21 +324,21 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         return plan;
     }
 
-    public async Task<ServerModulePackagePlanDto> ReadPackagePlanAsync(Guid planId)
+    public async Task<ServerModulePackagePlanDto> ReadPackagePlanAsync(Guid planId, CancellationToken cancellationToken = default)
     {
         Require(planId != Guid.Empty);
         var plan = await SendAsync<ServerModulePackagePlanDto>(HttpMethod.Get,
-            ServerModuleManagementRoutes.PackagePlan.Replace("{planId:guid}", planId.ToString()));
+            ServerModuleManagementRoutes.PackagePlan.Replace("{planId:guid}", planId.ToString()), cancellationToken: cancellationToken);
         ValidatePackagePlan(plan);
         Require(plan.PlanId == planId);
         return plan;
     }
 
-    public async Task<ServerModulePackageInstallResultDto> ApplyPackagePlanAsync(Guid planId)
+    public async Task<ServerModulePackageInstallResultDto> ApplyPackagePlanAsync(Guid planId, CancellationToken cancellationToken = default)
     {
         Require(planId != Guid.Empty);
         var result = await SendAsync<ServerModulePackageInstallResultDto>(HttpMethod.Post,
-            ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", planId.ToString()));
+            ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", planId.ToString()), cancellationToken: cancellationToken);
         Require(result is not null && result.OperationId != Guid.Empty && ValidInstalled(result.Record));
         return result;
     }
@@ -400,40 +400,41 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
             && operation.ModuleResults.Select(result => result.ModuleId).Distinct(StringComparer.Ordinal).Count() == operation.ModuleResults.Count);
         Require(operation.State != ServerModuleOperationState.Succeeded || operation.ProblemCode is null && operation.ModuleResults?.All(result => result.Succeeded) != false);
     }
-    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body = null, HttpContent? content = null)
+    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body = null, HttpContent? content = null,
+        CancellationToken cancellationToken = default)
     {
         if (!IsCurrent || session.EffectiveBaseUrl is not { } baseUrl) throw new InvalidOperationException("module-session-changed");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(baseUrl), route.TrimStart('/')));
         if (content is not null) request.Content = content;
         else if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
-        using var response = await http.SendAsync(request);
+        using var response = await http.SendAsync(request, cancellationToken);
         if (!IsCurrent) throw new InvalidOperationException("module-session-changed");
         if (!response.IsSuccessStatusCode)
         {
             var code = "module-http-" + (int)response.StatusCode;
             try
             {
-                using var problem = JsonDocument.Parse(await ReadBoundedAsync(response.Content, 65536));
+                using var problem = JsonDocument.Parse(await ReadBoundedAsync(response.Content, 65536, cancellationToken));
                 if (problem.RootElement.TryGetProperty("problemCode", out var value) && value.ValueKind == JsonValueKind.String
                     && value.GetString() is { } problemCode && ValidCode(problemCode)) code = problemCode;
             }
             catch (JsonException) { }
             throw new InvalidOperationException(code);
         }
-        var result = JsonSerializer.Deserialize<T>(await ReadBoundedAsync(response.Content, 2 * 1024 * 1024), RelaxKonOSJsonOptions.Default)
+        var result = JsonSerializer.Deserialize<T>(await ReadBoundedAsync(response.Content, 2 * 1024 * 1024, cancellationToken), RelaxKonOSJsonOptions.Default)
             ?? throw new InvalidOperationException("module-response-invalid");
         if (!IsCurrent) throw new InvalidOperationException("module-session-changed");
         return result;
     }
 
-    private static async Task<byte[]> ReadBoundedAsync(HttpContent content, int maximum)
+    private static async Task<byte[]> ReadBoundedAsync(HttpContent content, int maximum, CancellationToken cancellationToken)
     {
         if (content.Headers.ContentLength > maximum) throw new InvalidOperationException("module-response-invalid");
         using var buffer = new MemoryStream();
-        using var stream = await content.ReadAsStreamAsync();
+        using var stream = await content.ReadAsStreamAsync(cancellationToken);
         var chunk = new byte[8192];
         int count;
-        while ((count = await stream.ReadAsync(chunk)) != 0)
+        while ((count = await stream.ReadAsync(chunk, cancellationToken)) != 0)
         {
             if (buffer.Length + count > maximum) throw new InvalidOperationException("module-response-invalid");
             buffer.Write(chunk, 0, count);

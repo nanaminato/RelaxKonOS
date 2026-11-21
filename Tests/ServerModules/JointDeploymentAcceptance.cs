@@ -120,9 +120,22 @@ internal static class JointDeploymentAcceptance
             session.Url = host.Url;
             joint = Service();
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing pending deployment.");
-            factory.DropNextEnableApply(afterCommit: false);
-            await ExpectInterruptedEnableAsync(joint, review);
-            factory.DropNextEnableApply(afterCommit: true);
+            using (var cancellation = new CancellationTokenSource())
+            {
+                var entered = factory.HoldNextEnableApply();
+                var execution = joint.ExecuteAsync(review, cancellation.Token);
+                await entered.WaitAsync(TimeSpan.FromSeconds(10));
+                cancellation.Cancel();
+                try
+                {
+                    await execution.WaitAsync(TimeSpan.FromSeconds(10));
+                    throw new InvalidOperationException("Expected the blocked enable request to be cancelled.");
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            }
+            Require(factory.SubmittedEnableApplies == 0 && !applications.IsRegistered(new AppId(AppIdText)),
+                "cancelling an in-flight enable request leaves the application pending without submitting enable");
+            factory.DropNextEnableResponse();
             await ExpectInterruptedEnableAsync(joint, review);
             Require(factory.EnablePreviewKeys.Distinct(StringComparer.Ordinal).Count() == 2,
                 "retry after an interrupted enable requests a fresh server preview");
@@ -310,7 +323,12 @@ internal static class JointDeploymentAcceptance
         public IReadOnlyList<string> EnablePreviewKeys => handler.EnablePreviewKeys;
         public int SubmittedEnableApplies => handler.SubmittedEnableApplies;
         public int Requests => handler.Requests;
-        public void DropNextEnableApply(bool afterCommit) => handler.DropAfterCommit = afterCommit;
+        public Task HoldNextEnableApply()
+        {
+            handler.EnableEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return handler.EnableEntered.Task;
+        }
+        public void DropNextEnableResponse() => handler.DropEnableResponse = true;
         public HttpClient CreateClient(string name) => http ??= new(handler);
         public void Dispose() => http?.Dispose();
     }
@@ -319,7 +337,8 @@ internal static class JointDeploymentAcceptance
     private sealed class ArchiveUploadHandler(byte[] signedArchive) : DelegatingHandler(new HttpClientHandler { UseProxy = false })
     {
         public List<string> EnablePreviewKeys { get; } = [];
-        public bool? DropAfterCommit { get; set; }
+        public TaskCompletionSource? EnableEntered { get; set; }
+        public bool DropEnableResponse { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
 
@@ -338,12 +357,17 @@ internal static class JointDeploymentAcceptance
                 && path?.StartsWith(ServerModuleManagementRoutes.Plans + "/", StringComparison.Ordinal) == true
                 && path.EndsWith("/apply", StringComparison.Ordinal))
             {
-                var drop = DropAfterCommit;
-                DropAfterCommit = null;
-                if (drop == false) throw new HttpRequestException("fixture-enable-apply-interrupted");
+                if (EnableEntered is { } entered)
+                {
+                    EnableEntered = null;
+                    entered.SetResult();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                var drop = DropEnableResponse;
+                DropEnableResponse = false;
                 SubmittedEnableApplies++;
                 var applied = await base.SendAsync(request, cancellationToken);
-                if (drop is null) return applied;
+                if (!drop) return applied;
                 using (applied) applied.EnsureSuccessStatusCode();
                 throw new HttpRequestException("fixture-enable-apply-interrupted");
             }

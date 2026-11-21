@@ -168,7 +168,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         public async Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return catalog is null ? LocalTarget : await catalog.ObserveAsync();
+            return catalog is null ? LocalTarget : await catalog.ObserveAsync(cancellationToken);
         }
 
         public async Task ApplyOrReconcileAsync(DeploymentPlan plan, int stepIndex, CancellationToken cancellationToken)
