@@ -36,18 +36,24 @@ internal static class DockerInventoryCapabilityChecks
             "fixture-container", "stop", new(Confirmed: true)));
         await RejectAsync<UnauthorizedAccessException>(() => mirrors.SelectAsync(null));
         Check(transport.Requests == 1, "The Docker read grant must not authorize a management or mirror selection request.");
+        var proxyModel = new DockerProxyStatusViewModel(capability, new DockerText(key => key));
+        await proxyModel.LoadAsync();
+        Check(transport.Requests == 2 && !proxyModel.HasProblem && proxyModel.HasDesktopProxy
+            && proxyModel.DesktopProxyHttp == "http://proxy.fixture.invalid:3128"
+            && proxyModel.EngineLayerText == "docker.proxy.layer.state.applied",
+            "The read grant did not populate the Docker proxy status workspace.");
         grants.Manage = true;
         var operation = await capability.ApplyContainerActionAsync("fixture-container", "stop", new(Confirmed: true));
-        Check(operation.Success && transport.Requests == 2, "A Docker management grant must forward the typed operation.");
+        Check(operation.Success && transport.Requests == 3, "A Docker management grant must forward the typed operation.");
         var unconfirmed = await capability.ApplyEngineActionAsync(DockerEngineAction.Restart, confirmed: false);
         Check(unconfirmed is { Success: false, ProblemCode: "docker.engine.problem.confirmation_required" }
-            && transport.Requests == 2, "An unconfirmed engine restart must not reach the server.");
+            && transport.Requests == 3, "An unconfirmed engine restart must not reach the server.");
         var confirmed = await capability.ApplyEngineActionAsync(DockerEngineAction.Restart, confirmed: true);
         var mirrorModel = new DockerImageMirrorsViewModel(mirrors, new DockerText(key => key));
         await mirrorModel.LoadAsync();
         var customMirror = mirrorModel.Mirrors.Single(item => !item.IsDefault);
         await mirrorModel.SelectCommand.ExecuteAsync(customMirror);
-        Check(confirmed.Success && transport.Requests == 5 && transport.SelectedMirror == customMirror.Id
+        Check(confirmed.Success && transport.Requests == 6 && transport.SelectedMirror == customMirror.Id
             && customMirror.IsSelected && !mirrorModel.Mirrors.Single(item => item.IsDefault).IsSelected,
             "The mirror workspace did not persist and display the selected account mirror.");
         transport.BeforeResponse = () => session.ServiceId = "https://replacement.invalid";
@@ -57,9 +63,12 @@ internal static class DockerInventoryCapabilityChecks
             "fixture-container", "stop", new(Confirmed: true)));
         await RejectAsync<InvalidOperationException>(() => mirrors.SelectAsync(null));
         await mirrorModel.SelectCommand.ExecuteAsync(mirrorModel.Mirrors.Single(item => item.IsDefault));
-        Check(transport.Requests == 6 && customMirror.IsSelected && !mirrorModel.IsLoading
+        Check(transport.Requests == 7 && customMirror.IsSelected && !mirrorModel.IsLoading
             && mirrorModel.StatusText.StartsWith("docker.mirrors.select_failed", StringComparison.Ordinal),
             "A stale mirror workspace contacted the replacement server or lost its observed selection.");
+        await proxyModel.LoadAsync();
+        Check(transport.Requests == 7 && proxyModel.HasProblem && !proxyModel.HasDesktopProxy
+            && proxyModel.DesktopProxyHttp.Length == 0, "A stale proxy workspace retained data or contacted the replacement server.");
         Console.WriteLine("Docker inventory SDK permission checks and connection binding passed.");
     }
 
@@ -114,6 +123,15 @@ internal static class DockerInventoryCapabilityChecks
                 SelectedMirror = (await request.Content!.ReadFromJsonAsync<SelectImageMirrorRequest>(cancellationToken))?.MirrorId;
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == DockerProxyApiRoutes.Proxy)
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new DockerProxyStatusDto(
+                        new(true, DockerProxySource.Custom, "", "", "", true, false, false, false),
+                        [new(DockerProxyTarget.Engine, DockerProxyLayerState.Applied, "", "")],
+                        "http://http.docker.internal:3128", "", "", "", false, "windows",
+                        new("manual", "http://proxy.fixture.invalid:3128", "", "", "fixture.json"))),
+                };
             Check(request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == DockerApiRoutes.Status,
                 "The Docker capability did not use the expected read or management route.");
             return new HttpResponseMessage(HttpStatusCode.OK)

@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Docker"
+             xmlns:docker="clr-namespace:RelaxKonOS.App.Docker"
+             x:Class="RelaxKonOS.App.Docker.Views.DockerProxyView"
+             x:DataType="docker:DockerProxyStatusViewModel" Classes="builtin-app">
+    <StackPanel Spacing="18">
+        <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+            <StackPanel Spacing="6">
+                <TextBlock Text="{loc:Loc docker.proxy.title}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{loc:Loc docker.proxy.settings_managed_by_settings}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding ProblemText}" IsVisible="{Binding HasProblem}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" />
+
+        <Border Padding="20" Classes="app-panel">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Loc docker.proxy.layers}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8">
+                    <TextBlock Text="{loc:Loc docker.proxy.layer.engine}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding EngineLayerText}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc docker.proxy.layer.build}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BuildLayerText}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="{loc:Loc docker.proxy.effective}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding EffectiveText}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Padding="20" IsVisible="{Binding HasDesktopProxy}" Classes="app-panel">
+            <StackPanel Spacing="12">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.subtitle}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8">
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.mode}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding DesktopProxyModeText}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc docker.proxy.http.label}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DesktopProxyHttp}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="{loc:Loc docker.proxy.https.label}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DesktopProxyHttps}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Text="{loc:Loc docker.proxy.desktop.settings_path}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DesktopSettingsPath}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+    </StackPanel>
+</UserControl>

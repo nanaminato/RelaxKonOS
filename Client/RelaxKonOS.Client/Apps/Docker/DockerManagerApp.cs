@@ -38,7 +38,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
         var text = new DockerText(LocalizedText.Get);
         var vm = new DockerManagerViewModel(sdk.DockerResources, text);
-        var proxyViewModel = new DockerProxyViewModel(sdk.DockerResources);
+        var proxyViewModel = new DockerProxyStatusViewModel(sdk.DockerResources, text);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(sdk.DockerImageMirrors, text);
         ManagedWindow? window = null;
         var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
@@ -52,6 +52,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args)
         {
             vm.RefreshLocalization();
+            proxyViewModel.RefreshLocalization();
             imageMirrorsViewModel.RefreshLocalization();
         }
         sdk.SystemLanguage.LanguageChanged += LanguageChanged;

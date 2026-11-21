@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using RelaxKonOS.AppSDK;
+using RelaxKonOS.App.Docker;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Docker;
@@ -7,13 +7,12 @@ using RelaxKonOS.Protocol.Docker;
 namespace RelaxKonOS.Client.Apps.Docker;
 
 /// <summary>
-/// Network proxy page of the Docker Manager. The preference is host-global: it configures the
+/// Host-wide outbound proxy settings editor. The preference configures the
 /// machine's Docker daemon and the Server's own docker child processes, so it is not tied to the
 /// signed-in user. Both layers are reported separately because they use unrelated host mechanisms.
 /// </summary>
-public sealed partial class DockerProxyViewModel(IServerDockerResources resources, IRemoteDockerClient? writeClient = null) : ObservableObject
+public sealed partial class DockerProxyViewModel(IRemoteDockerClient client) : ObservableObject
 {
-    public bool IsReadOnly => writeClient is null;
     /// <summary>
     /// Asked before a change that restarts the Docker daemon, which interrupts running containers.
     /// The page has no window of its own, so the host supplies the dialog.
@@ -63,7 +62,7 @@ public sealed partial class DockerProxyViewModel(IServerDockerResources resource
         IsLoading = true;
         try
         {
-            Apply(await resources.GetProxyStatusAsync());
+            Apply(await client.GetProxyStatusAsync());
             ProblemText = default;
         }
         catch (Exception exception)
@@ -82,7 +81,7 @@ public sealed partial class DockerProxyViewModel(IServerDockerResources resource
     [RelayCommand]
     private async Task SaveAsync()
     {
-        if (IsSaving || writeClient is null) return;
+        if (IsSaving) return;
         ProblemText = default;
 
         // The daemon layer restarts Docker, so the operator is warned before anything is sent
@@ -105,7 +104,7 @@ public sealed partial class DockerProxyViewModel(IServerDockerResources resource
                 NoProxy,
                 ApplyToEngine, ApplyToBuild, ApplyToImageTags, ApplyToRuntimeDownloads,
                 Confirmed: true);
-            Apply(await writeClient.SaveProxyAsync(request));
+            Apply(await client.SaveProxyAsync(request));
             StatusText = LocalizedText.Ref("docker.proxy.status.saved");
         }
         catch (DockerProxyRequestException exception)
@@ -127,7 +126,7 @@ public sealed partial class DockerProxyViewModel(IServerDockerResources resource
     [RelayCommand]
     private async Task ClearAsync()
     {
-        if (IsSaving || writeClient is null) return;
+        if (IsSaving) return;
         ProblemText = default;
 
         if (IsEngineLayerInstalled && !await RequestConfirmationAsync(LocalizedText.Get("docker.proxy.confirm.clear")))
@@ -140,7 +139,7 @@ public sealed partial class DockerProxyViewModel(IServerDockerResources resource
         StatusText = LocalizedText.Ref("docker.proxy.status.clearing");
         try
         {
-            Apply(await writeClient.ClearProxyAsync());
+            Apply(await client.ClearProxyAsync());
             StatusText = LocalizedText.Ref("docker.proxy.status.cleared");
         }
         catch (Exception exception)
@@ -228,20 +227,11 @@ public sealed partial class DockerProxyViewModel(IServerDockerResources resource
         var layer = status.Layers.FirstOrDefault(candidate => candidate.Target == target);
         if (layer is null) return LocalizedText.Ref("docker.proxy.layer.state.unknown");
 
-        var parts = new List<LocalizedStatus> { LocalizedText.Ref(StateKey(layer.State)) };
+        var parts = new List<LocalizedStatus> { LocalizedText.Ref(DockerProxyLayerLabels.StateKey(layer.State)) };
         if (layer.ProblemCode.Length > 0) parts.Add(LocalizedText.Ref(layer.ProblemCode));
         if (layer.Detail.Length > 0) parts.Add(LocalizedText.Ref(layer.Detail));
         return parts.Count == 1 ? parts[0] : LocalizedStatus.Join(" · ", parts);
     }
-
-    private static string StateKey(DockerProxyLayerState state) => state switch
-    {
-        DockerProxyLayerState.Disabled => "docker.proxy.layer.state.disabled",
-        DockerProxyLayerState.Applied => "docker.proxy.layer.state.applied",
-        DockerProxyLayerState.RestartRequired => "docker.proxy.layer.state.restart_required",
-        DockerProxyLayerState.Unsupported => "docker.proxy.layer.state.unsupported",
-        _ => "docker.proxy.layer.state.failed",
-    };
 
     partial void OnUseManagedProxyChanged(bool value)
     {

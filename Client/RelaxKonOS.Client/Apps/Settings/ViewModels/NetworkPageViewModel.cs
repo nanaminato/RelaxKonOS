@@ -25,7 +25,7 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         HostNetwork = hostNetwork;
         _session = session;
         _remote = remote;
-        OutboundProxy = new DockerProxyViewModel(docker, docker);
+        OutboundProxy = new DockerProxyViewModel(docker);
     }
 
     public HostNetworkEditorViewModel HostNetwork { get; }

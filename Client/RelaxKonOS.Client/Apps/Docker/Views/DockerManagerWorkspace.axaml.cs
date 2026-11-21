@@ -16,7 +16,7 @@ internal partial class DockerManagerWorkspace : UserControl
     }
 
     private readonly DockerManagerViewModel _viewModel;
-    private readonly DockerProxyViewModel _proxyViewModel;
+    private readonly DockerProxyStatusViewModel _proxyViewModel;
     private readonly DockerImageMirrorsViewModel _imageMirrorsViewModel;
     private readonly ComponentDependencySettingsViewModel? _dependency;
     private readonly Func<Task> _showCreateContainer;
@@ -26,7 +26,7 @@ internal partial class DockerManagerWorkspace : UserControl
     private readonly Func<Task> _showCreateVolume;
     private Button? _selectedButton;
 
-    private DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency)
+    private DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyStatusViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency)
     {
         _viewModel = viewModel;
         _proxyViewModel = proxyViewModel;
@@ -44,7 +44,7 @@ internal partial class DockerManagerWorkspace : UserControl
         ShowPage("overview", OverviewButton);
     }
 
-    public static DockerManagerWorkspace Create(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency = null) =>
+    public static DockerManagerWorkspace Create(DockerManagerViewModel viewModel, DockerProxyStatusViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency = null) =>
         new DockerManagerWorkspace(viewModel, proxyViewModel, imageMirrorsViewModel, showCreateContainer, showDeployStack, showPullImage, showCreateNetwork, showCreateVolume, dependency);
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
