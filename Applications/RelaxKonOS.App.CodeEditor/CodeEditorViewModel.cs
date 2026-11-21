@@ -33,11 +33,14 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     {
         _files = files;
         _localize = text;
+        Labels = new(text);
         _conditionalWriter = conditionalWriter;
         _pathComparer = pathCaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
         DefaultEncodingName = TextFileEncodings.IsSupported(defaultEncodingName) ? defaultEncodingName : "UTF-8";
         EncodingName = DefaultEncodingName;
     }
+
+    public CodeEditorLabels Labels { get; private set; }
 
     public ObservableCollection<CodeEditorFolderNode> WorkspaceRoots { get; } = [];
     public ObservableCollection<CodeEditorDocument> OpenDocuments { get; } = [];
@@ -212,6 +215,8 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 
     public void RefreshLocalization()
     {
+        Labels = new(_localize);
+        OnPropertyChanged(nameof(Labels));
         NotifyContentChanged();
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(DocumentName));

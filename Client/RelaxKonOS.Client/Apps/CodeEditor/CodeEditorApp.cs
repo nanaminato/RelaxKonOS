@@ -66,9 +66,11 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         var sdkWindow = sdkContext?.Windows.ShowWindow(title, view, bounds, Manifest.IconGlyph);
         var window = sdkWindow?.Window ?? context.ShowWindow(title, view, bounds, Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        var language = sdkContext?.SystemLanguage ?? context.Services.GetService(typeof(LocalizationService)) as ISystemLanguage;
+        if (language is not null) language.LanguageChanged += LanguageChanged;
         if (sdkWindow is not null)
         {
-            sdkWindow.Closed.Register(viewModel.Dispose);
+            sdkWindow.Closed.Register(DisposeWorkspace);
             DraftWindowCloseGuard.Attach(sdkWindow, IsBusy, HasChanges);
         }
         else
@@ -79,11 +81,17 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
 
         bool IsBusy() => viewModel.IsSaving || viewModel.IsTreeBusy;
         bool HasChanges() => viewModel.HasUnsavedDocuments;
+        void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => viewModel.RefreshLocalization();
+        void DisposeWorkspace()
+        {
+            if (language is not null) language.LanguageChanged -= LanguageChanged;
+            viewModel.Dispose();
+        }
         void Closed(object? sender, RelaxKonOS.WindowManager.ManagedWindow closedWindow)
         {
             if (!ReferenceEquals(closedWindow, window)) return;
             context.WindowManager.WindowClosed -= Closed;
-            viewModel.Dispose();
+            DisposeWorkspace();
         }
         window.KeyDown += (_, e) =>
         {

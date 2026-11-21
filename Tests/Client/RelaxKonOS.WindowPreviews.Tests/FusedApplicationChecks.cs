@@ -83,6 +83,7 @@ internal static class FusedApplicationChecks
         var host = new Window { Width = 1100, Height = 800, Content = canvas };
         var manager = new WindowManagerService();
         var codeView = new CodeEditorView { DataContext = code };
+        var codeMenu = codeView.FindControl<Menu>("HeaderMenu")!;
         var explorerView = new ExplorerMainView { DataContext = explorer };
         try
         {
@@ -102,6 +103,7 @@ internal static class FusedApplicationChecks
                 settings.SystemStyleId = style;
                 settings.Appearance = settings.Appearance with { Mode = dark ? ThemeKind.Dark : ThemeKind.Light };
                 settings.Language = language;
+                code.RefreshLocalization();
                 var editorSettingsTitle = language switch
                 {
                     "zh-CN" => "代码编辑器设置",
@@ -122,6 +124,9 @@ internal static class FusedApplicationChecks
                     Check(!Overlap(controls, tabs, view), $"{name}/{style}/{width}: tabs overlap caption controls.");
                     if (name == "code")
                     {
+                        if (width == 960)
+                            Check(Equals(codeMenu.Items.OfType<MenuItem>().First().Header, LocalizedText.Get("common.file")),
+                                $"Code Editor's detached header must refresh its File label in {language}.");
                         var centre = Part<Control>(view, "PART_HeaderCenter");
                         Check(centre.IsVisible && !Overlap(centre, tabs, view), "Document command centre did not coexist with tabs.");
                         Check(Grid.GetRow(tabs) == 1, "Editor tabs did not get their own row.");

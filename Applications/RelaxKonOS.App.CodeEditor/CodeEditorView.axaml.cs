@@ -1,4 +1,3 @@
-using RelaxKonOS.App.CodeEditor;
 using Avalonia;
 using System.ComponentModel;
 using Avalonia.Controls;
@@ -9,7 +8,7 @@ using RelaxKonOS.WindowManager;
 using AvaloniaEdit.Highlighting;
 using Avalonia.Input;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 public partial class CodeEditorView : UserControl
 {

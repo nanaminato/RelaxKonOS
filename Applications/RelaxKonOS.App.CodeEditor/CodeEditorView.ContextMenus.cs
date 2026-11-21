@@ -1,16 +1,14 @@
-using RelaxKonOS.App.CodeEditor;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 public partial class CodeEditorView
 {
     private MenuItem ActionItem(string key, Func<Task> action, bool enabled = true)
     {
-        var item = new MenuItem { Header = LocalizedText.Get("code_editor.context." + key), IsEnabled = enabled };
+        var item = new MenuItem { Header = _viewModel?.Labels["code_editor.context." + key], IsEnabled = enabled };
         item.Click += async (_, _) =>
         {
             try { await action(); }

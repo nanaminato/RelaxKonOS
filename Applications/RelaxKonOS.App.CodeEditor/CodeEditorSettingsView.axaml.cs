@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 public partial class CodeEditorSettingsView : UserControl
 {
