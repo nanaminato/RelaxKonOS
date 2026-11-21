@@ -454,6 +454,12 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         ? _rows.Where(row => row.IsSelected).Select(row => row.Fact).ToArray()
         : Selected is { } module ? [module] : [];
 
+    public Func<string, IReadOnlyList<string>>? InstalledApplicationDependents { get; init; }
+
+    private string[] RequiredByApplications(ServerModuleAction action, IEnumerable<string> ids) =>
+        action is ServerModuleAction.Disable or ServerModuleAction.Remove && InstalledApplicationDependents is { } find
+            ? ids.SelectMany(find).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray() : [];
+
     public bool CanEnable => CanPreview(ServerModuleAction.Enable) && Targets.Any(module => !module.DesiredEnabled);
     public bool CanDisable => CanPreview(ServerModuleAction.Disable) && Targets.Any(module => module.DesiredEnabled);
     public bool CanRemove => Targets.Count == 1 && CanPreview(ServerModuleAction.Remove);
@@ -462,6 +468,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public bool CanStop => Targets.Count == 1 && CanPreview(ServerModuleAction.Stop);
     public bool CanRestart => Targets.Count == 1 && CanPreview(ServerModuleAction.Restart);
     private bool CanPreview(ServerModuleAction action) => !Busy && client.IsCurrent && Targets.Count > 0
+        && RequiredByApplications(action, Targets.Select(module => module.Id)).Length == 0
         && Targets.All(module => module.AllowedActions?.Any(item => item.Action == action && item.Allowed) == true);
 
     public bool CanManage => Modules.Count > 0 && !IsReadOnly && client.IsCurrent;
@@ -484,7 +491,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         : LocalizedStatus.Literal("");
     public string PlanServiceText => Plan?.ServiceId ?? "";
     public bool CanApply => !Busy && client.IsCurrent && references is not null && connectionId is not null
-        && Plan is { BlockedBy.Count: 0 } plan && plan.ExpiresAt > DateTimeOffset.UtcNow;
+        && Plan is { BlockedBy.Count: 0 } plan && plan.ExpiresAt > DateTimeOffset.UtcNow
+        && RequiredByApplications(plan.Target.Action, plan.Target.ModuleIds).Length == 0;
     public bool HasOperation => !string.IsNullOrWhiteSpace(OperationText);
 
     public bool CanDiscardPlan => !Busy && HasPlan;
@@ -568,6 +576,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         if (IsReadOnly) return LocalizedStatus.Literal("");
         if (action == ServerModuleAction.Remove && targets.Count != 1)
             return LocalizedStatus.Key("server_modules.action.remove_single");
+        var requiredBy = RequiredByApplications(action, targets.Select(module => module.Id));
+        if (requiredBy.Length > 0)
+            return LocalizedStatus.Format("server_modules.action.required_by_apps", string.Join(", ", requiredBy));
         if (action == ServerModuleAction.Enable && targets.All(module => module.DesiredEnabled))
             return LocalizedStatus.Key("server_modules.action.already_enabled");
         if (action == ServerModuleAction.Disable && targets.All(module => !module.DesiredEnabled))
@@ -1002,6 +1013,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [RelayCommand(CanExecute = nameof(CanApply))] private async Task ApplyAsync() => await Run(async () =>
     {
         if (Plan is not { } plan) return;
+        var requiredBy = RequiredByApplications(plan.Target.Action, plan.Target.ModuleIds);
+        if (requiredBy.Length > 0)
+            throw new InvalidOperationException(LocalizedText.Format("server_modules.action.required_by_apps", string.Join(", ", requiredBy)));
         if (references is null || connectionId is null) throw new InvalidOperationException("module-reference-unavailable");
         references.Save(connectionId, actor, plan);
         // Keep the plan on transport failure: repeating Apply recovers its original receipt.

@@ -80,6 +80,11 @@ public sealed partial class DeveloperPackageManager
     internal IReadOnlyList<DeploymentRequirement> RequiredDependencies(AppId id) =>
         _catalog.GetValueOrDefault(id.Value)?.Dependencies?.Required ?? [];
 
+    internal IReadOnlyList<string> RequiredBy(DeploymentPackageKey package) =>
+        _catalog.Values.Where(record => (package.Kind != DeploymentPackageKind.Application || record.Id != package.Id)
+                && record.Dependencies?.Required?.Any(requirement => requirement.Package == package) == true)
+            .Select(record => record.Id).Order(StringComparer.Ordinal).ToArray();
+
     internal async Task<DeveloperAppInfo?> FindDeploymentResultAsync(string appId, Guid planId, CancellationToken cancellationToken)
     {
         if (FindInstalled(appId) is not { } installed) return null;
@@ -361,11 +366,8 @@ public sealed partial class DeveloperPackageManager
             if (reviewed is not null && installed != reviewed)
                 throw new InvalidOperationException("component.state_revision_conflict");
             if (installed is null) return false;
-            var requiredBy = _catalog.Values.Where(record => record.Id != appId
-                    && record.Dependencies?.Required?.Any(requirement =>
-                        requirement.Package == new DeploymentPackageKey(DeploymentPackageKind.Application, appId)) == true)
-                .Select(record => record.Id).Order(StringComparer.Ordinal).ToArray();
-            if (requiredBy.Length > 0)
+            var requiredBy = RequiredBy(new(DeploymentPackageKind.Application, appId));
+            if (requiredBy.Count > 0)
                 throw new InvalidOperationException($"The package is required by {string.Join(", ", requiredBy)}.");
             if (!await CanRetireWindowsAsync(new AppId(appId)))
                 throw new InvalidOperationException("Application windows are busy or have unsaved changes.");

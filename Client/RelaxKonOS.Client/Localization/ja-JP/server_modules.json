@@ -347,6 +347,7 @@
     "server_modules.problem.module_host_rollback_start_failed": "新旧いずれのバージョンも起動できませんでした。",
     "server_modules.problem.module_host_cleanup_unconfirmed": "モジュールプロセスの終了を確認できませんでした。",
     "server_modules.action.remove_hint": "選択した独立モジュールをアンインストールします。業務データ、クラウドアカウント、リモートファイルは保持されます。計画を確認してください。",
+    "server_modules.action.required_by_apps": "インストール済みのアプリがこのモジュールを必要としています（{0}）。",
     "server_modules.action.remove_single": "アンインストールするモジュールを一つ選択してください。",
     "server_modules.plan.remove_data": "モジュールの無効化やメモリ解放ではなく、パッケージをアンインストールします。業務データ、クラウドアカウント設定、リモートファイルは保持されます。依存モジュールや実行中の処理がある場合、操作が拒否されることがあります。",
     "server_modules.problem.module_bundled_not_removable": "同梱モジュールは個別にアンインストールできません。",

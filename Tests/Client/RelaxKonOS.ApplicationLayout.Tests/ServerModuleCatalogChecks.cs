@@ -196,7 +196,12 @@ internal static class ServerModuleCatalogChecks
         try
         {
             var references = new ServerModuleReferenceStore(root);
-            var model = new ServerModulesViewModel(client, references, "connection-a", actor);
+            var protectModule = true;
+            var model = new ServerModulesViewModel(client, references, "connection-a", actor)
+            {
+                InstalledApplicationDependents = id => protectModule && id == "relaxkonos.git"
+                    ? ["test.project-editor"] : [],
+            };
             await model.RefreshCommand.ExecuteAsync(null);
             Check(model.Modules.Count == 2, "Management reads fresh facts for the current login.");
             Check(model.HasSelectedModule && model.ActionRows.Count == 5 && model.IsModulesTab,
@@ -205,6 +210,11 @@ internal static class ServerModuleCatalogChecks
                     && !row.Hint.Resolve().Contains("server_modules.", StringComparison.Ordinal))
                 && model.Filters.Count == 4,
                 "Action rows and catalog filters resolve their labels and reasons.");
+            Check(!model.CanDisable && !model.CanRemove && model.ActionRows.Any(row =>
+                row.Hint.Resolve().Contains("test.project-editor", StringComparison.Ordinal)),
+                "Installed application dependencies block module disable and removal and identify the affected app.");
+            protectModule = false;
+            await model.RefreshCommand.ExecuteAsync(null);
 
             var view = new ServerModulesView { DataContext = model };
             var moduleScroll = new ScrollViewer { Content = view, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
@@ -293,6 +303,9 @@ internal static class ServerModuleCatalogChecks
                     && captured.ModuleIds[0] == "relaxkonos.git" && !captured.EnabledModuleIds.Contains("relaxkonos.git")
                     && model.PlanIsRemoval && applies == 0,
                 "Uninstall previews an exact single target with retained data; it does not apply without confirmation.");
+            protectModule = true;
+            Check(!model.CanApply, "An application installed after preview blocks confirmation of the old removal plan.");
+            protectModule = false;
             model.DiscardPlanCommand.Execute(null);
             Check(!model.HasPlan && !model.PlanIsRemoval && applies == 0, "Canceling uninstall leaves the server unchanged.");
 

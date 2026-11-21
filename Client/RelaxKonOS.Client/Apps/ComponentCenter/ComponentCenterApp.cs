@@ -78,11 +78,17 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             model.GitEngine.PropertyChanged += (_, _) => model.RefreshGitState();
         }
         model.ConnectionAvailable = true;
+        var desktopPackages = context.Services.GetService(typeof(RelaxKonOS.Client.Services.Developer.DeveloperPackageManager))
+            as RelaxKonOS.Client.Services.Developer.DeveloperPackageManager;
         if (context.Services.GetService(typeof(IHttpClientFactory)) is IHttpClientFactory moduleHttp)
             model.ServerModules = new(new RelaxKonOS.Client.Services.Modules.ServerModuleManagementClient(
                 moduleHttp.CreateClient(RelaxKonOS.Client.Services.Modules.ServerModuleCatalog.HttpClientName), session),
                 context.Services.GetService(typeof(RelaxKonOS.Client.Services.Modules.ServerModuleReferenceStore)) as RelaxKonOS.Client.Services.Modules.ServerModuleReferenceStore,
-                session.ServiceId, session.CurrentUser!.Id);
+                session.ServiceId, session.CurrentUser!.Id)
+            {
+                InstalledApplicationDependents = moduleId => desktopPackages?.RequiredBy(
+                    new(RelaxKonOS.Deployment.DeploymentPackageKind.ServerModule, moduleId)) ?? [],
+            };
         _model = model;
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient)) is RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient web
             && context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient)) is RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient certificates
@@ -117,8 +123,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService))
                 is RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService desktopInstaller
-            && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Developer.DeveloperPackageManager))
-                is RelaxKonOS.Client.Services.Developer.DeveloperPackageManager desktopPackages)
+            && desktopPackages is not null)
         {
             model.DesktopInstalledVersion = id => desktopPackages.FindInstalled(id)?.Version;
             model.ReviewDesktopPackageAsync = async id =>
@@ -334,11 +339,13 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         };
         taskRefresh.Start();
         System.ComponentModel.PropertyChangedEventHandler? selectedDomainChanged = null;
+        EventHandler packagesChanged = (_, _) => model.ServerModules?.Notify();
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
+            if (desktopPackages is not null) desktopPackages.PackagesChanged -= packagesChanged;
             taskRefresh.Stop();
             runtime.RefreshAccess = null;
             if (ReferenceEquals(_model, model)) _model = null;
@@ -407,6 +414,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         };
         model.PropertyChanged += selectedDomainChanged;
         context.WindowManager.WindowClosed += closed;
+        if (desktopPackages is not null) desktopPackages.PackagesChanged += packagesChanged;
         _ = InitializeAsync();
         async Task InitializeAsync()
         {
