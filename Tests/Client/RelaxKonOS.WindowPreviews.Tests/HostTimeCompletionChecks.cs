@@ -1,3 +1,4 @@
+using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using System.Reflection;
 using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using RelaxKonOS.Client.Services;

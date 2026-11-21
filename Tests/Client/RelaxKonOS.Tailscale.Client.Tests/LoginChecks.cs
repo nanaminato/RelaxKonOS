@@ -1,3 +1,5 @@
+using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
+using IServerTailscaleLogin = RelaxKonOS.AppSDK.IServerTailscaleLogin;
 using RelaxKonOS.Client.Apps.Tailscale;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
@@ -155,10 +157,10 @@ internal static class LoginChecks
     }
 }
 
-internal sealed class LoginFake : ITailscaleLoginClient
+internal sealed class LoginFake : IServerTailscaleLogin
 {
     internal const string Url = "https://login.tailscale.com/a/0123456789abcdef";
-    public event EventHandler<AuthSessionStateChangedEventArgs>? SessionChanged;
+    public event EventHandler? SessionChanged;
     internal HostSettingsConnection Connection = new("login-host", Guid.NewGuid(), Guid.NewGuid());
     internal int Prepares, Executes, Challenges, Closes, Gets;
     internal bool BadPlan, BadChallenge, LoseExecute, LoseClose, SwitchOnChallenge, PreparedRead, SuppressClosure;
@@ -193,7 +195,7 @@ internal sealed class LoginFake : ITailscaleLoginClient
     public Task<TailscaleLoginChallengeResponse> ChallengeAsync(HostSettingsConnection connection, Guid id, CancellationToken ct)
     {
         Challenges++;
-        if (SwitchOnChallenge) { Connection = Connection with { SessionId = Guid.NewGuid() }; SessionChanged?.Invoke(this,new(AuthSessionState.Authenticated)); }
+        if (SwitchOnChallenge) { Connection = Connection with { SessionId = Guid.NewGuid() }; SessionChanged?.Invoke(this,EventArgs.Empty); }
         return Task.FromResult(new TailscaleLoginChallengeResponse(id, BadChallenge ? "https://example.com/secret" : Url, _records[id].ExpiresAt));
     }
     public Task<TailscaleLoginRecoverySnapshot> RecoveryAsync(HostSettingsConnection connection, Guid id, CancellationToken ct)

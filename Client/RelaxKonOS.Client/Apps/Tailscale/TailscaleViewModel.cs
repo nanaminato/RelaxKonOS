@@ -24,7 +24,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     private static readonly TimeSpan ControlRefreshInterval = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ControlFreshness = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan OperationFreshness = TimeSpan.FromSeconds(10);
-    private readonly ITailscaleClient _client;
+    private readonly IServerTailscale _client;
     private readonly ITailscaleOperationReferences _references;
     private readonly IHostElevationBroker _elevation;
     private readonly LocalizationService _language;
@@ -50,7 +50,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     private string _peerFilter = "";
     private bool _syncingPreferences;
 
-    public TailscaleViewModel(ITailscaleClient client, ITailscaleOperationReferences references,
+    public TailscaleViewModel(IServerTailscale client, ITailscaleOperationReferences references,
         IHostElevationBroker elevation, LocalizationService language)
     { _client = client; _references = references; _elevation = elevation; _language = language; }
 
@@ -259,7 +259,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
         _timer?.Stop();
         _timer = null;
     }
-    private void SessionChanged(object? sender, AuthSessionStateChangedEventArgs e) => Dispatcher.UIThread.Post(() =>
+    private void SessionChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
     {
         if (_lifetime is null || CurrentConnection) return;
         var active = _lifetime is not null;

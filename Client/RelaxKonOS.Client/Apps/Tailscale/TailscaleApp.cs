@@ -23,9 +23,9 @@ public sealed class TailscaleApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var language = context.Services.GetRequiredService<LocalizationService>();
-        var model = new TailscaleViewModel(context.Services.GetRequiredService<ITailscaleClient>(),
+        var model = new TailscaleViewModel(context.Services.GetRequiredService<IServerTailscale>(),
             context.Services.GetRequiredService<ITailscaleOperationReferences>(), context.Services.GetRequiredService<IHostElevationBroker>(), language);
-        var login = new TailscaleLoginViewModel(context.Services.GetRequiredService<ITailscaleLoginClient>(),
+        var login = new TailscaleLoginViewModel(context.Services.GetRequiredService<IServerTailscaleLogin>(),
             new TailscaleOperationReferences(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "tailscale-login-operations.json")),
             context.Services.GetRequiredService<IHostElevationBroker>(), language)
             { HostMayHaveChanged = model.InvalidateControl, ReadBackendStateAsync = model.ReadBackendStateAsync,

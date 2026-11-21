@@ -1,3 +1,4 @@
+using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -9,6 +10,35 @@ namespace RelaxKonOS.Client.Services.HostSettings;
 public abstract class HostSettingsService(HttpClient http, IAuthSession session)
 {
     protected IAuthSession Session => session;
+
+    private readonly object _sessionChangedGate = new();
+    private EventHandler? _sessionChanged;
+    public event EventHandler? SessionChanged
+    {
+        add
+        {
+            if (value is null) return;
+            lock (_sessionChangedGate)
+            {
+                if (_sessionChanged is null) session.StateChanged += OnSessionChanged;
+                _sessionChanged += value;
+            }
+        }
+        remove
+        {
+            if (value is null) return;
+            lock (_sessionChangedGate)
+            {
+                if (_sessionChanged is null) return;
+                _sessionChanged -= value;
+                if (_sessionChanged is null) session.StateChanged -= OnSessionChanged;
+            }
+        }
+    }
+
+    private void OnSessionChanged(object? sender, AuthSessionStateChangedEventArgs args) =>
+        Volatile.Read(ref _sessionChanged)?.Invoke(this, EventArgs.Empty);
+
     public HostSettingsConnection CaptureConnection()
     {
         if (session.State != AuthSessionState.Authenticated || session.ServiceId is not { } serviceId

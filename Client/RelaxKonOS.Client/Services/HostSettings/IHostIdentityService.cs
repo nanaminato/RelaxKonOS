@@ -1,3 +1,4 @@
+using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Settings;
 

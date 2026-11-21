@@ -1,3 +1,5 @@
+using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
+using IServerTailscale = RelaxKonOS.AppSDK.IServerTailscale;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -365,9 +367,9 @@ sealed class BrokenReferences : ITailscaleOperationReferences
     public IReadOnlyList<Guid> Read(HostSettingsConnection connection) => [];
     public void Remember(HostSettingsConnection connection, Guid operationId) => throw new IOException("private local path");
 }
-sealed class FakeClient : ITailscaleClient
+sealed class FakeClient : IServerTailscale
 {
-    public event EventHandler<AuthSessionStateChangedEventArgs>? SessionChanged;
+    public event EventHandler? SessionChanged;
     public HostSettingsConnection Connection = new("test-host", Guid.NewGuid(), Guid.NewGuid());
     public TailscaleControlSnapshot Control = new(new('A',64), false, true, new(true,false),true,
         Preferences: new(true, false, false, null, false, false, false, false), Platform: "windows");
@@ -380,7 +382,7 @@ sealed class FakeClient : ITailscaleClient
     public TailscalePrepareRequest? LastRequest;
     public TailscaleOperation? LastPlan, LastResult;
     private readonly Dictionary<Guid,TailscaleOperation> _operations = new();
-    public void SwitchHost() { Connection = Connection with { ServiceId = Guid.NewGuid().ToString(), SessionId = Guid.NewGuid() }; SessionChanged?.Invoke(this,new(AuthSessionState.Authenticated)); }
+    public void SwitchHost() { Connection = Connection with { ServiceId = Guid.NewGuid().ToString(), SessionId = Guid.NewGuid() }; SessionChanged?.Invoke(this,EventArgs.Empty); }
     public HostSettingsConnection CaptureConnection() => Connection;
     public bool IsCurrent(HostSettingsConnection connection) => connection == Connection;
     public Task<TailscaleStatusDto> GetStatusAsync(HostSettingsConnection connection, CancellationToken ct)

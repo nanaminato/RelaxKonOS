@@ -110,8 +110,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
         // The elevation dialog only needs the shared connection check, so every host-settings domain
         // reuses one prompt implementation instead of growing its own copy.
-        async Task<bool> AuthorizeHostSettingsAsync(Func<Services.HostSettings.HostSettingsConnection, bool> isCurrent,
-            Services.HostSettings.HostSettingsConnection connection, string titleKey,
+        async Task<bool> AuthorizeHostSettingsAsync(Func<HostSettingsConnection, bool> isCurrent,
+            HostSettingsConnection connection, string titleKey,
             Func<string?, string?, Task<RelaxKonOS.Protocol.Privileged.HostElevationResult>> authorize)
         {
             try { return (await authorize(null, null)).Elevated; }

@@ -17,7 +17,7 @@ namespace RelaxKonOS.Client.Apps.Tailscale;
 /// evidence. The page observes the host state on its own so an already-signed-in host is
 /// explained instead of failing a login attempt with a generic error.
 /// </summary>
-public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client, ITailscaleOperationReferences references,
+public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client, ITailscaleOperationReferences references,
     IHostElevationBroker elevation, LocalizationService language) : ObservableObject
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -115,7 +115,7 @@ public sealed partial class TailscaleLoginViewModel(ITailscaleLoginClient client
         if (visible) { _ = ObserveAndSettleAsync(); _ = AutoReadAsync(); StartPollingIfNeeded(); }
         else StopPolling();
     }
-    private void SessionChanged(object? sender, AuthSessionStateChangedEventArgs e) => Dispatcher.UIThread.Post(() =>
+    private void SessionChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
     {
         if (_lifetime is null || _connection is { } connection && client.IsCurrent(connection)) return;
         Deactivate(); Activate(); _message = "tailscale.session_changed"; Notify();
