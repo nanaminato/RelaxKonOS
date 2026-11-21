@@ -1,6 +1,5 @@
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.TaskManager;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.SystemMonitor;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
@@ -10,7 +9,7 @@ namespace RelaxKonOS.Client.Services.AppPermissions;
 internal sealed class ServerMonitorCapability(
     AppId appId,
     IAppPermissionManager permissions,
-    UsageMemoryScope connection,
+    ExternalServerConnection connection,
     ITaskManagerClient systemMonitor) : IServerMonitor
 {
     public async Task<ServerMetricsResult> GetSnapshotAsync(CancellationToken cancellationToken = default)
@@ -39,8 +38,7 @@ internal sealed class ServerMonitorCapability(
     {
         if (!permissions.IsGranted(appId, CoreAppPermissions.ServerMetricsRead))
             return AppCapabilityResult.PermissionDenied;
-        return connection.IsCurrent && connection.Session.State == AuthSessionState.Authenticated
-            ? AppCapabilityResult.Succeeded : AppCapabilityResult.Unavailable;
+        return connection.IsCurrent ? AppCapabilityResult.Succeeded : AppCapabilityResult.Unavailable;
     }
 
     private async Task<ServerPerformanceResult<T>> ReadAsync<T>(Func<CancellationToken, Task<T>> read,

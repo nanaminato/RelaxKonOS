@@ -57,7 +57,7 @@ public sealed class TaskManagerApp : RemoteApplicationBase
         }
 
         var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
-        var viewModel = new TaskManagerViewModel(sdk.ServerProcesses, sdk.ServerMonitor, session);
+        var viewModel = new TaskManagerViewModel(sdk.ServerProcesses, sdk.ServerMonitor, sdk.ServerConnection);
         var view = new TaskManagerMainView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.taskmanager.display_name"), view,
             bounds: new Rect(70, 55, 1080, 720),

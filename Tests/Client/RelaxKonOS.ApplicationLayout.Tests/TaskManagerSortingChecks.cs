@@ -9,15 +9,13 @@ using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 using RelaxKonOS.Client.Apps.TaskManager.Views;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.SystemMonitor;
 
 internal static class TaskManagerSortingChecks
 {
     public static void Run(Window host)
     {
-        var auth = DispatchProxy.Create<IAuthSession, SortingSession>();
-        var vm = new TaskManagerViewModel(null!, null!, auth)
+        var vm = new TaskManagerViewModel(null!, null!, null!)
         { IsAutoRefresh = false, ActiveTab = TaskManagerTab.Processes };
         var processes = new List<ProcessInfoDto>
         {
@@ -88,9 +86,4 @@ internal static class TaskManagerSortingChecks
     {
         if (!condition) throw new InvalidOperationException(message);
     }
-}
-
-public class SortingSession : DispatchProxy
-{
-    protected override object? Invoke(MethodInfo? method, object?[]? args) => null;
 }

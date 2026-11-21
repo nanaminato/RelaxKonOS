@@ -110,13 +110,22 @@ public class EventAlertsAuthFixture : NotepadAuthFixture
 {
     internal string ServiceId { get; set; } = "http://fixture.invalid";
     internal AuthSessionState State { get; set; } = AuthSessionState.Authenticated;
-    protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+    private EventHandler<AuthSessionStateChangedEventArgs>? _changed;
+
+    internal void NotifyStateChanged() => _changed?.Invoke(this, new AuthSessionStateChangedEventArgs(State));
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
-        "get_ServiceId" or "get_EffectiveBaseUrl" => ServiceId,
-        "get_State" => State,
-        "get_CurrentUser" => User,
-        _ => base.Invoke(method, args),
-    };
+        switch (method?.Name)
+        {
+            case "add_StateChanged": _changed += (EventHandler<AuthSessionStateChangedEventArgs>)args![0]!; return null;
+            case "remove_StateChanged": _changed -= (EventHandler<AuthSessionStateChangedEventArgs>)args![0]!; return null;
+            case "get_ServiceId" or "get_EffectiveBaseUrl": return ServiceId;
+            case "get_State": return State;
+            case "get_CurrentUser": return User;
+            default: return base.Invoke(method, args);
+        }
+    }
 
     private static UserDto User { get; } = new(Guid.NewGuid(), "fixture", HostPlatformKind.Windows, "fixture", DateTimeOffset.UtcNow, null);
 }

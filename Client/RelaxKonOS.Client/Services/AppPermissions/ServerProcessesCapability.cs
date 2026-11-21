@@ -1,6 +1,5 @@
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.TaskManager;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Privileged;
@@ -10,9 +9,8 @@ using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
 namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerProcessesCapability(AppId appId, IAppPermissionManager permissions,
-    UsageMemoryScope connection, ITaskManagerClient client, IHostElevationBroker? broker) : IServerProcesses
+    ExternalServerConnection connection, ITaskManagerClient client, IHostElevationBroker? broker) : IServerProcesses
 {
-    private readonly string? _serviceId = connection.Session.ServiceId;
     private IHostElevationBroker Elevation => broker ?? throw new InvalidOperationException("Host authorization is unavailable.");
     public Task<ProcessPageDto> QueryAsync(int page, int pageSize, string? filter, string? sort,
         bool descending, bool administratorMode, CancellationToken cancellationToken) =>
@@ -42,7 +40,7 @@ internal sealed class ServerProcessesCapability(AppId appId, IAppPermissionManag
                 EnsureAccess(cancellationToken);
                 return Elevation.ExecuteAsync(HostElevationCapability.ProcessManage, "host/processes", operation, cancellationToken);
             },
-            () => !cancellationToken.IsCancellationRequested && IsCurrent());
+            () => !cancellationToken.IsCancellationRequested && connection.IsCurrent);
     }
 
     private async Task<T> ExecuteAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken)
@@ -53,15 +51,12 @@ internal sealed class ServerProcessesCapability(AppId appId, IAppPermissionManag
         return result;
     }
 
-    private bool IsCurrent() => _serviceId is not null && connection.Session.ServiceId == _serviceId
-        && connection.IsCurrent && connection.Session.State == AuthSessionState.Authenticated;
-
     private void EnsureAccess(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!permissions.IsGranted(appId, CoreAppPermissions.ServerProcessesManage))
             throw new UnauthorizedAccessException();
-        if (!IsCurrent())
+        if (!connection.IsCurrent)
             throw new InvalidOperationException("The application's server connection has changed.");
     }
 }

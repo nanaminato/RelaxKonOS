@@ -19,7 +19,13 @@ internal static class ServerMonitorCapabilityChecks
         var transport = (PerformanceHistoryFixture)(object)client;
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "monitor-memory.json"));
         var permissions = new Permission(AppPermissions.ServerMetricsRead);
-        var monitor = new ServerMonitorCapability(new AppId("relaxkonos.taskmanager"), permissions, memory.Capture(auth), client);
+        var connection = new ExternalServerConnection(memory.Capture(auth));
+        var monitor = new ServerMonitorCapability(new AppId("relaxkonos.taskmanager"), permissions, connection, client);
+        var invalidations = 0;
+        using var observation = connection.ObserveInvalidation(() => invalidations++);
+        connection.ObserveInvalidation(() => throw new InvalidOperationException("Disposed observation was invoked.")).Dispose();
+        session.NotifyStateChanged();
+        Check(invalidations == 0 && connection.IsCurrent, "An unchanged connection should not notify applications.");
 
         Check(await monitor.GetPerformanceHistoryAsync() is { Status: AppCapabilityResult.PermissionDenied, Data: null }
             && transport.Requests == 0, "Performance history must require the metrics read grant.");
@@ -36,6 +42,11 @@ internal static class ServerMonitorCapabilityChecks
         read = monitor.GetPerformanceHistoryAsync(int.MinValue);
         Check(transport.Requests == 2 && transport.Seconds == 1, "Performance history must request at least one second.");
         session.ServiceId = "https://replacement.invalid";
+        session.NotifyStateChanged();
+        session.NotifyStateChanged();
+        Check(invalidations == 1 && !connection.IsCurrent, "A replaced connection must notify its applications exactly once.");
+        using var lateObservation = connection.ObserveInvalidation(() => invalidations++);
+        Check(invalidations == 2, "Observing after a server replacement must detect the expired connection.");
         transport.Pending.SetResult([]);
         Check(await read is { Status: AppCapabilityResult.Unavailable, Data: null }, "The former server's response must be discarded.");
         Check(await monitor.GetSnapshotAsync() is { Status: AppCapabilityResult.Unavailable, Snapshot: null }
@@ -55,7 +66,7 @@ internal static class ServerMonitorCapabilityChecks
         var permissions = new Permission(AppPermissions.ServerProcessesManage);
         var broker = new ProcessBroker();
         IServerProcesses processes = new ServerProcessesCapability(new AppId("relaxkonos.taskmanager"), permissions,
-            memory.Capture(auth), client, broker);
+            new ExternalServerConnection(memory.Capture(auth)), client, broker);
         var start = DateTimeOffset.UtcNow;
 
         await RejectAsync<UnauthorizedAccessException>(() => processes.QueryAsync());

@@ -45,6 +45,7 @@ public interface IExternalAppContext
     IServerDockerImageMirrors DockerImageMirrors { get; }
     /// <summary>Reports whether the application context has an authenticated server connection.</summary>
     bool HasAuthenticatedServer { get; }
+    IExternalServerConnection ServerConnection { get; }
     /// <summary>Read-only, host-rendered settings for the application's declared component dependencies.</summary>
     IExternalAppComponentDependencies? ComponentDependencies { get; }
     IServerFiles ServerFiles { get; }
@@ -60,6 +61,13 @@ public interface IExternalAppContext
     IAppActivation Activations { get; }
     ISettingsNavigation Settings { get; }
     IExternalAppWindowService Windows { get; }
+}
+
+/// <summary>Observes the authenticated server connection captured for an application launch.</summary>
+public interface IExternalServerConnection
+{
+    bool IsCurrent { get; }
+    IDisposable ObserveInvalidation(Action invalidated);
 }
 
 public interface IExternalAppComponentDependencies

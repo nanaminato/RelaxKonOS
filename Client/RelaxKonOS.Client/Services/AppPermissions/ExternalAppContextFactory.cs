@@ -111,17 +111,19 @@ public sealed class ExternalAppContextFactory
         var sshFiles = sshEndpoint is null ? null : _sshFiles.Bind(sshEndpoint);
         var sshEditor = sshFiles is not null && appId.Value == "relaxkonos.codeeditor";
         var fileSession = _usageMemory.Capture(_session);
+        var connection = new ExternalServerConnection(fileSession);
         var docker = new ServerDockerResourcesCapability(appId, _permissions, fileSession, _docker, _dockerMirrors);
         return new ExternalAppContext(
         appId,
         new AppPermissionScope(appId, _permissionRequests),
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
-        new ServerMonitorCapability(appId, _permissions, fileSession, _systemMonitor),
-        new ServerProcessesCapability(appId, _permissions, fileSession, _systemMonitor, _elevationBroker),
+        new ServerMonitorCapability(appId, _permissions, connection, _systemMonitor),
+        new ServerProcessesCapability(appId, _permissions, connection, _systemMonitor, _elevationBroker),
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
         _session.State == AuthSessionState.Authenticated,
+        connection,
         ComponentCatalog.LaunchGate(appId.Value) is null ? null
             : new ExternalComponentDependencies(appId, fileSession, _componentLifecycle, _permissionRequests, _activations, _windowManager),
         new ServerFilesCapability(appId, _permissions,
@@ -150,6 +152,7 @@ public sealed class ExternalAppContextFactory
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,
         bool HasAuthenticatedServer,
+        IExternalServerConnection ServerConnection,
         IExternalAppComponentDependencies? ComponentDependencies,
         IServerFiles ServerFiles,
         IExternalTextEditorPreferences? TextEditorPreferences,
