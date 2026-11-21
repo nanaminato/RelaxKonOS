@@ -118,6 +118,8 @@
     "component_center.data_retained": "保持",
     "component_center.data_deleted": "削除（別途確認）",
     "component_center.availability.Unknown": "{0} に必要な {1} の状態を確認できません。接続を確認して再試行してください。不明な状態ではインストールしません。",
+    "component_center.availability.package_repair": "{0} には互換バージョンの {1} が必要です。アプリインストーラーで依存アプリをインストールするか修復してください。",
+    "component_center.availability.module_repair": "{0} には利用可能なサーバーモジュール {1} が必要です。コンポーネントセンターでモジュールを確認してください。",
     "component_center.availability.Missing": "{0} には {1} が必要ですが、このホストにはインストールされていません。コンポーネントセンターでインストールしてから、アプリを開き直してください。",
     "component_center.availability.External": "{1} の外部インストールを検出しました。所有権はコンポーネントセンターで確認できます。自動的に引き継ぎません。",
     "component_center.availability.Recovery": "{1} に復旧が必要な処理があります。コンポーネントセンターで復旧してからアプリを開いてください。",

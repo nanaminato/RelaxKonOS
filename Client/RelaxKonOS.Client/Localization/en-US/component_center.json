@@ -118,6 +118,8 @@
     "component_center.data_retained": "Retain",
     "component_center.data_deleted": "Delete (separate confirmation)",
     "component_center.availability.Unknown": "The state of {1}, required by {0}, could not be confirmed. Check the connection and retry. An unknown state never triggers installation.",
+    "component_center.availability.package_repair": "{0} requires a compatible version of {1}. Open App Installer to install or repair the dependency.",
+    "component_center.availability.module_repair": "{0} requires an available server module {1}. Open Component Center to check the module.",
     "component_center.availability.Missing": "{0} requires {1}, which is not installed on this host. Open Component Center to install it, then open the application again.",
     "component_center.availability.External": "An external installation of {1} was detected. View ownership in Component Center; it will not be taken over automatically.",
     "component_center.availability.Recovery": "{1} has a transaction requiring recovery. Recover it in Component Center before opening the application.",
