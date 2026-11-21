@@ -12,22 +12,7 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SquidInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.MySqlInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MySqlRemoteInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MySqlAdminRecoveryInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MySqlAccountsInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService>(sp =>
-            sp.GetRequiredService<RelaxKonOS.Server.Installations.MySqlInstallationService>());
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Databases.PostgreSqlCredentialStore>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlAccountsInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlAdminRecoveryInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlRemoteAccessInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlMaintenanceInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MySqlMaintenanceInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlBackupAutomationInstallationService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler>();
-        builder.Services.AddHostedService(sp=>sp.GetRequiredService<RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler>());
+        builder.Services.AddDatabaseServices();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
         // Mihomo installs only through the managed catalog adapter. The fixed-manifest installer is gone,
         // so no request shape can reach the retired download/archive path.

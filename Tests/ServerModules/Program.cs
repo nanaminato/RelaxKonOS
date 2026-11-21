@@ -20,6 +20,12 @@ using RoyalTerminal.Terminal;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
+if (args is ["--database-endpoint-boundary"])
+{
+    await DatabaseEndpointBoundaryChecks.RunAsync();
+    return;
+}
+
 if (args is ["--module-baseline-workload", var baselineRoot, var baselineOrder])
 {
     await ModuleBaselineWorkload.RunAsync(baselineRoot, baselineOrder);

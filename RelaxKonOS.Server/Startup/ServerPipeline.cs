@@ -118,31 +118,7 @@ internal static class ServerPipeline
         if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
-        app.MapPostgreSqlEndpoints();
-        app.MapPost(RelaxKonOS.Protocol.Databases.MySqlRoutes.Credentials, async (
-            RelaxKonOS.Protocol.Databases.PostgreSqlCredentialRequest request, HttpContext http,
-            RelaxKonOS.Server.Installations.MySqlInstallationService mysql,
-            RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials,
-            RelaxKonOS.Server.Privileged.IHostElevationSessionStore elevations, CancellationToken ct) =>
-        {
-            var id = RelaxKonOS.Protocol.Installations.InstallationServiceId.MySqlAccounts;
-            if (!InstallationEndpoints.CanInstall(http.User, id)) return Results.Forbid();
-            if (!elevations.IsGranted(http.User, InstallationEndpoints.Capability(id), InstallationEndpoints.Target(id)))
-                return Results.Problem(statusCode: 403, title: "elevation-required");
-            if (!RelaxKonOS.Protocol.Databases.MySqlAccountCommand.Password(request.Password))
-                return Results.Problem(statusCode: 400, title: "database.credential_invalid");
-            var state = await mysql.ReadAsync(ct);
-            if (state.InstanceId != request.InstanceId || state.PendingOperationId is not null)
-                return Results.Problem(statusCode: 409, title: "database.instance_invalid");
-            return Results.Ok(credentials.Stage(request, InstallationEndpoints.Actor(http.User)));
-        }).RequireAuthorization();
-        app.MapGet(RelaxKonOS.Protocol.Databases.MySqlRoutes.State,
-            async (RelaxKonOS.Server.Installations.MySqlInstallationService mysql, CancellationToken ct) =>
-            {
-                try { return Results.Ok(await mysql.ReadAsync(ct)); }
-                catch (RelaxKonOS.Server.Installations.InstallationException)
-                { return Results.Problem(statusCode: 503); }
-            }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
+        app.MapDatabaseEndpoints();
         app.MapServerModuleManagementEndpoints();
         app.MapModulePrivilegeEndpoints();
         app.MapTaskPlanningEndpoints();

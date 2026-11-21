@@ -1,0 +1,39 @@
+using RelaxKonOS.Protocol.Databases;
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Server.Databases;
+using RelaxKonOS.Server.Installations;
+using RelaxKonOS.Server.Privileged;
+
+namespace RelaxKonOS.Server.Endpoints;
+
+internal static class DatabaseEndpoints
+{
+    public static void MapDatabaseEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapPostgreSqlEndpoints();
+        endpoints.MapPost(MySqlRoutes.Credentials, async (
+            PostgreSqlCredentialRequest request, HttpContext http,
+            MySqlInstallationService mysql,
+            PostgreSqlCredentialStore credentials,
+            IHostElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            var id = InstallationServiceId.MySqlAccounts;
+            if (!InstallationEndpoints.CanInstall(http.User, id)) return Results.Forbid();
+            if (!elevations.IsGranted(http.User, InstallationEndpoints.Capability(id), InstallationEndpoints.Target(id)))
+                return Results.Problem(statusCode: 403, title: "elevation-required");
+            if (!MySqlAccountCommand.Password(request.Password))
+                return Results.Problem(statusCode: 400, title: "database.credential_invalid");
+            var state = await mysql.ReadAsync(ct);
+            if (state.InstanceId != request.InstanceId || state.PendingOperationId is not null)
+                return Results.Problem(statusCode: 409, title: "database.instance_invalid");
+            return Results.Ok(credentials.Stage(request, InstallationEndpoints.Actor(http.User)));
+        }).RequireAuthorization();
+        endpoints.MapGet(MySqlRoutes.State,
+            async (MySqlInstallationService mysql, CancellationToken ct) =>
+            {
+                try { return Results.Ok(await mysql.ReadAsync(ct)); }
+                catch (InstallationException)
+                { return Results.Problem(statusCode: 503); }
+            }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
+    }
+}
