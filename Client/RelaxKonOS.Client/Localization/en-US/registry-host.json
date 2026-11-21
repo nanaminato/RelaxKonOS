@@ -1,0 +1,7 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "registry.error.sign_in": "Sign in to browse the configuration registry.",
+    "registry.error.empty_response": null
+  }
+}

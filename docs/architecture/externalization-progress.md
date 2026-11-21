@@ -24,7 +24,7 @@
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
 | browser | Browser | 否 / 否 | 是 | 本地 WebView 与浏览器宿主服务 | 基础 | 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
-| registry | Registry | 否 / 否 | 是 | Registry API | 基础 | 待验 |
+| registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Release 包验收；真实服务器待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer、Event & Alert Center 和 Task Manager 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这五个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager 和 Registry 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这六个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -68,7 +68,7 @@
 - Registry 值编辑器从应用上下文取得外观偏好，并通过 SDK 异常保留服务端的访问拒绝与版本冲突信息。
 - Registry 的键树、延迟 JSON 树、文档投影和中英日文案已迁入独立项目。嵌套编辑仍提交原文档的所有者范围、路径和版本。
 - Registry 主模型和值、新建键、重命名对话框模型已迁入独立项目，直接从应用资源解析文案。
-- Registry 主视图、编辑对话框、图标和包启动入口已迁入独立项目，DevCli 已生成本地 Release `.roapp`。当前内置注册调用同一入口，官方安装链路和内置注册移除仍待完成。
+- Registry 主视图、编辑对话框、图标和包启动入口已迁入独立项目，DevCli 已生成本地 Release `.roapp`。官方包随 Standard 和 Developer 档位离线预装，Minimal 跳过。桌面宿主已移除内置注册。
 
 - Task Manager 所需的性能静态信息、实时快照与短期历史已接入只读监控 SDK。读取校验应用权限和捕获的服务器会话，历史采样窗口限定为 1–60 秒。
 - Task Manager 性能页通过 SDK 读取 HTTP 快照、历史并订阅 SignalR。两条路径使用同一指标读取授权，断线重连后回补历史。关闭窗口或切换会话会取消性能读取并释放订阅。

@@ -40,6 +40,7 @@ internal static class OfficialRoappChecks
         var isCodeEditor = applicationId == "relaxkonos.codeeditor";
         var isDocker = applicationId == "relaxkonos.docker";
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
+        var isRegistry = applicationId == "relaxkonos.registry";
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -72,6 +73,9 @@ internal static class OfficialRoappChecks
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage, AppPermissions.ServerComponentsRead]
                     && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.docker"],
                     "Docker review exposes the required server capability and all three permissions.");
+            if (isRegistry)
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerRegistryRead, AppPermissions.ServerRegistryWrite],
+                    "Registry review exposes separate read and write grants.");
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
             await WriteProfileAsync("interactive");
@@ -120,15 +124,19 @@ internal static class OfficialRoappChecks
             if (isTaskManager)
                 Check(!await packages.LaunchAsync(applicationId), "The preinstalled Task Manager must refuse launch without server capabilities.");
             compatibility.TaskManagerServerAvailable = true;
-            if (isDocker || isTaskManager)
+            if (isDocker || isTaskManager || isRegistry)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
                 Check(await packages.LaunchAsync(applicationId), "The application must launch from its installed package.");
                 for (var attempt = 0; attempt < 50 && windows.Windows.Count == 0; attempt++)
                     await Task.Delay(20);
                 var workspace = windows.Windows.Single();
-                var workspaceType = isTaskManager ? "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView"
-                    : "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace";
+                var workspaceType = applicationId switch
+                {
+                    "relaxkonos.registry" => "RelaxKonOS.App.Registry.RegistryView",
+                    "relaxkonos.taskmanager" => "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView",
+                    _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
+                };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
                     "The installed entry point must create its own workspace.");
                 windows.Close(workspace);

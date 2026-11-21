@@ -1,5 +1,4 @@
 using RelaxKonOS.App.CodeEditor;
-using RelaxKonOS.App.Registry;
 using RelaxKonOS.Client.Services.Diagnostics;
 using System.Text.Json;
 using Avalonia.Threading;
@@ -113,11 +112,6 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
         foreach (var resource in CodeEditorLocalization.ResourceNames)
         {
             using var source = CodeEditorLocalization.Open(resource);
-            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
-        }
-        foreach (var resource in RegistryLocalization.ResourceNames)
-        {
-            using var source = RegistryLocalization.Open(resource);
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 

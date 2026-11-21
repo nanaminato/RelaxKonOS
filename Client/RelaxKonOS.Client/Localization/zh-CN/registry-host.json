@@ -1,0 +1,7 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "registry.error.sign_in": "请登录后浏览配置注册表。",
+    "registry.error.empty_response": null
+  }
+}
