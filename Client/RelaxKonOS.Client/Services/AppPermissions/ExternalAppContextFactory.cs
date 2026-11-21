@@ -64,6 +64,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerFileServices? _fileServices;
     private readonly IServerFirewall? _firewall;
     private readonly IServerGuardian? _guardian;
+    private readonly IServerTunnels? _tunnels;
     private readonly IServerApplicationDeployments? _applicationDeployments;
     private readonly IPortForwardingService? _portForwarding;
     private readonly ClientPresentationPreferences? _presentationPreferences;
@@ -109,7 +110,8 @@ public sealed class ExternalAppContextFactory
         IServerFirewall? firewall = null,
         IServerGuardian? guardian = null,
         IPortForwardingService? portForwarding = null,
-        IServerApplicationDeployments? applicationDeployments = null)
+        IServerApplicationDeployments? applicationDeployments = null,
+        IServerTunnels? tunnels = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -141,6 +143,7 @@ public sealed class ExternalAppContextFactory
         _fileServices = fileServices;
         _firewall = firewall;
         _guardian = guardian;
+        _tunnels = tunnels;
         _applicationDeployments = applicationDeployments;
         _portForwarding = portForwarding;
         _presentationPreferences = presentationPreferences;
@@ -173,6 +176,7 @@ public sealed class ExternalAppContextFactory
         new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
         new ServerFirewallCapability(appId, _permissions, connection, _firewall, lifetime),
         new ServerGuardianCapability(appId, _permissions, connection, _guardian, lifetime),
+        new ServerTunnelsCapability(appId, _permissions, connection, _tunnels, lifetime),
         new ServerApplicationDeploymentsCapability(appId, _permissions, connection, _applicationDeployments, lifetime),
         appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient) : null,
         appId.Value == "relaxkonos.port-forwarding" && _portForwarding is { } forwarding
@@ -227,6 +231,7 @@ public sealed class ExternalAppContextFactory
         IServerFileServices FileServices,
         IServerFirewall Firewall,
         IServerGuardian Guardian,
+        IServerTunnels Tunnels,
         IServerApplicationDeployments ApplicationDeployments,
         IGuardianHostInteraction? GuardianHost,
         IPortForwardingService? PortForwarding,
