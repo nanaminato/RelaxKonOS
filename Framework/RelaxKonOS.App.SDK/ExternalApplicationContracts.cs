@@ -42,6 +42,10 @@ public interface IExternalAppContext
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }
+    /// <summary>Reports whether the application context has an authenticated server connection.</summary>
+    bool HasAuthenticatedServer { get; }
+    /// <summary>Read-only, host-rendered settings for the application's declared component dependencies.</summary>
+    IExternalAppComponentDependencies? ComponentDependencies { get; }
     IServerFiles ServerFiles { get; }
     /// <summary>Workspace-backed encoding preferences for a host-configured text editor.</summary>
     IExternalTextEditorPreferences? TextEditorPreferences { get; }
@@ -55,6 +59,11 @@ public interface IExternalAppContext
     IAppActivation Activations { get; }
     ISettingsNavigation Settings { get; }
     IExternalAppWindowService Windows { get; }
+}
+
+public interface IExternalAppComponentDependencies
+{
+    Control? CreateSettingsView(IExternalAppWindowHandle owner);
 }
 
 /// <summary>Scope of an application's persisted configuration document.</summary>

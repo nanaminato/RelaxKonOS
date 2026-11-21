@@ -4,6 +4,7 @@ using RelaxKonOS.App.Docker;
 using RelaxKonOS.App.Docker.Views;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -27,9 +28,38 @@ internal static class ModalCancellationChecks
         var factory = new ExternalAppContextFactory(null!, null!, language, settings, null!, auth,
             null!, manager, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
             null!, null!, null!, null!, null!, memory, null!, null!, null!, null!);
-        var manifest = new ApplicationManifest(new AppId("relaxkonos.docker"), "Docker Manager", "1.0.0");
-        var context = factory.Create(manifest);
+        var application = new DockerPackageApp();
+        var session = (EventAlertsAuthFixture)(object)auth;
+        var originalLanguage = settings.Language;
+        try
+        {
+            session.State = default;
+            settings.Language = "en-US";
+            application.ActivateAsync(factory.Create(application.Manifest)).GetAwaiter().GetResult();
+            var signIn = manager.Windows.Single();
+            Check(signIn.Title == "Docker Manager" && signIn.View.Content is DockerLoginRequiredView,
+                "The package opens a localized sign-in window without server access.");
+            settings.Language = "ja-JP";
+            Dispatcher.UIThread.RunJobs();
+            Check(signIn.Title == "Docker マネージャー", "The open sign-in window follows the workspace language.");
+            manager.Close(signIn);
+            session.State = AuthSessionState.Authenticated;
+            application.ActivateAsync(factory.Create(application.Manifest)).GetAwaiter().GetResult();
+            var workspace = manager.Windows.Single();
+            Check(workspace.Title == "Docker マネージャー" && workspace.View.Content is DockerManagerWorkspace
+                && workspace.View.HeaderCenter is TextBlock { Text: "Docker マネージャー" },
+                "Authenticated package activation opens and localizes the Docker workspace.");
+            manager.Close(workspace);
+        }
+        finally
+        {
+            settings.Language = originalLanguage;
+        }
+        var context = factory.Create(application.Manifest);
         var owner = context.Windows.ShowWindow("Docker", new TextBlock());
+        Check(context.ComponentDependencies?.CreateSettingsView(owner) is ComponentDependencySettingsView
+            { DataContext: ComponentDependencySettingsViewModel { HasComponents: true } },
+            "Docker can display its host-provided component dependency settings.");
         var model = new DockerManagerViewModel(context.DockerResources, new DockerText(LocalizedText.Get));
         var result = DockerManagerDialogs.ShowDeployStackAsync(owner, model);
         var draft = manager.Windows.Last();

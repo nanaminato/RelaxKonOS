@@ -11,5 +11,6 @@
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <AvaloniaResource Include="Assets/docker.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="Docker.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="Docker.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

@@ -16,7 +16,7 @@ public partial class DockerManagerWorkspace : UserControl
 
     private readonly DockerProxyStatusViewModel _proxyViewModel;
     private readonly DockerImageMirrorsViewModel _imageMirrorsViewModel;
-    private readonly Func<Control>? _createSettingsPage;
+    private readonly Func<Control?>? _createSettingsPage;
     private readonly Func<Task> _showCreateContainer;
     private readonly Func<Task> _showDeployStack;
     private readonly Func<Task> _showPullImage;
@@ -24,7 +24,7 @@ public partial class DockerManagerWorkspace : UserControl
     private readonly Func<Task> _showCreateVolume;
     private Button? _selectedButton;
 
-    public DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyStatusViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, Func<Control>? createSettingsPage = null)
+    public DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyStatusViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, Func<Control?>? createSettingsPage = null)
     {
         _proxyViewModel = proxyViewModel;
         _imageMirrorsViewModel = imageMirrorsViewModel;
@@ -68,7 +68,7 @@ public partial class DockerManagerWorkspace : UserControl
             "proxy" => new DockerProxyView(_proxyViewModel),
             "networks" => new DockerNetworksView(_showCreateNetwork),
             "volumes" => new DockerVolumesView(_showCreateVolume),
-            "settings" when _createSettingsPage is not null => _createSettingsPage(),
+            "settings" => _createSettingsPage?.Invoke() ?? new DockerOverviewView(),
             _ => new DockerOverviewView()
         };
         // Resource lists fill the available workspace; overview, settings and the multi-table

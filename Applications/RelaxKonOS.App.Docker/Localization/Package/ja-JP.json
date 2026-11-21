@@ -1,0 +1,19 @@
+{
+  "Strings": {
+    "common.cancel": "キャンセル",
+    "common.close": "閉じる",
+    "common.copy": "コピー",
+    "common.create": "作成",
+    "common.delete": "削除",
+    "common.discard": "破棄",
+    "common.discard_message": "未保存の変更を破棄してエディターを閉じますか？",
+    "common.discard_title": "変更を破棄しますか？",
+    "common.name": "名前",
+    "common.ok": "OK",
+    "common.operation_log": "操作ログ",
+    "common.refresh": "更新",
+    "common.settings": "設定",
+    "common.view": "表示"
+  },
+  "Culture": "ja-JP"
+}

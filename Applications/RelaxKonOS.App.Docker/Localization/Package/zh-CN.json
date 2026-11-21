@@ -1,0 +1,19 @@
+{
+  "Strings": {
+    "common.cancel": "取消",
+    "common.close": "关闭",
+    "common.copy": "复制",
+    "common.create": "创建",
+    "common.delete": "删除",
+    "common.discard": "放弃修改",
+    "common.discard_message": "放弃未保存的修改并关闭编辑器？",
+    "common.discard_title": "放弃修改？",
+    "common.name": "名称",
+    "common.ok": "确定",
+    "common.operation_log": "操作日志",
+    "common.refresh": "刷新",
+    "common.settings": "设置",
+    "common.view": "查看"
+  },
+  "Culture": "zh-CN"
+}

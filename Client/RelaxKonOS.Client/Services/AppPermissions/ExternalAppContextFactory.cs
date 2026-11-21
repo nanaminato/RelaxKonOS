@@ -1,6 +1,7 @@
 using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Apps.TaskManager;
@@ -49,6 +50,7 @@ public sealed class ExternalAppContextFactory
     private readonly IAppActivationService _activations;
     private readonly UsageMemoryStore _usageMemory;
     private readonly TextEditorEncodingSettings _textEncoding;
+    private readonly IComponentLifecycleClient? _componentLifecycle;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -71,7 +73,8 @@ public sealed class ExternalAppContextFactory
         TextEditorEncodingSettings textEncoding,
         IRemoteEventAlertClient alerts,
         IRemoteDockerClient docker,
-        DockerImageMirrorClient dockerMirrors)
+        DockerImageMirrorClient dockerMirrors,
+        IComponentLifecycleClient? componentLifecycle = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -94,6 +97,7 @@ public sealed class ExternalAppContextFactory
         _activations = activations;
         _usageMemory = usageMemory;
         _textEncoding = textEncoding;
+        _componentLifecycle = componentLifecycle;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -113,6 +117,9 @@ public sealed class ExternalAppContextFactory
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
+        _session.State == AuthSessionState.Authenticated,
+        ComponentCatalog.LaunchGate(appId.Value) is null ? null
+            : new ExternalComponentDependencies(appId, fileSession, _componentLifecycle, _permissionRequests, _activations, _windowManager),
         new ServerFilesCapability(appId, _permissions,
             (sshFiles as IExplorerClient ?? _files).DownloadAsync,
             sshEndpoint is not null, sshEndpoint is not null || _session.CurrentServer?.Platform != RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
@@ -137,6 +144,8 @@ public sealed class ExternalAppContextFactory
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,
+        bool HasAuthenticatedServer,
+        IExternalAppComponentDependencies? ComponentDependencies,
         IServerFiles ServerFiles,
         IExternalTextEditorPreferences? TextEditorPreferences,
         IExternalFileApiAccess FileApi,
@@ -146,6 +155,28 @@ public sealed class ExternalAppContextFactory
         IAppActivation Activations,
         ISettingsNavigation Settings,
         IExternalAppWindowService Windows) : IExternalAppContext;
+
+    private sealed class ExternalComponentDependencies(AppId appId, UsageMemoryScope connection,
+        IComponentLifecycleClient? lifecycle, IAppPermissionRequestService permissions,
+        IAppActivationService activations, IWindowManager windows) : IExternalAppComponentDependencies
+    {
+        public Avalonia.Controls.Control? CreateSettingsView(IExternalAppWindowHandle owner)
+        {
+            if (!connection.IsCurrent || owner.Window.Info.OwnerAppId != appId || !windows.Windows.Contains(owner.Window))
+                return null;
+
+            var model = new ComponentDependencySettingsViewModel(appId.Value, connection.Session, lifecycle,
+                new AppPermissionScope(appId, permissions), componentId =>
+                {
+                    if (connection.IsCurrent && connection.Session.ServiceId is { } host)
+                        new ExternalAppActivation(appId, activations).Activate(ComponentCenterNavigation.Component(host, appId.Value, componentId));
+                });
+            var view = new ComponentDependencySettingsView { DataContext = model };
+            view.AttachedToVisualTree += (_, _) => _ = model.RefreshAsync();
+            owner.Closed.Register(model.Dispose);
+            return view;
+        }
+    }
 
     private sealed class ServerAlertsCapability(AppId appId, IAppPermissionManager permissions,
         IAuthSession session, UsageMemoryScope connection, IRemoteEventAlertClient alerts) : IServerAlerts

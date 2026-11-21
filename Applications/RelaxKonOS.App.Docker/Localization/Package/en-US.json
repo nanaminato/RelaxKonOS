@@ -1,0 +1,19 @@
+{
+  "Strings": {
+    "common.cancel": "Cancel",
+    "common.close": "Close",
+    "common.copy": "Copy",
+    "common.create": "Create",
+    "common.delete": "Delete",
+    "common.discard": "Discard",
+    "common.discard_message": "Discard unsaved changes and close this editor?",
+    "common.discard_title": "Discard changes?",
+    "common.name": "Name",
+    "common.ok": "OK",
+    "common.operation_log": "Operation log",
+    "common.refresh": "Refresh",
+    "common.settings": "Settings",
+    "common.view": "View"
+  },
+  "Culture": "en-US"
+}

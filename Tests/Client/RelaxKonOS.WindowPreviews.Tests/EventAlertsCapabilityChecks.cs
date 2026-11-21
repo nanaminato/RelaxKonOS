@@ -109,9 +109,11 @@ internal static class EventAlertsCapabilityChecks
 public class EventAlertsAuthFixture : NotepadAuthFixture
 {
     internal string ServiceId { get; set; } = "http://fixture.invalid";
+    internal AuthSessionState State { get; set; } = AuthSessionState.Authenticated;
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
         "get_ServiceId" or "get_EffectiveBaseUrl" => ServiceId,
+        "get_State" => State,
         "get_CurrentUser" => User,
         _ => base.Invoke(method, args),
     };

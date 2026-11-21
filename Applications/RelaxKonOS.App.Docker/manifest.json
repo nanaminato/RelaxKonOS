@@ -1,0 +1,30 @@
+{
+  "id": "relaxkonos.docker",
+  "displayName": "Docker Manager",
+  "description": "Manage the local Docker Engine on the RelaxKonOS Server",
+  "version": "0.2.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Docker.dll",
+  "entryType": "RelaxKonOS.App.Docker.DockerPackageApp",
+  "iconGlyph": "🐳",
+  "iconPath": "Assets/docker.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [
+    "server.docker.read",
+    "server.docker.manage",
+    "server.components.read"
+  ],
+  "serverRequirements": {
+    "capabilities": ["server.docker"]
+  },
+  "localizedMetadata": {
+    "zh-CN": {
+      "displayName": "Docker 管理器",
+      "description": "管理 RelaxKonOS 服务器的本地 Docker 引擎"
+    },
+    "ja-JP": {
+      "displayName": "Docker マネージャー",
+      "description": "RelaxKonOS サーバーのローカル Docker Engine を管理"
+    }
+  }
+}
