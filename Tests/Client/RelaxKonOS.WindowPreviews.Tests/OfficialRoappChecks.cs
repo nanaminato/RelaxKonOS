@@ -42,6 +42,8 @@ internal static class OfficialRoappChecks
         var isEventAlerts = applicationId == "relaxkonos.event-alerts";
         var isCodeEditor = applicationId == "relaxkonos.codeeditor";
         var isDocker = applicationId == "relaxkonos.docker";
+        var isCertificates = applicationId == "relaxkonos.certificates";
+        var requiresModule = isDocker || isCertificates;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -132,6 +134,14 @@ internal static class OfficialRoappChecks
             if (isRegistry)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerRegistryRead, AppPermissions.ServerRegistryWrite],
                     "Registry review exposes separate read and write grants.");
+            if (isCertificates)
+            {
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage]
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.certificates" }, Capability: "server.certificates" }],
+                    "Certificate review exposes the required module and separate read and manage grants.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Certificate Manager without joint deployment");
+            }
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
             await WriteProfileAsync("interactive");
@@ -160,15 +170,15 @@ internal static class OfficialRoappChecks
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
             compatibility.TaskManagerServerAvailable = !isTaskManager;
-            if (isDocker)
+            if (requiresModule)
                 await WriteProfileAsync("interactive");
             await provisioner.RunAsync(["--installation-profile=developer"]);
-            if (isDocker)
-                Check(packages.FindInstalled(applicationId) is null, "Docker stays optional even in the Developer profile.");
-            var first = isDocker
+            if (requiresModule)
+                Check(packages.FindInstalled(applicationId) is null, "The server-dependent application stays optional in Developer.");
+            var first = requiresModule
                 ? await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path))
                 : packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
-            if (!isDocker)
+            if (!requiresModule)
                 Check(File.Exists(Path.Combine(first.InstallationPath, "deployment-receipt.json")),
                     "Profile provisioning must commit the unified deployment receipt.");
             await provisioner.RunAsync();
@@ -182,7 +192,7 @@ internal static class OfficialRoappChecks
             if (isTaskManager)
                 Check(!await packages.LaunchAsync(applicationId), "The preinstalled Task Manager must refuse launch without server capabilities.");
             compatibility.TaskManagerServerAvailable = true;
-            if (isDocker || isTaskManager || isRegistry || isBrowser || isTerminal)
+            if (requiresModule || isTaskManager || isRegistry || isBrowser || isTerminal)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
                 Check(await packages.LaunchAsync(applicationId), "The application must launch from its installed package.");
@@ -195,6 +205,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.taskmanager" => "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView",
                     "relaxkonos.browser" => typeof(TextBlock).FullName,
                     "relaxkonos.terminal" => "RelaxKonOS.App.Terminal.TerminalWorkspaceView",
+                    "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
@@ -336,10 +347,14 @@ internal static class OfficialRoappChecks
                 browserAuth.State = AuthSessionState.Unauthenticated;
             }
             var memory = new UsageMemoryStore(Path.Combine(root, "usage-memory.json"));
-            var context = new ExternalAppContextFactory(permissions, null!, language, settings, null!, auth, null!,
+            var certificatePermissions = new CertificateCapabilityChecks.Permission();
+            certificatePermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
+            var certificates = isCertificates ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
+            var context = new ExternalAppContextFactory(isCertificates ? certificatePermissions : permissions,
+                isCertificates ? certificatePermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
-                browserData: isBrowser ? browserData : null);
+                browserData: isBrowser ? browserData : null, certificates: certificates);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 
@@ -362,7 +377,7 @@ internal static class OfficialRoappChecks
         }
 
         // This fixture isolates the client package lifecycle from the server module executor.
-        Task<DeveloperAppInfo> InstallForLifecycleCheckAsync(AppPackageInstallerService installer, AppPackageCandidate candidate) => isDocker
+        Task<DeveloperAppInfo> InstallForLifecycleCheckAsync(AppPackageInstallerService installer, AppPackageCandidate candidate) => requiresModule
             ? installer.InstallAsync(candidate, default, (_, _) => Task.FromResult(Guid.NewGuid()))
             : installer.InstallAsync(candidate);
 

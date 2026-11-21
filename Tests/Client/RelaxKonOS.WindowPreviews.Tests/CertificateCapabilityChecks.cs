@@ -61,7 +61,7 @@ internal static class CertificateCapabilityChecks
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
-    private sealed class Permission : IAppPermissionManager, IAppPermissionRequestService
+    internal sealed class Permission : IAppPermissionManager, IAppPermissionRequestService
     {
         public HashSet<string> Granted { get; } = [];
         public bool IsGranted(AppId id, string permission) => id.Value == "relaxkonos.certificates" && Granted.Contains(permission);

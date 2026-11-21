@@ -11,6 +11,11 @@
   "instancePolicy": "SingleWindow",
   "requestedPermissions": ["server.certificates.read", "server.certificates.manage"],
   "serverRequirements": { "capabilities": ["server.certificates"] },
+  "dependencies": {
+    "required": [
+      { "package": { "kind": 1, "id": "relaxkonos.certificates" }, "capability": "server.certificates" }
+    ]
+  },
   "localizedMetadata": {
     "zh-CN": { "displayName": "证书管理器", "description": "管理 RelaxKonOS Server 上的 TLS 证书" },
     "ja-JP": { "displayName": "証明書マネージャー", "description": "RelaxKonOS Server の TLS 証明書を管理します" }

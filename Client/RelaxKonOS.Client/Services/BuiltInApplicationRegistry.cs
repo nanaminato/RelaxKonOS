@@ -27,7 +27,6 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
             Define<RelaxKonOS.Client.Apps.Squid.SquidApp>("squid", "relaxkonos.squid", services),
             Define<RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp>("proxy-server", "relaxkonos.proxy-server", services),
             Define<RelaxKonOS.Client.Apps.Firewall.FirewallApp>("firewall", "relaxkonos.firewall", services),
-            Define<RelaxKonOS.Client.Apps.Certificates.CertificateManagerApp>("certificates", "relaxkonos.certificates", services),
             Define<RelaxKonOS.Client.Apps.WebServers.WebServerManagerApp>("webservers", "relaxkonos.webservers", services),
             Define<RelaxKonOS.Client.Apps.FileServices.FileServicesApp>("file-services", "relaxkonos.file-services", services),
             Define<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>("tunnels", "relaxkonos.tunnels", services),
