@@ -896,3 +896,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Tunnels 签名包在安装提交、暂存复用和回退前校验执行接口与公开无参构造。Windows Release 和 Linux x64 均拒绝主入口完整但接口不兼容的测试包，保留活动版本。Linux 使用实际 frpc 和 frps 复验兼容签名包生成配置、环回双向传输和停止后释放监听。
 - Docker 与 Web Server 签名包在安装、暂存复用和回退前复用启动入口验证。Windows Release 和 Linux x64 均拒绝缺失 Docker 镜像源或 Nginx 重载执行器的签名测试包，活动版本不变。兼容 Docker 包通过离线 Compose 预览。兼容 Web Server 包复用 Certificates，Linux 独立网络中真实 Nginx 通过重载、拒绝不合法配置及修正后重载。
 - Certificates 与 Git 的签名执行契约加入安装、暂存复用和回退检查。Windows Release 及无外网 Linux x64 容器均拒绝主入口仍在但缺少所需执行接口的测试包，活动版本不变。兼容 Certificates 调用了生产 ACME 观察执行器，兼容 Git 通过生产 HTTP 初始化真实 Git 工作树并读写索引。Linux 完整模块套件同轮通过 1,510 项检查。
+- Linux x64 在新契约检查下，使用完整重建的 Certificates 官方桌面归档和隔离 Pebble 复验实际签发。坏包先在安装、暂存复用和回退边界被拒。兼容包仅产生一个订单及一次 finalize。生产 API 拒绝缺少授权的签发，重放及 Core 重启后返回同一回执和证书，持久链验证到测试 CA。
