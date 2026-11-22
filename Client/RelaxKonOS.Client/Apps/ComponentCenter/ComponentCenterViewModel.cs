@@ -21,9 +21,9 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
 public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage,
-    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation, IComponentCenterDetails
+    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation
 {
-    ICatalogSourcesViewModel? IComponentCenterDetails.CatalogSources => CatalogSources;
+    ICatalogSourcesViewModel? IComponentCenterLayout.CatalogSources => CatalogSources;
 
     string IComponentPackageCandidate.PackageMethodTitle => PackageMethodTitle.Resolve();
     string IComponentPackageCandidate.PackageMethodHint => PackageMethodHint.Resolve();

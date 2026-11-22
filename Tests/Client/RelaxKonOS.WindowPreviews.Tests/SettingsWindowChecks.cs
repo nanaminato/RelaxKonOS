@@ -556,7 +556,7 @@ internal static class SettingsWindowChecks
             var controls = workspace!.GetLogicalDescendants().ToArray();
             Check(controls.OfType<ComponentCenterHeaderActions>().Any()
                 && controls.OfType<ComponentCenterNavigationView>().Any()
-                && controls.OfType<ComponentCenterDetailsView>().Any()
+                && controls.OfType<ComponentCenterLayout>().Any()
                 && controls.OfType<ComponentIdentityView>().Any()
                 && controls.OfType<ComponentDesktopPackageView>().Any()
                 && controls.OfType<ComponentGitInstallationView>().Any()

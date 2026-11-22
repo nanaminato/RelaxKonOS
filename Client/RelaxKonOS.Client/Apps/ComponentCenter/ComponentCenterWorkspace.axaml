@@ -5,34 +5,22 @@
  xmlns:component="using:RelaxKonOS.App.ComponentCenter"
  xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter"
  x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterWorkspace"
- x:DataType="vm:ComponentCenterViewModel" Classes="builtin-app"
- Background="{DynamicResource AppBackgroundBrush}">
- <!-- One vocabulary for the whole page, shared with the task dialog: a quiet surface, one heading per
-      section, tone-coloured pills for measured state, and rows separated by rules instead of nested
-      frames. Nothing here grants a capability; a disabled action stays visible and explained. -->
- <UserControl.Styles>
-  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
- </UserControl.Styles>
-
- <component:ComponentCenterLayout x:Name="WorkspaceLayout">
-  <component:ComponentCenterLayout.Details>
-   <component:ComponentCenterDetailsView OpenApplicationRequested="OpenApplication_Click">
-    <component:ComponentCenterDetailsView.ModulesView>
-     <vm:ServerModulesView DataContext="{Binding ServerModules}" />
-    </component:ComponentCenterDetailsView.ModulesView>
-    <component:ComponentCenterDetailsView.NginxView>
-     <ContentControl Content="{Binding NginxSelection}">
-      <ContentControl.ContentTemplate>
-       <DataTemplate>
-        <web:CurrentNginxSelectionView />
-       </DataTemplate>
-      </ContentControl.ContentTemplate>
-     </ContentControl>
-    </component:ComponentCenterDetailsView.NginxView>
-    <component:ComponentCenterDetailsView.RuntimeView>
-     <views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding DetailRuntime}" />
-    </component:ComponentCenterDetailsView.RuntimeView>
-   </component:ComponentCenterDetailsView>
-  </component:ComponentCenterLayout.Details>
+ x:DataType="vm:ComponentCenterViewModel">
+ <component:ComponentCenterLayout x:Name="WorkspaceLayout" OpenApplicationRequested="OpenApplication_Click">
+  <component:ComponentCenterLayout.ModulesView>
+   <vm:ServerModulesView DataContext="{Binding ServerModules}" />
+  </component:ComponentCenterLayout.ModulesView>
+  <component:ComponentCenterLayout.NginxView>
+   <ContentControl Content="{Binding NginxSelection}">
+    <ContentControl.ContentTemplate>
+     <DataTemplate>
+      <web:CurrentNginxSelectionView />
+     </DataTemplate>
+    </ContentControl.ContentTemplate>
+   </ContentControl>
+  </component:ComponentCenterLayout.NginxView>
+  <component:ComponentCenterLayout.RuntimeView>
+   <views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding DetailRuntime}" />
+  </component:ComponentCenterLayout.RuntimeView>
  </component:ComponentCenterLayout>
 </UserControl>

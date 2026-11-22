@@ -562,3 +562,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 系统包和固定归档候选、来源刷新及恢复入口迁入应用项目。候选解析、执行命令和审批继续由宿主管理。Windows Release 三语双主题及候选解析夹具通过。
 - Component Center Windows Git 引擎状态视图迁入应用项目，复用安装任务状态接口。Windows Release 布局及安装入口专项通过，覆盖运行中 Git 版本变更刷新。
 - Component Center 主窗口的详情页编排迁入应用项目，宿主仍提供模块、Nginx 和运行时视图。Windows Release 三语双主题与组件安装入口专项通过，重建 .roapp 通过隔离安装、实际页面组成及深链接验证。
+- Component Center 应用直接创建主窗口详情区并加载样式。宿主 XAML 只接入模块、Nginx 和运行时视图及打开应用回调。Windows Release 三语双主题通过，重建 .roapp 的隔离安装与深链接验收通过。

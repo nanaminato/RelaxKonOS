@@ -2,7 +2,11 @@
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:component="using:RelaxKonOS.App.ComponentCenter"
  x:Class="RelaxKonOS.App.ComponentCenter.ComponentCenterLayout"
- x:Name="Layout" x:DataType="component:IComponentCenterLayout">
+ x:Name="Layout" x:DataType="component:IComponentCenterLayout"
+ Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+ <UserControl.Styles>
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
+ </UserControl.Styles>
  <Grid RowDefinitions="Auto,*">
   <Border Classes="app-header" Padding="20,13">
    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
@@ -32,8 +36,30 @@
     <component:ComponentCenterNavigationView x:Name="Navigation" />
    </Border>
 
-   <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Grid.RowSpan="2" Padding="24,20" HorizontalScrollBarVisibility="Disabled"
-                 Content="{Binding #Layout.Details}" />
+   <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Grid.RowSpan="2" Padding="24,20" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16">
+      <Border IsVisible="{Binding ShowServerModules}"><ContentControl Content="{Binding #Layout.ModulesView}" /></Border>
+      <Border IsVisible="{Binding ShowCatalogSources}"><component:CatalogSourcesView DataContext="{Binding CatalogSources}" /></Border>
+      <StackPanel Spacing="16" IsVisible="{Binding ShowComponentBrowser}">
+       <component:ComponentIdentityView IsVisible="{Binding HasComponentDetails}" OpenApplicationRequested="OpenApplication_Click" />
+       <component:ComponentDesktopPackageView IsVisible="{Binding ShowDesktopPackage}" />
+       <Border Classes="panel-card" IsVisible="{Binding ShowNginxSelection}">
+        <ContentControl Content="{Binding #Layout.NginxView}" />
+       </Border>
+
+       <component:ComponentGitInstallationView IsVisible="{Binding ShowGitInstallation}" />
+       <component:ComponentApplicationNoticeView IsVisible="{Binding ShowNotIntegrated}" OpenApplicationRequested="OpenApplication_Click" />
+       <component:ComponentHostObservationView IsVisible="{Binding ShowHostObservation}" />
+       <component:ComponentOfficialDownloadsView IsVisible="{Binding ShowOfficialDownloads}" />
+       <component:ComponentPackageCandidateView IsVisible="{Binding ShowPackageFreeze}" />
+       <!-- Domain runtime page: sources, versions, actions, uninstall, recovery. -->
+       <StackPanel IsVisible="{Binding HasRuntimeDetails}">
+        <ContentControl Content="{Binding #Layout.RuntimeView}" />
+       </StackPanel>
+       <component:ComponentCenterEmptyView IsVisible="{Binding !HasResults}" />
+      </StackPanel>
+     </StackPanel>
+   </ScrollViewer>
   </Grid>
  </Grid>
 </UserControl>
