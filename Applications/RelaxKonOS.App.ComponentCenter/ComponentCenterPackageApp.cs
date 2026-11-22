@@ -27,7 +27,9 @@ public sealed class ComponentCenterPackageApp : IExternalRemoteApplication, IExt
             dialog => new ServerModulePlanReviewView(dialog),
             dialog => new ServerModulePolicyEditorView(dialog),
             dialog => new ServerModulePrivilegeView(dialog),
-            dialog => new ServerModuleConsentView(dialog));
+            dialog => new ServerModuleConsentView(dialog),
+            (dialog, presentation) => new TaskPlanConfirmationView(dialog, presentation.Plan, presentation.Label,
+                presentation.Format, presentation.DescribeStep));
         RequireWorkspace(context).Open(views, (title, content) => context.Windows.ShowWindow(title, content,
             InitialBounds, Manifest.IconGlyph).Window);
         return Task.CompletedTask;

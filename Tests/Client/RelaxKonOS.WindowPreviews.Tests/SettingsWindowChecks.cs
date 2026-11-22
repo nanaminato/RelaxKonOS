@@ -1,3 +1,4 @@
+using RelaxKonOS.Protocol.TaskOrchestration;
 using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.ProxyServer;
@@ -597,6 +598,27 @@ internal static class SettingsWindowChecks
                 windows.Close(dialog);
                 PumpUntil(() => review.IsCompleted && windows.Windows.Count == 1);
                 review.GetAwaiter().GetResult();
+            }
+            var semantics = new TaskPlanSemantics("test-service", Guid.NewGuid().ToString("D"), "app", id, 1,
+                [], "stop-on-failure", "safe-boundary", false, TaskPlanLimits.Default);
+            var plan = new TaskPlan(Guid.NewGuid(), DateTimeOffset.UtcNow, TaskPlanCanonicalizer.Digest(semantics), semantics);
+            foreach (var accept in new[] { false, true })
+            {
+                var confirmation = model!.ConfirmTaskAsync!(plan);
+                PumpUntil(() => windows.Windows.Count == 2);
+                var dialog = windows.Windows.Last();
+                var content = dialog.View.Content as Control;
+                Check(content?.GetType().Name == nameof(TaskPlanConfirmationView) && content.GetType().Assembly == packageAssembly,
+                    "The task confirmation view must come from the installed Component Center package.");
+                if (accept)
+                {
+                    var confirm = content!.GetLogicalDescendants().OfType<Button>().Single(button => button.Classes.Contains("primary"));
+                    confirm.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                }
+                else windows.Close(dialog);
+                PumpUntil(() => confirmation.IsCompleted && windows.Windows.Count == 1);
+                Check(confirmation.GetAwaiter().GetResult() == accept,
+                    "The dialog must return approval only for explicit confirmation.");
             }
             Console.WriteLine("PASS: installed Component Center opens its production workspace and dispatches validated deep links.");
         }

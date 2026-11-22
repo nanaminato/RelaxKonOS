@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using RelaxKonOS.Protocol.TaskOrchestration;
 using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.AppSDK;
@@ -22,4 +23,11 @@ public sealed record ComponentCenterViewFactories(
     Func<ModalDialog<bool>, Control> CreateModulePlan,
     Func<ModalDialog<bool>, Control> CreateModulePolicy,
     Func<ModalDialog<bool>, Control> CreateModulePrivilege,
-    Func<ModalDialog<bool>, Control> CreateModuleConsent);
+    Func<ModalDialog<bool>, Control> CreateModuleConsent,
+    Func<ModalDialog<bool>, TaskPlanConfirmationPresentation, Control> CreateTaskPlanConfirmation);
+
+public sealed record TaskPlanConfirmationPresentation(
+    TaskPlan Plan,
+    Func<string, string> Label,
+    Func<string, object?[], string> Format,
+    Func<TaskStep, (string Title, string Effects)> DescribeStep);

@@ -311,11 +311,11 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
                 ? "component_center.package.refresh_confirm" : "component_center.package.recovery_confirm", component, operation,
                 LocalizedText.Get("component_center.package.recovery." + action)).Resolve());
         model.ConfirmTaskAsync = async plan => await ShowOwnedAsync<bool>(LocalizedText.Get("component_center.task_confirm_title"),
-            dialog => new TaskPlanConfirmationView(dialog, plan, LocalizedText.Get, LocalizedText.Format, step =>
+            dialog => views.CreateTaskPlanConfirmation(dialog, new(plan, LocalizedText.Get, LocalizedText.Format, step =>
             {
                 var row = new ComponentInspectionStep(step);
                 return (row.Title.Resolve(), row.Effects.Resolve());
-            }), new Size(720, 600)) == true;
+            })), new Size(720, 600)) == true;
         model.TaskCredentialsAsync = () => ShowOwnedAsync<RelaxKonOS.AppSDK.HostAdministratorCredentials?>(
             LocalizedText.Get("installation.elevation_title"), dialog => new HostAdministratorCredentialsDialogView(dialog,
                 LocalizedText.Get("component_center.task_credentials"), null, session.CurrentUser?.Username ?? ""), new Size(560, 340));
