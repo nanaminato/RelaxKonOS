@@ -13,6 +13,7 @@ using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Tailscale;
 
 internal static class ModulePackageHttpChecks
 {
@@ -69,14 +70,33 @@ internal static class ModulePackageHttpChecks
                 HostApiMaximumExclusive = "3.0.0",
                 Ui = new("Database Observation", "", "", null, "UNLICENSED"),
             }, now);
+            ModulePackageBuildResult[] tailscale = [];
+            if (!isolated)
+            {
+                var tailscalePublish = Path.Combine(AppContext.BaseDirectory, "Modules", "Tailscale");
+                var tailscaleOptions = packageOptions with
+                {
+                    PublishDirectory = tailscalePublish,
+                    OutputDirectory = Path.Combine(root, "tailscale-package"),
+                    ModuleId = "relaxkonos.tailscale",
+                    ReleaseId = "tailscale-1.0.0-" + rid,
+                    EntryAssembly = CollectibleTailscaleExecution.AssemblyFile,
+                    EntryType = CollectibleTailscaleExecution.EntryType,
+                    Capabilities = [ServerCapabilities.Tailscale],
+                    Ui = new("Tailscale", "", "", null, "UNLICENSED"),
+                };
+                tailscale = [await ModulePackageBuilder.BuildAsync(tailscaleOptions, now),
+                    await ModulePackageBuilder.BuildAsync(tailscaleOptions with
+                    { Version = "2.0.0", ReleaseId = "tailscale-2.0.0-" + rid }, now)];
+            }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
-                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!)], [], []), "builder-key", keyPath)).Envelope;
+                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!), .. tailscale.Select(Release)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
-                "https://modules.example/", dependent is null ? ["fixture-http"] : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId],
+                "https://modules.example/", dependent is null ? ["fixture-http"] : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale"],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -152,7 +172,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4 + tailscale.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -339,6 +359,7 @@ internal static class ModulePackageHttpChecks
             check(afterPrune.Any(item => item.PlanId == plan.PlanId && item.AppliedOperationId == applied.OperationId)
                 && afterPrune.All(item => item.PlanId != autoPlan.PlanId),
                 "new plan creation prunes expired unexecuted plans but retains applied receipt references");
+            if (tailscale.Length != 0) await VerifyTailscaleVersionsAsync(client, root, tailscale, check);
             await app.StopAsync();
             management.Dispose();
         }
@@ -347,6 +368,44 @@ internal static class ModulePackageHttpChecks
             try { Directory.Delete(root, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private static async Task VerifyTailscaleVersionsAsync(HttpClient client, string root,
+        ModulePackageBuildResult[] packages, Action<bool, string> check)
+    {
+        foreach (var package in packages)
+        {
+            using var upload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
+                new ByteArrayContent(await File.ReadAllBytesAsync(package.ArchivePath)));
+            upload.EnsureSuccessStatusCode();
+            var staged = (await upload.Content.ReadFromJsonAsync<ServerModulePackageUploadDto>(RelaxKonOSJsonOptions.Default))!;
+            using var preview = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                new ServerModulePackageInstallRequest("official", package.Manifest.ReleaseId, staged.UploadId), RelaxKonOSJsonOptions.Default);
+            preview.EnsureSuccessStatusCode();
+            var plan = (await preview.Content.ReadFromJsonAsync<ServerModulePackagePlanDto>(RelaxKonOSJsonOptions.Default))!;
+            using var applied = await client.PostAsync(ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", plan.PlanId.ToString()), null);
+            applied.EnsureSuccessStatusCode();
+            var result = (await applied.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
+            var receipt = await ReadReceiptAsync(result.OperationId);
+            check(result.Record.ArtifactSha256 == package.ArchiveSha256 && receipt.Version == package.Manifest.Version
+                && receipt.Action == (package == packages[0] ? "install" : "update")
+                && receipt.State == ModulePackageOperationState.AwaitingRestart,
+                $"HTTP accepts the signed Tailscale {package.Manifest.Version} plan and records a restart-bound receipt");
+        }
+
+        using var rollback = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
+            new ServerModulePackageRollbackRequest(packages[0].Manifest.ModuleId, packages[0].Manifest.Version), RelaxKonOSJsonOptions.Default);
+        rollback.EnsureSuccessStatusCode();
+        var restored = (await rollback.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
+        var rollbackReceipt = await ReadReceiptAsync(restored.OperationId);
+        check(restored.Record.ArtifactSha256 == packages[0].ArchiveSha256 && rollbackReceipt is
+            { Action: "rollback", State: ModulePackageOperationState.AwaitingRestart, PreviousVersion: "2.0.0", Version: "1.0.0" }
+            && InstalledModuleCatalog.Load(root).OfType<InstalledTailscaleModule>().Single().InstalledVersion == "1.0.0",
+            "HTTP rollback selects the original immutable Tailscale archive for the next Core start");
+
+        async Task<ServerPackageOperationDto> ReadReceiptAsync(Guid operationId) =>
+            (await client.GetFromJsonAsync<ServerPackageOperationDto>(ServerModuleManagementRoutes.PackageOperation
+                .Replace("{operationId:guid}", operationId.ToString("D")), RelaxKonOSJsonOptions.Default))!;
     }
 
     private sealed class PackageDownloadHandler(byte[] content) : HttpMessageHandler
