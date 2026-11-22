@@ -168,6 +168,20 @@ await coordinator.ExecuteAsync(replacement);
 await using (var lease = await reopenedJournal.OpenAsync(expiredStepPlan, CancellationToken.None))
     await lease.SaveAsync(lease.Checkpoint!, CancellationToken.None);
 Check((await reopenedJournal.ReadPendingRecoveriesAsync(binding.AccountId, binding.ConnectionIdentity)).Count == 0);
+var switchedBinding = binding with { AccountId = Guid.NewGuid() };
+var switchedPlan = plan with { Id = Guid.NewGuid(), ClientBinding = switchedBinding };
+await using (var lease = await reopenedJournal.OpenAsync(switchedPlan, CancellationToken.None))
+    await lease.SaveAsync(new DeploymentCheckpoint(1, false), CancellationToken.None);
+backend.Target = plan.Target with { ServerIdentity = "replacement-server" };
+var beforeSwitch = backend.Applied.Count;
+await Reject(switchedPlan, "deployment-server-changed");
+backend.Target = plan.Target;
+await Reject(switchedPlan, "deployment-plan-review-required");
+Check(backend.Applied.Count == beforeSwitch);
+await using (var lease = await reopenedJournal.OpenAsync(switchedPlan, CancellationToken.None))
+    Check(lease.Checkpoint is { CompletedSteps: 1, RequiresReview: true, Verified: false });
+Check(await reopenedJournal.ReadPendingRecoveriesAsync(switchedBinding.AccountId, switchedBinding.ConnectionIdentity)
+    is [{ RequiresReview: true } switchedRecovery] && switchedRecovery.Plan.Id == switchedPlan.Id);
 var sourceA = new DeploymentComponentRelease("source-a", "fixture", "publisher-a", "release-a");
 var sourceB = sourceA with { SourceId = "source-b", PublisherId = "publisher-b" };
 var downloadA = plan with { Id = Guid.NewGuid(), ClientBinding = binding with { ComponentRelease = sourceA } };

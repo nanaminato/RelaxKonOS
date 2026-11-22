@@ -180,9 +180,14 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
 
     private async Task<IReadOnlyList<ServerModuleDto>> RequireServerAsync(string serverIdentity, CancellationToken cancellationToken)
     {
-        var facts = await client.ReadAsync(cancellationToken);
+        IReadOnlyList<ServerModuleDto> facts;
+        try { facts = await client.ReadAsync(cancellationToken); }
+        catch (InvalidOperationException error) when (error.Message == "module-server-mismatch")
+        {
+            throw new DeploymentPlanReviewRequiredException("deployment-server-changed");
+        }
         if (facts[0].ServiceId != serverIdentity)
-            throw new InvalidOperationException("deployment-server-changed");
+            throw new DeploymentPlanReviewRequiredException("deployment-server-changed");
         return facts;
     }
 }

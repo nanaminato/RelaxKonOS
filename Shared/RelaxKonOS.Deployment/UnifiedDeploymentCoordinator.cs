@@ -101,7 +101,11 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
 
         var current = await backend.ObserveAsync(cancellationToken);
         if (current.ServerIdentity != plan.Target.ServerIdentity)
-            throw new InvalidOperationException("deployment-server-changed");
+        {
+            if (checkpoint is { Verified: false })
+                await lease.SaveAsync(checkpoint with { RequiresReview = true }, CancellationToken.None);
+            throw new DeploymentPlanReviewRequiredException("deployment-server-changed");
+        }
 
         if (checkpoint is null)
         {
