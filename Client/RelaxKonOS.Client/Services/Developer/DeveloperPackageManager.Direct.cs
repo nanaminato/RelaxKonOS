@@ -37,7 +37,7 @@ public sealed partial class DeveloperPackageManager
                 return new("invalid_manifest", Message: exception.Message);
             }
 
-            try { return await PromoteAsync(record, launch, writePointer: true, cancellationToken, restoreDependency: true); }
+            try { return await PromoteAsync(record, launch, writePointer: true, cancellationToken); }
             finally
             {
                 if (!_catalog.TryGetValue(record.Id, out var current) || current.Path != record.Path)
@@ -114,7 +114,7 @@ public sealed partial class DeveloperPackageManager
             if (pointer.PreviousVersionId is not { } previous) return new("rollback_unavailable", appId);
             var record = await ReadVersionAsync(appId, previous, cancellationToken);
             if (IsDesktopShellPackage(record.Path)) return new("unsupported_package_type", appId);
-            return await PromoteAsync(record, launch, writePointer: true, cancellationToken);
+            return await PromoteAsync(record, launch, writePointer: true, cancellationToken, restoreDependency: true);
         }
         finally { _mutations.Release(); }
     }
@@ -256,6 +256,7 @@ public sealed partial class DeveloperPackageManager
                         result = result with { Code = "permission_restore_failed", Message = exception.Message };
                     }
                 });
+                if (restoreDependency) await DrainDesktopDependencyReleasesAsync();
             }
         }
         _lastResults[record.Id] = result;

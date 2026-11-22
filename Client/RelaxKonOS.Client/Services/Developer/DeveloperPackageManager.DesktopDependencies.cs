@@ -50,6 +50,7 @@ public sealed partial class DeveloperPackageManager
             || session.CurrentUser?.Id != dependency.AccountId || session.ServiceId != dependency.ConnectionIdentity)
             throw new InvalidOperationException("deployment-account-changed");
         await client.ReadAsync(cancellationToken);
+        await QueueUncommittedDesktopDependencyAsync(record.Id, receipt, cancellationToken);
         await client.RegisterDesktopDependencyAsync(receipt.PlanId,
             new(dependency.ServerIdentity, record.Id, dependency.RequiredModules), cancellationToken);
     }

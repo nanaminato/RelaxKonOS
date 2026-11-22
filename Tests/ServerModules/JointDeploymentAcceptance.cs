@@ -482,6 +482,15 @@ internal static class JointDeploymentAcceptance
             var upgrade = await joint.PrepareAsync(await installer.InspectLocalAsync(packagePath), [], default);
             Require((await joint.ExecuteAsync(upgrade, default)).Version == "1.1.0",
                 "upgrading the desktop application commits a replacement module dependency");
+            factory.DropDependencyReply = true;
+            factory.BlockDependencyRelease = true;
+            var interruptedRollback = await packages.SwitchAsync(AppIdText, rollback: true, launch: false, default);
+            Require(!interruptedRollback.Ok && packages.FindInstalled(AppIdText)?.Version == "1.1.0"
+                && File.Exists(abandonedRelease),
+                $"an interrupted rollback leaves the current version and queues its uncommitted dependency ({interruptedRollback.Code}, {packages.FindInstalled(AppIdText)?.Version}, queued={File.Exists(abandonedRelease)})");
+            factory.BlockDependencyRelease = false;
+            await packages.LoadInstalledAsync();
+            Require(!File.Exists(abandonedRelease), "startup reconciles the uncommitted rollback dependency");
             Require((await packages.SwitchAsync(AppIdText, rollback: true, launch: false, default)).Ok
                 && packages.FindInstalled(AppIdText)?.Version == installed.Version,
                 "rolling back the desktop application restores its original module dependency before switching");

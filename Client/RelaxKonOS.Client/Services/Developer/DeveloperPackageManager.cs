@@ -533,6 +533,7 @@ public sealed partial class DeveloperPackageManager
             or HttpRequestException or OperationCanceledException or JsonException)
         {
             RecordActivationDiagnostic($"VSD package rollback: app={SafeDiagnosticId(failed.Id)}, code={VirtualSystemDriveProblemCode.PackageLayoutInvalid}.");
+            await DrainDesktopDependencyReleasesAsync();
         }
         finally { _mutations.Release(); }
     }
