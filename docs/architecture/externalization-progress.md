@@ -481,3 +481,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Ubuntu Databases 双包端到端再次通过，并补验桌面启动守卫。登记应用后，守卫接受实际运行的独立签名模块，随后进入单独的组件读取权限检查。验收夹具未授权该权限，因此验证范围止于此检查，未打开业务窗口。
 - 当前 Windows Debug 桌面、DevCli 和测试宿主重新构建后，全量 Direct Deploy 验收通过。真实桌面登录界面通过 --no-launch 安装并重启后回退；两个隔离配置验证项目与包直传、监视更新、失败保留窗口、串行操作及配置隔离。Notepad 和 Image Viewer 通过直传生命周期，Release 安装指针保持不变。
 - Windows Debug 使用真实 Docker `.roapp` 内容复跑 Direct Deploy 必需依赖专项。候选首次启动被拒绝时不登记，--no-launch 登记并保留依赖。再次部署并启动被拒绝时，先前安装路径、应用登记和依赖仍保持一致。测试使用启动守卫夹具，未启动真实 Docker Engine。
+- Windows Release 组件中心专项验证模块移除预览后新增本机应用依赖。直接调用提交命令时仍会报告依赖应用，服务端未收到提交，旧预览保留供取消。验收覆盖本机安装状态，跨设备依赖声明仍待实现。

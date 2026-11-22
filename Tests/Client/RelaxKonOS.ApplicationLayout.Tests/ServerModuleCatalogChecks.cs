@@ -305,6 +305,9 @@ internal static class ServerModuleCatalogChecks
                 "Uninstall previews an exact single target with retained data; it does not apply without confirmation.");
             protectModule = true;
             Check(!model.CanApply, "An application installed after preview blocks confirmation of the old removal plan.");
+            await model.ApplyCommand.ExecuteAsync(null);
+            Check(applies == 0 && model.HasPlan && model.Status.Contains("test.project-editor", StringComparison.Ordinal),
+                "Submitting the stale removal directly still reports the dependent application and never reaches the server.");
             protectModule = false;
             model.DiscardPlanCommand.Execute(null);
             Check(!model.HasPlan && !model.PlanIsRemoval && applies == 0, "Canceling uninstall leaves the server unchanged.");
