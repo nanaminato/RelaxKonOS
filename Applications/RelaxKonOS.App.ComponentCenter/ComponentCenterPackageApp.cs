@@ -23,6 +23,7 @@ public sealed class ComponentCenterPackageApp : IExternalRemoteApplication, IExt
         cancellationToken.ThrowIfCancellationRequested();
         var views = new ComponentCenterViewFactories(
             ComponentCenterLayout.Create,
+            () => new ServerModulesHeaderView(),
             () => new ServerModuleSecurityView(),
             dialog => new ServerModulePlanReviewView(dialog),
             dialog => new ServerModulePolicyEditorView(dialog),

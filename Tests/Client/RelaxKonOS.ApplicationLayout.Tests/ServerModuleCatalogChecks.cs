@@ -226,9 +226,9 @@ internal static class ServerModuleCatalogChecks
                 "A narrow module page stacks the catalog above the detail instead of squeezing both panes.");
             Check(view.GetVisualDescendants().OfType<CheckBox>().Count(box => box.DataContext is ServerModuleSelection) == model.VisibleModules.Count(),
                 "Every visible catalog row has its own batch selector.");
-            Check(view.FindControl<ListBox>("ModuleList") is not null && view.FindControl<ListBox>("SectionTabs") is not null,
+            Check(view.FindControl<ListBox>("ModuleList") is not null && ((ServerModulesHeaderView)view.FindControl<ContentControl>("PageHeader")!.Content!).FindControl<ListBox>("SectionTabs") is not null,
                 "The module page renders a catalog list and a page-level tab strip.");
-            var tabs = view.FindControl<ListBox>("SectionTabs")!;
+            var tabs = ((ServerModulesHeaderView)view.FindControl<ContentControl>("PageHeader")!.Content!).FindControl<ListBox>("SectionTabs")!;
             tabs.SelectedIndex = 1; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             Check(model.IsPackagesTab, "The tab strip switches to installation and update surfaces.");
             model.OpenStorePageCommand.Execute(null); Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
@@ -408,11 +408,11 @@ internal static class ServerModuleCatalogChecks
                     using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
                     { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-actions.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
                     localizedScroll.Offset = default; Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
-                    localized.FindControl<ListBox>("SectionTabs")!.SelectedIndex = 1;
+                    ((ServerModulesHeaderView)localized.FindControl<ContentControl>("PageHeader")!.Content!).FindControl<ListBox>("SectionTabs")!.SelectedIndex = 1;
                     Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
                     using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
                     { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-packages.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-                    localized.FindControl<ListBox>("SectionTabs")!.SelectedIndex = 2;
+                    ((ServerModulesHeaderView)localized.FindControl<ContentControl>("PageHeader")!.Content!).FindControl<ListBox>("SectionTabs")!.SelectedIndex = 2;
                     // Populate the store so its list and detail templates are rendered in a real
                     // window; a view-model-only check would not catch a broken binding there.
                     model.StoreStatus = "";
@@ -431,7 +431,7 @@ internal static class ServerModuleCatalogChecks
                         "The store page renders an accepted release, its details and its search field.");
                     using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
                     { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-store.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-                    localized.FindControl<ListBox>("SectionTabs")!.SelectedIndex = 3;
+                    ((ServerModulesHeaderView)localized.FindControl<ContentControl>("PageHeader")!.Content!).FindControl<ListBox>("SectionTabs")!.SelectedIndex = 3;
                     Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
                     Check(localized.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
                             && block.Text == LocalizedText.Get("server_modules.health.title")),

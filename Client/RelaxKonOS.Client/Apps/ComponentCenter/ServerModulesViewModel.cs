@@ -37,7 +37,10 @@ public sealed record ServerModuleFilterChoice(ServerModuleFilter Filter, Localiz
 
 public enum ServerModulesTab { Modules, Packages, Store, Security }
 
-public sealed record ServerModulesTabItem(ServerModulesTab Tab, LocalizedStatus Label);
+public sealed record ServerModulesTabItem(ServerModulesTab Tab, LocalizedStatus Label) : IServerModulesTabItem
+{
+    string IServerModulesTabItem.Label => Label.Resolve();
+}
 
 /// <summary>A single action the interface may preview. <see cref="Allowed"/> mirrors the
 /// command's own CanExecute so a blocked action keeps its reason instead of disappearing.</summary>
@@ -93,8 +96,18 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity, IServerModulesHeader
 {
+    ICommand IServerModulesHeader.RefreshCommand => RefreshCommand;
+    ICommand IServerModulesHeader.RestoreAllCommand => RestoreAllCommand;
+    string IServerModulesHeader.StatusText => StatusText.Resolve();
+    IReadOnlyList<IServerModulesTabItem> IServerModulesHeader.VisibleTabs => VisibleTabs;
+    IServerModulesTabItem? IServerModulesHeader.SelectedTab
+    {
+        get => SelectedTab;
+        set => SelectedTab = (ServerModulesTabItem?)value;
+    }
+
     IEnumerable<IServerModuleHealthRow> IServerModuleSecurity.HealthRows => HealthRows;
     string IServerModuleSecurity.HealthSummaryText => HealthSummaryText.Resolve();
     string IServerModuleSecurity.HealthCheckedText => HealthCheckedText.Resolve();

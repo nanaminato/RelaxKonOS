@@ -3,7 +3,6 @@ using RelaxKonOS.App.ComponentCenter;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using Avalonia.VisualTree;
 using RelaxKonOS.Client.Localization;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
@@ -13,11 +12,12 @@ public partial class ServerModulesView : UserControl
     private bool _compact;
     private bool _layoutApplied;
 
-    public ServerModulesView() : this(new ServerModuleSecurityView()) { }
+    public ServerModulesView() : this(new ServerModulesHeaderView(), new ServerModuleSecurityView()) { }
 
-    internal ServerModulesView(Control securityView)
+    internal ServerModulesView(Control headerView, Control securityView)
     {
         InitializeComponent();
+        PageHeader.Content = headerView;
         Security.Content = securityView;
     }
 
@@ -65,16 +65,6 @@ public partial class ServerModulesView : UserControl
             Grid.SetRow(ModuleDetail, 0);
             ModuleList.MaxHeight = 500;
         }
-    }
-
-    /// <summary>
-    /// A page-level tab changes what the body means, so it must not inherit the previous tab's
-    /// reading position. The server-module page lives in the workspace's details scroller; reset
-    /// that scroller instead of leaving the user halfway down a different section.
-    /// </summary>
-    private void SectionTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (this.FindAncestorOfType<ScrollViewer>() is { } scroller) scroller.Offset = new Vector(0, 0);
     }
 
     private async void InstallPackage_Click(object? sender, RoutedEventArgs e)
