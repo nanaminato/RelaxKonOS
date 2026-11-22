@@ -194,7 +194,7 @@ public sealed class ExternalAppContextFactory
     internal IExternalAppContext CreateForInstalledPackage(ApplicationManifest manifest, PackageOrigin origin,
         CancellationToken lifetime, Action<ManagedWindow>? onWindowCreated, string? openedFile) =>
         CreateCore(manifest, lifetime, onWindowCreated, openedFile,
-            origin == PackageOrigin.OfficialDistribution && manifest.Id == SettingsApp.Id && _settingsWindow is { } workspace
+            OfficialDesktopPackages.OwnsSettingsWorkspace(manifest.Id.Value, origin) && _settingsWindow is { } workspace
                 ? new SettingsPackageWindow(workspace, lifetime)
                 : null);
 

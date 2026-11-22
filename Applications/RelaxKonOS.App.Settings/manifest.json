@@ -1,0 +1,22 @@
+{
+  "id": "relaxkonos.settings",
+  "displayName": "Settings",
+  "description": "Personalization and system settings",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Settings.dll",
+  "entryType": "RelaxKonOS.App.Settings.SettingsPackageApp",
+  "iconGlyph": "⚙️",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": ["desktop.wallpaper.write", "server.certificates.read", "server.certificates.manage"],
+  "localizedMetadata": {
+    "zh-CN": {
+      "displayName": "设置",
+      "description": "个性化与系统设置"
+    },
+    "ja-JP": {
+      "displayName": "設定",
+      "description": "個人設定とシステム設定"
+    }
+  }
+}

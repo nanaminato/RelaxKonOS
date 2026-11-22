@@ -1038,7 +1038,7 @@ public sealed partial class DeveloperPackageManager
 
         public bool CanHandleActivation(Uri uri)
         {
-            if (!Manifest.UriSchemes.Contains(uri.Scheme, StringComparer.OrdinalIgnoreCase))
+            if (!MayHandleActivation(uri))
                 return false;
             try
             {
@@ -1052,11 +1052,17 @@ public sealed partial class DeveloperPackageManager
             }
         }
 
+        private bool MayHandleActivation(Uri uri) => uri.IsAbsoluteUri &&
+            (uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
+                ? OfficialDesktopPackages.OwnsShellRoute(Record.Id, Record.Origin, uri)
+                : Manifest.UriSchemes.Contains(uri.Scheme, StringComparer.OrdinalIgnoreCase));
+
         public void HandleActivation(AppContext context, AppActivationRequest request, ManagedWindow? existingWindow) =>
             _ = HandleActivationAsync(context, request);
 
         private async Task HandleActivationAsync(AppContext context, AppActivationRequest request)
         {
+            if (!MayHandleActivation(request.Uri)) return;
             try
             {
                 if (GetOrLoad() is IExternalAppActivationHandler handler)

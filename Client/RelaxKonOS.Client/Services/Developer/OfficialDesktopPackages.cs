@@ -18,6 +18,15 @@ internal sealed partial class OfficialDesktopPackages(string directory, HttpClie
     public static bool IsAllowed(string appId, PackageOrigin origin) => IsExternalOfficialId(appId)
         && (origin == PackageOrigin.OfficialDistribution || (origin == PackageOrigin.DirectDeploy && DeveloperProfile.IsDebug));
 
+    internal static bool OwnsSettingsWorkspace(string appId, PackageOrigin origin) =>
+        origin == PackageOrigin.OfficialDistribution && appId == "relaxkonos.settings";
+
+    internal static bool OwnsShellRoute(string appId, PackageOrigin origin, Uri uri) =>
+        OwnsSettingsWorkspace(appId, origin)
+        && uri.IsAbsoluteUri
+        && uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
+        && uri.Host.Equals("settings", StringComparison.OrdinalIgnoreCase);
+
     public async Task<string> VerifyAsync(string path, string appId, Stream package, CancellationToken cancellationToken)
     {
         var expectedPath = Path.Combine(directory, appId + ".roapp");

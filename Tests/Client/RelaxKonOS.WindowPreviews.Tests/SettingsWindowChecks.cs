@@ -77,6 +77,12 @@ internal static class SettingsWindowChecks
         using var packageLifetime = new CancellationTokenSource();
         var official = RelaxKonOS.Client.Services.Developer.PackageOrigin.OfficialDistribution;
         var local = RelaxKonOS.Client.Services.Developer.PackageOrigin.LocalPackage;
+        var settingsUri = new Uri("relaxkonos://settings/home");
+        Check(OfficialDesktopPackages.OwnsShellRoute(settingsManifest.Id.Value, official, settingsUri)
+            && !OfficialDesktopPackages.OwnsShellRoute(settingsManifest.Id.Value, local, settingsUri)
+            && !OfficialDesktopPackages.OwnsShellRoute("relaxkonos.other", official, settingsUri)
+            && !OfficialDesktopPackages.OwnsShellRoute(settingsManifest.Id.Value, official, new Uri("relaxkonos://applications/home")),
+            "The official Settings package's Shell route ownership was not scoped to its ID, origin and host.");
         var capability = ((RelaxKonOS.App.Settings.ISettingsPackageContext)
             factory.CreateForInstalledPackage(settingsManifest, official, packageLifetime.Token, null, null)).SettingsWindow;
         Check(capability is not null, "Official Settings did not receive the workspace capability.");
