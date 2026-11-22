@@ -162,6 +162,38 @@ Check((await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, ro
     binding.AccountId, binding.ConnectionIdentity, componentRelease: sourceB))?.Id == downloadB.Id);
 Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
     binding.AccountId, binding.ConnectionIdentity) is null);
+var concurrentPlan = plan with { Id = Guid.NewGuid(), ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10) };
+var firstStepEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+var allowFirstStep = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+backend.FinishStepAsync = () =>
+{
+    firstStepEntered.TrySetResult();
+    return allowFirstStep.Task;
+};
+var appliedBefore = backend.Applied.Count;
+var verifiedBefore = backend.Verifications;
+var firstExecution = coordinator.ExecuteAsync(concurrentPlan);
+var secondCoordinator = new UnifiedDeploymentCoordinator(backend, reopenedJournal, TimeProvider.System);
+try
+{
+    await firstStepEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    try
+    {
+        await secondCoordinator.ExecuteAsync(concurrentPlan).WaitAsync(TimeSpan.FromSeconds(10));
+        throw new Exception("Expected a concurrent execution to be rejected.");
+    }
+    catch (IOException) { }
+    Check(backend.Applied.Count == appliedBefore + 1 && backend.Verifications == verifiedBefore);
+}
+finally
+{
+    allowFirstStep.TrySetResult();
+    await firstExecution;
+    backend.FinishStepAsync = null;
+}
+await secondCoordinator.ExecuteAsync(concurrentPlan);
+Check(backend.Applied.Skip(appliedBefore).SequenceEqual(Enumerable.Range(0, concurrentPlan.OrderedReleases.Length))
+    && backend.Verifications == verifiedBefore + 1);
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
@@ -170,6 +202,7 @@ sealed class Backend : IDeploymentBackend
     public List<int> Applied = [];
     public int Verifications;
     public Action AfterStep;
+    public Func<Task> FinishStepAsync;
     public int? ReviewRequiredAt;
     public bool Offline;
     public Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken) =>
@@ -180,7 +213,7 @@ sealed class Backend : IDeploymentBackend
         if (Applied.Count == 2) throw new IOException("Interrupted");
         if (ReviewRequiredAt == index) throw new DeploymentPlanReviewRequiredException("deployment-module-plan-expired");
         AfterStep?.Invoke();
-        return Task.CompletedTask;
+        return FinishStepAsync?.Invoke() ?? Task.CompletedTask;
     }
     public Task VerifyAsync(DeploymentPlan plan, CancellationToken cancellationToken)
     {
