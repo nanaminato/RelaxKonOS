@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using Renci.SshNet;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -6,33 +7,33 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 
 public sealed partial class SshDesktopSession
 {
-    internal Task<bool> UploadDirectoryAsync(ServerCenterSshEndpoint endpoint, DirectoryInfo directory, string target,
+    public Task<bool> UploadDirectoryAsync(ISshFileConnection endpoint, DirectoryInfo directory, string target,
         Action<string, long, long?> report, CancellationToken cancellationToken) => Task.Run(() =>
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         if (client.Exists(target)) return false;
         UploadTree(client, directory, target, report, cancellationToken);
         return true;
     }, cancellationToken);
 
-    internal Task DownloadPathsAsync(ServerCenterSshEndpoint endpoint, string directory,
+    public Task DownloadPathsAsync(ISshFileConnection endpoint, string directory,
         IReadOnlyList<(string Path, string Name, bool Directory)> paths, Action<string, long, long?> report,
         CancellationToken cancellationToken) => Task.Run(() =>
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         foreach (var (path, name, isDirectory) in paths)
             DownloadTree(client, path, SafeLocalChild(directory, name), isDirectory, report, cancellationToken);
     }, cancellationToken);
 
     private static string RemoteChild(string directory, string name) => directory.TrimEnd('/') + "/" + name;
 
-    internal Task TransferPathsAsync(ServerCenterSshEndpoint endpoint, string destination,
+    public Task TransferPathsAsync(ISshFileConnection endpoint, string destination,
         IReadOnlyList<(string Path, string Name, bool Directory, bool Link)> paths, bool copy,
         Action<int, bool> moved) => Task.Run(() =>
     {
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         for (var index = 0; index < paths.Count; index++)
         {
             var (path, name, directory, link) = paths[index];

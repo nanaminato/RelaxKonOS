@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.Client.Services.ServerCenter;
@@ -6,7 +7,7 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 /// SSH 端点：主机、端口与登录用户。主机密钥与 SSH 凭据都绑定到这个三元组，
 /// 因此同一台宿主的两个 SSH 用户不会互相覆盖对方的信任决定。
 /// </summary>
-public sealed record ServerCenterSshEndpoint(string Host, int Port, string UserName)
+public sealed record ServerCenterSshEndpoint(string Host, int Port, string UserName) : ISshFileConnection
 {
     /// <summary>主机密钥的端点键 <c>host:port</c>；不含用户，因为主机密钥属于宿主而不是账号。</summary>
     public string EndpointKey => ServerHostTrustRules.EndpointKey(Host, Port);

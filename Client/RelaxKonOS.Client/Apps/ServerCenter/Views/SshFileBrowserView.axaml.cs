@@ -14,8 +14,6 @@ using Avalonia.Threading;
 using RelaxKonOS.WindowManager;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.ServerCenter;
-using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
 
@@ -52,11 +50,11 @@ internal partial class SshFileBrowserView : UserControl
     private Point _dragStart;
     private readonly DirectoryListingCache<SshFileEntry[]> _listingCache = new();
     private long _listingGeneration;
-    private ServerCenterSshEndpoint? _cacheEndpoint;
+    private ISshFileConnection? _cacheEndpoint;
     private bool _showingCachedFiles;
     internal bool IsShowingCachedFiles => _showingCachedFiles;
     private readonly FileBrowserPresentation _presentation;
-    private readonly SshDesktopSession _session;
+    private readonly ISshFileSession _session;
     private readonly ISystemLanguage _language;
     private readonly Func<UsageMemoryScope> _capturePickerMemory;
     private readonly Func<string, bool> _canOpenFile;
@@ -70,7 +68,7 @@ internal partial class SshFileBrowserView : UserControl
         public List<SshFileEntry> Entries { get; } = [];
         public bool Cut { get; set; }
         public int Revision { get; set; }
-        public ServerCenterSshEndpoint? Endpoint { get; set; }
+        public ISshFileConnection? Endpoint { get; set; }
         public event Action? Changed;
         public event Action<string[]>? Moved;
         public void NotifyMoved(string[] paths)
@@ -86,15 +84,15 @@ internal partial class SshFileBrowserView : UserControl
         }
         public void Notify() => Changed?.Invoke();
     }
-    private static readonly ConditionalWeakTable<SshDesktopSession, SessionClipboard> Clipboards = new();
+    private static readonly ConditionalWeakTable<ISshFileSession, SessionClipboard> Clipboards = new();
     private readonly SessionClipboard _sessionClipboard;
     private List<SshFileEntry> _clipboard
     {
         get
         {
-            if (!ReferenceEquals(_sessionClipboard.Endpoint, _session.Endpoint))
+            if (!ReferenceEquals(_sessionClipboard.Endpoint, _session.Connection))
             {
-                _sessionClipboard.Endpoint = _session.Endpoint;
+                _sessionClipboard.Endpoint = _session.Connection;
                 _sessionClipboard.Entries.Clear();
                 _sessionClipboard.Cut = false;
                 _sessionClipboard.Revision++;
@@ -154,7 +152,7 @@ internal partial class SshFileBrowserView : UserControl
     public string TypeSortGlyph { get => GetValue(TypeSortGlyphProperty); private set => SetValue(TypeSortGlyphProperty, value); }
     public string SizeSortGlyph { get => GetValue(SizeSortGlyphProperty); private set => SetValue(SizeSortGlyphProperty, value); }
 
-    public SshFileBrowserView(SshDesktopSession session, ISystemLanguage language, Func<UsageMemoryScope> capturePickerMemory,
+    public SshFileBrowserView(ISshFileSession session, ISystemLanguage language, Func<UsageMemoryScope> capturePickerMemory,
         Func<string, bool>? canOpenFile = null,
         Func<string, bool>? openFile = null, Action<string>? selectPackage = null, Action? cancelPicker = null)
     {
@@ -840,7 +838,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task NavigateAsync(string path, bool addHistory = true, bool forceRefresh = false)
     {
-        var endpoint = _session.Endpoint;
+        var endpoint = _session.Connection;
         if (_busy || endpoint is null) return;
         if (!ReferenceEquals(_cacheEndpoint, endpoint))
         { _cacheEndpoint = endpoint; _listingCache.Clear(); }
@@ -863,7 +861,7 @@ internal partial class SshFileBrowserView : UserControl
         {
             var requested = path == "." || path.StartsWith('/') ? path : Child(_path, path);
             var (absolute, items) = await _session.ReadDirectoryAsync(endpoint, requested, resolvePath: true);
-            if (!ReferenceEquals(endpoint, _session.Endpoint)) return;
+            if (!ReferenceEquals(endpoint, _session.Connection)) return;
             var entries = ToEntries(items);
             if (CacheListingsMenu.IsChecked == true) _listingCache.Put(absolute, CloneEntries(entries), entries.Length);
             CommitListing(absolute, entries, addHistory);
@@ -873,7 +871,7 @@ internal partial class SshFileBrowserView : UserControl
         }
         catch (Exception ex)
         {
-            if (!ReferenceEquals(endpoint, _session.Endpoint)) return;
+            if (!ReferenceEquals(endpoint, _session.Connection)) return;
             AddressBox.Text = _path;
             StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.open_failed", "Unable to open folder"), LocalizedStatus.Literal(ex.Message)]);
         }
@@ -908,12 +906,12 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task RevalidateDirectoryAsync(string path, long generation)
     {
-        var endpoint = _session.Endpoint;
+        var endpoint = _session.Connection;
         try
         {
             if (endpoint is null) throw new InvalidOperationException("SSH session ended.");
             var (_, items) = await _session.ReadDirectoryAsync(endpoint, path);
-            if (generation != _listingGeneration || _busy || _editingEntry is not null || !ReferenceEquals(endpoint, _session.Endpoint) || CacheListingsMenu.IsChecked != true) return;
+            if (generation != _listingGeneration || _busy || _editingEntry is not null || !ReferenceEquals(endpoint, _session.Connection) || CacheListingsMenu.IsChecked != true) return;
             var entries = ToEntries(items);
             _listingCache.Put(path, CloneEntries(entries), entries.Length);
             CommitListing(path, entries, false); _showingCachedFiles = false; StatusMessage = "";
@@ -1050,9 +1048,9 @@ internal partial class SshFileBrowserView : UserControl
         node.IsLoading = true;
         try
         {
-            var endpoint = _session.Endpoint ?? throw new InvalidOperationException("SSH session ended.");
+            var endpoint = _session.Connection ?? throw new InvalidOperationException("SSH session ended.");
             var (_, items) = await _session.ReadDirectoryAsync(endpoint, node.Path!);
-            if (revision != _treeRevision || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+            if (revision != _treeRevision || !ReferenceEquals(endpoint, _session.Connection)) return;
             var directories = items
                 .Where(file => file.IsDirectory && !file.IsLink
                     && (_showHidden || !file.Name.StartsWith('.')))
@@ -1179,10 +1177,10 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task CreateDirectoryAsync()
     {
-        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var directory = _path;
         var name = await PromptAsync(T("ssh_files.new_folder", "New folder"));
-        if (!ValidName(name) || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+        if (!ValidName(name) || !ReferenceEquals(endpoint, _session.Connection)) return;
         await ChangeAsync(async () =>
         {
             if (!await _session.CreateDirectoryAsync(endpoint, Child(directory, name!)))
@@ -1242,7 +1240,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task CommitRenameAsync()
     {
-        if (_busy || _renameCommitInProgress || _editingEntry is not { } entry || _session.Endpoint is not { } endpoint) return;
+        if (_busy || _renameCommitInProgress || _editingEntry is not { } entry || _session.Connection is not { } endpoint) return;
         var name = entry.RenameDraft;
         if (name == entry.Name) { CancelRename(); _presentation.Focus(); return; }
         if (!ValidName(name))
@@ -1278,11 +1276,11 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task DeleteAsync()
     {
-        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var selected = Selection();
         if (selected.Length == 0 || TopLevel.GetTopLevel(this) is not Window owner) return;
         if (!await new SshFileDeleteDialog(selected.Length).ShowDialog<bool>(owner)
-            || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+            || !ReferenceEquals(endpoint, _session.Connection)) return;
         await ChangeAsync(() => _session.DeletePathsAsync(endpoint,
             selected.Select(entry => (entry.Path, entry.IsDirectory && !entry.IsLink)).ToArray()));
     }
@@ -1342,7 +1340,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task<SshFileEntry[]> TransferEntriesAsync(SshFileEntry[] source, string destination, bool copy)
     {
-        if (_session.Endpoint is not { } endpoint) return [];
+        if (_session.Connection is not { } endpoint) return [];
         var moved = new List<SshFileEntry>();
         var changedPaths = new List<string>();
         await ChangeAsync(() => _session.TransferPathsAsync(endpoint, destination,
@@ -1352,18 +1350,18 @@ internal partial class SshFileBrowserView : UserControl
                 moved.Add(source[index]);
                 if (changed) changedPaths.Add(source[index].Path);
             }));
-        if (!ReferenceEquals(endpoint, _session.Endpoint)) return [];
+        if (!ReferenceEquals(endpoint, _session.Connection)) return [];
         _sessionClipboard.NotifyMoved(changedPaths.ToArray());
         return moved.ToArray();
     }
 
     private async Task UploadAsync()
     {
-        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var directory = _path;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
         var picked = await UsageFilePicker.OpenFilePickerAsync(storage, new FilePickerOpenOptions { AllowMultiple = true }, _capturePickerMemory(), "SshFileBrowserView.axaml.0");
-        if (picked.Count == 0 || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+        if (picked.Count == 0 || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
         using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
         var uploaded = 0;
@@ -1390,12 +1388,12 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task UploadFolderAsync()
     {
-        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var directory = _path;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
         var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, _capturePickerMemory(), "SshFileBrowserView.axaml.1");
         var localPath = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (localPath is null || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+        if (localPath is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
         var folder = new DirectoryInfo(localPath);
         using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
@@ -1415,7 +1413,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task DownloadAsync()
     {
-        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var selected = Selection();
         if (selected.Length == 0 || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
         if (selected.FirstOrDefault(file => file.IsLink) is { } link)
@@ -1426,13 +1424,13 @@ internal partial class SshFileBrowserView : UserControl
         if (selected.Length == 1 && !selected[0].IsDirectory)
         {
             var file = await UsageFilePicker.SaveFilePickerAsync(storage, new FilePickerSaveOptions { SuggestedFileName = selected[0].Name }, _capturePickerMemory(), "SshFileBrowserView.axaml.2");
-            if (file is null || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+            if (file is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
             await RunDownloadAsync(endpoint, selected[0], file);
             return;
         }
         var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, _capturePickerMemory(), "SshFileBrowserView.axaml.3");
         var folder = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (folder is null || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+        if (folder is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
         using var progress = new SshTransferProgressWindow(this, uploading: false);
         _busy = true; UpdateControls();
         try
@@ -1447,7 +1445,7 @@ internal partial class SshFileBrowserView : UserControl
         finally { _busy = false; UpdateControls(); }
     }
 
-    private async Task RunDownloadAsync(ServerCenterSshEndpoint endpoint, SshFileEntry entry, IStorageFile file)
+    private async Task RunDownloadAsync(ISshFileConnection endpoint, SshFileEntry entry, IStorageFile file)
     {
         using var progress = new SshTransferProgressWindow(this, uploading: false);
         progress.Report(entry.Name, 0, entry.Size);

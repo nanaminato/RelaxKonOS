@@ -1,13 +1,12 @@
 using RelaxKonOS.Protocol.ServerCenter;
+using RelaxKonOS.AppSDK;
 using Renci.SshNet;
 
 namespace RelaxKonOS.Client.Services.ServerCenter;
 
-internal sealed record SshDirectoryItem(string Name, string Path, bool IsDirectory, bool IsLink, long Size, DateTime Modified);
-internal sealed class SshDirectoryAccessDeniedException(Exception cause) : IOException(cause.Message, cause);
-
 /// <summary>The SSH desktop's in-memory connection identity. Each terminal opens its own SSH channel.</summary>
 public sealed partial class SshDesktopSession(IServerCenterConnectionResolver connections, ShellSettings settings, string? preferencesDirectory = null)
+    : ISshFileSession
 {
     private readonly object _gate = new();
     private RelaxKonOS.Protocol.Workspace.WorkspacePreferencesDto? _previousPreferences;
@@ -78,6 +77,13 @@ public sealed partial class SshDesktopSession(IServerCenterConnectionResolver co
         }
     }
 
+    ISshFileConnection? ISshFileSession.Connection => Endpoint;
+
+    private SftpClient OpenBoundFileClient(ISshFileConnection connection) =>
+        connection is ServerCenterSshEndpoint endpoint
+            ? OpenFileClient(endpoint)
+            : throw new InvalidOperationException("SSH session ended.");
+
     internal SftpClient OpenFileClient(ServerCenterSshEndpoint? expectedEndpoint)
     {
         var (endpoint, password, fingerprint) = GetFileConnection(expectedEndpoint);
@@ -97,12 +103,12 @@ public sealed partial class SshDesktopSession(IServerCenterConnectionResolver co
         }
     }
 
-    internal Task<(string Path, SshDirectoryItem[] Items)> ReadDirectoryAsync(
-        ServerCenterSshEndpoint endpoint, string path, bool resolvePath = false) => Task.Run(() =>
+    public Task<(string Path, SshDirectoryItem[] Items)> ReadDirectoryAsync(
+        ISshFileConnection endpoint, string path, bool resolvePath = false) => Task.Run(() =>
     {
         try
         {
-            using var client = OpenFileClient(endpoint);
+            using var client = OpenBoundFileClient(endpoint);
             if (resolvePath)
             {
                 client.ChangeDirectory(path);
@@ -119,41 +125,41 @@ public sealed partial class SshDesktopSession(IServerCenterConnectionResolver co
         }
     });
 
-    internal Task<bool> CreateDirectoryAsync(ServerCenterSshEndpoint endpoint, string path) => Task.Run(() =>
+    public Task<bool> CreateDirectoryAsync(ISshFileConnection endpoint, string path) => Task.Run(() =>
     {
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         if (client.Exists(path)) return false;
         client.CreateDirectory(path);
         return true;
     });
 
-    internal Task<bool> RenamePathAsync(ServerCenterSshEndpoint endpoint, string path, string target) => Task.Run(() =>
+    public Task<bool> RenamePathAsync(ISshFileConnection endpoint, string path, string target) => Task.Run(() =>
     {
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         if (client.Exists(target)) return false;
         client.RenameFile(path, target);
         return true;
     });
 
-    internal Task<bool> UploadFileAsync(ServerCenterSshEndpoint endpoint, Stream input, string target,
+    public Task<bool> UploadFileAsync(ISshFileConnection endpoint, Stream input, string target,
         Action<ulong> progress) => Task.Run(() =>
     {
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         if (client.Exists(target)) return false;
         client.UploadFile(input, target, canOverride: false, progress);
         return true;
     });
 
-    internal Task DownloadFileAsync(ServerCenterSshEndpoint endpoint, string path, Stream output,
+    public Task DownloadFileAsync(ISshFileConnection endpoint, string path, Stream output,
         Action<ulong> progress) => Task.Run(() =>
     {
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         client.DownloadFile(path, output, progress);
     });
 
-    internal Task DeletePathsAsync(ServerCenterSshEndpoint endpoint, IReadOnlyList<(string Path, bool Directory)> paths) => Task.Run(() =>
+    public Task DeletePathsAsync(ISshFileConnection endpoint, IReadOnlyList<(string Path, bool Directory)> paths) => Task.Run(() =>
     {
-        using var client = OpenFileClient(endpoint);
+        using var client = OpenBoundFileClient(endpoint);
         foreach (var (path, directory) in paths)
             Delete(path, directory);
 
