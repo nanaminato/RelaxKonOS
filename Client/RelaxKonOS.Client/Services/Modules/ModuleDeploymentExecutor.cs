@@ -111,7 +111,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
     }
 
-    public async Task<bool> RegisterDesktopDependenciesAsync(DeploymentPlan plan, CancellationToken cancellationToken)
+    public async Task<string[]> RegisterDesktopDependenciesAsync(DeploymentPlan plan, CancellationToken cancellationToken)
     {
         var releases = plan.OrderedReleases.ToDictionary(release => release.Package);
         var required = new HashSet<DeploymentPackageKey>();
@@ -119,12 +119,12 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         CollectRequired(root);
         var modules = required.Where(package => package.Kind == DeploymentPackageKind.ServerModule)
             .Select(package => package.Id).Order(StringComparer.Ordinal).ToArray();
-        if (modules.Length == 0) return false;
+        if (modules.Length == 0) return [];
 
         await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         await client.RegisterDesktopDependencyAsync(plan.Id,
             new(plan.Target.ServerIdentity, root.Package.Id, modules), cancellationToken);
-        return true;
+        return modules;
 
         void CollectRequired(DeploymentRelease release)
         {

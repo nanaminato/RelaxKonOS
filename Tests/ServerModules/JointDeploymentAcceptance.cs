@@ -460,6 +460,17 @@ internal static class JointDeploymentAcceptance
                 protectedInventory[0].DesiredRevision!, "verify-registered-dependency"));
             Require(disableProtected.BlockedBy.Any(blocker => blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
                 "committing the application registers a server-side blocker for its required module");
+            var upgradeSource = Path.Combine(root, "versioned-upgrade-source.roapp");
+            File.Copy(packagePath, upgradeSource);
+            await RewriteDesktopArchiveAsync(upgradeSource, packagePath, manifest => manifest["version"] = "1.1.0");
+            await using (var upgradedArchive = File.OpenRead(packagePath))
+                await File.WriteAllTextAsync(packagePath + ".sha256", Convert.ToHexStringLower(await SHA256.HashDataAsync(upgradedArchive)));
+            var upgrade = await joint.PrepareAsync(await installer.InspectLocalAsync(packagePath), [], default);
+            Require((await joint.ExecuteAsync(upgrade, default)).Version == "1.1.0",
+                "upgrading the desktop application commits a replacement module dependency");
+            Require((await packages.SwitchAsync(AppIdText, rollback: true, launch: false, default)).Ok
+                && packages.FindInstalled(AppIdText)?.Version == installed.Version,
+                "rolling back the desktop application restores its original module dependency before switching");
             session.Online = false;
             await packages.UninstallAsync(AppIdText);
             var releaseDirectory = drive.ResolveRootChild("System/desktop-module-releases");

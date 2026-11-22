@@ -37,7 +37,7 @@ public sealed partial class DeveloperPackageManager
                 return new("invalid_manifest", Message: exception.Message);
             }
 
-            try { return await PromoteAsync(record, launch, writePointer: true, cancellationToken); }
+            try { return await PromoteAsync(record, launch, writePointer: true, cancellationToken, restoreDependency: true); }
             finally
             {
                 if (!_catalog.TryGetValue(record.Id, out var current) || current.Path != record.Path)
@@ -140,7 +140,7 @@ public sealed partial class DeveloperPackageManager
     }
 
     private async Task<DeveloperOperationResult> PromoteAsync(DeveloperAppRecord record, bool launch, bool writePointer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool restoreDependency = false)
     {
         _catalog.TryGetValue(record.Id, out var previous);
         var id = new AppId(record.Id);
@@ -171,6 +171,11 @@ public sealed partial class DeveloperPackageManager
             if (previous is not null && !await CanRetireWindowsAsync(id).WaitAsync(cancellationToken))
                 throw new InvalidOperationException("Application windows are busy or have unsaved changes.");
             cancellationToken.ThrowIfCancellationRequested();
+            if (restoreDependency)
+            {
+                stageCode = "dependency_unavailable";
+                await RestoreDesktopDependencyAsync(record, cancellationToken);
+            }
             stageCode = "registration_failed";
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -215,6 +220,7 @@ public sealed partial class DeveloperPackageManager
                 if (launch) _applications.RequestUndecidedPermissions(id);
             });
             NotifyPackagesChanged();
+            if (writePointer) await DrainDesktopDependencyReleasesAsync();
             result = result with { Installation = writePointer ? "passed" : "unchanged", CurrentVersionId = VersionId(record) };
         }
         catch (Exception exception) when (!committed)
@@ -269,6 +275,7 @@ public sealed partial class DeveloperPackageManager
             _lastResults.TryRemove(record.Id, out _);
         });
         NotifyPackagesChanged();
+        await DrainDesktopDependencyReleasesAsync();
     }
 
     private void NotifyPackagesChanged()
@@ -287,9 +294,13 @@ public sealed partial class DeveloperPackageManager
         else Dispatcher.UIThread.Post(Notify);
     }
 
-    private Task WritePointerAsync(DeveloperAppRecord record, DeveloperAppRecord? previous, CancellationToken cancellationToken) =>
-        _drive.WriteJsonAtomicallyAsync(CurrentPath(record.Id), new ExternalCurrentVersion(1, record.Id, VersionId(record),
+    private async Task WritePointerAsync(DeveloperAppRecord record, DeveloperAppRecord? previous, CancellationToken cancellationToken)
+    {
+        if (_catalog.GetValueOrDefault(record.Id) is { } active && active.Path != record.Path)
+            await QueueDesktopDependencyReleaseAsync(ToInfo(active));
+        await _drive.WriteJsonAtomicallyAsync(CurrentPath(record.Id), new ExternalCurrentVersion(1, record.Id, VersionId(record),
             previous is null ? null : VersionId(previous)), cancellationToken);
+    }
 
     private async Task<ExternalCurrentVersion> ReadPointerAsync(string appId, CancellationToken cancellationToken)
     {

@@ -351,10 +351,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                     && !applications.EvaluateCompatibility(RuntimeManifest(manifest)).IsCompatible)
                     throw new InvalidOperationException("deployment-application-incompatible");
                 DesktopDependencyBinding? dependency = null;
-                if (modules is not null && await modules.RegisterDesktopDependenciesAsync(plan, ct))
+                if (modules is not null && await modules.RegisterDesktopDependenciesAsync(plan, ct) is { Length: > 0 } requiredModules)
                 {
                     var binding = plan.ClientBinding!;
-                    dependency = new(binding.AccountId, binding.ConnectionIdentity, plan.Target.ServerIdentity);
+                    dependency = new(binding.AccountId, binding.ConnectionIdentity, plan.Target.ServerIdentity, requiredModules);
                 }
                 return new AppDeploymentReceipt(plan.Id, dependency);
             });

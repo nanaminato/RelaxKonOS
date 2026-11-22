@@ -516,10 +516,13 @@ public sealed partial class DeveloperPackageManager
             var pointer = await ReadPointerAsync(failed.Id, default);
             if (pointer.PreviousVersionId is not { } previous) return;
             var fallback = await ReadVersionAsync(failed.Id, previous, default);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await RestoreDesktopDependencyAsync(fallback, timeout.Token);
             await CommitVersionAsync(fallback, default, rememberPrevious: false);
             RecordActivationDiagnostic($"VSD package rollback: app={fallback.Id}, result=previous-version-restored.");
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or VirtualSystemDriveException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException
+            or HttpRequestException or OperationCanceledException or JsonException)
         {
             RecordActivationDiagnostic($"VSD package rollback: app={SafeDiagnosticId(failed.Id)}, code={VirtualSystemDriveProblemCode.PackageLayoutInvalid}.");
         }

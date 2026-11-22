@@ -4,7 +4,7 @@ using RelaxKonOS.Client.Services.Modules;
 
 namespace RelaxKonOS.Client.Services.Developer;
 
-internal sealed record DesktopDependencyBinding(Guid AccountId, string ConnectionIdentity, string ServerIdentity);
+internal sealed record DesktopDependencyBinding(Guid AccountId, string ConnectionIdentity, string ServerIdentity, string[] RequiredModules);
 internal sealed record AppDeploymentReceipt(Guid PlanId, DesktopDependencyBinding? Dependency);
 
 public sealed partial class DeveloperPackageManager
@@ -25,6 +25,26 @@ public sealed partial class DeveloperPackageManager
         var pending = new PendingDesktopRelease(installed.Id, Path.GetFileName(installed.InstallationPath), receipt);
         await _drive.WriteJsonAtomicallyAsync(
             _drive.ResolveUnder(DesktopReleaseDirectory, receipt.PlanId.ToString("N") + ".json"), pending);
+    }
+
+    private async Task RestoreDesktopDependencyAsync(DeveloperAppRecord record, CancellationToken cancellationToken)
+    {
+        var path = _drive.ResolveUnder(record.Path, DesktopDependencyFileName);
+        if (!File.Exists(path)) return;
+        var receipt = await _drive.ReadJsonAsync<AppDeploymentReceipt>(path, cancellationToken);
+        if (receipt.Dependency is not { } dependency) return;
+        var session = _moduleSession;
+        if (_moduleHttp is null || session is not { State: AuthSessionState.Authenticated }
+            || session.CurrentUser?.Id != dependency.AccountId || session.ServiceId != dependency.ConnectionIdentity)
+            throw new InvalidOperationException("deployment-account-changed");
+        var login = session.CurrentSession;
+        var client = new ServerModuleManagementClient(_moduleHttp.CreateClient(ServerModuleCatalog.HttpClientName), session);
+        if (login is null || !ReferenceEquals(login, session.CurrentSession)
+            || session.CurrentUser?.Id != dependency.AccountId || session.ServiceId != dependency.ConnectionIdentity)
+            throw new InvalidOperationException("deployment-account-changed");
+        await client.ReadAsync(cancellationToken);
+        await client.RegisterDesktopDependencyAsync(receipt.PlanId,
+            new(dependency.ServerIdentity, record.Id, dependency.RequiredModules), cancellationToken);
     }
 
     private async Task RetryDesktopDependencyReleasesAsync()
