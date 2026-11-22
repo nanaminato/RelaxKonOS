@@ -16,13 +16,13 @@ namespace RelaxKonOS.Client.Apps.ServerCenter;
 internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWindowManager windowManager)
     : IServerCenterPackageWorkspace
 {
-    public void Open(Func<IServerCenterWorkspacePresentation, Func<ServerCenterWorkspacePage, Control>, ManagedWindow> showWindow)
+    public void Open(Func<IServerCenterWorkspacePresentation, Func<Control>, ManagedWindow> showWindow)
     {
         var sshSession = services.GetRequiredService<SshDesktopSession>();
         var language = services.GetRequiredService<ISystemLanguage>();
         UsageMemoryScope CapturePickerMemory() => UsageMemoryStore.CaptureServices(services);
         var viewModel = services.GetRequiredService<ServerCenterViewModel>();
-        var window = showWindow(viewModel, CreatePage);
+        var window = showWindow(viewModel, CreateDeploymentPage);
         viewModel.ConfirmRollbackAsync = review => windowManager.ShowDialogAsync<bool>(window, viewModel.RollbackText,
             dialog => new ServerRollbackConfirmationView(review, dialog), new Size(560, 420));
         viewModel.ShowManagementDialogAsync = async section =>
@@ -75,10 +75,5 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
         _ = viewModel.LoadAsync();
     }
 
-    internal static Control CreatePage(ServerCenterWorkspacePage page) => page switch
-    {
-        ServerCenterWorkspacePage.Hosts => new ServerCenterHostsPage(),
-        ServerCenterWorkspacePage.Deployment => new ServerCenterDeploymentPage(),
-        _ => throw new ArgumentOutOfRangeException(nameof(page)),
-    };
+    internal static Control CreateDeploymentPage() => new ServerCenterDeploymentPage();
 }

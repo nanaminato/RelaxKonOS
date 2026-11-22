@@ -629,6 +629,14 @@ internal static class SettingsWindowChecks
             Check(ReferenceEquals(window, windows.Windows.Single(item => item.Info.OwnerAppId == appId)),
                 "Server Center opened a second workspace instead of reusing the existing window.");
             var workspace = (UserControl)window.View.Content!;
+            var hostsPage = (UserControl)workspace.FindControl<ContentControl>("ContentHost")!.Content!;
+            Check(hostsPage.GetType().Name == "ServerCenterHostsPage" && hostsPage.GetType().Assembly == workspace.GetType().Assembly
+                && ReferenceEquals(hostsPage.FindControl<ListBox>("HostsList")!.ItemsSource, model.Hosts),
+                "The package must own its default hosts page and bind the host inventory.");
+            var hostInput = hostsPage.FindControl<TextBox>("HostInput")!;
+            hostInput.SetCurrentValue(TextBox.TextProperty, "fixture.example");
+            Pump();
+            Check(model.Host == "fixture.example", "Editing the package hosts page did not update the host draft.");
             var historyButton = workspace.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "history"));
             historyButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             Pump();

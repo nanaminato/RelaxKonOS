@@ -9,7 +9,7 @@ namespace RelaxKonOS.AppSDK;
 
 public interface IServerCenterPackageWorkspace
 {
-    void Open(Func<IServerCenterWorkspacePresentation, Func<ServerCenterWorkspacePage, Control>, ManagedWindow> showWindow);
+    void Open(Func<IServerCenterWorkspacePresentation, Func<Control>, ManagedWindow> showWindow);
 }
 
 public interface IServerCenterPackageContext
@@ -25,6 +25,7 @@ public interface IServerCenterWorkspacePresentation : INotifyPropertyChanged
     string DeploymentPageTitle { get; }
     string HistoryPageTitle { get; }
     IServerCenterHistoryPresentation History { get; }
+    IServerCenterHostsPresentation Hosts { get; }
     string NavigationMenuTitle { get; }
     bool IsDeploymentProgressIndeterminate { get; }
     double DeploymentTransferProgress { get; }
@@ -34,12 +35,45 @@ public interface IServerCenterWorkspacePresentation : INotifyPropertyChanged
     bool HasError { get; }
 }
 
-public enum ServerCenterWorkspacePage
+public interface IServerCenterHostsPresentation : INotifyPropertyChanged
 {
-    Hosts,
-    Deployment,
+    string HostsPageTitle { get; }
+    string HostsLabel { get; }
+    IEnumerable<ServerHostTarget> Hosts { get; }
+    ServerHostTarget? SelectedHost { get; set; }
+    string EmptyHostsText { get; }
+    bool HasHosts { get; }
+    string VerifiedStateText { get; }
+    bool HasVerifiedState { get; }
+    bool NeedsHostKeyConfirmation { get; }
+    string HostKeyReviewTitle { get; }
+    string HostKeyReviewText { get; }
+    bool HostKeyReplacesPinnedKey { get; }
+    string PinnedFingerprintLabel { get; }
+    string PreviousHostKeyFingerprint { get; }
+    string PreviousHostKeyConfirmedText { get; }
+    string ObservedFingerprintLabel { get; }
+    string HostKeyFingerprint { get; }
+    ICommand ConfirmHostKeyCommand { get; }
+    string ConfirmHostKeyText { get; }
+    ICommand RemoveHostCommand { get; }
+    string RemoveText { get; }
+    string AddHostLabel { get; }
+    string Host { get; set; }
+    string HostLabel { get; }
+    string Port { get; set; }
+    string PortLabel { get; }
+    string UserName { get; set; }
+    string UserLabel { get; }
+    string DisplayName { get; set; }
+    string DisplayNameLabel { get; }
+    string NewHostPassword { get; set; }
+    string NewHostPasswordLabel { get; }
+    bool SaveNewHostPassword { get; set; }
+    string SaveNewHostPasswordText { get; }
+    ICommand AddHostCommand { get; }
+    string AddText { get; }
 }
-
 
 public interface IServerCenterHistoryPresentation : INotifyPropertyChanged
 {

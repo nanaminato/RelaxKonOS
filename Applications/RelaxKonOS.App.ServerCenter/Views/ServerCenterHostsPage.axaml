@@ -1,17 +1,18 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
-             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterHostsPage"
-             x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
+             xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.ServerCenter;assembly=RelaxKonOS.Protocol"
+             xmlns:vm="clr-namespace:RelaxKonOS.AppSDK;assembly=RelaxKonOS.App.SDK"
+             x:Class="RelaxKonOS.App.ServerCenter.Views.ServerCenterHostsPage"
+             x:DataType="vm:IServerCenterHostsPresentation" Classes="builtin-app">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="18" Margin="0,0,12,0">
         <TextBlock Text="{Binding HostsPageTitle}" FontSize="21" FontWeight="SemiBold" />
         <Border Classes="card" Padding="20">
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding HostsLabel}" FontWeight="SemiBold" />
-                <ListBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" MinHeight="170" MaxHeight="270">
+                <ListBox x:Name="HostsList" ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" MinHeight="170" MaxHeight="270">
                     <ListBox.ItemTemplate>
-                        <DataTemplate>
+                        <DataTemplate x:DataType="protocol:ServerHostTarget">
                             <Grid ColumnDefinitions="*,Auto" Margin="6" ColumnSpacing="16">
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
@@ -60,7 +61,7 @@
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding AddHostLabel}" FontSize="17" FontWeight="SemiBold" />
                 <Grid ColumnDefinitions="*,110,*" ColumnSpacing="10" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
-                    <TextBox Text="{Binding Host}" PlaceholderText="{Binding HostLabel}" />
+                    <TextBox x:Name="HostInput" Text="{Binding Host}" PlaceholderText="{Binding HostLabel}" />
                     <TextBox Grid.Column="1" Text="{Binding Port}" PlaceholderText="{Binding PortLabel}" />
                     <TextBox Grid.Column="2" Text="{Binding UserName}" PlaceholderText="{Binding UserLabel}" />
                     <TextBox Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding DisplayName}" PlaceholderText="{Binding DisplayNameLabel}" />

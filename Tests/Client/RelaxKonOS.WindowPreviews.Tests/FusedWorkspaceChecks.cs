@@ -65,7 +65,7 @@ internal static class FusedWorkspaceChecks
         var login = new LoginLocalizationService(new LocalLanguageStore());
         var server = new ServerCenterViewModel(null!, null!, null!, null!, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), null!, null!, login);
         var git = new GitClientViewModel(null!, LocalizedText.Get) { IsPickerMode = false };
-        var serverView = new ServerCenterWorkspace(server, ServerCenterHostWorkspace.CreatePage);
+        var serverView = new ServerCenterWorkspace(server, ServerCenterHostWorkspace.CreateDeploymentPage);
         using var gitProject = new ProjectEditorViewModel(git, null!, null, true);
         var gitView = GitClientWorkspace.Create(git, gitProject);
         var auth = DispatchProxy.Create<IAuthSession, SiteEditorSession>();

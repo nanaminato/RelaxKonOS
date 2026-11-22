@@ -19,9 +19,9 @@ public sealed class ServerCenterPackageApp : IExternalRemoteApplication
         if (context.AppId != Id || context is not IServerCenterPackageContext { ServerCenterWorkspace: { } workspace })
             throw new InvalidOperationException("Server Center requires its official desktop workspace capability.");
 
-        workspace.Open((presentation, createPage) =>
+        workspace.Open((presentation, createDeploymentPage) =>
         {
-            var content = new ServerCenterWorkspace(presentation, createPage);
+            var content = new ServerCenterWorkspace(presentation, createDeploymentPage);
             var window = context.Windows.ShowWindow(presentation.Title, content,
                 new Rect(70, 50, 1120, 760), Manifest.IconGlyph).Window;
             content.AttachWindowHeader(window);

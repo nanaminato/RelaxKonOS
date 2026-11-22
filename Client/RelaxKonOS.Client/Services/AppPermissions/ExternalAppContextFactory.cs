@@ -380,7 +380,7 @@ public sealed class ExternalAppContextFactory
     private sealed class ServerCenterPackageWorkspace(IServerCenterPackageWorkspace workspace, CancellationToken lifetime)
         : IServerCenterPackageWorkspace
     {
-        public void Open(Func<IServerCenterWorkspacePresentation, Func<ServerCenterWorkspacePage, Control>, ManagedWindow> showWindow)
+        public void Open(Func<IServerCenterWorkspacePresentation, Func<Control>, ManagedWindow> showWindow)
         {
             lifetime.ThrowIfCancellationRequested();
             workspace.Open(showWindow);

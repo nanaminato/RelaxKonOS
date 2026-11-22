@@ -17,7 +17,7 @@ namespace RelaxKonOS.Client.ViewModels.ServerCenter;
 /// Login-independent desktop host inventory. It keeps selectable SSH server-and-user targets;
 /// credentials remain in platform secure storage and deployment remains a separate remote action.
 /// </summary>
-public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation
+public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation, IServerCenterHostsPresentation
 {
     private readonly IHostTargetStore _targets;
     private readonly IServerCenterConnectionResolver _connections;
@@ -166,6 +166,12 @@ public partial class ServerCenterViewModel : ObservableObject, IServerCenterWork
     public string NavigationMenuTitle => T("common.view", "View");
     public string HostsPageTitle => T("server_center.page.hosts", "Hosts");
     public string DeploymentPageTitle => T("server_center.page.deployment", "Installation and maintenance");
+    IServerCenterHostsPresentation IServerCenterWorkspacePresentation.Hosts => this;
+    IEnumerable<ServerHostTarget> IServerCenterHostsPresentation.Hosts => Hosts;
+    ICommand IServerCenterHostsPresentation.ConfirmHostKeyCommand => ConfirmHostKeyCommand;
+    ICommand IServerCenterHostsPresentation.RemoveHostCommand => RemoveHostCommand;
+    ICommand IServerCenterHostsPresentation.AddHostCommand => AddHostCommand;
+
     IServerCenterHistoryPresentation IServerCenterWorkspacePresentation.History => this;
     IEnumerable IServerCenterHistoryPresentation.Platforms => Platforms;
     IEnumerable IServerCenterHistoryPresentation.Operations => Operations;
