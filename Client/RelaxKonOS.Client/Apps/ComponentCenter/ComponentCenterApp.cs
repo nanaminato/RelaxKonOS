@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Client.Apps.WebServers;
 using Size = RelaxKonOS.Core.Primitives.Size;
@@ -297,7 +298,11 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 ? "component_center.package.refresh_confirm" : "component_center.package.recovery_confirm", component, operation,
                 LocalizedText.Get("component_center.package.recovery." + action)).Resolve());
         model.ConfirmTaskAsync = async plan => await ShowOwnedAsync<bool>(LocalizedText.Get("component_center.task_confirm_title"),
-            dialog => new TaskPlanConfirmationView(dialog, plan), new Size(720, 600)) == true;
+            dialog => new TaskPlanConfirmationView(dialog, plan, LocalizedText.Get, LocalizedText.Format, step =>
+            {
+                var row = new ComponentInspectionStep(step);
+                return (row.Title.Resolve(), row.Effects.Resolve());
+            }), new Size(720, 600)) == true;
         model.TaskCredentialsAsync = () => ShowOwnedAsync<RelaxKonOS.AppSDK.HostAdministratorCredentials?>(
             LocalizedText.Get("installation.elevation_title"), dialog => new HostAdministratorCredentialsDialogView(dialog,
                 LocalizedText.Get("component_center.task_credentials"), null, session.CurrentUser?.Username ?? ""), new Size(560, 340));

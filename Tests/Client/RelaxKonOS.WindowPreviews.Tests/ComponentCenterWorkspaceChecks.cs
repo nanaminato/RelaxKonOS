@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.Client.Services.Installation;
 using System.Reflection;
 using Avalonia;
@@ -540,10 +541,14 @@ internal static class ComponentCenterWorkspaceChecks
                     }
                     resultWindow.Close(); Dispatcher.UIThread.RunJobs();
                 }
-                var modal = Activator.CreateInstance(typeof(RelaxKonOS.WindowManager.ModalDialog<bool>), BindingFlags.Instance | BindingFlags.NonPublic,
+                var modal = (RelaxKonOS.WindowManager.ModalDialog<bool>)Activator.CreateInstance(typeof(RelaxKonOS.WindowManager.ModalDialog<bool>), BindingFlags.Instance | BindingFlags.NonPublic,
                     null, [null, null], null)!;
-                var confirmation = (Control)Activator.CreateInstance(typeof(ComponentCenterWorkspace).Assembly.GetType(
-                    "RelaxKonOS.Client.Apps.ComponentCenter.TaskPlanConfirmationView")!, [modal, taskPlan])!;
+                var confirmation = new TaskPlanConfirmationView(modal, taskPlan,
+                    RelaxKonOS.Client.Localization.LocalizedText.Get, RelaxKonOS.Client.Localization.LocalizedText.Format, step =>
+                    {
+                        var row = new ComponentInspectionStep(step);
+                        return (row.Title.Resolve(), row.Effects.Resolve());
+                    });
                 var confirmWindow = new Window { Width = 720, Height = 600, Content = confirmation };
                 confirmWindow.Show(); Dispatcher.UIThread.RunJobs(); confirmWindow.UpdateLayout();
                 Check(!confirmation.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("component_center.", StringComparison.Ordinal) == true),

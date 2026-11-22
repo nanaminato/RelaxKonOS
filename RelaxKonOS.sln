@@ -142,6 +142,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Framework", "Framework", "{
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Settings.Contracts", "Framework\RelaxKonOS.Settings.Contracts\RelaxKonOS.Settings.Contracts.csproj", "{419B29A2-7A34-4D06-83A3-3AA665CCA24E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.ComponentCenter", "Applications\RelaxKonOS.App.ComponentCenter\RelaxKonOS.App.ComponentCenter.csproj", "{543EE495-C472-4886-8424-B1BE0BEADF10}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -944,6 +946,18 @@ Global
 		{419B29A2-7A34-4D06-83A3-3AA665CCA24E}.Release|x64.Build.0 = Release|Any CPU
 		{419B29A2-7A34-4D06-83A3-3AA665CCA24E}.Release|x86.ActiveCfg = Release|Any CPU
 		{419B29A2-7A34-4D06-83A3-3AA665CCA24E}.Release|x86.Build.0 = Release|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Debug|x64.Build.0 = Debug|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Debug|x86.Build.0 = Debug|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Release|x64.ActiveCfg = Release|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Release|x64.Build.0 = Release|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Release|x86.ActiveCfg = Release|Any CPU
+		{543EE495-C472-4886-8424-B1BE0BEADF10}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -999,5 +1013,6 @@ Global
 		{11C23A7B-714A-47EB-B163-47ECE626C2F9} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 		{B4129BA3-6A94-4F11-A3D9-929C1EAD8AB4} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 		{419B29A2-7A34-4D06-83A3-3AA665CCA24E} = {9A0CCAB9-4303-13B4-2371-F1B97FF5B728}
+		{543EE495-C472-4886-8424-B1BE0BEADF10} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 	EndGlobalSection
 EndGlobal

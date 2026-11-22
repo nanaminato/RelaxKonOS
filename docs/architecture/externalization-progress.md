@@ -537,3 +537,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 发行校验增加宿主依赖图与散装 DLL 检查，拒绝把 Settings 实现带入核心目录。Windows Release 新宿主与已验官方归档组成的发行目录通过全部 26 个归档核对及三档预装、Minimal 修复。带旧宿主依赖的目录被新检查拒绝。
 - 修正 ApplicationLayout 的安装审核页固定操作区测试，通过实际 InstallCommand 定位按钮，避免同页官方目录操作也带 primary 样式时出现多重匹配。Windows Release 全量越过安装器布局，随后在 BrowserChecks.VerifyAddressInput 的本地化状态断言失败，暂跳过该独立浏览器问题。
 - Windows Release 完整打包以退出码 0 结束。把该次新建的全部 26 个官方归档与最新版无 Settings 实现 DLL 的桌面宿主组合后，摘要、清单、入口和核心隔离校验通过。三档预装与 Minimal 归档修复通过，实际 Settings 包生产工作区启动、离线文档、深链接及重开均通过。
+- 开始拆分 Component Center。受管任务计划确认视图迁入独立应用项目，宿主提供本地化文字和步骤说明。Windows Release 组件中心专项通过本地/远程 .roapp 回归及三语双主题布局。内置入口、实际发布包及生产宿主操作验收待完成。
