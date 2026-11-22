@@ -139,4 +139,25 @@ public static class RelaxKonOSActivationUris
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         return new Uri($"relaxkonos://explorer/open?path={Uri.EscapeDataString(path)}");
     }
+    /// <summary>Reads the internal Explorer navigation route without interpreting the remote path.</summary>
+    public static bool TryReadExplorerPath(Uri uri, out string path)
+    {
+        path = "";
+        if (!uri.IsAbsoluteUri || !uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
+            || !uri.Host.Equals("explorer", StringComparison.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.Equals("/open", StringComparison.OrdinalIgnoreCase)
+            || uri.Port != -1 || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0)
+            return false;
+
+        var query = uri.Query;
+        if (!query.StartsWith("?path=", StringComparison.OrdinalIgnoreCase) || query.Contains('&'))
+            return false;
+
+        var decoded = Uri.UnescapeDataString(query["?path=".Length..]);
+        if (string.IsNullOrWhiteSpace(decoded) || decoded.Contains('\0'))
+            return false;
+
+        path = decoded;
+        return true;
+    }
 }

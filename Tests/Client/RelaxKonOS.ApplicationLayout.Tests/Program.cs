@@ -98,6 +98,14 @@ if (args.Contains("--registry-only"))
 }
 if (args.Contains("--explorer-address-only"))
 {
+    foreach (var path in new[] { "/data/a&b+100%/#資料", @"C:\Users\Alice\New folder" })
+        Check(RelaxKonOS.AppSDK.RelaxKonOSActivationUris.TryReadExplorerPath(
+            RelaxKonOS.AppSDK.RelaxKonOSActivationUris.ExplorerPath(path), out var decoded) && decoded == path,
+            "Explorer activation preserves the exact remote path");
+    foreach (var url in new[] { "relaxkonos://explorer/open?path=%2Fa&path=%2Fb", "relaxkonos://explorer/open?path=%2Fa#fragment",
+        "relaxkonos://explorer/open?path=%00", "relaxkonos://account@explorer/open?path=%2Fa", "/open?path=%2Fa" })
+        Check(!RelaxKonOS.AppSDK.RelaxKonOSActivationUris.TryReadExplorerPath(new Uri(url, UriKind.RelativeOrAbsolute), out _),
+            "Explorer activation rejects ambiguous or malformed routes");
     ExplorerAddressChecks.Run(host);
     host.Close();
     return;

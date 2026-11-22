@@ -55,15 +55,11 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
 
     public override void Activate(AppContext context) => OpenExplorer(context, null);
 
-    public bool CanHandleActivation(Uri uri) =>
-        uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
-        && uri.Host.Equals("explorer", StringComparison.OrdinalIgnoreCase)
-        && uri.AbsolutePath.Equals("/open", StringComparison.OrdinalIgnoreCase)
-        && !string.IsNullOrWhiteSpace(QueryValue(uri, "path"));
+    public bool CanHandleActivation(Uri uri) => RelaxKonOSActivationUris.TryReadExplorerPath(uri, out _);
 
     public void HandleActivation(AppContext context, AppActivationRequest request, ManagedWindow? existingWindow)
     {
-        var path = QueryValue(request.Uri, "path");
+        if (!RelaxKonOSActivationUris.TryReadExplorerPath(request.Uri, out var path)) return;
         // For multi-window apps the runtime creates the new window before invoking the
         // handler. Reuse that window instead of opening a duplicate Explorer instance.
         if (existingWindow is not null && _windows.TryGetValue(existingWindow, out var viewModel))
@@ -436,12 +432,6 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         if (settingsError is not null) viewModel.StatusText = settingsError;
         else if (eligibilityNotice is not null) viewModel.StatusText = eligibilityNotice;
     }
-
-    private static string? QueryValue(Uri uri, string key) => uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
-        .Select(pair => pair.Split('=', 2))
-        .Where(pair => pair.Length == 2 && pair[0].Equals(key, StringComparison.OrdinalIgnoreCase))
-        .Select(pair => Uri.UnescapeDataString(pair[1]))
-        .FirstOrDefault();
 
     /// <summary>将对话框回调注入 VM：文本输入 / 确认 / 本地文件选择（上传/下载） / 消息 / 关闭。</summary>
     private static void WireDialogs(AppContext context, ExplorerViewModel vm, IExplorerClient client)
