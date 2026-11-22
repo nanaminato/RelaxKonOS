@@ -124,7 +124,11 @@ Linux System Mode 则运行：
 ./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release
 ```
 
-Linux 打包宿主还需提供 `zip`、`sha256sum` 与 `stat`。
+Linux 打包宿主还需提供 Python 3、`zip`、`sha256sum` 与 `stat`。Linux 客户端打包会在生成 ZIP 前核对官方归档、预装配置和桌面依赖边界。Windows 发布目录可用同一校验命令检查，将路径指向解包后的 `payload/windows/client`。
+
+```powershell
+python Tests/Client/verify-desktop-distribution.py --publish-dir <客户端发布目录>
+```
 
 客户端的便携 ZIP 与 Windows MSIX 打包和升级流程见 [ClientDistribution.md](./ClientDistribution.md)。Linux 客户端通过便携 ZIP 分发；不提供 Debian/Ubuntu APT 仓库或 `.deb` 包。
 

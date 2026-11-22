@@ -82,6 +82,7 @@ publish_deployment_tools
 if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == client ]]; then
   new_package client
   publish_component 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS
+  python3 "$PROJECT_ROOT/Tests/Client/verify-desktop-distribution.py" --publish-dir "$BUNDLE/payload/linux/client"
   complete_package client '"client":"payload/linux/client/RelaxKonOS"'
 fi
 
