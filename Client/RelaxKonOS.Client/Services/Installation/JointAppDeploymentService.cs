@@ -144,8 +144,9 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<IReadOnlyList<AppPackageCandidate>> RecoverArchivesAsync(
         IReadOnlyList<OfficialDesktopRelease> releases, CancellationToken cancellationToken)
     {
+        var login = session?.State == AuthSessionState.Authenticated ? session.CurrentSession : null;
         var plans = await journal.ReadPendingPlansAsync(Guid.Empty, "", cancellationToken);
-        if (session?.State == AuthSessionState.Authenticated && session.CurrentUser is { } user && session.ServiceId is { } connection)
+        if (HasOriginalLogin() && session.CurrentUser is { } user && session.ServiceId is { } connection)
             plans = [.. plans, .. await journal.ReadPendingPlansAsync(user.Id, connection, cancellationToken)];
 
         var candidates = new List<AppPackageCandidate>();
@@ -187,10 +188,14 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         return candidates;
 
         bool CanRecover(DeploymentClientBinding binding) =>
-            (binding.ServerArchive is not { } archive || AppPackageInstallerService.MatchesServerArchive(session, archive))
+            (binding.ServerArchive is not { } archive
+                || HasOriginalLogin() && AppPackageInstallerService.MatchesServerArchive(session, archive))
             && (binding.AccountId == Guid.Empty && binding.ConnectionIdentity == ""
-            || session?.State == AuthSessionState.Authenticated && binding.AccountId == session.CurrentUser?.Id
+            || HasOriginalLogin() && binding.AccountId == session.CurrentUser?.Id
                 && binding.ConnectionIdentity == session.ServiceId);
+
+        bool HasOriginalLogin() => login is not null && session.State == AuthSessionState.Authenticated
+            && ReferenceEquals(login, session.CurrentSession);
     }
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)

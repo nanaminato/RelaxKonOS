@@ -22,6 +22,7 @@ using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
+using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 
 internal static class RoappCatalogChecks
@@ -99,6 +100,10 @@ internal static class RoappCatalogChecks
             Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 1,
                 "Changing servers must prevent even a download of a recorded server archive.");
             actor.ServiceId = reviewedServer;
+            actor.DuringServiceIdRead = actor.ReplaceLogin;
+            Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 1,
+                "Re-login to the same account and server during journal lookup must invalidate that recovery attempt.");
+            actor.DuringServiceIdRead = null;
             var recoveredServer = (await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Single();
             try
             {
@@ -275,10 +280,21 @@ internal static class RoappCatalogChecks
     internal sealed class Diagnostics : IAppActivationDiagnostics { public void Record(string message) { } }
     public class RecoveryArchiveAuth : TailscaleScopeAuthFixture
     {
+        private SessionDto? replacementLogin;
         public Action? DuringTokenRefresh { get; set; }
+        public Action? DuringServiceIdRead { get; set; }
+
+        public void ReplaceLogin()
+        {
+            var getter = typeof(IAuthSession).GetProperty(nameof(IAuthSession.CurrentSession))!.GetMethod;
+            var original = (SessionDto)base.Invoke(getter, null)!;
+            replacementLogin = original with { Id = Guid.NewGuid() };
+        }
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
+            if (method?.Name == "get_ServiceId") DuringServiceIdRead?.Invoke();
+            if (method?.Name == "get_CurrentSession" && replacementLogin is not null) return replacementLogin;
             if (method?.Name != nameof(IAuthSession.GetAccessTokenAsync)) return base.Invoke(method, args);
             DuringTokenRefresh?.Invoke();
             return Task.FromResult<string?>("fixture-access-token");
