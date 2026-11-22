@@ -605,3 +605,5 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Server Center 回滚确认视图迁入官方包。宿主提供已核对的主机及当前版本和上一版本，并保留原有语言绑定及回滚执行。Windows Release 的重建归档验证回滚弹窗由包程序集创建且取消返回拒绝，安装对话框专项验证确认和取消以及两个精确版本的显示。管理对话框、安装向导视图及真实 SSH 回滚待验。
 - 安装向导的视图、状态模型与选项迁入共享 UI，官方包入口与登录前本机入口复用。宿主提供部署回调及文件选择服务，并负责模态取消确认和清理敏感字段。Windows Release 实际包启动及取消向导、管理对话框和本机安装专项通过。完整 Server Center 客户端套件在本机 TLS 探测断言处中止。管理对话框外置和真实 SSH 部署仍待验。
 - Server Center 管理对话框迁入官方包。SDK 提供页面状态与命令，宿主保留 SSH 文件选择、关闭时的草稿保护及操作执行。Windows Release 重建归档验证管理对话框从包程序集加载和关闭，五个管理分区的关闭与草稿回归通过。完整桌面重发校验全部 29 个归档，并使用重发的 Server Center 包通过窗口回归。真实 SSH 部署仍待验。
+- 使用完整重发的 Windows Release 发行目录复验三档预装，分别登记 0、13、14 个离线官方包。Minimal 可以离线安装和修复 Settings、Component Center、Explorer 与 Server Center，配置切换保留用户主动移除的状态。允许本机环回连接后，完整 Server Center 客户端套件通过，覆盖首次 TLS 信任前阻止 HTTP 请求及显式确认后的 HTTPS 登录探测。Linux 专用 Secret Service 写入往返检查在 Windows 跳过。
+- Linux x64 WSL 以 .NET 10.0.14 和同一完整发行目录运行可移植无头测试，通过 Server Center 包的工作区、管理弹窗、向导取消和卸载关闭回归。三档预装分别登记 0、13、14 个包，Minimal 的四个基础包离线安装与修复通过，配置切换保留用户主动卸载。此轮未运行 Linux 原生图形窗口或真实远端部署。
