@@ -822,21 +822,10 @@ internal partial class SshFileBrowserView : UserControl
         else if (e.Key == Key.Escape) { e.Handled = true; _presentation.ClearSelection(); }
     }
 
-    private SftpClient OpenClient()
-    {
-        var endpoint = _session.Endpoint ?? throw new InvalidOperationException("SSH session ended.");
-        var fingerprint = _session.HostKeyFingerprint ?? throw new InvalidOperationException("SSH host key is unavailable.");
-        var client = new SftpClient(endpoint.Host, endpoint.Port, endpoint.UserName,
-            _session.Password ?? throw new InvalidOperationException("SSH session ended."));
-        client.HostKeyReceived += (_, args) =>
-            args.CanTrust = string.Equals(ServerHostTrustRules.Fingerprint(args.HostKey), fingerprint, StringComparison.Ordinal);
-        try { client.Connect(); return client; }
-        catch { client.Dispose(); throw; }
-    }
-
     private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action)
     {
-        using var client = await Task.Run(OpenClient);
+        var endpoint = _session.Endpoint ?? throw new InvalidOperationException("SSH session ended.");
+        using var client = await Task.Run(() => _session.OpenFileClient(endpoint));
         return await Task.Run(() => action(client));
     }
 

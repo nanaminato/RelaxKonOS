@@ -138,30 +138,12 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
     private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        using var client = await Task.Run(() => OpenClient(_expectedEndpoint), ct).ConfigureAwait(false);
+        using var client = await Task.Run(() => session.OpenFileClient(_expectedEndpoint), ct).ConfigureAwait(false);
         return await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
             return action(client);
         }, ct).ConfigureAwait(false);
-    }
-
-    private SftpClient OpenClient(ServerCenterSshEndpoint? expectedEndpoint)
-    {
-        var (endpoint, password, fingerprint) = session.GetFileConnection(expectedEndpoint);
-        var client = new SftpClient(endpoint.Host, endpoint.Port, endpoint.UserName, password);
-        client.HostKeyReceived += (_, args) =>
-            args.CanTrust = string.Equals(ServerHostTrustRules.Fingerprint(args.HostKey), fingerprint, StringComparison.Ordinal);
-        try
-        {
-            client.Connect();
-            return client;
-        }
-        catch
-        {
-            client.Dispose();
-            throw;
-        }
     }
 
     private static Task<T> Unsupported<T>() => Task.FromException<T>(new NotSupportedException("This SFTP operation is not available in an SSH desktop."));

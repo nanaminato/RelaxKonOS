@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.ServerCenter;
+using Renci.SshNet;
 
 namespace RelaxKonOS.Client.Services.ServerCenter;
 
@@ -71,6 +72,25 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
                 || (expectedEndpoint is not null && !ReferenceEquals(endpoint, expectedEndpoint)))
                 throw new InvalidOperationException("SSH session ended.");
             return (endpoint, password, fingerprint);
+        }
+    }
+
+    internal SftpClient OpenFileClient(ServerCenterSshEndpoint? expectedEndpoint)
+    {
+        var (endpoint, password, fingerprint) = GetFileConnection(expectedEndpoint);
+        var client = new SftpClient(endpoint.Host, endpoint.Port, endpoint.UserName, password);
+        client.HostKeyReceived += (_, args) =>
+            args.CanTrust = string.Equals(ServerHostTrustRules.Fingerprint(args.HostKey), fingerprint, StringComparison.Ordinal);
+        try
+        {
+            client.Connect();
+            _ = GetFileConnection(endpoint);
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
         }
     }
 
