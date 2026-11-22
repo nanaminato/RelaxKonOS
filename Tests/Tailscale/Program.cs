@@ -17,6 +17,23 @@ using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
 
 static void Check(bool value) { if (!value) throw new Exception("Assertion failed"); }
+if (args is ["--tailscale-live-control-read"])
+{
+    var controlRoot = Directory.CreateTempSubdirectory("rk-tailscale-control-");
+    try
+    {
+        var operation = Guid.NewGuid();
+        var request = new PrivilegedOperationRequest(PrivilegedOperationKind.TailscaleControlRead,
+            OperationId: operation, Correlation: CorrelationContext.Create(operation, "privileged.operation"));
+        var handler = new RelaxKonOS.PrivilegedHelper.TailscaleControlOperations(controlRoot.FullName,
+            _ => { }, new RelaxKonOS.PrivilegedHelper.TailscaleNativeControl());
+        var result = await handler.HandleAsync(request);
+        Console.WriteLine($"Tailscale native control read: {(result.Success ? "observed" : result.ProblemCode.ToString())}");
+        Check(result.Success && result.TailscaleControl is { Revision.Length: 64 });
+    }
+    finally { controlRoot.Delete(recursive: true); }
+    return;
+}
 if (args is ["--tailscale-live-status"])
 {
     var request = new PrivilegedOperationRequest(PrivilegedOperationKind.TailscaleStatus,

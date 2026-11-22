@@ -812,3 +812,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 签名 Tailscale 双包验收通过重启后的控制读取。可回收程序集内的控制服务通过生产 Helper 适配器发送一次 TailscaleControlRead，并返回测试传输的快照。测试使用认证观察者，传输仅允许读取。真实 Helper 与 tailscaled 未覆盖。
 - Windows Release 签名 Tailscale 双包控制读取改走生产 HTTP 路由及模块驻留协调器。匿名请求返回 401 且未调用 Helper，认证观察者取得测试传输的控制快照，生产 Helper 适配器仅发送一次只读请求。真实 Helper 与 tailscaled 仍待验。
 - Linux x64 自包含签名 Tailscale 双包通过生产 HTTP 控制路由验收。匿名请求在 Helper 调用前拒绝，观察者经已安装签名执行程序集及生产适配器取得测试传输快照。随附模块的启用、重启恢复和复用同轮通过。
+- Windows Release 的 --tailscale-live-control-read 在临时隔离台账目录调用 Helper 生产控制读取处理器，真实 Windows Tailscale 守护进程返回可用控制快照，修订长度为 64。探针只输出读取成功标记，未更改网络或登录状态。此路径直接调用处理器，仍需验证经实际 IPC 与签名桌面联合部署串联。
