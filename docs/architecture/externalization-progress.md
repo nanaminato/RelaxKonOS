@@ -13,7 +13,7 @@
 
 | ID 后缀 | 目录或项目 | 独立项目 / .roapp 安装 | 桌面宿主内置 | 服务端 API / 模块归属 | 目标层 | 本轮验收 |
 |---|---|---|---|---|---|---|
-| appinstaller | AppInstaller | 否 / 否 | 是 | 文件读取与组件源；安装和恢复入口需保留 | 核心入口候选 | 待验 |
+| appinstaller | AppInstaller | 否 / 否 | 是 | 文件读取与组件源；安装和恢复入口需保留 | 核心入口 | 三档内置恢复入口、隔离 HTTPS 商店及归档恢复已验 |
 | welcome | RelaxKonOS.App.Welcome | 是 / 是 | 否 | 使用 SDK 激活记事本或安装器 | 基础 | Windows 已验 |
 | settings | Settings | 否 / 否 | 是 | 工作区设置与宿主设置 | 基础 | 待验 |
 | explorer | Explorer | 否 / 否 | 是 | 文件 API；调用存储提供者的聚合入口 | 基础 | 待验 |
@@ -21,9 +21,9 @@
 | server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
 | component-center | ComponentCenter | 否 / 否 | 是 | 组件、可信来源、模块及任务 API | 基础 | 待验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
-| notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
+| notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
 | browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包已验，原生 WebView 待验 |
-| imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
+| imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期及 Linux Standard 原生首次预装已验 |
 | registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Release 包验收；真实服务器待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
@@ -36,11 +36,11 @@
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
-| webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows 包生命周期及 Windows、Linux 隔离模块复用已验，Nginx 业务联调待验 |
+| webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 隔离模块启用、重启恢复和证书依赖保护已验，Nginx 业务联调待验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，真实设备业务联调待验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows Release 包生命周期已验，真实 FRP 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
-| database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、模块复用及启用后重启续跑已验，Linux 独立包联调待验 |
+| database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows Release 包生命周期及授权验证通过，实机待验 |
 | ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 已验，远端桌面待验 |
 
@@ -64,7 +64,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 1. 代码基线和桌面登记盘点已记录。
 2. `Shared/RelaxKonOS.Deployment` 已加入解决方案。解析器支持传递依赖、共享依赖、区间、能力与契约版本、回溯和循环检查。协调器有目标服务器、状态与目录版本、计划有效期和持久检查点。通用编排和文件日志已接入桌面安装器。
 3. 桌面 .roapp 清单可读取和验证 dependencies.required 与 dependencies.optional。旧包可省略整个字段。应用安装器的联合部署路径在包安装提交前验证必需依赖。其余入口继续拒绝带必需依赖的包，直至接入同一协调器。模块目录适配器已复用现有模块管理客户端读取分页可信目录、安装记录和有效状态，并绑定服务器身份、目录版本和模块状态摘要。组件中心模块商店使用精确来源和发布 ID 创建签名包计划，并核对上传与计划的摘要、版本和发布者。桌面应用商店与共用安装器已接入协调器，默认勾选可选模块，展示已满足的依赖、版本变化及权限声明。用户确认后按签名计划执行，验证服务端依赖并通过现有应用安装器验证程序集与注册。模块执行适配器已实现按联合计划保存服务端计划 ID、到期时间和权限声明，按 ID 对账回执，并验证实际启用版本、能力和健康。首次安装在包回执确认后复用模块管理的 Enable 计划，保留已有的期望启用集合。需要重启时暂缓客户端安装。启动守卫复用现有应用就绪检查，按当前登录服务器的有效模块、版本和能力检查包依赖，并提供组件中心或应用安装器入口。客户端卸载锁内会阻止移除仍被另一已安装应用声明为必需的 .roapp。安装器可在重开后找回原本地路径，或从当前可信目录、原服务器文件连接重新取得同一摘要的应用包，再请求确认。应用版本目录中记录联合计划回执，提交后中断时可核对现有安装。已确认未派发的过期模块计划需要重新审阅，协调器保留已完成步骤。组件中心的模块停用和卸载操作展示本桌面已安装应用的依赖，并在提交前重新检查。服务端原有模块互相依赖保护继续生效。不同设备和其他管理入口共享应用依赖声明仍待服务端持久化。服务端目录目前仅提供 capability 名称，显式要求契约版本时仍需可靠的版本证据。
-4. 后续依次完成启动守卫、升级与卸载保护、基础应用外置及修复、其余模块迁移和 Minimal、Standard、Developer 配置集。
+4. 启动守卫、本机共享依赖保护、基础包预装与同版本修复已有验收。Windows 与 Linux 通过三档配置安装及切换，Linux 原生入口逐档核对首次预装。Ubuntu 通过桌面发起的 Databases 独立模块 HTTPS 联合安装及重启恢复。后续仍包括其余业务模块迁移、跨设备依赖持久化和矩阵中待验的真实业务链路。
 5. 恢复时从本分支运行 `dotnet build Shared/RelaxKonOS.Deployment -m:1`，查看当前差异与最新提交，再从第 3 项继续。部署存续期间须先观察现有服务端回执，再决定是否重试，保留共享依赖。
 
 ## 测试证据
