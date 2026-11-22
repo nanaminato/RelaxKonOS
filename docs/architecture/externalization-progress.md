@@ -84,7 +84,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 | 18 | 启动依赖检查 | 发行 Terminal 和 Task Manager 的能力缺失阻止激活，恢复后可启动。联合专项覆盖故障模块拒绝启动，Databases 使用真实 Core 验证模块就绪后进入独立组件权限检查。 |
 | 19 | DevCli 与 Direct Deploy | Windows Debug 桌面与 DevCli 通过登录界面直传、卸载、监听更新、失败保留和双配置隔离回归。真实 Docker 归档通过候选启动依赖专项。 |
 | 20 | 真实双包部署 | Ubuntu 发行 Core 从无独立包记录开始，经 HTTPS 下载签名 `.rkmodule`，重启后由桌面协调器登记 `.roapp`。桌面测试副本仅提高模块最低版本；四条观察者查询经真实 Helper 通过。 |
-| 21 | Windows 与 Linux 构建、可执行测试 | Windows Release 完整模块历史基线 1,433 项检查。当前 Linux x64 自包含完整模块 1,510 项检查，桌面宿主构建和 29 个官方归档检查通过。两平台桌面配置与发行归档已有验收。 |
+| 21 | Windows 与 Linux 构建、可执行测试 | 当前 Windows Release 完整模块 1,498 项检查，Linux x64 自包含完整模块 1,510 项检查。Windows 完整重发及 Linux 桌面宿主构建均通过 29 个官方归档与宿主边界核对。 |
 | 22 | Android 回归 | 离线 Debug 及测试 APK 构建，1,906 项 JVM 测试和 11 项模拟器测试通过。设备测试覆盖应用目录与服务维护恢复，使用只读模拟器。 |
 | 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,387 个桌面宿主键和 39 套独立应用资源。 |
 
@@ -874,3 +874,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 首启窗口用已验证归档版本比较各配置集的最低版本，离线归档版本不足时在确认前显示最低要求。Windows Release 发行测试在窗口中使用实际 Welcome 归档与提高后的 Developer 最低版本验证提示，并切回 Standard 验证名称与排除操作。三语校验通过。
 - 首启选择与实际离线预装共用客户端平台、必需部署依赖及服务端启动要求判定。不满足时窗口显示无法离线预装。Windows Release 发行验收使用实际归档，确认 Terminal 和 Task Manager 可离线安装并继续受启动守卫保护，Proxy 所需服务端模块使其不能离线预装。三语校验通过。
 - 当前 Linux x64 自包含模块完整套件在无外网 Ubuntu 容器通过 1,510 项检查。容器使用 Git 和已有 Docker Compose CLI 进行离线解析，无 Engine 套接字。重新发布当前 Linux 桌面宿主、重建清单已变化的 Tunnels 归档并复用其余归档后，29 个摘要、清单、入口程序集及宿主依赖图核对通过。
+- 当前 Windows Release 服务端模块完整套件通过 1,498 项检查。Windows x64 自包含桌面完整重发全部 29 个官方归档，验证摘要、清单、入口程序集及宿主边界，并用同一发行目录通过原生首次启动到登录和 Server Center 包工作区、主机地址弹窗及卸载回归。
