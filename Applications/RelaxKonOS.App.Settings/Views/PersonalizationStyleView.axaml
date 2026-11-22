@@ -1,20 +1,17 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.App.Settings"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
-             xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
-             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationStyleView"
-             x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
+             x:Class="RelaxKonOS.App.Settings.Views.PersonalizationStyleView"
+             x:DataType="loc:IPersonalizationStyle" Classes="builtin-app">
     <StackPanel Spacing="16">
 <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.system_style}" Classes="title" />
-                <ComboBox nav:SettingsSearchTarget.Id="workspace.systemStyle" AutomationProperties.Name="{loc:Loc settings.system_style}" ItemsSource="{Binding SystemStyleChoices}"
+                <ComboBox loc:SettingsSearchTarget.Id="workspace.systemStyle" AutomationProperties.Name="{loc:Loc settings.system_style}" ItemsSource="{Binding SystemStyleChoices}"
                           SelectedValue="{Binding SelectedSystemStyleId, Mode=TwoWay}"
                           SelectedValueBinding="{Binding Id}">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:SystemStyleChoice">
+                        <DataTemplate x:DataType="loc:PersonalizationOption">
                             <StackPanel Spacing="1">
                                 <TextBlock Text="{Binding SelectionDisplayName}" />
                                 <TextBlock Text="{Binding UnavailableReason}" IsVisible="{Binding HasUnavailableReason}"

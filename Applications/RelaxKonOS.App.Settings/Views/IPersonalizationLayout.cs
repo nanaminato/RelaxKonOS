@@ -11,12 +11,7 @@ public interface IPersonalizationLayoutPage
 public interface IPersonalizationLayout : INotifyPropertyChanged
 {
     Func<string, string> Labels { get; }
-    IReadOnlyList<DesktopLayoutOption> ShellChoices { get; }
+    IReadOnlyList<PersonalizationOption> ShellChoices { get; }
     string SelectedShellId { get; set; }
     ICommand ResetLayoutCommand { get; }
-}
-
-public sealed record DesktopLayoutOption(string Id, string SelectionDisplayName, string? UnavailableReason)
-{
-    public bool HasUnavailableReason => !string.IsNullOrWhiteSpace(UnavailableReason);
 }

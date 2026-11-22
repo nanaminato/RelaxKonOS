@@ -267,6 +267,12 @@ internal static class SettingsWindowChecks
             var layoutPicker = layoutPage.GetVisualDescendants().OfType<ComboBox>().Single();
             Check(Equals(layoutPicker.SelectedValue, settings.SelectedShellId),
                 "The layout page lost the selected shell ID.");
+            model.OpenPageCommand.Execute("personalization/style"); Pump();
+            var stylePage = view.GetVisualDescendants()
+                .OfType<RelaxKonOS.App.Settings.Views.PersonalizationStyleView>().Single();
+            var stylePicker = stylePage.GetVisualDescendants().OfType<ComboBox>().Single();
+            Check(Equals(stylePicker.SelectedValue, settings.SystemStyleId),
+                "The system style page lost the selected style ID.");
 
             // The same window under every window-chrome recipe. The Settings view names no column and
             // no inset, so this is the assertion that the host's role slots really do the placing -

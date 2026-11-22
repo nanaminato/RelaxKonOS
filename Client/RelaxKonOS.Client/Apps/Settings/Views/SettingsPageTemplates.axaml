@@ -7,9 +7,6 @@
         <DataTemplate DataType="vm:PersonalizationColorsPageViewModel">
                 <pages:PersonalizationColorsView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:PersonalizationStylePageViewModel">
-                <pages:PersonalizationStyleView DataContext="{Binding Editor}" VerticalAlignment="Top" />
-        </DataTemplate>
 
         <DataTemplate DataType="vm:AccountSecurityPageViewModel">
                 <pages:AccountSecurityPageView VerticalAlignment="Top" />

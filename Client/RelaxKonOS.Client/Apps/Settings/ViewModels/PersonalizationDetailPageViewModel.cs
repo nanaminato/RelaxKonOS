@@ -14,8 +14,9 @@ public sealed class PersonalizationColorsPageViewModel(ShellSettings settings, P
     public override string DisplayNameKey => "settings.colors_and_mode";
     public override string DisplayName => "Colors and mode";
 }
-public sealed class PersonalizationStylePageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor)
+public sealed class PersonalizationStylePageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor), IPersonalizationStylePage
 {
+    IPersonalizationStyle IPersonalizationStylePage.Editor => Editor;
     public override string Route => "personalization/style";
     public override string DisplayNameKey => "settings.system_style";
     public override string DisplayName => "System style";
