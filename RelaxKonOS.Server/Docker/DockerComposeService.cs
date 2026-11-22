@@ -6,7 +6,7 @@ namespace RelaxKonOS.Server.Docker;
 /// <summary>The request or operation scope owns the bundled executor through actual work and response cleanup.</summary>
 public sealed class DockerComposeService : IDockerComposeService, IDisposable
 {
-    private readonly DockerComposeExecution.Lease lease;
+    private readonly DockerComposeExecution.Lease<IDockerComposeService> lease;
 
     public DockerComposeService(IHostEnvironment environment, IOptions<DockerComposeOptions> options)
         : this(environment, options, DockerComposeExecution.Shared) { }

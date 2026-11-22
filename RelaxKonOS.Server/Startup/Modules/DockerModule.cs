@@ -51,7 +51,9 @@ internal class DockerModule : IServerModule, IServerModuleDeactivationGuard, ISe
         // Engine lifecycle control reuses the same platform split as the proxy configurator: a systemd
         // unit driven through the privileged Helper, or the Docker Desktop CLI.
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineHostController, RelaxKonOS.Server.Docker.DockerEngineHostController>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineControlService, RelaxKonOS.Server.Docker.DockerEngineControlService>();
+        builder.Services.AddSingleton<IDockerEngineControlService>(services => new DockerEngineControlService(
+            services.GetRequiredService<IDockerEngineHostController>(), services.GetRequiredService<IDockerEngineService>(),
+            services.GetRequiredService<ILogger<DockerEngineControlService>>()) { Execution = Execution });
     }
 
     /// <summary>

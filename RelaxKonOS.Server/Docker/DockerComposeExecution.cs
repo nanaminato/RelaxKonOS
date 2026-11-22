@@ -37,7 +37,9 @@ internal sealed class DockerComposeExecution
 
     internal WeakReference? CurrentCode { get { lock (gate) return current?.Code; } }
 
-    internal Lease Acquire(string dataDirectory)
+    internal Lease<IDockerComposeService> Acquire(string dataDirectory) => Acquire<IDockerComposeService>(EntryType, dataDirectory);
+
+    internal Lease<T> Acquire<T>(string entryType, object argument) where T : class
     {
         lock (gate)
         {
@@ -45,9 +47,10 @@ internal sealed class DockerComposeExecution
             current ??= Load();
             try
             {
-                var executor = (IDockerComposeService)Activator.CreateInstance(current.Executor, dataDirectory)!;
+                var type = current.Assembly.GetType(entryType, throwOnError: true)!;
+                var executor = (T)Activator.CreateInstance(type, argument)!;
                 active++;
-                return new Lease(this, executor);
+                return new Lease<T>(this, executor);
             }
             catch (Exception)
             {
@@ -70,8 +73,8 @@ internal sealed class DockerComposeExecution
         try
         {
             using var stream = File.OpenRead(path);
-            var executor = context.LoadFromStream(stream).GetType(EntryType, throwOnError: true)!;
-            return new Generation(context, executor, code);
+            var assembly = context.LoadFromStream(stream);
+            return new Generation(context, assembly, code);
         }
         catch (Exception)
         {
@@ -120,10 +123,10 @@ internal sealed class DockerComposeExecution
         }
     }
 
-    internal sealed class Lease(DockerComposeExecution owner, IDockerComposeService executor) : IDisposable
+    internal sealed class Lease<T>(DockerComposeExecution owner, T executor) : IDisposable where T : class
     {
-        private IDockerComposeService? executor = executor;
-        internal IDockerComposeService Executor => executor ?? throw new ObjectDisposedException(nameof(Lease));
+        private T? executor = executor;
+        internal T Executor => executor ?? throw new ObjectDisposedException(nameof(Lease<T>));
 
         internal void RequireRecovery()
         {
@@ -141,7 +144,7 @@ internal sealed class DockerComposeExecution
         }
     }
 
-    private sealed record Generation(ExecutionLoadContext Context, Type Executor, WeakReference Code);
+    private sealed record Generation(ExecutionLoadContext Context, Assembly Assembly, WeakReference Code);
 
     private sealed class ExecutionLoadContext() : AssemblyLoadContext($"docker-compose:{Guid.NewGuid():N}", isCollectible: true)
     {
