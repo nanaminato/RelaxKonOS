@@ -112,6 +112,35 @@ internal static class JointDeploymentAcceptance
             JointAppDeploymentService Service() => new(factory, auth, installer, packages, applications, new(journalPath));
             var candidate = await installer.InspectLocalAsync(packagePath);
             var joint = Service();
+            const string prerequisiteId = "fixture.prerequisite";
+            var prerequisitePath = Path.Combine(root, "prerequisite.roapp");
+            await RewriteDesktopArchiveAsync(archive, prerequisitePath, manifest => manifest["id"] = prerequisiteId);
+            await installer.InstallAsync(await installer.InspectLocalAsync(prerequisitePath));
+            var mixedPath = Path.Combine(root, "mixed.roapp");
+            await RewriteDesktopArchiveAsync(packagePath, mixedPath, manifest =>
+            {
+                manifest["id"] = "fixture.mixed";
+                manifest["dependencies"]!["required"]!.AsArray().Add(new JsonObject
+                {
+                    ["package"] = new JsonObject { ["kind"] = (int)DeploymentPackageKind.Application, ["id"] = prerequisiteId },
+                });
+            });
+            var mixedCandidate = await installer.InspectLocalAsync(mixedPath);
+            var mixed = await joint.PrepareAsync(mixedCandidate, [], default);
+            Require(mixed.Plan.OrderedReleases.Select(release => release.Package.Id)
+                    .SequenceEqual([ModuleId, prerequisiteId, mixedCandidate.Manifest.Id]),
+                "the mixed plan orders the module before the local prerequisite");
+            factory.BeforeNextRequest = () => packages.UninstallAsync(prerequisiteId);
+            try
+            {
+                await joint.ExecuteAsync(mixed, default);
+                throw new InvalidOperationException("the mixed plan accepted a removed prerequisite");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-client-dependency-changed") { }
+            Require(!applications.IsRegistered(new AppId(prerequisiteId))
+                && ModulePackageOperationStore.Read(serverRoot).Count == 0,
+                "removing a local prerequisite during snapshot observation prevents the module operation");
+
             var optional = candidate.Manifest.Dependencies!.Optional.Single();
             var requestsBeforeInvalidSelection = factory.Requests;
             try
@@ -620,6 +649,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteInstalledDigest { get => handler.SubstituteInstalledDigest; set => handler.SubstituteInstalledDigest = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
+        public Func<Task>? BeforeNextRequest { set => handler.BeforeNextRequest = value; }
         public Task HoldNextEnableApply()
         {
             handler.EnableEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -651,10 +681,14 @@ internal static class JointDeploymentAcceptance
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
+        public Func<Task>? BeforeNextRequest { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests++;
+            var before = BeforeNextRequest;
+            BeforeNextRequest = null;
+            if (before is not null) await before();
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
             if (SubstituteInstalledDigest && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.InstalledPackages)
