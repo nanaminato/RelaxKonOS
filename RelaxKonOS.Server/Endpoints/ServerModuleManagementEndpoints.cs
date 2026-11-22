@@ -413,7 +413,8 @@ internal static class ServerModuleManagementEndpoints
                 context.Configuration, context.Environment, plan.SourceId, path, plan.ReleaseId, now, cancellationToken);
             if (record.Runtime == "module-host" && (!live || ModuleTrustStore.Read(context.ContentRootPath, record)?.Trusted != true))
                 ModuleTrustStore.Set(context.ContentRootPath, record, actor, trusted: true);
-            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record, previous?.Version, now, online: live);
+            var action = previous is not null && previous.Version != record.Version ? "update" : "install";
+            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, action, record, previous?.Version, now, online: live);
             if (live)
                 ModulePackageOperationStore.Update(context.ContentRootPath, operation.OperationId, ModulePackageOperationState.Succeeded,
                     null, http.RequestServices.GetService<ModuleManagementStore>()?.ProcessGeneration, DateTimeOffset.UtcNow);

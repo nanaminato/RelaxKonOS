@@ -166,27 +166,42 @@ internal static class TailscaleBoundaryChecks
                 "Fresh scoped grant checks are disposed and denied work reaches no external Helper action");
 
             await VerifyFailedJournalOpenAsync(root, f.App.Services.GetRequiredService<IDataProtectionProvider>(), Check);
+            Check(await VerifySignedExecutionPackageAsync(root, "2.0.0"), "The second signed package version installs alongside version one");
+            var pendingUpdate = await f.DescribeAsync();
+            Check(pendingUpdate is { EffectiveVersion: "1.0.0", InstalledVersion: "2.0.0", DesiredVersion: "2.0.0", RestartRequired: true },
+                "Before restart inventory distinguishes the live Tailscale version from the installed update");
+            await using var updated = new Fixture(root);
+            Check(await updated.DescribeAsync() is { EffectiveVersion: "2.0.0", RestartRequired: false }
+                && (await updated.Control.GetAsync(f.Principal, controlRequest.OperationId, default)).State == TailscaleOperationState.Applied,
+                "The next Core generation runs version two and reads the original control receipt");
+            await InstalledModuleInstaller.RollbackAsync(root, updated.App.Configuration, ModuleId, "1.0.0");
+            Check(await updated.DescribeAsync() is { EffectiveVersion: "2.0.0", DesiredVersion: "1.0.0", RestartRequired: true },
+                "A rollback preserves the effective version until Core restarts");
+            await using var restored = new Fixture(root);
+            Check(await restored.DescribeAsync() is { EffectiveVersion: "1.0.0", RestartRequired: false }
+                && (await restored.Control.GetAsync(f.Principal, controlRequest.OperationId, default)).State == TailscaleOperationState.Applied,
+                "The restored version serves the same durable receipt");
             GC.KeepAlive(kept); GC.KeepAlive(challenge);
             Console.WriteLine($"Tailscale boundary checks passed: {count}");
         }
         finally { Directory.Delete(root, true); }
     }
 
-    private static async Task<bool> VerifySignedExecutionPackageAsync(string root)
+    private static async Task<bool> VerifySignedExecutionPackageAsync(string root, string version = "1.0.0")
     {
         const string assemblyName = "RelaxKonOS.ServerModule.Tailscale.dll";
         const string entryType = "RelaxKonOS.ServerModule.Tailscale.TailscaleExecution";
         var publish = Path.Combine(root, "package-publish");
         Directory.CreateDirectory(publish);
         File.Copy(Path.Combine(AppContext.BaseDirectory, "Modules", "Tailscale", assemblyName),
-            Path.Combine(publish, assemblyName));
+            Path.Combine(publish, assemblyName), overwrite: true);
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var keyPath = Path.Combine(root, "package-key.pem");
         await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
         var rid = ModulePackagePlatform.CurrentRid;
         var now = DateTimeOffset.UtcNow;
         var options = new ModulePackageBuildOptions(publish, Path.Combine(root, "package-output"), ModuleId,
-            "1.0.0", "tailscale-boundary-" + rid, "boundary-fixture", "official", rid, assemblyName, entryType,
+            version, $"tailscale-boundary-{version}-{rid}", "boundary-fixture", "official", rid, assemblyName, entryType,
             "tailscale-boundary", new string('a', 40), "boundary-source", 1,
             "https://modules.example/", keyPath, "boundary-key", 3600, Capabilities: [ServerCapabilities.Tailscale]);
         var result = await ModulePackageBuilder.BuildAsync(options, now);
@@ -285,6 +300,10 @@ internal static class TailscaleBoundaryChecks
         internal ITailscaleControl Control { get; }
         internal ITailscaleLogin Login { get; }
         internal Guid HostId => App.Services.GetRequiredService<ServerRuntimeSettingsStore>().Current.InstanceId;
+        private readonly ServerModules _modules;
+        private readonly ServerModuleContext _context;
+        internal async Task<ServerModuleDto> DescribeAsync() =>
+            (await _modules.DescribeAsync(App.Services, _context, default)).Single(module => module.Id == ModuleId);
         internal Fixture(string root)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root }); builder.Logging.ClearProviders();
@@ -294,8 +313,9 @@ internal static class TailscaleBoundaryChecks
             builder.Services.AddSingleton(new ServerRuntimeSettingsStore(Path.Combine(root, "settings.json")));
             builder.Services.AddSingleton<IPrivilegedOperationTransport>(Transport);
             builder.Services.AddScoped<IHostElevationSessionStore>(_ => new ScopedGrants(Grants));
-            var modules = ServerModules.CreateManaged(new HashSet<string> { ModuleId }, InstalledModuleCatalog.Load(root));
-            modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+            _modules = ServerModules.CreateManaged(new HashSet<string> { ModuleId }, InstalledModuleCatalog.Load(root));
+            _context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+            _modules.ConfigureServices(builder, _context);
             App = builder.Build(); Manager = App.Services.GetRequiredService<ITailscaleManager>(); Control = App.Services.GetRequiredService<ITailscaleControl>(); Login = App.Services.GetRequiredService<ITailscaleLogin>();
         }
         public ValueTask DisposeAsync() => App.DisposeAsync();

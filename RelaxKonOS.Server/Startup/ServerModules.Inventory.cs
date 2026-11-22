@@ -35,12 +35,11 @@ internal sealed partial class ServerModules
         var inventory = new List<ServerModuleDto>(all.Length);
         var hosts = services.GetService<ModuleHostSupervisor>();
         var hostStatuses = hosts?.Snapshot().ToDictionary(host => host.ModuleId, StringComparer.Ordinal);
-        var currentPackages = !all.Any(module => module is IInstalledModuleInfo) ? null : InstalledModuleStore.Read(context.ContentRootPath)
+        var currentPackages = InstalledModuleStore.Read(context.ContentRootPath)
             .ToDictionary(record => record.ModuleId, StringComparer.Ordinal);
-        all = all.Where(module => module is not IInstalledModuleInfo || currentPackages?.ContainsKey(module.Id) == true).ToArray();
+        all = all.Where(module => module is not IInstalledModuleInfo || currentPackages.ContainsKey(module.Id)).ToArray();
         foreach (var module in all)
         {
-            if (module is IInstalledModuleInfo && currentPackages?.ContainsKey(module.Id) != true) continue;
             var isEnabled = enabled.Contains(module);
             // A disabled module cannot be holding live work: that would have failed the startup gate.
             IReadOnlyList<ServerModuleOrphanedWork> work;
@@ -70,21 +69,26 @@ internal sealed partial class ServerModules
             var recoveryRequired = runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
             var installed = module as IInstalledModuleInfo;
             var host = hostStatuses?.GetValueOrDefault(module.Id);
-            var package = module is InstalledIsolatedModule ? currentPackages?.GetValueOrDefault(module.Id) : null;
+            var package = module is InstalledIsolatedModule || module.Id == Modules.TailscaleModule.ModuleId
+                ? currentPackages.GetValueOrDefault(module.Id) : null;
             var moduleVersion = package?.Version ?? installed?.InstalledVersion ?? version;
+            var tailscaleRestart = module.Id == Modules.TailscaleModule.ModuleId && package is not null
+                && package.ArtifactSha256 != installed?.ArtifactDigest;
             var effectiveVersion = module is InstalledIsolatedModule
                 ? host is { Status: "running" } ? host.Version : null
-                : isEnabled ? moduleVersion : null;
+                : isEnabled ? installed?.InstalledVersion ?? version : null;
             inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
                 runtime,
-                DesiredEnabled: desired.Contains(module.Id), Packaging: installed is null ? "bundled" : "independent",
+                DesiredEnabled: desired.Contains(module.Id), Packaging: installed is null && package is null ? "bundled" : "independent",
                 InstalledVersion: moduleVersion, DesiredVersion: moduleVersion, EffectiveVersion: effectiveVersion,
                 ArtifactDigest: package?.ArtifactSha256 ?? installed?.ArtifactDigest ?? HostDigest.Value,
-                SourceId: package?.SourceId ?? installed?.SourceId ?? "server-release", TrustState: installed?.TrustState ?? "host",
+                SourceId: package?.SourceId ?? installed?.SourceId ?? "server-release",
+                TrustState: module.Id == Modules.TailscaleModule.ModuleId && package is not null
+                    ? package.Quarantined ? "quarantined" : "installed" : installed?.TrustState ?? "host",
                 ServiceId: management?.ServiceId, ProcessGeneration: management?.ProcessGeneration,
                 DesiredRevision: managementState?.Revision, EffectiveRevision: management?.EffectiveRevision,
-                RestartRequired: desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
+                RestartRequired: tailscaleRestart || desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
                 PendingOperationId: managementState?.PendingOperations.TryGetValue(module.Id, out var pendingId) == true ? pendingId : null,
                 RecoveryState: management?.RecoveryMode == true ? "host-recovery" : recoveryRequired ? "required" : "none",
                 ConfigurationOwner: management?.Writable == true ? "managed" : "deployment",
