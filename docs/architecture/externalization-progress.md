@@ -385,3 +385,4 @@
 - 一次性 Ubuntu 容器从无 installed.json 和代码信任的状态验证 Databases 首次在线安装。控制端上传签名归档、冻结并应用计划，包记录与代码信任均绑定同一 SHA-256。Core 重启后由固定 sudo 启动器监督模块，在线操作回执为 Succeeded，真实观察者经 Helper 的四个 GET 均返回 200。尚未从实际桌面协调器跨设备调用该流程。
 - 桌面模块管理客户端接受 Core 已发布的 ModuleHost 生命周期健康状态，包括 blocked、starting、draining、stopping、stopped、faulted 与 disabled。Windows 本机 HTTP 回归验证包含缺少代码信任条目的健康报告仍可读取。
 - Ubuntu 临时容器安装并启动实际 PostgreSQL 16 系统包。通过在线安装后的 Databases 模块与真实 Helper，观察者状态查询返回 database.external_installation 且 managed=false，维护与迁移计划返回 503。验收前后均能通过 psql 查询外部实例。容器使用 pg_ctlcluster 启动并提供 systemd 目录标记，受管实例及真正 systemd 服务生命周期仍待验。
+- 联合部署只在独立模块的运行版本与活跃安装记录一致，且 SHA-256 与模块清单一致时复用该模块。Windows HTTP 回归验证摘要不一致时不会生成已满足的候选。

@@ -245,6 +245,11 @@ internal static class JointDeploymentAcceptance
                 factory.HideEffectiveVersion = false;
                 var moduleCatalog = new ModuleDeploymentCatalog(new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth));
                 var healthy = await moduleCatalog.ReadAsync(default);
+                factory.SubstituteInventoryDigest = true;
+                var mismatched = await moduleCatalog.ReadAsync(default);
+                Require(!mismatched.Releases.Any(release => release.Package.Id == ModuleId && release.Satisfied),
+                    "a running independent module with a mismatched installed digest is not reusable");
+                factory.SubstituteInventoryDigest = false;
                 factory.FaultedModule = ModuleId;
                 Require(await readiness.RefreshAsync(manifest) is
                     { CanOpen: false, State: ComponentAvailabilityKind.Recovery, ComponentId: ModuleId },
@@ -543,6 +548,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteHealthVersion { get => handler.SubstituteHealthVersion; set => handler.SubstituteHealthVersion = value; }
         public bool SubstituteBlockedHealth { get => handler.SubstituteBlockedHealth; set => handler.SubstituteBlockedHealth = value; }
         public bool HideEffectiveVersion { get => handler.HideEffectiveVersion; set => handler.HideEffectiveVersion = value; }
+        public bool SubstituteInventoryDigest { get => handler.SubstituteInventoryDigest; set => handler.SubstituteInventoryDigest = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
         public Task HoldNextEnableApply()
@@ -571,6 +577,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteHealthVersion { get; set; }
         public bool SubstituteBlockedHealth { get; set; }
         public bool HideEffectiveVersion { get; set; }
+        public bool SubstituteInventoryDigest { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
@@ -614,7 +621,7 @@ internal static class JointDeploymentAcceptance
                 };
             }
             if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules
-                && (FaultedModule is not null || HideEffectiveVersion))
+                && (FaultedModule is not null || HideEffectiveVersion || SubstituteInventoryDigest))
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
@@ -624,6 +631,7 @@ internal static class JointDeploymentAcceptance
                     Content = JsonContent.Create(modules!.Select(module => module.Id == FaultedModule
                         ? module with { Residency = new("faulted", false, "KeepLoaded", 0, 0, null, null, null, "fixture", null) }
                         : HideEffectiveVersion && module.Id == ModuleId ? module with { EffectiveVersion = null }
+                        : SubstituteInventoryDigest && module.Id == ModuleId ? module with { ArtifactDigest = new string('0', 64) }
                         : module).ToArray(), options: RelaxKonOSJsonOptions.Default),
                 };
             }

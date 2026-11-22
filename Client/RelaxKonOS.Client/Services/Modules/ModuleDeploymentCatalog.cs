@@ -70,9 +70,18 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             var effectiveVersion = EffectivePackageVersion(module);
             if (!IsEffective(module) || effectiveVersion is null)
                 continue;
-            var identity = package is { Active: true, Quarantined: false } && package.Version == module.EffectiveVersion
-                ? Identity(package.SourceId, package.ReleaseId, package.ArtifactSha256)
-                : module.ArtifactDigest ?? $"bundled/{module.Id}/{module.EffectiveVersion}";
+            string identity;
+            if (module.Packaging == "independent")
+            {
+                if (package is not { Active: true, Quarantined: false } || package.Version != module.EffectiveVersion
+                    || package.ArtifactSha256 != module.ArtifactDigest)
+                    continue;
+                identity = Identity(package.SourceId, package.ReleaseId, package.ArtifactSha256);
+            }
+            else
+            {
+                identity = module.ArtifactDigest ?? $"bundled/{module.Id}/{module.EffectiveVersion}";
+            }
             var dependencies = store.TryGetValue(identity, out var signedRelease)
                 ? signedRelease.Dependencies.Select(ToRequirement)
                 : module.Requires.Select(id => new DeploymentRequirement(Key(id)));
