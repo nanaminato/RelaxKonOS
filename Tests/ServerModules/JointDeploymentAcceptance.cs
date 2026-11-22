@@ -675,6 +675,7 @@ internal static class JointDeploymentAcceptance
                 entryAssembly, entryType, "joint-execution", new string('a', 40), "official", 1,
                 "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability, .. additionalCapabilities ?? []],
                 Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
+            ModulePackageBuildResult? incompatible = null;
             if (moduleId == ServerModules.ProxyId)
             {
                 var incompatibleSource = Directory.CreateDirectory(Path.Combine(root, "incompatible-proxy")).FullName;
@@ -683,7 +684,7 @@ internal static class JointDeploymentAcceptance
                 if (name < 0) throw new InvalidOperationException("The fixture could not find the queued executor type name.");
                 bytes[name] = (byte)'X';
                 await File.WriteAllBytesAsync(Path.Combine(incompatibleSource, entryAssembly), bytes);
-                var incompatible = await ModulePackageBuilder.BuildAsync(new(incompatibleSource,
+                incompatible = await ModulePackageBuilder.BuildAsync(new(incompatibleSource,
                     Path.Combine(root, "incompatible-module"), moduleId, "98.0.0", "incompatible-proxy-" + rid,
                     "fixture", "official", rid, entryAssembly, entryType, "joint-execution", new string('a', 40),
                     "official", 1, "https://modules.example/", key, "fixture-key", 3600,
@@ -810,6 +811,31 @@ internal static class JointDeploymentAcceptance
             Require(apps.IsRegistered(new AppId(installed.Id)) && InstalledModuleStore.Read(serverRoot).Single() is { Version: version }
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                 $"after restart the desktop registers {moduleId} against the signed execution package without resubmitting installation");
+            if (incompatible is not null)
+            {
+                var active = InstalledModuleStore.Read(serverRoot).Single();
+                var prior = active with
+                {
+                    Version = incompatible.Manifest.Version,
+                    ReleaseId = incompatible.Manifest.ReleaseId,
+                    PackagePath = $"packages/{moduleId}/{incompatible.Manifest.Version}",
+                    ManifestSha256 = incompatible.ManifestSha256,
+                    ArtifactSha256 = incompatible.ArchiveSha256,
+                };
+                var priorRoot = Path.Combine(serverRoot, "data", "module-management", prior.PackagePath);
+                ZipFile.ExtractToDirectory(incompatible.ArchivePath, priorRoot);
+                InstalledModuleStore.WriteInstallMetadata(priorRoot, prior);
+                try
+                {
+                    await InstalledModuleInstaller.RollbackAsync(serverRoot, config, moduleId, prior.Version);
+                    throw new InvalidOperationException("Rollback accepted the incompatible Proxy execution package.");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                {
+                    Require(InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == active.ArtifactSha256,
+                        "an incompatible historical Proxy version cannot displace the active version during rollback");
+                }
+            }
             await verifyBusiness(host, root);
             var verifySharedProxy = moduleId == ServerModules.ProxyId && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SHARED_APPS") == "1";
             if (verifySharedProxy)

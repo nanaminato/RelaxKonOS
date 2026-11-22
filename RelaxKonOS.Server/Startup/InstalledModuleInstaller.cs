@@ -143,7 +143,7 @@ internal static class InstalledModuleInstaller
                 if (staged.ArtifactSha256 == artifactSha256 && staged.ManifestSha256 == manifestSha256
                     && staged.SourceId == sourceId)
                 {
-                    InstalledModuleStore.VerifyPackage(contentRoot, staged);
+                    VerifyExecutionContract(destination, InstalledModuleStore.VerifyPackage(contentRoot, staged));
                     return staged;
                 }
             }
@@ -195,11 +195,7 @@ internal static class InstalledModuleInstaller
                 }
                 if (seen.Count != files.Count) throw new ModulePackageException("module-package-archive-file-set");
             }
-            if (InstalledProxyModule.MatchesManifest(manifest))
-            {
-                try { InstalledProxyModule.VerifyStagedExecution(Path.Combine(staging, manifest.EntryAssembly)); }
-                catch (InvalidDataException) { throw new ModulePackageException("module-package-execution-contract"); }
-            }
+            VerifyExecutionContract(staging, manifest);
 
             var record = new InstalledModuleRecord(manifest.ModuleId, manifest.Version, manifest.ReleaseId, sourceId,
                 manifest.PublisherId, artifactSha256, manifestSha256, packagePath, manifest.EntryAssembly, manifest.EntryType,
@@ -240,9 +236,17 @@ internal static class InstalledModuleInstaller
         ModulePackageCatalogStore.EnsureInstalledReleaseNotRevoked(contentRoot, target);
         var manifest = InstalledModuleStore.VerifyPackage(contentRoot, target);
         ValidateDependencies(contentRoot, configuration, manifest);
+        VerifyExecutionContract(InstalledModuleStore.ResolvePackageRoot(contentRoot, target.PackagePath), manifest);
         modules[index] = target;
         InstalledModuleStore.Write(contentRoot, modules);
         return Task.FromResult(target);
+    }
+
+    private static void VerifyExecutionContract(string packageRoot, ModulePackageManifest manifest)
+    {
+        if (!InstalledProxyModule.MatchesManifest(manifest)) return;
+        try { InstalledProxyModule.VerifyStagedExecution(Path.Combine(packageRoot, manifest.EntryAssembly)); }
+        catch (InvalidDataException) { throw new ModulePackageException("module-package-execution-contract"); }
     }
 
     private static async Task<byte[]> ReadBoundedAsync(ZipArchiveEntry entry, int limit, CancellationToken cancellationToken)
