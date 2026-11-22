@@ -14,6 +14,7 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.ImageMirrors;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
@@ -472,6 +473,7 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);
+                await VerifyRestoredWebServerAsync(root, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
                 var mirrorOwner = Guid.NewGuid();
                 var mirrors = new InMemoryImageMirrorRepository();
@@ -528,6 +530,44 @@ internal static class ModulePackageHttpChecks
             try { Directory.Delete(root, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private static async Task VerifyRestoredWebServerAsync(string root, Action<bool, string> check)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        var installed = InstalledModuleCatalog.Load(root);
+        var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.WebServerId, ServerModules.CertificatesId }, installed);
+        var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+        modules.ConfigureServices(builder, context);
+        await using var host = builder.Build();
+        var execution = host.Services.GetRequiredService<WebServerExecutionCode>();
+        check(!ReferenceEquals(execution, WebServerExecutionCode.Shared), "the restored Web Server module registers its installed execution loader");
+        var ports = new WebServerReloadProbe();
+        using var lease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", ports);
+        check(await lease.Executor.ReloadAsync(default) == "" && ports.Confirmed,
+            "the restored signed Web Server executor confirms an observed reload through its narrow port");
+        ports.Confirmed = false;
+        ports.DirectSuccess = false;
+        check(await lease.Executor.ReloadAsync(default) == NginxReloadOutcome.RecoveryRequired && !ports.Confirmed,
+            "the signed reload executor requests recovery when completion cannot be verified");
+    }
+
+    private sealed class WebServerReloadProbe : INginxReloadPorts
+    {
+        public Guid OperationId { get; } = Guid.NewGuid();
+        public bool UsesSystemPackage => false;
+        public bool Confirmed { get; set; }
+        public bool DirectSuccess { get; set; } = true;
+        public Task ReportDispatchAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ReportResponseAsync(bool confirmed)
+        {
+            Confirmed = confirmed;
+            return Task.CompletedTask;
+        }
+        public Task<PrivilegedOperationResult> RunTrackedAsync(Guid operationId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("The direct reload must not use the system package Helper port.");
+        public Task<bool> RunDirectAsync(CancellationToken cancellationToken) => Task.FromResult(DirectSuccess);
+        public string ToReloadProblem(PrivilegedProblemCode problem) => throw new InvalidOperationException();
     }
 
     private static async Task VerifyLiveComposeAsync(IDockerComposeService compose, DockerStackOperationCoordinator coordinator,
