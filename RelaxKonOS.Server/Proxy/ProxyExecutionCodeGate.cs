@@ -32,18 +32,24 @@ internal sealed class ProxyExecutionCodeGate(string purpose, Func<string>? resol
 
         internal T Create<T>(string name, params object[] args)
         {
+            var code = owner ?? throw new ObjectDisposedException(nameof(Lease));
             try
             {
-                var code = owner ?? throw new ObjectDisposedException(nameof(Lease));
                 if (assembly is null)
                 {
                     using var stream = File.OpenRead(path);
                     assembly = code.LoadFromStream(stream);
                 }
+            }
+            catch (Exception) { throw new InvalidDataException($"Proxy execution assembly could not be loaded for entry '{name}'."); }
+
+            try
+            {
                 var type = assembly.GetType(name, throwOnError: true)!;
                 return (T)Activator.CreateInstance(type, args)!;
             }
-            catch (Exception) { throw new InvalidDataException("Proxy execution could not be activated."); }
+            catch (TypeLoadException) { throw new InvalidDataException($"Proxy execution entry '{name}' could not be loaded."); }
+            catch (Exception) { throw new InvalidDataException($"Proxy execution entry '{name}' could not be activated."); }
         }
 
         public void Dispose()

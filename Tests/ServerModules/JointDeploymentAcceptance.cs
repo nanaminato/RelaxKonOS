@@ -508,6 +508,20 @@ internal static class JointDeploymentAcceptance
         var manifest = InstalledModuleStore.VerifyPackage(serverRoot, installed);
         var packageRoot = InstalledModuleStore.ResolvePackageRoot(serverRoot, installed.PackagePath);
         var subscriptions = new ProxyExecutionCodeGate("joint-subscription", () => Path.Combine(packageRoot, manifest.EntryAssembly));
+        using (var missingCode = subscriptions.Acquire())
+        {
+            const string missingEntry = "RelaxKonOS.Server.Proxy.MissingAcceptanceEntry";
+            try
+            {
+                missingCode.Create<IProxySubscriptionNormalizer>(missingEntry);
+                throw new InvalidOperationException("A missing signed execution entry was accepted.");
+            }
+            catch (InvalidDataException error)
+            {
+                Require(error.Message == $"Proxy execution entry '{missingEntry}' could not be loaded." && error.InnerException is null,
+                    "a signed Proxy entry load failure identifies the entry without retaining its execution context");
+            }
+        }
         const string yaml = "proxies: []\nrules: [MATCH,DIRECT]\n";
         var encoded = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(yaml)));
         var normalized = await subscriptions.ReadAsync(new MemoryStream(encoded), default);
