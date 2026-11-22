@@ -810,3 +810,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的 --signed-tailscale-joint-acceptance 使用官方 .roapp 测试副本，仅提高最低模块版本至 99.0.0。协调器完成真实签名归档单次安装，Core 重启续跑后登记桌面应用。通过已安装模块的运行时工厂在可回收加载上下文实例化控制服务。卸载桌面应用后服务端包仍保留。真实 tailscaled 联调仍待验。
 - Linux x64 自包含 Tailscale 双包及随附模块联合验收均通过。独立签名包在重启后用可回收上下文实例化控制服务，桌面一次安装并在卸载后保留服务端包。随附模块通过仅启用、重启续跑、复用及释放依赖登记。WSL 未发现 tailscaled，Windows 已有 CLI，真实业务路径仍待验。
 - Windows Release 签名 Tailscale 双包验收通过重启后的控制读取。可回收程序集内的控制服务通过生产 Helper 适配器发送一次 TailscaleControlRead，并返回测试传输的快照。测试使用认证观察者，传输仅允许读取。真实 Helper 与 tailscaled 未覆盖。
+- Windows Release 签名 Tailscale 双包控制读取改走生产 HTTP 路由及模块驻留协调器。匿名请求返回 401 且未调用 Helper，认证观察者取得测试传输的控制快照，生产 Helper 适配器仅发送一次只读请求。真实 Helper 与 tailscaled 仍待验。

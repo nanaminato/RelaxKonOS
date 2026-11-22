@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 using System.IO.Compression;
@@ -63,20 +62,17 @@ internal static class JointDeploymentAcceptance
         "relaxkonos.tailscale", ServerCapabilities.Tailscale, "Tailscale", RelaxKonOS.Server.Tailscale.CollectibleTailscaleExecution.AssemblyFile,
         RelaxKonOS.Server.Tailscale.CollectibleTailscaleExecution.EntryType, null, VerifySignedTailscaleAsync));
 
-    private static async Task VerifySignedTailscaleAsync(TestHost host, string root)
+    private static async Task VerifySignedTailscaleAsync(TestHost host, string _)
     {
-        var installed = InstalledModuleCatalog.Load(Path.Combine(root, "server")).OfType<InstalledTailscaleModule>().Single();
-        var context = host.Services.GetRequiredService<ServerModuleContext>();
-        await using var runtime = await installed.RuntimeFactory.CreateAsync(host.Services, context, default);
-        var control = (RelaxKonOS.Server.Tailscale.ITailscaleControl)runtime.Resolve(typeof(RelaxKonOS.Server.Tailscale.ITailscaleControl));
-        Require(control.GetType().Assembly.GetName().Name == "RelaxKonOS.ServerModule.Tailscale"
-            && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(control.GetType().Assembly)?.IsCollectible == true,
-            "the joint-installed signed Tailscale package constructs its control service in a collectible context");
-        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", ModuleTestAuthentication.Observer)], "fixture"));
-        var snapshot = await control.ReadAsync(principal, default);
+        using var client = new HttpClient { BaseAddress = new Uri(host.Url) };
         var helper = (TailscaleReadHelper)host.Services.GetRequiredService<IPrivilegedOperationTransport>();
+        using var anonymous = await client.GetAsync(TailscaleEndpoints.Control);
+        Require(anonymous.StatusCode == System.Net.HttpStatusCode.Unauthorized && helper.ReadCount == 0,
+            "anonymous Tailscale control reads are rejected before reaching Helper");
+        client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
+        var snapshot = await client.GetFromJsonAsync<TailscaleControlSnapshot>(TailscaleEndpoints.Control, RelaxKonOSJsonOptions.Default);
         Require(snapshot == TailscaleReadHelper.Snapshot && helper.ReadCount == 1,
-            "the installed signed Tailscale control service reads through the production Helper adapter");
+            "the HTTP control route reads through the joint-installed Tailscale executor and production Helper adapter");
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
@@ -1395,18 +1391,21 @@ internal static class JointDeploymentAcceptance
                     options.UseSqlite($"Data Source={Path.Combine(root, "git-test.sqlite")};Pooling=False"));
                 builder.Services.AddSingleton(DispatchProxy.Create<IGitRepositoryHost, GitEngineProbeHost>());
             }
-            if (online.Any(module => module.Id == "relaxkonos.tailscale"))
+            var hasTailscale = online.Any(module => module.Id == "relaxkonos.tailscale");
+            if (hasTailscale)
             {
                 builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
                     new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+                ServerModules.CreateManaged(new HashSet<string> { "relaxkonos.tailscale" }, installed).ConfigureServices(builder, context);
                 if (!hasTunnels)
                     builder.Services.AddSingleton(DispatchProxy.Create<IHostElevationSessionStore, GitRepositoryAssemblyChecks.RejectTransport>());
             }
-            foreach (var module in online.Where(module => module.Id != ServerModules.GitId)) module.ConfigureServices(builder, context);
+            foreach (var module in online.Where(module => module.Id is not (ServerModules.GitId or "relaxkonos.tailscale")))
+                module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
             builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
-            if (online.Any(module => module.Id == "relaxkonos.tailscale"))
+            if (hasTailscale)
                 builder.Services.AddSingleton<IPrivilegedOperationTransport, TailscaleReadHelper>();
             else
                 builder.Services.AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>();
