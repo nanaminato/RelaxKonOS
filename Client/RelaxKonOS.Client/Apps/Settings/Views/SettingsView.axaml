@@ -14,19 +14,6 @@
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
             <Setter Property="BorderThickness" Value="2" />
         </Style>
-        <Style Selector="Button.settings-link">
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="MinHeight" Value="64" />
-            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="16,12" />
-            <Setter Property="CornerRadius" Value="8" />
-        </Style>
-        <Style Selector="Button.settings-link:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
-        </Style>
     </UserControl.Styles>
     <UserControl.DataTemplates>
         <DataTemplate DataType="vm:PersonalizationColorsPageViewModel">
@@ -43,45 +30,7 @@
         </DataTemplate>
 
         <DataTemplate DataType="vm:SettingsHomePageViewModel">
-                <StackPanel Spacing="16" HorizontalAlignment="Stretch">
-                    <TextBlock Text="{loc:Loc settings.home.description}" TextWrapping="Wrap" Classes="subtle" />
-                    <TextBlock Text="{loc:Loc settings.home.quick_links}" IsVisible="{Binding HasEntries}" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock Text="{loc:Loc settings.home.pinned}" IsVisible="{Binding HasPinnedEntries}" FontSize="18" FontWeight="SemiBold" />
-                    <ItemsControl ItemsSource="{Binding PinnedEntries}" IsVisible="{Binding HasPinnedEntries}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SettingsPageViewModel">
-                                <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnQuickLinkClick">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-                                        <Viewbox Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center">
-                                            <Canvas Width="24" Height="24">
-                                                <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
-                                            </Canvas>
-                                        </Viewbox>
-                                        <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <ItemsControl ItemsSource="{Binding Entries}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SettingsPageViewModel">
-                                <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnQuickLinkClick">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-                                        <Viewbox Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center">
-                                            <Canvas Width="24" Height="24">
-                                                <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
-                                            </Canvas>
-                                        </Viewbox>
-                                        <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+            <settingsApp:SettingsHomePageView DataContext="{Binding Content}" RouteRequested="OnHomeRouteRequested" />
         </DataTemplate>
         <DataTemplate DataType="vm:AccountSecurityPageViewModel">
                 <pages:AccountSecurityPageView VerticalAlignment="Top" />

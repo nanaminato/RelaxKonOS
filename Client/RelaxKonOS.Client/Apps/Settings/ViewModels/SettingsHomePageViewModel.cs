@@ -1,3 +1,5 @@
+using RelaxKonOS.App.Settings;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
@@ -6,25 +8,27 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 public sealed class SettingsHomePageViewModel : SettingsPageViewModel
 {
     private readonly DesktopDevicePreferences _preferences;
-    private readonly IReadOnlyList<SettingsPageViewModel> _pages;
+
     public SettingsHomePageViewModel(ShellSettings settings, IReadOnlyList<SettingsPageViewModel> pages, DesktopDevicePreferences preferences)
         : base(settings, null)
     {
         _preferences = preferences;
-        _pages = pages;
+        Content = new(pages, () => preferences.Value.PinnedSettings, key => T(key, key));
         preferences.Changed += OnPinnedChanged;
-
     }
+
     public override string Route => "home";
     public override string DisplayNameKey => "settings.page.home";
     public override string DisplayName => "Home";
-    public IReadOnlyList<SettingsPageViewModel> Entries => _pages.Where(page =>
-        page.Route is "personalization" or "network" or "default-apps" or "time-language" or "account-security" or "system")
-        .Where(page => !_preferences.Value.PinnedSettings.Contains(page.Route)).ToArray();
-    public bool HasEntries => Entries.Count > 0;
-    public IReadOnlyList<SettingsPageViewModel> PinnedEntries => _preferences.Value.PinnedSettings
-        .Select(route => _pages.FirstOrDefault(page => page.Route == route)).OfType<SettingsPageViewModel>().ToArray();
-    public bool HasPinnedEntries => PinnedEntries.Count > 0;
-    private void OnPinnedChanged(object? sender, EventArgs e) { OnPropertyChanged(nameof(PinnedEntries)); OnPropertyChanged(nameof(HasPinnedEntries)); OnPropertyChanged(nameof(Entries)); OnPropertyChanged(nameof(HasEntries)); }
+    public SettingsHomePageContent Content { get; }
+
+    private void OnPinnedChanged(object? sender, EventArgs e) => Content.RefreshPinnedRoutes();
+
+    protected override void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
+    {
+        Content.RefreshLanguage();
+        base.OnLanguageChanged(sender, e);
+    }
+
     protected override void DisposeCore() => _preferences.Changed -= OnPinnedChanged;
 }

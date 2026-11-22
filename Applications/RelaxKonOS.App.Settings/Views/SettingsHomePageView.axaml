@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:settings="clr-namespace:RelaxKonOS.App.Settings"
+             xmlns:local="clr-namespace:RelaxKonOS.App.Settings.Views"
+             x:Class="RelaxKonOS.App.Settings.Views.SettingsHomePageView"
+             x:DataType="settings:SettingsHomePageContent">
+    <UserControl.Styles>
+        <Style Selector="Button.settings-link">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="MinHeight" Value="64" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="Button.settings-link:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+    </UserControl.Styles>
+    <UserControl.Resources>
+        <DataTemplate x:Key="RouteTemplate" x:DataType="settings:SettingsPageModel">
+            <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnRouteClick">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                    <Viewbox Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+        </DataTemplate>
+    </UserControl.Resources>
+    <StackPanel Spacing="16" HorizontalAlignment="Stretch">
+        <TextBlock Text="{local:Loc settings.home.description}" TextWrapping="Wrap" Classes="subtle" />
+        <TextBlock Text="{local:Loc settings.home.quick_links}" IsVisible="{Binding HasEntries}" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock Text="{local:Loc settings.home.pinned}" IsVisible="{Binding HasPinnedEntries}" FontSize="18" FontWeight="SemiBold" />
+        <ItemsControl ItemsSource="{Binding PinnedEntries}" IsVisible="{Binding HasPinnedEntries}" ItemTemplate="{StaticResource RouteTemplate}" />
+        <ItemsControl ItemsSource="{Binding Entries}" ItemTemplate="{StaticResource RouteTemplate}" />
+    </StackPanel>
+</UserControl>

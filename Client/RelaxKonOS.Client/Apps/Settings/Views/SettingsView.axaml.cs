@@ -195,7 +195,13 @@ public partial class SettingsView : UserControl
 
     private void OnQuickLinkClick(object? sender, Avalonia.Interactivity.RoutedEventArgs args)
     {
-        if (sender is Button { Tag: string route } && DataContext is SettingsViewModel model)
+        if (sender is Button { Tag: string route })
+            OnHomeRouteRequested(sender, route);
+    }
+
+    private void OnHomeRouteRequested(object? sender, string route)
+    {
+        if (DataContext is SettingsViewModel model)
         {
             var fromDrawer = NavigationDrawer.IsVisible;
             model.OpenPageCommand.Execute(route);
