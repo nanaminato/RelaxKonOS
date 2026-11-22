@@ -14,6 +14,8 @@ internal static class ModuleMaintenanceCommand
         {
             if (args.Length >= 2 && args[0] == "modules" && args[1] == "pack-package")
                 return await ModulePackageBuildCommand.RunAsync(args);
+            if (args.Length >= 2 && args[0] == "modules" && args[1] == "sign-catalog")
+                return await ModulePackageBuildCommand.SignCatalogAsync(args);
             if (args.Length >= 2 && args[0] == "modules" && args[1] is "verify-package" or "catalog-status" or "accept-catalog"
                     or "install-package" or "list-installed" or "list-versions" or "list-package-operations"
                     or "rollback-installed" or "remove-installed" or "host-probe")

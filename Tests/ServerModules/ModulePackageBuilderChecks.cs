@@ -114,6 +114,22 @@ internal static class ModulePackageBuilderChecks
                 && !Directory.EnumerateFiles(blockedOutput).Any(),
                 "pack-package rejects an incompatible bundled module replacement before writing signed artifacts");
 
+            var firstRelease = new ModulePackageRelease(result.Manifest, result.ManifestSha256, result.ArchiveSha256,
+                result.ArchiveBytes, options.ArtifactOrigin + Path.GetFileName(result.ArchivePath));
+            var secondRelease = await ModulePackageBuilder.BuildArchiveAsync(options with
+            { Version = "2.0.0", ReleaseId = "fixture-builder-2.0.0-" + rid });
+            var aggregate = new ModulePackageCatalog(1, options.SourceId, 2, now, now.AddHours(1), [firstRelease, secondRelease], [], []);
+            var payloadPath = Path.Combine(root, "aggregate-payload.json");
+            var policyPath = Path.Combine(root, "aggregate-policy.json");
+            var signedPath = Path.Combine(root, "aggregate-signed.json");
+            await File.WriteAllBytesAsync(payloadPath, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(aggregate, ModulePackageJson.Options));
+            await File.WriteAllBytesAsync(policyPath, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(policy, ModulePackageJson.Options));
+            exit = await ModuleMaintenanceCommand.RunAsync(["modules", "sign-catalog", "--payload", payloadPath,
+                "--policy", policyPath, "--private-key", keyPath, "--key-id", options.KeyId, "--output", signedPath]);
+            check(exit == 0 && ModulePackageVerifier.VerifyCatalog(await File.ReadAllBytesAsync(signedPath), policy, context,
+                    ModulePackageTrustHistory.Empty(policy, context), DateTimeOffset.UtcNow).Catalog.Releases.Length == 2,
+                "sign-catalog writes a verifiable aggregate for two immutable archives");
+
             var catalogBytes = System.Text.Encoding.UTF8.GetBytes("{\"schemaVersion\":1}");
             using var catalogHandler = new FixedHandler(catalogBytes);
             var fetched = await ModulePackageCatalogFetcher.FetchAsync("https://modules.example/catalog.json", catalogHandler);

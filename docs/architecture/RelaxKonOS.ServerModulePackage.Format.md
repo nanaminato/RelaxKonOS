@@ -102,6 +102,14 @@ RelaxKonOS.Server modules pack-package \
 
 离线打包读取入口程序集的 CLR 元数据，核对清单中的完整入口类型名。程序集缺少该类型时，打包会在生成归档和签名前失败。
 
+发布多个版本或 RID 时，将单包目录 payload 中的 `releases` 条目汇入同一 `ModulePackageCatalog` JSON，填写来源、递增序号、UTC 有效期及撤销集合，再生成签名目录。
+
+```text
+RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <启用的官方源策略JSON> --private-key <离线PEM> --key-id <keyId> --output <新catalog.json>
+```
+
+策略包含目标部署所用的授权模块、HTTPS origin 及签名公钥。命令在写出前验证签名、目录条目和内置模块替换契约。目标路径必须尚不存在。部署时仍由宿主根据自身已接纳的历史核验目录序号、不可变版本和撤销记录。
+
 使用 `pack-package` 打包以下随 Core 发行的执行代码时，从该发行的 `Modules/<目录>` 取指定 RID 的文件，使用 `--purpose official --runtime in-process`。打包、商店和安装共用内置模块替换检查。部署方需在已信任来源策略中显式授权相应模块 ID。
 
 | 模块 ID | 目录 | 入口类型 | 能力 |

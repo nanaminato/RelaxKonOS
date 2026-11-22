@@ -19,6 +19,59 @@ internal static class ModulePackageBuildCommand
         "--host-api-min", "--host-api-max", "--capabilities", "--dependencies", "--runtime", "--metadata",
     ];
 
+    internal static async Task<int> SignCatalogAsync(string[] args)
+    {
+        string[] required = ["--payload", "--policy", "--private-key", "--key-id", "--output"];
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        try
+        {
+            for (var index = 2; index < args.Length; index += 2)
+                if (index + 1 >= args.Length || !required.Contains(args[index], StringComparer.Ordinal)
+                    || !values.TryAdd(args[index], args[index + 1]))
+                    throw new ModulePackageException("module-package-build-command-invalid");
+            if (values.Count != required.Length) throw new ModulePackageException("module-package-build-command-invalid");
+            var catalog = await ReadInputAsync<ModulePackageCatalog>(values["--payload"]);
+            var policy = await ReadInputAsync<ModulePackageTrustPolicy>(values["--policy"]);
+            if (policy.Purpose != "official" || catalog.Releases is null)
+                throw new ModulePackageException("module-package-build-command-invalid");
+            foreach (var release in catalog.Releases)
+            {
+                if (release?.Manifest is not { } manifest) throw new ModulePackageException("module-package-release-invalid");
+                ModulePackageVerifier.ValidateManifest(manifest);
+                if (ServerModules.ConflictsWithBundledModule(manifest))
+                    throw new ModulePackageException(ServerModules.PackageModuleIdConflict);
+            }
+            var signed = await ModulePackageBuilder.SignCatalogAsync(catalog, values["--key-id"], values["--private-key"]);
+            var context = new ModulePackageContext("offline-release-validation", ModulePackagePlatform.CurrentRid,
+                ModulePackageHostConfiguration.HostApiVersion, false);
+            _ = ModulePackageVerifier.VerifyCatalog(signed.Envelope, policy, context,
+                ModulePackageTrustHistory.Empty(policy, context), DateTimeOffset.UtcNow);
+            await using var output = new FileStream(values["--output"], FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            await output.WriteAsync(signed.Envelope);
+            return 0;
+        }
+        catch (ModulePackageException exception)
+        {
+            Console.Error.WriteLine(exception.ProblemCode);
+            return 1;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine("module-package-build-failed");
+            return 1;
+        }
+
+        static async Task<T> ReadInputAsync<T>(string path)
+        {
+            await using var stream = File.OpenRead(path);
+            if (stream.Length is <= 0 or > 4 * 1024 * 1024)
+                throw new ModulePackageException("module-package-build-command-invalid");
+            var bytes = new byte[(int)stream.Length];
+            await stream.ReadExactlyAsync(bytes);
+            return ModulePackageJson.Read<T>(bytes);
+        }
+    }
+
     internal static async Task<int> RunAsync(string[] args)
     {
         try
