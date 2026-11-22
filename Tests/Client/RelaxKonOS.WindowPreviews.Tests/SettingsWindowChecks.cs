@@ -310,6 +310,14 @@ internal static class SettingsWindowChecks
                 "Back history restored a different adapter than the recorded detail page.");
             apps.RegisterBuiltIn(new BreadcrumbApplication("relaxkonos.taskmanager", "Task Manager"));
             apps.RegisterBuiltIn(new BreadcrumbApplication("relaxkonos.breadcrumb-test", "Second application")); Pump();
+            var defaultAppsPage = model.Pages.OfType<DefaultAppsPageViewModel>().Single();
+            var originalMappings = defaultAppsPage.ToMappings();
+            defaultAppsPage.SetMappings([new(".custom-fixture", "relaxkonos.breadcrumb-test")]);
+            model.OpenPageCommand.Execute("default-apps"); Pump();
+            Check(view.GetVisualDescendants().OfType<AutoCompleteBox>().Any(input =>
+                    input.Text == ".custom-fixture" && input.ItemsSource!.Cast<string>().Contains(".custom-fixture")),
+                "The default apps page lost the persisted custom extension or its autocomplete entry.");
+            defaultAppsPage.SetMappings(originalMappings);
             var appsEditor = model.Pages.OfType<AppsPageViewModel>().Single();
             var permissionPage = model.Pages.OfType<ApplicationPermissionsPageViewModel>().Single();
             var permissionStore = DispatchProxy.Create<IAppPermissionManager, BreadcrumbPermissions>();

@@ -62,7 +62,7 @@
                 <pages:AppsPageView VerticalAlignment="Top" />
         </DataTemplate>
         <DataTemplate DataType="vm:DefaultAppsPageViewModel">
-                <pages:DefaultAppsPageView VerticalAlignment="Top" />
+                <settingsApp:DefaultAppsPageView DataContext="{Binding Content}" VerticalAlignment="Top" />
         </DataTemplate>
         <DataTemplate DataType="vm:DeveloperPageViewModel">
                 <pages:DeveloperPageView VerticalAlignment="Top" />
