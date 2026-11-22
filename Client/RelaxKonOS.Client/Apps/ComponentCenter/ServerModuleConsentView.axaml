@@ -6,7 +6,7 @@
  <!-- Standing background permission is a review task, not a form to fill on every page visit:
       one module, one declared action, one exact target, one deadline. -->
  <UserControl.Styles>
-  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
  </UserControl.Styles>
  <Grid RowDefinitions="*,Auto">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="20,18">

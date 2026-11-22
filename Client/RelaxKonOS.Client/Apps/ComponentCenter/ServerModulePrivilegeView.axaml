@@ -6,7 +6,7 @@
       refuse it. Administrator credentials live here because approving is the only thing that uses
       them, instead of sitting permanently on the security page. -->
  <UserControl.Styles>
-  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
  </UserControl.Styles>
  <Grid RowDefinitions="*,Auto">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="20,18">

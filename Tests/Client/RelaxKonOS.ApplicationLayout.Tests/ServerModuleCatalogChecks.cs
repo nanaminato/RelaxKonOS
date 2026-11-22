@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -480,6 +481,14 @@ internal static class ServerModuleCatalogChecks
                 "A frozen plan is reviewed in its own dialog with its exact targets and one commit action.");
             using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(620, 460)))
             { bitmap.Render(reviewWindow); bitmap.Save(Path.Combine(output, "server-module-plan.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            var oldTargetLabel = LocalizedText.Get("server_modules.plan.targets");
+            settings.Language = settings.Language == "ja-JP" ? "zh-CN" : "ja-JP";
+            Dispatcher.UIThread.RunJobs();
+            var translatedTargetLabel = LocalizedText.Get("server_modules.plan.targets");
+            Check(oldTargetLabel != translatedTargetLabel
+                && reviewView.GetVisualDescendants().OfType<TextBlock>()
+                    .Any(block => block.IsEffectivelyVisible && block.Text == translatedTargetLabel),
+                "The open plan review did not update when the display language changed.");
             reviewWindow.Close(); Dispatcher.UIThread.RunJobs();
             settings.Language = languageBefore;
             await model.EnableCommand.ExecuteAsync(null);

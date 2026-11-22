@@ -6,7 +6,7 @@
       measured policy values, and this dialog owns the draft. Nothing is submitted until the
       generated plan is reviewed, which is why the footer says "preview", not "apply". -->
  <UserControl.Styles>
-  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
  </UserControl.Styles>
  <Grid RowDefinitions="*,Auto">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="20,18">

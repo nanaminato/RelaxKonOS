@@ -12,7 +12,7 @@
       section, tone-coloured pills for measured state, and rows separated by rules instead of nested
       frames. Nothing here grants a capability; a disabled action stays visible and explained. -->
  <UserControl.Styles>
-  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
   <!-- The task entry borrows the header's secondary-command shape so the two read as one row. The
        trailing ellipsis is part of the label ("opens a dialog"), so the button keeps a floor width. -->
   <Style Selector="Button.header-tasks">

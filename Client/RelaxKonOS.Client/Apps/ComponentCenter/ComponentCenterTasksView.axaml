@@ -2,7 +2,7 @@
  <!-- The same vocabulary as the browsing page: one heading per section, tone-coloured pills, and the
       decision row pinned to the bottom so a long plan never pushes it out of view. -->
  <UserControl.Styles>
-  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
   <Style Selector="Border.step">
    <Setter Property="Padding" Value="0,9" />
    <Setter Property="BorderThickness" Value="0,1,0,0" />

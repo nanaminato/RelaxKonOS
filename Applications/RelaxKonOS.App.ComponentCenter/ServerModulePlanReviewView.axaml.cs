@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.ComponentCenter;
+namespace RelaxKonOS.App.ComponentCenter;
 
 /// <summary>
 /// The frozen plan is submitted from the surface that asked for the decision. Applying keeps the
@@ -16,7 +16,7 @@ public partial class ServerModulePlanReviewView : UserControl
     public ServerModulePlanReviewView() => InitializeComponent();
     public ServerModulePlanReviewView(ModalDialog<bool> dialog) : this() => _dialog = dialog;
 
-    private ServerModulesViewModel? Model => DataContext as ServerModulesViewModel;
+    private IServerModulePlanReview? Model => DataContext as IServerModulePlanReview;
 
     private async void ApplyPlan_Click(object? sender, RoutedEventArgs e)
     {

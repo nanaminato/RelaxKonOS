@@ -7,7 +7,7 @@
       with the reason it is unavailable, and every frozen decision is confirmed in its own dialog
       instead of a card appended below a long column the user then has to scroll to find. -->
  <UserControl.Styles>
-  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
  </UserControl.Styles>
  <StackPanel Spacing="16">
   <!-- Identity and the one read action. The workspace header already names the application;

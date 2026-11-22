@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.ComponentCenter;
 using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -92,8 +94,23 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview
 {
+    public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
+    public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
+    IAsyncRelayCommand IServerModulePlanReview.ApplyCommand => ApplyCommand;
+    IAsyncRelayCommand IServerModulePlanReview.ApplyPackagePlanCommand => ApplyPackagePlanCommand;
+    ICommand IServerModulePlanReview.DiscardPlanCommand => DiscardPlanCommand;
+    ICommand IServerModulePlanReview.DiscardPackagePlanCommand => DiscardPackagePlanCommand;
+    string IServerModulePlanReview.PlanActionText => PlanActionText.Resolve();
+    string IServerModulePlanReview.PlanAddedText => PlanAddedText.Resolve();
+    string IServerModulePlanReview.PlanBlockedText => PlanBlockedText.Resolve();
+    string IServerModulePlanReview.PlanExpiresText => PlanExpiresText.Resolve();
+    string IServerModulePlanReview.PlanRemovedText => PlanRemovedText.Resolve();
+    string IServerModulePlanReview.PlanRestartText => PlanRestartText.Resolve();
+    string IServerModulePlanReview.PlanTargetText => PlanTargetText.Resolve();
+    string IServerModulePlanReview.StatusText => StatusText.Resolve();
+
     private static readonly ServerModuleFilterChoice[] FilterItems =
     [
         new(ServerModuleFilter.All, LocalizedStatus.Key("server_modules.filter.all")),
