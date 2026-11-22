@@ -6,6 +6,7 @@ using RelaxKonOS.App.FileServices.Views;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.WindowManager;
 using Rect = RelaxKonOS.Core.Primitives.Rect;
 using Size = RelaxKonOS.Core.Primitives.Size;
 

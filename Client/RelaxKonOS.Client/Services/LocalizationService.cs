@@ -108,12 +108,6 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
     {
         var directory = Path.Combine(System.AppContext.BaseDirectory, "Localization");
         var loaded = new Dictionary<string, LanguageFileBuilder>(StringComparer.OrdinalIgnoreCase);
-        foreach (var resource in RelaxKonOS.App.FileServices.FileServicesLocalization.ResourceNames)
-        {
-            using var source = RelaxKonOS.App.FileServices.FileServicesLocalization.Open(resource);
-            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
-        }
-
         foreach (var resource in RelaxKonOS.App.Certificates.CertificateLocalization.ResourceNames)
         {
             using var source = RelaxKonOS.App.Certificates.CertificateLocalization.Open(resource);
@@ -137,7 +131,8 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
             .Where(name => name.StartsWith("ComponentCenter.Localization.", StringComparison.Ordinal)
                 || name.StartsWith("Terminal.Localization.", StringComparison.Ordinal)
                 || name.StartsWith("CodeEditor.Localization.", StringComparison.Ordinal)
-                || name.StartsWith("Git.Localization.", StringComparison.Ordinal)))
+                || name.StartsWith("Git.Localization.", StringComparison.Ordinal)
+                || name.StartsWith("FileServices.Localization.", StringComparison.Ordinal)))
         {
             using var source = assembly.GetManifestResourceStream(resource)
                 ?? throw new InvalidDataException($"Missing localization resource '{resource}'.");

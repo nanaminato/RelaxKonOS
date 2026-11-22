@@ -11,6 +11,7 @@
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Terminal/RelaxKonOS.App.Terminal.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.CodeEditor/RelaxKonOS.App.CodeEditor.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Git/RelaxKonOS.App.Git.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.FileServices/RelaxKonOS.App.FileServices.csproj" />
     <ProjectReference Include="../../../Framework/RelaxKonOS.UI.SshFiles/RelaxKonOS.UI.SshFiles.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyManager/RelaxKonOS.App.ProxyManager.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyServer/RelaxKonOS.App.ProxyServer.csproj" />

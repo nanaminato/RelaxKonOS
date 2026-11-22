@@ -270,6 +270,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - File Services 主视图模型已迁入应用程序集，依赖受限的 File Services SDK 与注入的文案函数。桌面工作区通过回调创建组件设置页。Windows Release 构建、SMB 状态与共享操作、共享对话框及组件安装入口检查通过。
 - File Services 主界面及概览、共享、用户三页已迁入应用程序集，标题栏使用包内图标和应用文案。Windows Release 共享页面与对话框回归通过，验证了权限列及行文案；融合窗口验收通过三种窗口样式、语言及宽度。宿主对话框接线、外置入口和发行包待完成。
 - File Services 的共享编辑、密码、删除及路径警告对话框已迁入应用程序集。宿主提供草稿关闭保护策略，应用保留字段和权限变更检测。Windows Release 构建与共享页面、草稿关闭和权限回归通过。
+- File Services 与 Component Center 的密码提示共用窗口管理器中的对话框，桌面宿主直接嵌入同源的中英日文案。Windows Release 宿主依赖清单和发布根目录已核对无 File Services 应用程序集，29 个官方归档校验通过。File Services 官方包生命周期、Component Center 官方包启动和深链接、共享密码提示及 SMB 专项回归通过。真实 SMB 服务仍待验收。
 - File Services 已具备外置激活入口，使用 SMB SDK、会话失效观察和应用窗口。组件设置及管理员授权提示由宿主提供，目录选择可挂在共享编辑模态窗口下。Windows Release 构建、外置入口加载 SMB 状态、只读授权禁止打开提权提示及共享对话框回归通过。官方包及内置入口切换待完成。
 - File Services 1.0.0 已接入官方桌面发行、目录与 Developer 交互安装，桌面宿主内置入口已移除。归档要求服务端 host capability server.file-services。Windows Release 通过实际归档验证来源、完整性、安装、隔离启动、升级、失败保留版本、重启发现和卸载。真实 SMB 主机业务联调待验。
 - Firewall 的服务端契约已迁入应用 SDK。外置上下文对读取和管理分别验证权限，并在请求前后检查会话和应用生命周期。Windows Release 构建与防火墙提交和界面回归通过，覆盖只读拒绝变更、授权请求、会话切换和取消。

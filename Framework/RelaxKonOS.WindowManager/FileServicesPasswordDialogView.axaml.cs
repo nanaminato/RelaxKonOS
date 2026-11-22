@@ -1,8 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.App.FileServices.Views;
+namespace RelaxKonOS.WindowManager;
 
 public partial class FileServicesPasswordDialogView : UserControl
 {
@@ -11,7 +10,8 @@ public partial class FileServicesPasswordDialogView : UserControl
     {
         _dialog = dialog;
         InitializeComponent();
-        DataContext = new DialogLabels(localize);
+        CancelButton.Content = localize("common.cancel");
+        ConfirmButton.Content = localize("file_services.confirm");
         MessageText.Text = message;
         MessageText.IsVisible = !string.IsNullOrEmpty(message);
         ErrorText.Text = errorMessage;

@@ -245,7 +245,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
             target.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
             target.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
                 LocalizedText.Get("installation.elevation_title"),
-                dialog => new RelaxKonOS.App.FileServices.Views.FileServicesPasswordDialogView(dialog, LocalizedText.Get,
+                dialog => new RelaxKonOS.WindowManager.FileServicesPasswordDialogView(dialog, LocalizedText.Get,
                     LocalizedText.Get("installation.elevation_message")),
                 new Size(460, 230));
         }

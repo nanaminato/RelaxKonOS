@@ -43,6 +43,8 @@ public class DownloadSession : DispatchProxy
         "get_State" => AuthSessionState.Authenticated,
         "get_EffectiveBaseUrl" => "https://clipboard-test.invalid",
         "get_Tokens" => new AuthTokens("test-token", "test-refresh", DateTimeOffset.MaxValue, DateTimeOffset.MaxValue),
+        "get_ServiceId" => "https://clipboard-test.invalid",
+        "get_CurrentUser" or "get_CurrentSession" => null,
         _ => throw new NotSupportedException(method.Name),
     };
 }

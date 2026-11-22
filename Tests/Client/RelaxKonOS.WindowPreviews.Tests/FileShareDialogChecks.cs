@@ -6,7 +6,6 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.App.FileServices.Views;
-using RelaxKonOS.App.FileServices;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
@@ -78,8 +77,29 @@ internal static class FileShareDialogChecks
         Confirmation(manager).YesCommand.Execute(null);
         PumpUntil(() => manager.Windows.Count == 1);
         Check(result.IsCompleted, "Confirmed SMB discard closes the editor.");
+        CheckPasswordPrompt(manager, owner);
         manager.Close(owner);
         Console.WriteLine("SMB share dialog checks passed.");
+    }
+
+    private static void CheckPasswordPrompt(WindowManagerService manager, ManagedWindow owner)
+    {
+        foreach (var confirm in new[] { true, false })
+        {
+            FileServicesPasswordDialogView? view = null;
+            var result = manager.ShowDialogAsync<string?>(owner, "Password", dialog =>
+                view = new FileServicesPasswordDialogView(dialog, key => key, "Prompt", confirm ? "Retry" : null));
+            var password = view!.FindControl<TextBox>("PasswordBox")!;
+            var error = view.FindControl<TextBlock>("ErrorText")!;
+            Check(password.PasswordChar != default && error.IsVisible == confirm,
+                "The shared password prompt masks input and only displays supplied errors.");
+            password.Text = "fixture-password";
+            view.FindControl<Button>(confirm ? "ConfirmButton" : "CancelButton")!
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpUntil(() => result.IsCompleted && manager.Windows.Count == 1);
+            Check(result.GetAwaiter().GetResult() == (confirm ? "fixture-password" : null)
+                && string.IsNullOrEmpty(password.Text), "The prompt returns only confirmed input and clears the field.");
+        }
     }
 
     private static async Task CheckCapabilityAsync()
