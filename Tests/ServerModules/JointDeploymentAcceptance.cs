@@ -241,6 +241,17 @@ internal static class JointDeploymentAcceptance
         using var response = await client.PostAsJsonAsync(TunnelApiRoutes.Profiles, profileRequest, RelaxKonOSJsonOptions.Default);
         response.EnsureSuccessStatusCode();
         var profile = (await response.Content.ReadFromJsonAsync<TunnelServerProfileDto>(RelaxKonOSJsonOptions.Default))!;
+        using var backend = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        backend.Start();
+        var localPort = ((System.Net.IPEndPoint)backend.LocalEndpoint).Port;
+        using var reservation = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        reservation.Start();
+        var remotePort = ((System.Net.IPEndPoint)reservation.LocalEndpoint).Port;
+        reservation.Stop();
+        using var definition = await client.PostAsJsonAsync(TunnelApiRoutes.Tunnels,
+            new UpsertTunnelDefinitionRequest(profile.Id, "loopback-probe", TunnelProtocol.Tcp, "127.0.0.1",
+                localPort, remotePort, null, true, false, false), RelaxKonOSJsonOptions.Default);
+        definition.EnsureSuccessStatusCode();
         var applyPath = TunnelApiRoutes.ApplyProfile.Replace("{profileId}", profile.Id.ToString("D"));
         var stopPath = TunnelApiRoutes.StopProfile.Replace("{profileId}", profile.Id.ToString("D"));
         var logPath = TunnelApiRoutes.ProfileLogs.Replace("{profileId}", profile.Id.ToString("D"));
@@ -254,10 +265,17 @@ internal static class JointDeploymentAcceptance
             while (true)
             {
                 var logs = await client.GetFromJsonAsync<TunnelLogEntryDto[]>(logPath, RelaxKonOSJsonOptions.Default, timeout.Token);
-                if (logs?.Any(log => log.Message.Contains("login to server success", StringComparison.OrdinalIgnoreCase)) == true) break;
+                if (logs?.Any(log => log.Message.Contains("start proxy success", StringComparison.OrdinalIgnoreCase)) == true) break;
                 await Task.Delay(100, timeout.Token);
             }
-            Require(true, "Core observes real frpc login to loopback frps");
+            using var forwarded = new System.Net.Sockets.TcpClient();
+            await forwarded.ConnectAsync(System.Net.IPAddress.Loopback, remotePort, timeout.Token);
+            var payload = "signed-tunnels-probe"u8.ToArray();
+            await forwarded.GetStream().WriteAsync(payload, timeout.Token);
+            using var received = await backend.AcceptTcpClientAsync(timeout.Token);
+            var buffer = new byte[payload.Length];
+            await received.GetStream().ReadExactlyAsync(buffer, timeout.Token);
+            Require(buffer.AsSpan().SequenceEqual(payload), "real frpc and frps forward the exact payload to the loopback backend");
         }
         finally
         {

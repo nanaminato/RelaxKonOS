@@ -798,3 +798,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 已取得仓库固定的 Linux x64 FRP v0.71.0 官方归档并核对 SHA-256。WSL 临时目录中的 frpc/frps 均报告 0.71.0，使用手写最小配置在环回地址通过语法校验和实际登录，退出时清理进程。此证据覆盖真实二进制基础可用性，签名 Tunnels 经 Core 应用配置并驱动真实 FRP 的链路仍待验。
 - Linux x64 的 --signed-tunnels-joint-acceptance 可通过 RK_TEST_FRPC 指向已核验的 frpc。WSL 使用固定 0.71.0 二进制实际执行 verify，成功解析从 SQLite 业务请求结果生成的 TOML。配置由重启后联合安装的签名执行程序集生成。模块 HTTP 回归 133 条 PASS。由 Core 实际启动 FRP 并验证转发仍待完成。
 - Linux x64 签名 Tunnels 双包验收在 RK_TEST_FRPC 与 RK_TEST_FRPS_PORT 同时指定时，经认证 HTTP 应用真实外部 frpc 档案。Core 通过已安装签名执行程序集生成配置，实际启动固定 0.71.0 frpc，在日志观察到登录本机环回 frps，随后通过停止路由结束会话。模块 HTTP 专项仍有 133 条 PASS。该用例覆盖外部运行时启停与登录，真实代理转发和受管 Helper 路径仍待验。
+- Linux x64 签名 Tunnels 双包验收覆盖真实 TCP 转发。认证 HTTP 写入环回代理定义，Core 经签名模块生成配置并启动 frpc 0.71.0。frps 环回端口接收探针连接，后端收到逐字节一致的载荷。停止路由返回已断开，卸载桌面包保留服务端签名包。模块 HTTP 专项 133 条 PASS。受管 Helper 路径仍待验。
