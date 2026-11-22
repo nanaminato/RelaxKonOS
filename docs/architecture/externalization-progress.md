@@ -236,6 +236,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Code Editor 使用 `RelaxKonOS.UI` 中的文件内容检测、图标分类、图标控件和 PNG 资源。原有 93 个资源逐个验证内容一致。Android 图标同步脚本指向共享资源目录，现有 Android 资源字节保持原样。本机缺少 Pillow，尚未完成同步脚本的 `--check` 验证。编辑器视图仍在桌面宿主。
 - Code Editor 和 Git 的差异视图、补丁解析和渲染器统一由 `RelaxKonOS.UI` 提供。两个应用沿用同一套主题资源和显示规则。
 - `Applications/RelaxKonOS.App.CodeEditor` 独立项目保存文件关联规则和中、英、日三语资源。桌面宿主从该程序集加载同一份文案，供当前 Code Editor 和 Git 共用。应用入口、视图及发行包仍待迁移。
+- Code Editor 的条件写入契约由应用 SDK 提供，宿主从同源 JSON 嵌入中英日文案。发行程序集已核对无直接 Code Editor 引用。Git 项目编辑器仍复用 Code Editor，Component Center 的 Git 状态依赖使其继续间接进入桌面发行。Windows Release 官方包生命周期、项目编辑器和生产 SDK 文件选择器专项已通过。
 - Code Editor 项目还提供文档、标签页状态、目录树、工作区文件契约和视图模型。Code Editor 与 Git 项目编辑器共用这些类型。应用项目只依赖 SDK、共享 UI 和协议类型。桌面宿主提供文案解析和文件适配，并把版本冲突转换为统一的编辑器异常。独立应用入口、视图和发行包仍待迁移。
 - Code Editor 主视图和设置视图已由应用程序集编译。文字从视图模型绑定，窗口标题栏移到宿主后仍可刷新文案。Git 项目编辑器引用应用程序集中的同一视图。
 - Code Editor 具备独立 SDK 入口、文件关联清单、权限声明与中英日文案，DevCli 在 Windows 生成了 `relaxkonos.codeeditor.roapp`。归档包含程序入口和图标。Windows 桌面回归使用该入口打开本地化 SDK 窗口并经测试文件 API 读取源文件。桌面发行版通过 Developer 配置安装该应用包。Windows Release 已验证实际包的来源、安装、文件关联、更新、失败保留版本、重启发现与卸载。SSH 文件能力沿用经主机密钥校验的 SFTP 会话，真实远端的工作区验收仍待完成。

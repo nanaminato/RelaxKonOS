@@ -8,7 +8,6 @@ using Avalonia.Threading;
 using RelaxKonOS.App.Notepad;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
-using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.TextEditor;
@@ -170,9 +169,10 @@ internal static class NotepadWorkspaceChecks
                 "The SDK preserves separate file picker filters and their order.");
             picker.CancelAction!();
             Wait(filtered);
-            using (var editor = new CodeEditorViewModel(LocalizedText.Get, new SdkEditorWorkspaceFiles(context.ServerFiles, LocalizedText.Get)))
+            var editorFiles = new SdkEditorWorkspaceFiles(context.ServerFiles, LocalizedText.Get);
+            using (var editor = new CodeEditorViewModel(LocalizedText.Get, editorFiles))
             {
-                CodeEditorSessionDialogs.ConfigureSdkPickers(editor, context.ServerFiles, pickerOwner);
+                CodeEditorPackageApp.ConfigureEditorDialogs(context, pickerOwner, editor, editorFiles, LocalizedText.Get);
                 var chooseSource = editor.RequestFileAsync!();
                 picker = Dialog<ExplorerViewModel>();
                 Check(picker.IsFilePickerMode && !picker.IsSaveFilePickerMode && picker.Filters.Count == 3
@@ -190,9 +190,6 @@ internal static class NotepadWorkspaceChecks
                 Check(picker.IsFolderPickerMode, "Code Editor requests the SDK folder picker.");
                 picker.CancelAction!();
                 Wait(chooseFolder);
-                var hostContext = new RelaxKonOS.AppSDK.AppContext(app.Manifest.Id, manager,
-                    RelaxKonOS.Client.App.Services, app.Manifest);
-                CodeEditorSessionDialogs.ConfigureEditorDialogs(hostContext, pickerOwner.Window, editor, pickerOwner);
                 using var draft = new CodeEditorDocument(null, "draft", "UTF-8", "draft.cs");
                 var discard = editor.RequestDiscardChangesAsync!(draft);
                 var confirmation = Dialog<ConfirmDialogViewModel>();
@@ -415,7 +412,7 @@ public class NotepadAuthFixture : DispatchProxy
         "get_EffectiveBaseUrl" => "http://fixture.invalid",
         "get_Tokens" => new AuthTokens("fixture-token", "fixture-refresh", DateTimeOffset.MaxValue, DateTimeOffset.MaxValue),
         "get_CurrentWorkspace" => _workspace,
-        "get_ServiceId" or "get_CurrentSession" or "get_CurrentUser" or "get_CurrentServer" or "get_ExecutionEligibility" => null,
+        "get_ServiceId" or "get_CurrentSession" or "get_CurrentUser" or "get_CurrentServer" or "get_CurrentDevice" or "get_ExecutionEligibility" => null,
         _ => throw new NotSupportedException(method?.Name),
     };
 }

@@ -5,7 +5,6 @@ using RelaxKonOS.Protocol.ProcessGuardian;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Platform.Storage;
-using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.ComponentCenter;

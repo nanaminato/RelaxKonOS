@@ -8,7 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.CodeEditor;
+using RelaxKonOS.WindowPreviews.Tests;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Localization;
 

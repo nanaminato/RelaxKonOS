@@ -12,7 +12,7 @@ using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.CodeEditor;
+using RelaxKonOS.WindowPreviews.Tests;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Git;
 using RelaxKonOS.Client.Apps.Git.Views;

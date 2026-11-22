@@ -9,7 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using IExternalAppContext = RelaxKonOS.AppSDK.IExternalAppContext;
-using RelaxKonOS.Client.Apps.CodeEditor;
+using RelaxKonOS.WindowPreviews.Tests;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;

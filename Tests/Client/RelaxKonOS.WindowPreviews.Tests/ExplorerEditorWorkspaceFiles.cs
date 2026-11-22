@@ -3,7 +3,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services.Auth;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.WindowPreviews.Tests;
 
 internal class ExplorerEditorWorkspaceFiles(IExplorerClient files) : IEditorWorkspaceFiles
 {

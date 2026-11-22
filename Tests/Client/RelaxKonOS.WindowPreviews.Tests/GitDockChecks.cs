@@ -1,4 +1,4 @@
-using RelaxKonOS.Client.Apps.CodeEditor;
+using RelaxKonOS.WindowPreviews.Tests;
 using RelaxKonOS.App.Git;
 using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.AppSDK;
