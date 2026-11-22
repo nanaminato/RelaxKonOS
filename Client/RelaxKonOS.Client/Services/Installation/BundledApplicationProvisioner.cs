@@ -16,26 +16,35 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
+    private string SelectionPath => drive.ResolveRootChild("System/installation-profile.json");
+
+    internal async Task<IReadOnlyList<ProfileApplication>> ReadInteractiveChoicesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var selection = await ReadSelectionAsync(cancellationToken);
+            if (selection is not { Profile.Length: > 0, Excluded: not null }) return [];
+            var profiles = await ReadProfilesAsync(cancellationToken);
+            return profiles is not null && profiles.Profiles.TryGetValue(selection.Profile, out var entries)
+                ? entries.Where(entry => entry.InstallPolicy == "interactive"
+                    && !selection.Excluded.Contains(entry.AppId, StringComparer.Ordinal)).ToArray()
+                : [];
+        }
+        catch (Exception error) when (!cancellationToken.IsCancellationRequested && AppPackageInstallerService.IsStoreFailure(error))
+        {
+            packages.RecordActivationDiagnostic($"Bundled application choices could not be read: {error.GetType().Name}.");
+            return [];
+        }
+    }
+
     public async Task RunAsync(IEnumerable<string>? arguments = null, CancellationToken cancellationToken = default,
         Func<ProfileDocument, Task<ProfileSelection>>? chooseProfile = null)
     {
-        var manifest = packages.OfficialSource.BundledProfilesPath;
-        if (!File.Exists(manifest)) return;
-
         try
         {
-            if (new FileInfo(manifest).Length > 8192 || (File.GetAttributes(manifest) & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException("Invalid bundled application defaults.");
-
-            await using var input = File.OpenRead(manifest);
-            var profiles = await JsonSerializer.DeserializeAsync<ProfileDocument>(input, Json, cancellationToken);
-            if (profiles is not { SchemaVersion: 2, DefaultProfile: "standard", Profiles.Count: >= 3 and <= 16 }
-                || !new[] { "minimal", "standard", "developer" }.All(profiles.Profiles.ContainsKey)
-                || profiles.Profiles.Values.Any(entries => !ValidEntries(entries)))
-                throw new InvalidDataException("Invalid bundled application profiles.");
-
-            var selectionPath = drive.ResolveRootChild("System/installation-profile.json");
-            var saved = File.Exists(selectionPath) ? await drive.ReadJsonAsync<ProfileSelection>(selectionPath, cancellationToken) : null;
+            var profiles = await ReadProfilesAsync(cancellationToken);
+            if (profiles is null) return;
+            var saved = await ReadSelectionAsync(cancellationToken);
             var options = arguments?.ToArray() ?? [];
             var selection = saved is null && chooseProfile is not null
                 && !options.Any(option => option.StartsWith(ProfileFlag, StringComparison.Ordinal)
@@ -45,7 +54,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             if (!profiles.Profiles.TryGetValue(selection.Profile, out var selectedEntries) || selection.Excluded is null)
                 throw new InvalidDataException("Invalid installation profile selection.");
             if (selection != saved)
-                await drive.WriteJsonAtomicallyAsync(selectionPath, selection, cancellationToken);
+                await drive.WriteJsonAtomicallyAsync(SelectionPath, selection, cancellationToken);
 
             foreach (var entry in selectedEntries)
             {
@@ -93,13 +102,31 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         }
     }
 
+    private async Task<ProfileSelection?> ReadSelectionAsync(CancellationToken cancellationToken) =>
+        File.Exists(SelectionPath) ? await drive.ReadJsonAsync<ProfileSelection>(SelectionPath, cancellationToken) : null;
+
+    private async Task<ProfileDocument?> ReadProfilesAsync(CancellationToken cancellationToken)
+    {
+        var manifest = packages.OfficialSource.BundledProfilesPath;
+        if (!File.Exists(manifest)) return null;
+        if (new FileInfo(manifest).Length > 8192 || (File.GetAttributes(manifest) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("Invalid bundled application defaults.");
+        await using var input = File.OpenRead(manifest);
+        var profiles = await JsonSerializer.DeserializeAsync<ProfileDocument>(input, Json, cancellationToken);
+        if (profiles is not { SchemaVersion: 2, DefaultProfile: "standard", Profiles.Count: >= 3 and <= 16 }
+            || !new[] { "minimal", "standard", "developer" }.All(profiles.Profiles.ContainsKey)
+            || profiles.Profiles.Values.Any(entries => !ValidEntries(entries)))
+            throw new InvalidDataException("Invalid bundled application profiles.");
+        return profiles;
+    }
+
     private static bool ValidEntries(ProfileApplication[]? entries) => entries is { Length: <= 128 }
         && entries.All(entry => entry is not null && OfficialDesktopPackages.IsExternalOfficialId(entry.AppId)
             && entry.InstallPolicy is "offline" or "interactive"
             && RuntimeSemanticVersion.TryParse(entry.MinimumVersion, out _))
         && entries.Select(entry => entry.AppId).Distinct(StringComparer.Ordinal).Count() == entries.Length;
 
-    private static bool MeetsVersion(string version, string minimum) =>
+    internal static bool MeetsVersion(string version, string minimum) =>
         RuntimeSemanticVersion.TryParse(version, out var release)
         && RuntimeSemanticVersion.TryParse(minimum, out var floor) && release.CompareTo(floor) >= 0;
 

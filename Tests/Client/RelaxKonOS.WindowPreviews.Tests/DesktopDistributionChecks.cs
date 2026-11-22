@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
@@ -91,7 +92,7 @@ internal static class DesktopDistributionChecks
                             if (profiles.Profiles.Keys.ElementAt(picker.SelectedIndex) != "standard")
                                 throw new InvalidOperationException("The first-run window must default to Standard.");
                             var entries = (StackPanel)((ScrollViewer)layout.Children[2]).Content!;
-                            entries.Children.OfType<CheckBox>().Single(item => Equals(item.Content, "welcome")).IsChecked = false;
+                            entries.Children.OfType<CheckBox>().Single(item => item.Content is TextBlock { Text: "welcome" }).IsChecked = false;
                             ((StackPanel)layout.Children[1]).Children.OfType<Button>().Single(item => item.IsDefault)
                                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                             return result;
@@ -102,7 +103,9 @@ internal static class DesktopDistributionChecks
                     }
                     else
                     {
-                        await provisioner.RunAsync([$"--installation-profile={profile}"], cancellationToken);
+                        await provisioner.RunAsync(profile == "developer"
+                            ? ["--installation-profile=developer", "--exclude-bundled-app=relaxkonos.squid"]
+                            : [$"--installation-profile={profile}"], cancellationToken);
                     }
                     var actual = packages.Installed.ToDictionary(app => app.Id, StringComparer.Ordinal);
                     var missing = expected.Keys.Except(actual.Keys);
@@ -150,6 +153,17 @@ internal static class DesktopDistributionChecks
                         await VerifyBasicLaunchRequirementsAsync(applications, session, server, cancellationToken);
                     if (profile == "developer")
                     {
+                        using var store = new AppInstallerViewModel(installer) { ProfileChoices = provisioner };
+                        await store.RefreshOfficialCommand.ExecuteAsync(null);
+                        var proxy = store.OfficialApps.Single(item => item.Id == "relaxkonos.proxy");
+                        if (!proxy.SelectedByProfile || store.OfficialApps.Single(item => item.Id == "relaxkonos.squid").SelectedByProfile
+                            || store.SelectedOfficialApp is not { SelectedByProfile: true })
+                            throw new InvalidOperationException("Developer choices were not carried into the official store.");
+                        store.SelectedOfficialApp = proxy;
+                        await store.DownloadOfficialCommand.ExecuteAsync(null);
+                        if (store.CurrentPackage?.Manifest.Dependencies?.Required is not { Count: > 0 }
+                            || packages.FindInstalled(proxy.Id) is not null)
+                            throw new InvalidOperationException("The Developer selection did not stage the official Proxy archive for review.");
                         await provisioner.RunAsync(["--installation-profile=minimal"], cancellationToken);
                         if (packages.Installed.Count != actual.Count
                             || actual.Any(pair => packages.FindInstalled(pair.Key) != pair.Value))

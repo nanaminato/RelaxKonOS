@@ -42,6 +42,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
         var viewModel = new AppInstallerViewModel(installer)
         {
             JointDeployment = context.Services.GetService(typeof(JointAppDeploymentService)) as JointAppDeploymentService,
+            ProfileChoices = context.Services.GetService(typeof(BundledApplicationProvisioner)) as BundledApplicationProvisioner,
         };
         var view = new AppInstallerView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("app_installer.title"), view,

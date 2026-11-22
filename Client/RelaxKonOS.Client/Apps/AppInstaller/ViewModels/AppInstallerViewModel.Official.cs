@@ -10,9 +10,11 @@ public sealed partial class AppInstallerViewModel
 {
     private readonly CancellationTokenSource _storeLifetime = new();
     private IReadOnlyList<OfficialDesktopRelease> _officialReleases = [];
+    private IReadOnlyDictionary<string, string> _profileMinimumVersions = new Dictionary<string, string>();
     private bool _disposed;
 
     public Func<OfficialAppListing, Task<bool>>? ConfirmUninstallAsync { get; set; }
+    internal BundledApplicationProvisioner? ProfileChoices { get; init; }
     public bool ShowOfficialStore => AllowPackageSelection && !HasPackage;
     internal bool CanCloseWindow => !IsBusy || RefreshOfficialCommand.IsRunning || DownloadOfficialCommand.IsRunning;
     public bool ShowPackageSecurityWarning => CurrentPackage is { } package
@@ -37,9 +39,11 @@ public sealed partial class AppInstallerViewModel
     {
         IsBusy = true;
         StoreStatus = LocalizedText.Ref("app_installer.store.loading");
-        RefreshOfficialRows();
         try
         {
+            if (ProfileChoices is { } profiles)
+                _profileMinimumVersions = (await profiles.ReadInteractiveChoicesAsync(_storeLifetime.Token))
+                    .ToDictionary(entry => entry.AppId, entry => entry.MinimumVersion, StringComparer.Ordinal);
             var catalog = await _installer.BrowseOfficialAsync(_storeLifetime.Token);
             _officialReleases = catalog.Releases;
             RefreshOfficialRows();
@@ -109,8 +113,16 @@ public sealed partial class AppInstallerViewModel
             group => group.OrderByDescending(item => Version.Parse(item.Version)).First(), StringComparer.Ordinal);
         var current = SelectedOfficialApp?.Id;
         OfficialApps = latest.Keys.Union(installed.Keys, StringComparer.Ordinal)
-            .Select(id => new OfficialAppListing(id, latest.GetValueOrDefault(id), installed.GetValueOrDefault(id)))
-            .OrderBy(item => item.DisplayName).ToArray();
+            .Select(id =>
+            {
+                var release = latest.GetValueOrDefault(id);
+                var currentInstallation = installed.GetValueOrDefault(id);
+                var selectedByProfile = _profileMinimumVersions.TryGetValue(id, out var minimum)
+                    && release is not null && BundledApplicationProvisioner.MeetsVersion(release.Version, minimum)
+                    && (currentInstallation is null || !BundledApplicationProvisioner.MeetsVersion(currentInstallation.Version, minimum));
+                return new OfficialAppListing(id, release, currentInstallation) { SelectedByProfile = selectedByProfile };
+            })
+            .OrderByDescending(item => item.SelectedByProfile).ThenBy(item => item.DisplayName).ToArray();
         SelectedOfficialApp = OfficialApps.FirstOrDefault(item => item.Id == current) ?? OfficialApps.FirstOrDefault();
     }
 
@@ -137,6 +149,7 @@ public sealed class OfficialAppListing
     internal OfficialDesktopRelease? Release { get; }
     internal DeveloperAppInfo? Installed { get; }
     public string Id { get; }
+    public bool SelectedByProfile { get; init; }
     public string DisplayName => Release?.DisplayName ?? Installed?.DisplayName ?? Id;
     public string AvailableVersion => Release?.Version ?? "";
     public string Description => Release?.Description ?? "";

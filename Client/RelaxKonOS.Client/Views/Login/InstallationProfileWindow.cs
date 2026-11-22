@@ -36,16 +36,13 @@ internal sealed class InstallationProfileWindow : Window
             foreach (var entry in document.Profiles[profile])
             {
                 var name = entry.AppId["relaxkonos.".Length..].Replace('-', ' ');
-                if (entry.InstallPolicy == "interactive")
+                var label = entry.InstallPolicy == "interactive"
+                    ? string.Format(Text("in_store", "{0} · available in the app store"), name) : name;
+                var checkbox = new CheckBox
                 {
-                    entries.Children.Add(new TextBlock
-                    {
-                        Text = string.Format(Text("in_store", "{0} · available in the app store"), name),
-                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                    });
-                    continue;
-                }
-                var checkbox = new CheckBox { Content = name, IsChecked = !excluded.Contains(entry.AppId) };
+                    Content = new TextBlock { Text = label, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                    IsChecked = !excluded.Contains(entry.AppId),
+                };
                 checkbox.IsCheckedChanged += (_, _) =>
                 {
                     if (checkbox.IsChecked == true) excluded.Remove(entry.AppId);

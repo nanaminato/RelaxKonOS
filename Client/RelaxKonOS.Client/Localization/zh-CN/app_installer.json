@@ -8,6 +8,7 @@
         "app_installer.description": "安装前，请查看应用信息及其请求的 RelaxKonOS 权限。",
         "app_installer.security_warning": "软件包来源未经验证。权限只能约束正常的 SDK 调用，不能沙箱化恶意代码；请仅安装你已审查来源和代码的软件包。",
         "app_installer.store.title": "官方应用",
+        "app_installer.store.profile_selection": "已在安装配置中选择",
         "app_installer.store.refresh": "刷新目录",
         "app_installer.store.loading": "正在读取官方应用目录…",
         "app_installer.store.empty": "当前没有可用的官方应用。",
