@@ -11,12 +11,16 @@ public sealed record DeploymentPermission(string Kind, ImmutableArray<string> Pl
 public sealed record PreparedDeploymentStep(DeploymentPackageKey Package, Guid InstallerPlanId,
     DateTimeOffset ExpiresAt, ImmutableArray<DeploymentPermission> Permissions);
 
+public sealed record DeploymentComponentRelease(string SourceId, string ComponentId, string PublisherId, string ReleaseIdentity);
+
 public sealed record DeploymentClientBinding(Guid AccountId, string ConnectionIdentity, string? InstalledPath)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ArchivePath { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool RecoverFromOfficialCatalog { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DeploymentComponentRelease? ComponentRelease { get; init; }
 }
 
 public sealed record DeploymentPlan(Guid Id, DeploymentTarget Target, DateTimeOffset ExpiresAt,

@@ -321,6 +321,29 @@ internal static class OfficialRoappChecks
                 Check(recovered is [{ IsRecoveredDeployment: true }] && recovered[0].OfficialRelease == published
                     && recovered[0].ExpectedSha256 == candidate.ExpectedSha256,
                     "The current catalog must recover the exact reviewed release without an archive path.");
+                var unauthorized = candidate with
+                {
+                    CatalogComponentId = "fixture.component",
+                    CatalogAuthorization = new ComponentCatalogInstallAuthorization("fixture.missing-source", "fixture.publisher",
+                        1, "fixture-policy", 1, "fixture.release", candidate.ExpectedSha256!, "fixture-store"),
+                };
+                var componentReview = await deployment.PrepareAsync(unauthorized, [], CancellationToken.None);
+                Check(componentReview.Plan.ClientBinding is
+                    {
+                        ArchivePath: null,
+                        RecoverFromOfficialCatalog: false,
+                        ComponentRelease: { SourceId: "fixture.missing-source", ComponentId: "fixture.component" },
+                    }, "Component recovery must retain provenance without retaining the old authorization or using the local path.");
+                var componentOnlyPath = Path.Combine(root, "resume-removed-component-source");
+                var componentOnlyJournal = new FileDeploymentJournal(componentOnlyPath);
+                await using (var componentLease = await componentOnlyJournal.OpenAsync(componentReview.Plan, CancellationToken.None))
+                    await componentLease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
+                var componentRecovery = new JointAppDeploymentService(null!, null!, installer, packages, applications,
+                    new FileDeploymentJournal(componentOnlyPath));
+                Check((await componentRecovery.RecoverArchivesAsync([published], CancellationToken.None)).Count == 0,
+                    "A removed component source must prevent recovery even when a bundled archive has the same digest.");
+                Check(await componentRecovery.FindPendingAsync(candidate, CancellationToken.None, localOnly: true) is null,
+                    "A bundled archive cannot bypass the recorded component source even when the digest matches.");
                 await CheckOnlineRecoveryAsync(published);
             }
             await WriteProfileAsync("offline");

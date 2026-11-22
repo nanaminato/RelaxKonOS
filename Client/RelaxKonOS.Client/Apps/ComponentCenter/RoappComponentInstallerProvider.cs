@@ -44,7 +44,8 @@ public sealed class RoappComponentInstallerProvider(AppPackageInstallerService i
             if (authorization is not null && ((IAuthenticatedComponentCatalogSource)source).Authorize(componentId, Desktop) != authorization)
                 throw RemoteCatalogRules.Error("authorization_changed");
             return new(source.SourceId, component.Id, release.ReleaseId, Desktop,
-                candidate with { ExpectedSha256 = artifact.Sha256, CatalogSourceId = source.SourceId, CatalogAuthorization = authorization });
+                candidate with { ExpectedSha256 = artifact.Sha256, CatalogSourceId = source.SourceId, CatalogAuthorization = authorization,
+                    CatalogComponentId = component.Id });
         }
         catch
         {

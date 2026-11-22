@@ -78,6 +78,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         {
             ArchivePath = archivePath,
             RecoverFromOfficialCatalog = candidate.OfficialRelease is not null && candidate.CatalogAuthorization is null,
+            ComponentRelease = candidate is { CatalogAuthorization: { } authorization, CatalogComponentId: { } componentId }
+                ? new(authorization.SourceId, componentId, authorization.PublisherId, authorization.ReleaseIdentity) : null,
         };
     }
 
@@ -92,6 +94,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
                 digest, user.Id, connection, cancellationToken);
         if (plan?.ClientBinding is not { } binding) return null;
+        if (!MatchesComponentRelease(binding, candidate, digest)) return null;
         return new(plan, candidate with
         {
             ExpectedSha256 = digest,
@@ -99,6 +102,12 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             ExpectedInstalledPath = binding.InstalledPath,
         });
     }
+
+    private static bool MatchesComponentRelease(DeploymentClientBinding? binding, AppPackageCandidate candidate, string digest) =>
+        binding?.ComponentRelease is not { } reviewed
+        || candidate.CatalogComponentId == reviewed.ComponentId
+            && candidate.CatalogAuthorization is { } authorization
+            && AppPackageInstallerService.MatchesReviewedComponentRelease(reviewed, digest, authorization);
 
     private static async Task<string> ReadArtifactIdentityAsync(AppPackageCandidate candidate, CancellationToken cancellationToken)
     {
@@ -133,6 +142,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                     && releases.FirstOrDefault(item => App(item.AppId) == root.Package
                         && item.Version == root.Version && item.Sha256 == root.ArtifactIdentity) is { } release)
                     candidate = await installer.StageOfficialAsync(release, cancellationToken);
+                else if (binding.ComponentRelease is { } component)
+                    candidate = await installer.RecoverComponentArchiveAsync(component, root.ArtifactIdentity, cancellationToken);
                 if (candidate is null) continue;
                 if (root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version) continue;
                 var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
@@ -143,7 +154,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
-            catch (Exception error) when (AppPackageInstallerService.IsStoreFailure(error)) { }
+            catch (Exception error) when (AppPackageInstallerService.IsStoreFailure(error) || error is RuntimePolicyException) { }
             finally { if (candidate is not null) installer.Discard(candidate); }
         }
         return candidates;
@@ -238,8 +249,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             if (plan.OrderedReleases.IsDefaultOrEmpty
                 || plan.OrderedReleases[^1] is not { } root
                 || root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version
-                || root.ArtifactIdentity != candidate.ExpectedSha256)
+                || root.ArtifactIdentity != candidate.ExpectedSha256
+                || !MatchesComponentRelease(plan.ClientBinding, candidate, root.ArtifactIdentity))
                 throw new InvalidOperationException("deployment-application-plan-changed");
+            installer.RevalidateComponentAuthorization(candidate);
             installed ??= await packages.FindDeploymentResultAsync(candidate.Manifest.Id, plan.Id, cancellationToken);
             if (installed is not null)
             {

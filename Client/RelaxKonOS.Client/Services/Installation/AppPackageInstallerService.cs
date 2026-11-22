@@ -1,6 +1,8 @@
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using System.IO.Compression;
 using RelaxKonOS.Client.Services.Developer;
+using RelaxKonOS.Deployment;
 using System.Security.Cryptography;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Protocol.Developer;
@@ -193,6 +195,31 @@ public sealed class AppPackageInstallerService
         }
     }
 
+    internal async Task<AppPackageCandidate?> RecoverComponentArchiveAsync(DeploymentComponentRelease reviewed, string digest, CancellationToken ct)
+    {
+        var source = new HttpCatalogSource(_catalogSources, reviewed.SourceId);
+        var authorization = source.Authorize(reviewed.ComponentId, RoappComponentInstallerProvider.Desktop);
+        if (!MatchesReviewedComponentRelease(reviewed, digest, authorization)) return null;
+        var plan = await new RoappComponentInstallerProvider(this).PlanAsync(source, reviewed.ComponentId, ct);
+        if (plan.Package.CatalogAuthorization is { } current && MatchesReviewedComponentRelease(reviewed, digest, current))
+            return plan.Package;
+
+        Discard(plan.Package);
+        return null;
+    }
+
+    internal void RevalidateComponentAuthorization(AppPackageCandidate candidate)
+    {
+        if (candidate.CatalogAuthorization is not { } authorization) return;
+        using var lease = _catalogSources.AcquireInstallLease(authorization);
+        lease.Revalidate();
+    }
+
+    internal static bool MatchesReviewedComponentRelease(DeploymentComponentRelease reviewed, string digest,
+        ComponentCatalogInstallAuthorization authorization) =>
+        authorization.SourceId == reviewed.SourceId && authorization.PublisherId == reviewed.PublisherId
+        && authorization.ReleaseIdentity == reviewed.ReleaseIdentity && authorization.ArtifactSha256 == digest;
+
     internal IReadOnlyList<DeveloperAppInfo> InstalledOfficial =>
         _packages.Installed.Where(app => OfficialDesktopPackages.IsExternalOfficialId(app.Id)).ToArray();
 
@@ -217,6 +244,7 @@ public sealed record AppPackageCandidate(
 {
     internal OfficialDesktopRelease? OfficialRelease { get; init; }
     internal string? ExpectedInstalledPath { get; init; }
+    internal string? CatalogComponentId { get; init; }
     internal bool IsRecoveredDeployment { get; init; }
     public bool IsUpdate => InstalledVersion is not null && InstalledVersion != Manifest.Version.Trim();
     public bool IsRepair => InstalledVersion is not null && InstalledVersion == Manifest.Version.Trim();
