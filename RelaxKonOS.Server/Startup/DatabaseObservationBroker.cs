@@ -61,7 +61,7 @@ internal static class DatabaseObservationBroker
         }
         catch (InstallationException)
         {
-            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (OperationCanceledException) when (caller.Stopping.IsCancellationRequested && !http.RequestAborted.IsCancellationRequested)
         {
