@@ -42,6 +42,25 @@ internal static class ServerModuleManagementEndpoints
         group.MapGet(ServerModuleManagementRoutes.Operation, (Guid operationId, HttpContext http, ModuleManagementStore store) =>
             Respond(() => Task.FromResult<IResult>(Results.Ok(store.Operation(Actor(http.User), operationId)))))
             .RequireAuthorization(ManagePolicy);
+        group.MapPut(ServerModuleManagementRoutes.DesktopDependency, async (Guid installationId,
+            ServerDesktopDependencyRequest request, HttpContext http, ModuleManagementStore store,
+            ServerModules modules, ServerModuleContext context, CancellationToken ct) => await Respond(async () =>
+        {
+            if (request.ServiceId != store.ServiceId) return Problem("module-server-mismatch", 409);
+            if (request.RequiredModules is null || request.RequiredModules.Count is 0 or > 128)
+                return Problem("module-desktop-dependency-invalid", 400);
+            var inventory = await modules.DescribeAsync(http.RequestServices, context, ct);
+            store.RegisterDesktopDependency(Actor(http.User), installationId, request.AppId, request.RequiredModules, inventory);
+            return Results.Ok(new ServerDesktopDependencyReceipt(store.ServiceId, installationId));
+        })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
+        group.MapDelete(ServerModuleManagementRoutes.DesktopDependency, (Guid installationId, string serviceId,
+            HttpContext http, ModuleManagementStore store) => Respond(() =>
+        {
+            if (serviceId != store.ServiceId) return Task.FromResult(Problem("module-server-mismatch", 409));
+            if (installationId == Guid.Empty) return Task.FromResult(Problem("module-desktop-dependency-invalid", 400));
+            store.ReleaseDesktopDependency(Actor(http.User), installationId);
+            return Task.FromResult<IResult>(Results.Ok(new ServerDesktopDependencyReceipt(store.ServiceId, installationId)));
+        })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.Operations, (string? moduleId, int? offset, int? limit,
             HttpContext http, ModuleManagementStore store) => Respond(() => Task.FromResult<IResult>(
                 Results.Ok(store.Operations(Actor(http.User), moduleId, offset ?? 0, limit ?? 25)))))

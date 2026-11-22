@@ -107,12 +107,20 @@ public sealed record ServerModuleHostStatusDto([property: JsonRequired] string M
     [property: JsonRequired] string Status, string? Version, string? HostApiVersion, string? ProblemCode);
 public sealed record ServerModuleHostPageDto([property: JsonRequired] IReadOnlyList<ServerModuleHostStatusDto> Hosts);
 
+public sealed record ServerDesktopDependencyRequest([property: JsonRequired] string ServiceId,
+    [property: JsonRequired] string AppId, [property: JsonRequired] IReadOnlyList<string> RequiredModules);
+
+public sealed record ServerDesktopDependencyReceipt([property: JsonRequired] string ServiceId,
+    [property: JsonRequired] Guid InstallationId);
+
 public static class ServerModuleManagementRoutes
 {
     public const string Detail = ServerApiRoutes.Modules + "/{moduleId}";
     public const string Plans = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-plans";
     public const string Apply = Plans + "/{planId:guid}/apply";
     public const string Plan = Plans + "/{planId:guid}";
+    public const string DesktopDependencies = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-desktop-dependencies";
+    public const string DesktopDependency = DesktopDependencies + "/{installationId:guid}";
     public const string Operations = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-operations";
     public const string Operation = Operations + "/{operationId:guid}";
     public const string Releases = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-releases";

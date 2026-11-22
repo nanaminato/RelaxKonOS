@@ -57,6 +57,11 @@ internal static class ModuleManagementHttpChecks
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             using var client = new HttpClient { BaseAddress = new Uri(address) };
             var detail = ServerModuleManagementRoutes.Detail.Replace("{moduleId}", ServerModules.GitId);
+            var installationId = Guid.NewGuid();
+            var dependencyRoute = ServerModuleManagementRoutes.DesktopDependencies + "/" + installationId.ToString("D");
+            var dependency = new ServerDesktopDependencyRequest(store.ServiceId, "fixture.editor", [ServerModules.GitId]);
+            check((await client.PutAsJsonAsync(dependencyRoute, dependency)).StatusCode == HttpStatusCode.Unauthorized,
+                "desktop dependency registration requires authentication");
             var receiptRoute = ServerModuleManagementRoutes.PackageOperation.Replace("{operationId:guid}", Guid.NewGuid().ToString("D"));
             check((await client.GetAsync(detail)).StatusCode == HttpStatusCode.Unauthorized, "module detail rejects unauthenticated requests");
             check((await client.GetAsync(ServerModuleManagementRoutes.InstalledPackages)).StatusCode == HttpStatusCode.Unauthorized
@@ -91,7 +96,29 @@ internal static class ModuleManagementHttpChecks
             var request = new ServerModulePlanRequest(store.ServiceId, ServerModuleAction.Disable, [ServerModules.GitId], target, store.Revision, "http-one");
             check((await client.PostAsJsonAsync(ServerModuleManagementRoutes.Plans, request)).StatusCode == HttpStatusCode.Forbidden,
                 "global module changes require the existing controller role");
+            check((await client.PutAsJsonAsync(dependencyRoute, dependency)).StatusCode == HttpStatusCode.Forbidden,
+                "desktop dependency registration requires the existing controller role");
             client.DefaultRequestHeaders.Remove("test-user"); client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+            using (var wrongServer = await client.PutAsJsonAsync(dependencyRoute, dependency with { ServiceId = "other" }))
+                check(wrongServer.StatusCode == HttpStatusCode.Conflict, "desktop dependency registration binds the service identity");
+            using (var registered = await client.PutAsJsonAsync(dependencyRoute, dependency))
+                check(await registered.Content.ReadFromJsonAsync<ServerDesktopDependencyReceipt>(RelaxKonOSJsonOptions.Default)
+                    == new ServerDesktopDependencyReceipt(store.ServiceId, installationId),
+                    "the authorized desktop dependency registration returns a bound receipt");
+            client.DefaultRequestHeaders.Remove("test-user"); client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.SecondAdmin);
+            var releaseRoute = dependencyRoute + "?serviceId=" + store.ServiceId;
+            check((await client.DeleteAsync(releaseRoute)).IsSuccessStatusCode,
+                "a different controller can only release records under its own identity");
+            using (var blocked = await client.PostAsJsonAsync(ServerModuleManagementRoutes.Plans,
+                request with { IdempotencyKey = "desktop-claim" }, RelaxKonOSJsonOptions.Default))
+            {
+                var blockedPlan = await blocked.Content.ReadFromJsonAsync<ServerModulePlanDto>(RelaxKonOSJsonOptions.Default);
+                check(blockedPlan?.BlockedBy.Any(item => item.ProblemCode == "module-desktop-dependency-blocked") == true,
+                    "a separate controller is blocked by the registered desktop dependency");
+            }
+            client.DefaultRequestHeaders.Remove("test-user"); client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+            check((await client.DeleteAsync(releaseRoute)).IsSuccessStatusCode,
+                "the owning controller can release its desktop dependency");
             var installedPackages = await client.GetFromJsonAsync<ServerInstalledModulePageDto>(ServerModuleManagementRoutes.InstalledPackages, RelaxKonOSJsonOptions.Default);
             var packageOperations = await client.GetFromJsonAsync<ServerPackageOperationPageDto>(ServerModuleManagementRoutes.PackageOperations, RelaxKonOSJsonOptions.Default);
             var packageVersions = await client.GetFromJsonAsync<ServerInstalledModulePageDto>(
@@ -162,11 +189,12 @@ internal sealed class ModuleTestAuthentication(IOptionsMonitor<AuthenticationSch
 {
     internal const string Admin = "10000000-0000-0000-0000-000000000001";
     internal const string Observer = "10000000-0000-0000-0000-000000000002";
+    internal const string SecondAdmin = "10000000-0000-0000-0000-000000000003";
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var id = Request.Headers["test-user"].ToString();
-        if (id != Admin && id != Observer) return Task.FromResult(AuthenticateResult.NoResult());
-        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", id), new Claim("role", id == Admin ? "controller" : "observer")], Scheme.Name));
+        if (id is not (Admin or Observer or SecondAdmin)) return Task.FromResult(AuthenticateResult.NoResult());
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", id), new Claim("role", id == Observer ? "observer" : "controller")], Scheme.Name));
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name)));
     }
 }

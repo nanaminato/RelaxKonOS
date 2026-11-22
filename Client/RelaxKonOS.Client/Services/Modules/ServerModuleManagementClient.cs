@@ -147,6 +147,27 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         _serverIdentity = identity;
         return facts;
     }
+    public async Task RegisterDesktopDependencyAsync(Guid installationId, ServerDesktopDependencyRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        Require(installationId != Guid.Empty && _serverIdentity is not null && request.ServiceId == _serverIdentity
+            && ValidIds([request.AppId]) && ValidIds(request.RequiredModules) && request.RequiredModules.Count > 0);
+        var result = await SendAsync<ServerDesktopDependencyReceipt>(HttpMethod.Put,
+            ServerModuleManagementRoutes.DesktopDependencies + "/" + installationId.ToString("D"), request,
+            cancellationToken: cancellationToken);
+        Require(result.ServiceId == request.ServiceId && result.InstallationId == installationId);
+    }
+
+    public async Task ReleaseDesktopDependencyAsync(Guid installationId, string serviceId,
+        CancellationToken cancellationToken = default)
+    {
+        Require(installationId != Guid.Empty && _serverIdentity is not null && serviceId == _serverIdentity);
+        var result = await SendAsync<ServerDesktopDependencyReceipt>(HttpMethod.Delete,
+            ServerModuleManagementRoutes.DesktopDependencies + "/" + installationId.ToString("D")
+                + "?serviceId=" + Uri.EscapeDataString(serviceId), cancellationToken: cancellationToken);
+        Require(result.ServiceId == serviceId && result.InstallationId == installationId);
+    }
+
     public async Task<ServerModulePlanDto> PreviewAsync(ServerModulePlanRequest request, CancellationToken cancellationToken = default)
     {
         Require(_serverIdentity is not null && request.ServiceId == _serverIdentity && ValidIds(request.ModuleIds) && ValidIds(request.EnabledModuleIds));
