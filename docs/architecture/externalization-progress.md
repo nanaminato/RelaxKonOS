@@ -31,8 +31,8 @@
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows 和 Linux 签名双包、生产路由授权拒绝及 Windows 真实 Helper 状态读取已验 |
 | proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows、Linux 签名双包已验，Linux 真实 Mihomo 总览、直连重载和补偿已验 |
-| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows Release 包生命周期及启动守卫已验，真实 sing-box 待验 |
-| squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows Release 包生命周期已验，真实 Squid 待验 |
+| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows Release 包生命周期、Linux x64 签名 Proxy 复用与就绪检查已验，真实 sing-box 待验 |
+| squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows 包生命周期、Linux 签名回执和原生 Squid 单独运行已验，生产 Helper 发布与重载待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows、Linux 签名双包已验，Linux 隔离 Pebble 真实签发及重启恢复已验 |
@@ -79,7 +79,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 | 6–8 | Shell、协调器依赖边界 | 两平台发行依赖图和散装程序集检查通过。Shell 的 RelaxKonOS 依赖限于 Core，协调器传递依赖限于 Protocol。协调器本身另有 [程序集引用检查](../../Tests/Deployment/RelaxKonOS.Deployment.Tests/Program.cs)。 |
 | 9–11 | 默认选择、必需不可取消、可选可取消 | [生产对话框回归](../../Tests/Client/RelaxKonOS.WindowPreviews.Tests/OfficialRoappChecks.cs) 验证可选默认勾选、取消勾选及必需项无取消控件。[联合回归](../../Tests/ServerModules/JointDeploymentAcceptance.cs) 验证取消只移除可选模块。 |
 | 12–13 | 模块复用、共享依赖保护 | 同一真实 Ubuntu Core 上，Windows 与 Linux 桌面实例共用 Databases，第二端没有新增安装回执，第一端卸载后停用仍受阻，最后一端释放后解除阻止。两端位于同一物理主机。Linux x64 联合验收中三个官方 Proxy 应用也复用同一签名归档，卸载最后一款后停用阻止解除。 |
-| 14–16 | 计划过期、服务端切换、网络中断 | 协调器测试拒绝过期和错误实例。联调验证丢失响应后从原回执恢复，真实 Core 重启后完成原计划。网络丢失使用受控请求与响应故障。 |
+| 14–16 | 计划过期、服务端切换、网络中断 | 当前 Windows Release 与 Linux x64 独立协调器套件验证过期、错误实例、检查点重开与重新审阅。联调验证丢失响应后从原回执恢复，真实 Core 重启后完成原计划。网络丢失使用受控请求与响应故障。 |
 | 17 | 升级与卸载 | 联合专项覆盖升级换绑、回滚及离线卸载补偿。Ubuntu 独立模块 0.1.0 到 0.2.0 的热更新保留 Core 和 Git 服务。Windows 与 Ubuntu 两端实际安装后的独立卸载及依赖释放另已验证。 |
 | 18 | 启动依赖检查 | 发行 Terminal 和 Task Manager 的能力缺失阻止激活，恢复后可启动。联合专项覆盖故障模块拒绝启动，Databases 使用真实 Core 验证模块就绪后进入独立组件权限检查。 |
 | 19 | DevCli 与 Direct Deploy | Windows Debug 桌面与 DevCli 通过登录界面直传、卸载、监听更新、失败保留和双配置隔离回归。真实 Docker 归档通过候选启动依赖专项。 |
