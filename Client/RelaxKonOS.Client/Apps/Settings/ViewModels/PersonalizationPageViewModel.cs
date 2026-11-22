@@ -21,7 +21,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 /// 三者是独立的用户意图：切换颜色不会改变菜单布局，切换风格不会改写调色板，
 /// 而“采用推荐风格”始终是一次显式、可撤销的操作。
 /// 透传读写 <see cref="ShellSettings"/>，改动即时反映到桌面并触发保存。</summary>
-public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel, IPersonalizationOverview, IPersonalizationBackground, IPersonalizationLayout, IPersonalizationStyle
+public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel, IPersonalizationOverview, IPersonalizationColors, IPersonalizationBackground, IPersonalizationLayout, IPersonalizationStyle
 {
     private readonly IShellCatalog _shellCatalog;
     private readonly ISystemStyleRegistry _systemStyles;
@@ -132,6 +132,12 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public bool IsSystemTheme { get => Theme == ThemeKind.System; set { if (value) Theme = ThemeKind.System; } }
 
     /// <summary>Built-ins deliberately share the same semantic token contract in every RelaxKonOS app.</summary>
+    System.Windows.Input.ICommand IPersonalizationColors.DeleteThemeCommand => DeleteThemeCommand;
+    System.Windows.Input.ICommand IPersonalizationColors.ExportThemeCommand => ExportThemeCommand;
+    System.Windows.Input.ICommand IPersonalizationColors.ImportThemeCommand => ImportThemeCommand;
+    System.Windows.Input.ICommand IPersonalizationColors.ResetAccentCommand => ResetAccentCommand;
+    System.Windows.Input.ICommand IPersonalizationColors.ResetColorsCommand => ResetColorsCommand;
+
     public IReadOnlyList<ThemePaletteChoice> PaletteChoices =>
     [
         new("builtin:relaxkonos-blue", "RelaxKonOS Blue", false),
@@ -488,5 +494,3 @@ public sealed record SystemStyleChoice(string Id, string DisplayName, bool IsBui
         ? DisplayName
         : string.Format(LocalizedText.Get("settings.system_style.unavailable_format", "{0} (not installed)"), DisplayName);
 }
-
-public sealed record ThemePaletteChoice(string Id, string Name, bool IsCustom);

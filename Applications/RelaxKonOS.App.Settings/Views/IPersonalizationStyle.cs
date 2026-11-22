@@ -13,7 +13,7 @@ public interface IPersonalizationStyle : INotifyPropertyChanged
     Func<string, string> Labels { get; }
     IReadOnlyList<PersonalizationOption> SystemStyleChoices { get; }
     string SelectedSystemStyleId { get; set; }
-    string SystemStyleProblem { get; }
+    string? SystemStyleProblem { get; }
     bool HasSystemStyleProblem { get; }
     bool IsUsingRecommendedStyle { get; }
     ICommand ApplyRecommendedStyleCommand { get; }

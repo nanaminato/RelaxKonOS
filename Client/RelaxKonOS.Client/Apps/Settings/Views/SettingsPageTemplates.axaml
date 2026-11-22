@@ -4,9 +4,6 @@
              xmlns:pages="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views.Pages"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.SettingsPageTemplates">
     <UserControl.DataTemplates>
-        <DataTemplate DataType="vm:PersonalizationColorsPageViewModel">
-                <pages:PersonalizationColorsView DataContext="{Binding Editor}" VerticalAlignment="Top" />
-        </DataTemplate>
 
         <DataTemplate DataType="vm:AccountSecurityPageViewModel">
                 <pages:AccountSecurityPageView VerticalAlignment="Top" />

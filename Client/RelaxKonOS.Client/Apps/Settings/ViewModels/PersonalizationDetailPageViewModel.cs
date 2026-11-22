@@ -8,8 +8,9 @@ public abstract class PersonalizationDetailPageViewModel : SettingsPageViewModel
     protected PersonalizationDetailPageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : base(settings, null) => Editor = editor;
     public PersonalizationPageViewModel Editor { get; }
 }
-public sealed class PersonalizationColorsPageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor)
+public sealed class PersonalizationColorsPageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor), IPersonalizationColorsPage
 {
+    IPersonalizationColors IPersonalizationColorsPage.Editor => Editor;
     public override string Route => "personalization/colors";
     public override string DisplayNameKey => "settings.colors_and_mode";
     public override string DisplayName => "Colors and mode";

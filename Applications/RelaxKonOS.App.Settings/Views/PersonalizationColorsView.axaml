@@ -1,13 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.App.Settings"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
-             xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
-             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationColorsView"
-             x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
+             x:Class="RelaxKonOS.App.Settings.Views.PersonalizationColorsView"
+             x:DataType="loc:IPersonalizationColors" Classes="builtin-app">
     <StackPanel Spacing="16">
-<Border Classes="card" nav:SettingsSearchTarget.Id="workspace.colors">
+<Border Classes="card" loc:SettingsSearchTarget.Id="workspace.colors">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.colors_and_mode}" Classes="title" />
                 <TextBlock Text="{loc:Loc settings.colors_and_mode.description}" Opacity="0.7" TextWrapping="Wrap" />
@@ -24,11 +21,11 @@
 
                 <TextBlock Text="{loc:Loc settings.palette}" FontWeight="SemiBold" />
                 <TextBlock Text="{loc:Loc settings.palette.description}" Classes="subtle" TextWrapping="Wrap" />
-                <ComboBox nav:SettingsSearchTarget.Id="workspace.palette" AutomationProperties.Name="{loc:Loc settings.palette}" ItemsSource="{Binding PaletteChoices}"
+                <ComboBox loc:SettingsSearchTarget.Id="workspace.palette" AutomationProperties.Name="{loc:Loc settings.palette}" ItemsSource="{Binding PaletteChoices}"
                           SelectedValue="{Binding PaletteId, Mode=TwoWay}"
                           SelectedValueBinding="{Binding Id}">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ThemePaletteChoice"><TextBlock Text="{Binding Name}" /></DataTemplate>
+                        <DataTemplate x:DataType="loc:ThemePaletteChoice"><TextBlock Text="{Binding Name}" /></DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
                 <TextBlock Text="{loc:Loc settings.palette_scope_hint}" Classes="subtle" TextWrapping="Wrap" />
@@ -48,7 +45,7 @@
                 </Border>
                 <TextBlock Text="{loc:Loc settings.accent}" FontWeight="SemiBold" />
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <TextBox nav:SettingsSearchTarget.Id="workspace.accent" AutomationProperties.Name="{loc:Loc settings.accent}" Text="{Binding AccentInput, Mode=TwoWay}"
+                    <TextBox loc:SettingsSearchTarget.Id="workspace.accent" AutomationProperties.Name="{loc:Loc settings.accent}" Text="{Binding AccentInput, Mode=TwoWay}"
                              PlaceholderText="{loc:Loc settings.accent.placeholder}" />
                     <Button Grid.Column="1" Content="{loc:Loc settings.accent.reset}"
                             Command="{Binding ResetAccentCommand}"
@@ -62,7 +59,7 @@
                 <TextBlock Text="{loc:Loc settings.custom_theme}" FontWeight="SemiBold" />
                 <TextBlock Text="{loc:Loc settings.custom_theme.description}" Classes="subtle" TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button nav:SettingsSearchTarget.Id="workspace.customTheme" Content="{loc:Loc settings.theme_import}" Command="{Binding ImportThemeCommand}" />
+                    <Button loc:SettingsSearchTarget.Id="workspace.customTheme" Content="{loc:Loc settings.theme_import}" Command="{Binding ImportThemeCommand}" />
                     <Button Content="{loc:Loc settings.theme_export}" Command="{Binding ExportThemeCommand}"
                             IsEnabled="{Binding HasSelectedCustomPalette}" />
                     <Button Content="{loc:Loc settings.theme_delete}" Command="{Binding DeleteThemeCommand}"
