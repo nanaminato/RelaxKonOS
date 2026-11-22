@@ -26,6 +26,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         var supported = ApplicationPlatformNames.Normalize(candidate.Manifest.ClientPlatforms);
         if (supported.Count > 0 && !supported.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
             throw new InvalidOperationException("deployment-client-platform-unsupported");
+        var optional = selectedOptional.Distinct().ToArray();
+        var declaredOptional = candidate.Manifest.Dependencies?.Optional ?? [];
+        if (optional.Any(requirement => !declaredOptional.Contains(requirement)))
+            throw new InvalidOperationException("deployment-optional-selection-invalid");
 
         var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
         var current = packages.FindInstalled(candidate.Manifest.Id);
@@ -46,7 +50,6 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         };
         var runtimeManifest = RuntimeManifest(candidate.Manifest);
         var local = backend.InstalledReleases().ToArray();
-        var optional = selectedOptional.ToArray();
         var localResolution = DeploymentResolver.Resolve(root, local, optional);
         if ((runtimeManifest.Server is { SupportedPlatforms.Count: 0, RequiredCapabilities.Count: 0 }
                 || AllowsBundledLaunchRequirements(candidate, packages))

@@ -58,7 +58,7 @@ internal static class JointDeploymentAcceptance
         TestHost? host = null;
         try
         {
-            await PrepareDesktopArchiveAsync(archive, packagePath);
+            await PrepareDesktopArchiveAsync(archive, packagePath, optionalModuleId: ServerModules.FirewallId);
             File.Copy(Path.Combine(AppContext.BaseDirectory, "FixtureModule.dll"), Path.Combine(publish, "FixtureModule.dll"));
             using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var key = Path.Combine(root, "fixture-signing-key.pem");
@@ -112,15 +112,29 @@ internal static class JointDeploymentAcceptance
             JointAppDeploymentService Service() => new(factory, auth, installer, packages, applications, new(journalPath));
             var candidate = await installer.InspectLocalAsync(packagePath);
             var joint = Service();
+            var optional = candidate.Manifest.Dependencies!.Optional.Single();
+            var requestsBeforeInvalidSelection = factory.Requests;
+            try
+            {
+                await joint.PrepareAsync(candidate, [optional with { MinimumVersion = "9.0.0" }], default);
+                throw new InvalidOperationException("an altered optional dependency was accepted");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-optional-selection-invalid") { }
+            Require(factory.Requests == requestsBeforeInvalidSelection, "altered optional requirements are rejected before server requests");
+            var withOptional = await joint.PrepareAsync(candidate, [optional], default);
+            Require(withOptional.Plan.OrderedReleases.Any(release => release.Package == optional.Package && release.Satisfied),
+                "selecting the declared optional module keeps it in the plan");
             var review = await joint.PrepareAsync(candidate, [], default);
-            Require(review.Plan.PreparedSteps.Length == 1 && review.Plan.OrderedReleases[0].Package.Id == ModuleId,
-                "the desktop plans the missing signed module before the real desktop archive");
+            Require(review.Plan.PreparedSteps.Length == 1 && review.Plan.OrderedReleases[0].Package.Id == ModuleId
+                && review.Plan.OrderedReleases.All(release => release.Package != optional.Package),
+                "deselecting the optional module preserves the missing required signed module");
             var settings = new ShellSettings(null!);
             var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
             using (var uiServices = new ServiceCollection().AddSingleton(localization).BuildServiceProvider())
             {
                 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, uiServices);
                 using var model = new AppInstallerViewModel(installer) { JointDeployment = joint, CurrentPackage = candidate };
+                model.SelectOptionalAsync = _ => Task.FromResult<IReadOnlyList<DeploymentRequirement>?>([]);
                 var requestsBeforeLoginChange = 0;
                 var confirmations = 0;
                 model.ConfirmDeploymentAsync = _ =>
@@ -464,7 +478,7 @@ internal static class JointDeploymentAcceptance
     }
 
     private static Task PrepareDesktopArchiveAsync(string source, string path,
-        string appId = AppIdText, DeploymentPackageKey? dependency = null) =>
+        string appId = AppIdText, DeploymentPackageKey? dependency = null, string? optionalModuleId = null) =>
         RewriteDesktopArchiveAsync(source, path, manifest =>
         {
             var package = dependency ?? new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ModuleId);
@@ -478,6 +492,11 @@ internal static class JointDeploymentAcceptance
                     ["maximumVersionExclusive"] = "2.0.0",
                 }),
             };
+            if (optionalModuleId is not null)
+                manifest["dependencies"]!["optional"] = new JsonArray(new JsonObject
+                {
+                    ["package"] = new JsonObject { ["kind"] = (int)DeploymentPackageKind.ServerModule, ["id"] = optionalModuleId },
+                });
         });
 
     private static async Task RewriteDesktopArchiveAsync(string source, string path, Action<JsonNode> edit)
