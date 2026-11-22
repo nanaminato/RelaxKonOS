@@ -173,6 +173,12 @@ if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundled
     return;
 }
 
+if (args is ["--signed-certificates-joint-acceptance", var signedCertificatesApp])
+{
+    JointDeploymentAcceptance.RunSignedCertificates(signedCertificatesApp);
+    return;
+}
+
 if (args is ["--signed-tailscale-joint-acceptance", var signedTailscaleApp])
 {
     JointDeploymentAcceptance.RunSignedTailscale(signedTailscaleApp);

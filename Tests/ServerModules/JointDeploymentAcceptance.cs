@@ -37,6 +37,7 @@ using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Tunnels;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
+using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Git;
 using RelaxKonOS.Server.Startup;
@@ -82,6 +83,29 @@ internal static class JointDeploymentAcceptance
             && problem.RootElement.GetProperty("code").GetString() == "tailscale.elevation_required"
             && (fixture is null || fixture.ReadCount == 1),
             "the installed signed Tailscale executor rejects a controller without host-network elevation");
+    }
+
+    public static void RunSignedCertificates(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        ServerModules.CertificatesId, ServerCapabilities.Certificates, "Certificates", AcmeExecution.AssemblyFile,
+        AcmeExecution.EntryType, null, VerifySignedCertificatesAsync));
+
+    private static async Task VerifySignedCertificatesAsync(TestHost _, string root)
+    {
+        var serverRoot = Path.Combine(root, "server");
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
+        builder.Services.AddSingleton(new CertificateOptions { DirectoryUrl = "invalid-directory" });
+        builder.Services.AddSingleton<FileHttp01ChallengeStore>();
+        builder.Services.AddSingleton<CertificateMetadataRepository>();
+        var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.CertificatesId }, InstalledModuleCatalog.Load(serverRoot));
+        modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+        await using var host = builder.Build();
+        var execution = host.Services.GetRequiredService<AcmeExecution>();
+        var acme = host.Services.GetRequiredService<IAcmeService>();
+        var directory = new Uri("https://fixture.invalid/dir");
+        var identity = new AcmeOrderIdentity(directory, new(directory, "/account"), "fixture", new(directory, "/order"));
+        Require(!ReferenceEquals(execution, AcmeExecution.Shared)
+            && await acme.ObserveOrderAsync(identity, default) == "unavailable" && execution.CurrentCode is { IsAlive: true },
+            "the joint-installed signed Certificates package runs the production ACME observation executor");
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
@@ -1409,7 +1433,7 @@ internal static class JointDeploymentAcceptance
                 if (!hasTunnels)
                     builder.Services.AddSingleton<IHostElevationSessionStore, NoElevation>();
             }
-            foreach (var module in online.Where(module => module.Id is not (ServerModules.GitId or "relaxkonos.tailscale")))
+            foreach (var module in online.Where(module => module.Id is not (ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId)))
                 module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
@@ -1463,7 +1487,7 @@ internal static class JointDeploymentAcceptance
                         .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User)))).RequireAuthorization();
                 app.MapGet("/fixture-core", () => "ready");
                 app.MapServerModuleManagementEndpoints();
-                foreach (var module in online) module.MapEndpoints(app, context);
+                foreach (var module in online.Where(module => module.Id != ServerModules.CertificatesId)) module.MapEndpoints(app, context);
                 app.Urls.Add("http://127.0.0.1:0");
                 await app.StartAsync();
                 store.VerifyStartup(modules.EnabledIds);
