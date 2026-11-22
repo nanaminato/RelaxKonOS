@@ -658,12 +658,14 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         };
         appsPage.RequestClearDataAsync = async app =>
         {
-            var options = await context.ShowDialogAsync<AppDataClearOptions?>(window,
-                LocalizedText.Format("settings.apps.clear_data_title", app.DisplayName), dialog => new AppDataClearDialogView
+            var title = LocalizedText.Format("settings.apps.clear_data_title", app.DisplayName);
+            var selection = await context.ShowDialogAsync<AppDataClearSelection?>(window,
+                title, dialog => new AppDataClearDialogView
                 {
-                    DataContext = new AppDataClearDialogViewModel(app, dialog.Close),
+                    DataContext = new AppDataClearDialogViewModel(title, key => LocalizedText.Get(key), dialog.Close),
                 }, new Size(520, 390));
-            return options is null ? null : await appData.ClearAsync(app.Id, options);
+            return selection is null ? null : await appData.ClearAsync(app.Id,
+                new AppDataClearOptions(selection.ClearPermissionDecisions, selection.ClearServerData));
         };
 
         EventHandler<ManagedWindow>? closed = null;
