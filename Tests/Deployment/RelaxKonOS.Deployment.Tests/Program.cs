@@ -2,6 +2,14 @@ using System.Collections.Immutable;
 using System.Text.Json.Nodes;
 using RelaxKonOS.Deployment;
 
+var hostDependencies = typeof(DeploymentResolver).Assembly.GetReferencedAssemblies()
+    .Select(reference => reference.Name)
+    .Where(name => name is not null && name != "RelaxKonOS.Protocol" && name != "mscorlib"
+        && name != "netstandard" && !name.StartsWith("System.", StringComparison.Ordinal))
+    .ToArray();
+if (hostDependencies.Length != 0)
+    throw new InvalidOperationException($"Deployment coordinator depends on: {string.Join(", ", hostDependencies)}");
+
 DeploymentPackageKey Key(string id) => new(DeploymentPackageKind.ServerModule, id);
 DeploymentRelease Release(string id, string version, params DeploymentRequirement[] requires)
     => new(Key(id), version, id + version, false, [..requires], ImmutableDictionary<string, string>.Empty);
