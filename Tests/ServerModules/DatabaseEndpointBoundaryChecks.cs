@@ -66,6 +66,20 @@ internal static class DatabaseEndpointBoundaryChecks
 
         using var native = new ServiceCollection().AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>().BuildServiceProvider();
         var helper = (IdleDatabaseHelper)native.GetRequiredService<IPrivilegedOperationTransport>();
+        var queryHost = new DatabaseQueryHost(helper);
+        var instanceId = Guid.NewGuid();
+        if ((await queryHost.ReadPostgreSqlAsync(instanceId, default)).InstanceId != instanceId)
+            throw new InvalidOperationException("PostgreSQL read requests must retain the selected instance.");
+        await queryHost.ReadPostgreSqlMaintenancePlanAsync(default);
+        await queryHost.ReadPostgreSqlMigrationPlanAsync(default);
+        await queryHost.ReadMySqlAsync(default);
+        if (!helper.ReadRequests.Select(request => request.Operation).SequenceEqual(new[]
+            {
+                PrivilegedOperationKind.PostgreSqlQuery, PrivilegedOperationKind.PostgreSqlMaintenancePlan,
+                PrivilegedOperationKind.PostgreSqlMigrationPlan, PrivilegedOperationKind.MySqlQuery
+            }))
+            throw new InvalidOperationException("Database reads must use their distinct Helper query kinds.");
+
         var inspectionRoot = Path.Combine(AppContext.BaseDirectory, "test-data", "database-guard-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(inspectionRoot);
         var inspectionBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = inspectionRoot });
@@ -117,16 +131,19 @@ internal static class DatabaseEndpointBoundaryChecks
 internal sealed class IdleDatabaseHelper : IPrivilegedOperationTransport
 {
     internal Guid? Pending { get; set; }
+    internal List<PrivilegedOperationRequest> ReadRequests { get; } = [];
     internal Guid? ScheduledInstance { get; set; }
 
     public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {
+        ReadRequests.Add(request);
         object state = request.Operation switch
         {
             PrivilegedOperationKind.PostgreSqlQuery when request.PostgreSqlInstance is { } instance => new PostgreSqlState(
                 true, true, true, "16", 1, instance, 5433, false, false, null, null, null,
                 BackupSchedule: new(Guid.NewGuid(), true, 24, 3, false, "16", DateTimeOffset.UtcNow)),
-            PrivilegedOperationKind.PostgreSqlQuery => new PostgreSqlState(true, false, false, null, 0,
+            PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan
+                or PrivilegedOperationKind.PostgreSqlMigrationPlan => new PostgreSqlState(true, false, false, null, 0,
                 null, 5432, false, false, null, null, null,
                 Instances: ScheduledInstance is { } secondary ? [new(secondary, 5433)] : []),
             PrivilegedOperationKind.MySqlQuery => new MySqlState(true, 0, false, null,

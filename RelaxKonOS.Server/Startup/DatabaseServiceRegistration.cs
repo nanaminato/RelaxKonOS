@@ -27,6 +27,8 @@ internal static class DatabaseServiceRegistration
         services.AddSingleton<IInstallationService, PostgreSqlBackupAutomationInstallationService>();
         services.AddSingleton<IPostgreSqlBackupScheduleHost, PostgreSqlBackupScheduleHost>();
         services.AddSingleton<PostgreSqlBackupScheduler>();
+        services.AddSingleton<IDatabaseQueryHost, DatabaseQueryHost>();
+        services.AddSingleton<DatabaseQueries>();
         services.AddHostedService(sp => sp.GetRequiredService<PostgreSqlBackupScheduler>());
     }
 }

@@ -349,3 +349,4 @@
 - Databases 0.2.0 声明需要 server.database。Windows Release 官方包验收使用桌面兼容性检查验证服务器撤下能力时拒绝启动，恢复公告后正常只读启动。官方包生命周期、数据库授权专项及 119 项桌面检查通过。
 - PostgreSQL 备份调度器已迁入数据库执行程序集。Core 通过专用接口保留固定调度身份、原生查询和安装台账。Windows Release PostgreSQL 服务端与自动备份回归以及数据库端点专项通过，验证同一时段幂等、台账重开和失败回执；真实 Linux Helper 和独立 .rkmodule 仍待验。
 - 数据库停用检查已迁入执行程序集，Core 仅桥接共享安装台账和原生状态查询。Windows Release 专项通过，使用受控 Helper 验证待恢复操作、次要实例备份计划、缺失的原生证据和损坏台账都会阻止停用。独立 .rkmodule 和实机验收仍待完成。
+- PostgreSQL 实例状态、维护计划、迁移计划和 MySQL 状态采用数据库执行程序集的查询入口。Core 保留 HTTP 授权和闭集 Helper 调用。Windows Release 数据库端点专项核对了四种 Helper 查询及实例选择，原备份回执投影继续沿用。

@@ -1,7 +1,6 @@
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.ServerModule.Database;
-using RelaxKonOS.Protocol.Privileged;
-using RelaxKonOS.Server.Components;
+using RelaxKonOS.Server.Databases;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Privileged;
@@ -23,14 +22,15 @@ internal sealed class DatabaseModule : IServerModule, IServerModuleDeactivationG
     public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
+        DatabaseQueryHost? host = null;
+        DatabaseQueryHost QueryHost() => host ??= new(services.GetRequiredService<IPrivilegedOperationTransport>());
+
         var issues = await DatabaseDeactivationInspection.InspectAsync(
             context.Platform,
             () => (services.GetService<InstallationOperationStore>() ?? new InstallationOperationStore(context.Environment))
                 .Read().Select(entry => entry.Operation),
-            (instance, token) => new PostgreSqlComponentAdapter(services.GetRequiredService<IPrivilegedOperationTransport>())
-                .ReadAsync(token, instance: instance),
-            async token => MySqlInstallationService.DecodeState(await services.GetRequiredService<IPrivilegedOperationTransport>()
-                .ExecuteAsync(new(PrivilegedOperationKind.MySqlQuery), token)),
+            (instance, token) => QueryHost().ReadPostgreSqlAsync(instance, token),
+            token => QueryHost().ReadMySqlAsync(token),
             cancellationToken);
         return issues.Select(issue => new ServerModuleOrphanedWork(Id, issue)).ToArray();
     }
