@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.Settings"
+             x:Class="RelaxKonOS.App.Settings.Views.DailySettingsPageView"
+             x:DataType="vm:DailySettingsPageContent" Classes="builtin-app">
+    <StackPanel Spacing="16">
+        <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="{Binding NotificationsLabel}" Classes="title" />
+            <TextBlock Text="{Binding NotificationsHint}" TextWrapping="Wrap" Classes="subtle" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{Binding NotificationsLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding NotificationsLabel}" nav:SettingsSearchTarget.Id="client.notifications" IsChecked="{Binding NotificationsEnabled, Mode=TwoWay}" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{Binding DoNotDisturbLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding DoNotDisturbLabel}" nav:SettingsSearchTarget.Id="client.doNotDisturb" IsChecked="{Binding DoNotDisturb, Mode=TwoWay}" IsEnabled="{Binding NotificationsEnabled}" />
+            </Grid>
+            <TextBlock Text="{Binding DoNotDisturbHint}" TextWrapping="Wrap" Classes="subtle" />
+        </StackPanel></Border>
+        <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="{Binding StartupLabel}" Classes="title" />
+            <StackPanel IsVisible="{Binding IsSshDesktop}" Spacing="8">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                    <TextBlock Text="{Binding SshTerminalLabel}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding SshTerminalLabel}" nav:SettingsSearchTarget.Id="client.sshTerminal" IsChecked="{Binding OpenTerminalOnSshLogin, Mode=TwoWay}"/>
+                </Grid>
+                <TextBlock Text="{Binding SshTerminalHint}" TextWrapping="Wrap" Classes="subtle"/>
+            </StackPanel>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{Binding RestoreLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch IsEnabled="{Binding !IsSshDesktop}" Grid.Column="1" AutomationProperties.Name="{Binding RestoreLabel}" nav:SettingsSearchTarget.Id="client.restoreTerminals" IsChecked="{Binding RestoreTerminals, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{Binding RestoreHint}" TextWrapping="Wrap" Classes="subtle" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{Binding ConnectionBarLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding ConnectionBarLabel}" nav:SettingsSearchTarget.Id="client.connectionBar" IsChecked="{Binding KeepConnectionBarVisible, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{Binding ConnectionBarHint}" TextWrapping="Wrap" Classes="subtle" />
+        </StackPanel></Border>
+        <Button Content="{Binding ResetLabel}" Command="{Binding ResetDailySettingsCommand}" />
+        <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
+        <Button IsVisible="{Binding SaveFailed}" Content="{Binding RetryLabel}" Command="{Binding RetrySaveCommand}" />
+    </StackPanel>
+</UserControl>

@@ -5,13 +5,31 @@ using RelaxKonOS.App.Settings;
 namespace RelaxKonOS.Client.Services;
 
 /// <summary>Non-sensitive device choices; never included in workspace preference payloads.</summary>
-public sealed class DesktopDevicePreferences : ObservableObject, IAccessibilityPreferences
+public sealed class DesktopDevicePreferences : ObservableObject, IAccessibilityPreferences, IDailySettingsPreferences
 {
     public static readonly int[] ScaleChoices = [100, 125, 150, 175, 200];
     private readonly string _path;
     public DesktopDeviceOptions Value { get; private set; } = new();
     public bool SaveFailed { get; private set; }
     public event EventHandler? Changed;
+
+    DailySettingsOptions IDailySettingsPreferences.DailySettings
+    {
+        get => new(Value.NotificationsEnabled, Value.DoNotDisturb, Value.RestoreTerminals, Value.KeepConnectionBarVisible);
+        set => Update(current => current with
+        {
+            NotificationsEnabled = value.NotificationsEnabled,
+            DoNotDisturb = value.DoNotDisturb,
+            RestoreTerminals = value.RestoreTerminals,
+            KeepConnectionBarVisible = value.KeepConnectionBarVisible,
+        });
+    }
+
+    bool IDailySettingsPreferences.OpenTerminalOnSshLogin
+    {
+        get => Value.OpenTerminalOnSshLogin;
+        set => Update(current => current with { OpenTerminalOnSshLogin = value });
+    }
 
     IReadOnlyList<int> IAccessibilityPreferences.ScaleChoices => ScaleChoices;
     AccessibilityOptions IAccessibilityPreferences.Accessibility

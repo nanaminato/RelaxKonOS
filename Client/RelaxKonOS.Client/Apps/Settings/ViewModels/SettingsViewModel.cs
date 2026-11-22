@@ -141,7 +141,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
                 : p.PinnedSettings.Where(route => route != page.Route).ToArray() });
         }
     }
-    public bool HasDeviceSaveFailure => _devicePreferences.SaveFailed && SelectedPage is not DeviceSettingsPageViewModel;
+    public bool HasDeviceSaveFailure => _devicePreferences.SaveFailed && SelectedPage is not DailySettingsPageViewModel;
     [RelayCommand] private void RetryDeviceSave() => _devicePreferences.Save();
     private void OnDeviceSaveChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => OnPropertyChanged(nameof(HasDeviceSaveFailure));
     private void OnSelectedApplicationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)

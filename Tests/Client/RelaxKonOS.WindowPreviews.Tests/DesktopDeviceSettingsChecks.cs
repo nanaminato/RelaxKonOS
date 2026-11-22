@@ -29,7 +29,8 @@ internal static class DesktopDeviceSettingsChecks
         {
             using var accessibilityPage = new AccessibilityPageViewModel(settings, preferences);
             var accessibility = accessibilityPage.Content;
-            using var daily = new DailySettingsPageViewModel(settings, preferences);
+            using var dailyPage = new DailySettingsPageViewModel(settings, preferences);
+            var daily = dailyPage.Content;
             accessibility.InterfaceScale = 150;
             accessibility.ReducedMotion = true;
             accessibility.HighContrast = true;
@@ -40,8 +41,9 @@ internal static class DesktopDeviceSettingsChecks
                 && color == Colors.White, "Contrast uses the live resource graph");
             var sshPath = Path.Combine(directory, "ssh-" + Guid.NewGuid().ToString("N") + ".json");
             var sshPreferences = new DesktopDevicePreferences(sshPath);
-            using (var sshDaily = new DailySettingsPageViewModel(settings, preferences, sshPreferences))
+            using (var sshDailyPage = new DailySettingsPageViewModel(settings, preferences, sshPreferences))
             {
+                var sshDaily = sshDailyPage.Content;
                 Check(sshDaily.IsSshDesktop && sshDaily.OpenTerminalOnSshLogin, "SSH terminal autostart defaults to enabled.");
                 sshDaily.OpenTerminalOnSshLogin = false;
                 Check(!new DesktopDevicePreferences(sshPath).Value.OpenTerminalOnSshLogin && preferences.Value.OpenTerminalOnSshLogin,
