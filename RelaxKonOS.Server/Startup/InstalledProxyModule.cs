@@ -39,6 +39,8 @@ internal sealed class InstalledProxyModule(InstalledModuleRecord record, string 
         using var verified = Execution.AcquireOverview();
         using var subscription = SubscriptionExecution.Acquire();
         _ = subscription.Create<IProxySubscriptionNormalizer>("RelaxKonOS.Server.Proxy.ProxySubscriptionNormalizer");
+        subscription.RequireConstructor<IProxyQueuedSubscriptionExecutor>(ProxySubscriptionOperations.EntryType,
+            typeof(IProxySubscriptionActions), typeof(IProxySubscriptionBatch));
         using var publication = MihomoDirectPublicationCode.Acquire(DirectPublication);
         using var squid = SquidReceiptExecution.Acquire();
         _ = squid.Create<ISquidReceiptVerifier>(SquidGatewayService.ReceiptVerifierEntryType);

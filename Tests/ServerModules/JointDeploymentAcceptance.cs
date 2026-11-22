@@ -521,6 +521,16 @@ internal static class JointDeploymentAcceptance
                 Require(error.Message == $"Proxy execution entry '{missingEntry}' could not be loaded." && error.InnerException is null,
                     "a signed Proxy entry load failure identifies the entry without retaining its execution context");
             }
+            try
+            {
+                missingCode.RequireConstructor<IProxyQueuedSubscriptionExecutor>(ProxySubscriptionOperations.EntryType, typeof(string));
+                throw new InvalidOperationException("An incompatible signed subscription executor constructor was accepted.");
+            }
+            catch (InvalidDataException error)
+            {
+                Require(error.Message.Contains("does not provide the required constructor", StringComparison.Ordinal),
+                    "the installed Proxy entry gate rejects an incompatible queued subscription constructor");
+            }
         }
         const string yaml = "proxies: []\nrules: [MATCH,DIRECT]\n";
         var encoded = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(yaml)));

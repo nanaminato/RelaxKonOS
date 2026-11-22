@@ -32,6 +32,20 @@ internal sealed class ProxyExecutionCodeGate(string purpose, Func<string>? resol
 
         internal T Create<T>(string name, params object[] args)
         {
+            var type = LoadEntry<T>(name);
+            try { return (T)Activator.CreateInstance(type, args)!; }
+            catch (Exception) { throw new InvalidDataException($"Proxy execution entry '{name}' could not be activated."); }
+        }
+
+        internal void RequireConstructor<T>(string name, params Type[] parameterTypes)
+        {
+            var type = LoadEntry<T>(name);
+            if (type.GetConstructor(parameterTypes) is null)
+                throw new InvalidDataException($"Proxy execution entry '{name}' does not provide the required constructor.");
+        }
+
+        private Type LoadEntry<T>(string name)
+        {
             var code = owner ?? throw new ObjectDisposedException(nameof(Lease));
             try
             {
@@ -43,13 +57,12 @@ internal sealed class ProxyExecutionCodeGate(string purpose, Func<string>? resol
             }
             catch (Exception) { throw new InvalidDataException($"Proxy execution assembly could not be loaded for entry '{name}'."); }
 
-            try
-            {
-                var type = assembly.GetType(name, throwOnError: true)!;
-                return (T)Activator.CreateInstance(type, args)!;
-            }
-            catch (TypeLoadException) { throw new InvalidDataException($"Proxy execution entry '{name}' could not be loaded."); }
-            catch (Exception) { throw new InvalidDataException($"Proxy execution entry '{name}' could not be activated."); }
+            Type type;
+            try { type = assembly.GetType(name, throwOnError: true)!; }
+            catch (Exception) { throw new InvalidDataException($"Proxy execution entry '{name}' could not be loaded."); }
+            if (type.IsAbstract || !typeof(T).IsAssignableFrom(type))
+                throw new InvalidDataException($"Proxy execution entry '{name}' does not implement the required contract.");
+            return type;
         }
 
         public void Dispose()
