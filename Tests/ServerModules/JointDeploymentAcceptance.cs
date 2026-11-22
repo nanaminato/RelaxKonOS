@@ -253,6 +253,10 @@ internal static class JointDeploymentAcceptance
                 factory.HideEffectiveVersion = false;
                 var moduleCatalog = new ModuleDeploymentCatalog(new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth));
                 var healthy = await moduleCatalog.ReadAsync(default);
+                factory.SubstituteInstalledDigest = true;
+                Require(await moduleCatalog.ObserveAsync(default) != healthy.Target,
+                    "changing only the active installed archive invalidates the deployment target");
+                factory.SubstituteInstalledDigest = false;
                 factory.SubstituteInventoryDigest = true;
                 var mismatched = await moduleCatalog.ReadAsync(default);
                 Require(!mismatched.Releases.Any(release => release.Package.Id == ModuleId && release.Satisfied),

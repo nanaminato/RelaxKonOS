@@ -35,9 +35,10 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         var modules = await client.ReadAsync(cancellationToken);
         var installed = (await client.InstalledPackagesAsync(cancellationToken)).Items;
         var verifiedModules = await client.ReadAsync(cancellationToken);
+        var verifiedInstalled = (await client.InstalledPackagesAsync(cancellationToken)).Items;
         var verifiedSources = await client.StoreSourcesAsync(cancellationToken);
-        var target = Target(modules, sources);
-        if (target != Target(verifiedModules, verifiedSources))
+        var target = Target(modules, installed, sources);
+        if (target != Target(verifiedModules, verifiedInstalled, verifiedSources))
             throw new InvalidOperationException("deployment-snapshot-changed");
 
         var releases = ImmutableArray.CreateBuilder<DeploymentRelease>();
@@ -106,11 +107,13 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
     public async Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken)
     {
         var modules = await client.ReadAsync(cancellationToken);
+        var installed = (await client.InstalledPackagesAsync(cancellationToken)).Items;
         var sources = await client.StoreSourcesAsync(cancellationToken);
-        return Target(modules, sources);
+        return Target(modules, installed, sources);
     }
 
-    private static DeploymentTarget Target(IReadOnlyList<ServerModuleDto> modules, ServerModuleStoreSourcePageDto sources)
+    private static DeploymentTarget Target(IReadOnlyList<ServerModuleDto> modules,
+        IReadOnlyList<ServerInstalledModuleDto> installed, ServerModuleStoreSourcePageDto sources)
     {
         var state = modules.OrderBy(module => module.Id, StringComparer.Ordinal).Select(module => new
         {
@@ -120,7 +123,12 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             RequiresRecovery = RequiresRecovery(module),
             module.PendingOperationId
         });
-        return new(modules[0].ServiceId!, Digest(state), CatalogRevision(sources));
+        var packages = installed.OrderBy(package => package.ModuleId, StringComparer.Ordinal).Select(package => new
+        {
+            package.ModuleId, package.Version, package.SourceId, package.ReleaseId,
+            package.ArtifactSha256, package.Active, package.Quarantined
+        });
+        return new(modules[0].ServiceId!, Digest(new { Modules = state, Packages = packages }), CatalogRevision(sources));
     }
 
     internal static string CatalogRevision(ServerModuleStoreSourcePageDto sources) => Digest(new
