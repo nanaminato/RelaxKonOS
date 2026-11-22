@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.Server.Startup;
 
 internal static class InstalledIsolatedModuleChecks
@@ -85,6 +86,7 @@ internal static class InstalledIsolatedModuleChecks
                         "a real unhealthy candidate exits and the previous package is restarted without committing the candidate");
                     check(supervisor.SnapshotInstalledHealth(record.ModuleId, enabled: true)?.SourceId == record.SourceId,
                         "health reports the restored source after a failed replacement");
+                    await CheckServingAsync(supervisor, record.ModuleId, timeout.Token);
                     ModuleTrustStore.Set(root, next, "test-administrator", trusted: true, preserve: record);
                     var updated = await supervisor.ReplaceAsync(record, next,
                         () => InstalledModuleInstaller.Activate(root, next), timeout.Token);
@@ -94,6 +96,7 @@ internal static class InstalledIsolatedModuleChecks
                     var health = supervisor.SnapshotInstalledHealth(record.ModuleId, enabled: true);
                     check(health is { Status: "healthy" } && health.Version == next.Version && health.SourceId == next.SourceId,
                         "health reports the running version and new source together after hot replacement");
+                    await CheckServingAsync(supervisor, record.ModuleId, timeout.Token);
                 }
                 finally { await supervisor.StopAsync(CancellationToken.None); }
             }
@@ -112,6 +115,16 @@ internal static class InstalledIsolatedModuleChecks
             }
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    private static async Task CheckServingAsync(ModuleHostSupervisor supervisor, string moduleId, CancellationToken cancellationToken)
+    {
+        using var connection = supervisor.AcquireConnection(moduleId)
+            ?? throw new InvalidOperationException("The running ModuleHost did not expose its connection.");
+        using var client = new HttpClient { BaseAddress = connection.Endpoint };
+        client.DefaultRequestHeaders.Add(ModuleHostProtocol.ServiceTokenHeader, connection.ServiceToken);
+        if (await client.GetStringAsync("/hello", cancellationToken) != "hello from module host")
+            throw new InvalidOperationException("The active ModuleHost generation did not serve its HTTP endpoint.");
     }
     private static async Task<InstalledModuleRecord> StageAsync(string root, ModulePackageManifest manifest, byte[] bytes,
         string sourceId = "fixture")

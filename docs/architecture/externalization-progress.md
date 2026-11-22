@@ -365,3 +365,4 @@
 - WSL x86_64 运行当前 Linux x64 自包含 Core，在临时服务根以本地测试公钥接纳 Databases 签名目录，并通过离线安装写入 0.1.0 ModuleHost 安装事实。同一操作 ID 的持久回执为 AwaitingRestart，effective=false。在线计划、运行信任确认、监督器激活及真实 Helper 查询待验。
 - 冻结计划可为离线安装且没有代码信任记录的同一 ModuleHost 归档首次确认信任；保留 AwaitingRestart。Windows Release 的模块包 HTTP 专项验证离线包初始无信任、直接安装无法确认信任、冻结计划写入精确信任，并核对回执与幂等重试。Linux 上的运行激活和观察者查询待验。
 - 已安装且启用的 ModuleHost 在缺少精确代码信任时，健康报告为 blocked 与 module-host-code-trust-required。禁用和隔离状态继续独立显示，无法读取信任台账时报告 module-package-trust-invalid。
+- Windows Release 模块包专项通过。受监督的测试模块在坏版本回滚和健康版本热更新后，均使用当前进程代次的令牌实际读取 HTTP 端点。Linux Databases 的隔离激活与真实 Helper 查询待验。
