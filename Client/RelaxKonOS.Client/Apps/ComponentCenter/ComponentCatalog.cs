@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.ManagedRuntimes.Catalog;
@@ -34,7 +35,11 @@ public enum ComponentSourceKind { ManagedArchive, SystemPackage, OfficialSource,
 public sealed record ComponentSourceDeclaration(ComponentSourceKind Kind, bool AdapterAvailable, IReadOnlyList<string> Platforms);
 
 /// <summary>A display-only chip: platform, declared source name, and whether its adapter exists.</summary>
-public sealed record ComponentSourceChip(LocalizedStatus Text, LocalizedStatus Platform, bool Ready, bool IsHostPlatform);
+public sealed record ComponentSourceChip(LocalizedStatus Text, LocalizedStatus Platform, bool Ready, bool IsHostPlatform) : IComponentSourceChip
+{
+    string IComponentSourceChip.Text => Text.Resolve();
+    string IComponentSourceChip.Platform => Platform.Resolve();
+}
 
 public sealed record HostComponentDefinition(string ComponentId, string RuntimeId, string Category,
     string DisplayName, string DescriptionKey, ComponentIntegration Integration, string? ApplicationId,

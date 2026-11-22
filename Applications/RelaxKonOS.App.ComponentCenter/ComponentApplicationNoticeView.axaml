@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentApplicationNoticeView" x:DataType="local:IComponentApplicationNotice">
+ <Border Classes="panel-card"
+         Background="{DynamicResource WarningMutedBrush}" BorderBrush="Transparent">
+  <StackPanel Spacing="12">
+   <StackPanel Orientation="Horizontal" Spacing="8">
+    <Path Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" StrokeThickness="1.6"
+          StrokeLineCap="Round" StrokeJoin="Round" Stroke="{DynamicResource WarningBrush}"
+          Data="M12 3 L22 20 H2 Z M12 9 V14 M12 17 V17.5" />
+    <TextBlock Classes="section-title" Text="{local:Loc component_center.not_integrated_title}" />
+   </StackPanel>
+   <TextBlock Text="{Binding NotIntegratedMessage}" TextWrapping="Wrap" FontSize="13" LineHeight="19" />
+   <TextBlock Text="{local:Loc component_center.not_integrated_scope}" TextWrapping="Wrap" FontSize="12"
+              Foreground="{DynamicResource TextSecondaryBrush}" />
+   <Button Classes="on-notice" Content="{Binding SelectedApplicationOpenText}" Click="OpenApplication_Click"
+           IsVisible="{Binding CanOpenSelectedApplication}" HorizontalAlignment="Left" />
+  </StackPanel>
+ </Border>
+</UserControl>

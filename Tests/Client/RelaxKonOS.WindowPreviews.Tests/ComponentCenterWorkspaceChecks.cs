@@ -138,6 +138,15 @@ internal static class ComponentCenterWorkspaceChecks
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
                 Check(model.ShowNotIntegrated && !model.HasRuntimeDetails && !model.SelectedUsesBatch,
                     "A component without a host page in this build never shows a lifecycle action");
+                string? openedApplication = null;
+                view.OpenApplication = id => openedApplication = id;
+                var applicationNotice = view.GetVisualDescendants().OfType<ComponentApplicationNoticeView>().Single();
+                var openButton = applicationNotice.GetVisualDescendants().OfType<Button>().Single();
+                Check(openButton.IsEffectivelyVisible && model.SelectedApplicationId is not null,
+                    "The owning application is available from the lifecycle notice.");
+                openButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Check(openedApplication == model.SelectedApplicationId,
+                    "The application notice opens the selected component's owning application.");
                 using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
                 {
                     bitmap.Render(window);

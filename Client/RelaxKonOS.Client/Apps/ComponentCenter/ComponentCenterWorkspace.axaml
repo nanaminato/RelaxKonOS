@@ -22,90 +22,7 @@
       <Border IsVisible="{Binding ShowServerModules}"><vm:ServerModulesView DataContext="{Binding ServerModules}" /></Border>
       <Border IsVisible="{Binding ShowCatalogSources}"><component:CatalogSourcesView DataContext="{Binding CatalogSources}" /></Border>
       <StackPanel Spacing="16" IsVisible="{Binding ShowComponentBrowser}">
-       <!-- Component identity: what this is, the state the host reports, and where it is managed.
-            Category, integration and owning application are facts about the component, so they are
-            stated here instead of behind a disclosure: nothing on this page hides an identity. -->
-       <Border Classes="panel-card" IsVisible="{Binding HasComponentDetails}">
-        <StackPanel Spacing="14">
-         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-          <StackPanel Spacing="7">
-           <WrapPanel ItemSpacing="8" LineSpacing="6">
-            <TextBlock Text="{Binding SelectedComponentTitle}" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <Border Classes="pill ok" IsVisible="{Binding SelectedToneOk}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
-            <Border Classes="pill warn" IsVisible="{Binding SelectedToneWarning}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
-            <Border Classes="pill bad" IsVisible="{Binding SelectedToneDanger}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
-            <Border Classes="pill" IsVisible="{Binding SelectedToneIdle}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
-            <Border Classes="pill accent" IsVisible="{Binding SelectedHasUpdate}">
-             <TextBlock Text="{loc:Loc component_center.badge.updates}" />
-            </Border>
-            <Border Classes="pill" IsVisible="{Binding HasSelectedVersion}">
-             <TextBlock Text="{Binding SelectedVersionText}" FontFamily="Consolas" />
-            </Border>
-           </WrapPanel>
-           <TextBlock Text="{Binding SelectedComponentDescription}" TextWrapping="Wrap" FontSize="13" LineHeight="19"
-                      MaxWidth="680" HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
-           <TextBlock Text="{Binding SelectedCatalogProvenance}" TextWrapping="Wrap" FontSize="11"
-                      MaxWidth="680" HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
-          </StackPanel>
-          <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Top" Click="OpenApplication_Click"
-                  IsVisible="{Binding ShowHeaderOpenApplication}">
-           <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Text="{Binding SelectedApplicationOpenText}" VerticalAlignment="Center" />
-            <Path Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"
-                  Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.5" StrokeLineCap="Round"
-                  Data="M5 11 L11 5 M6 5 H11 V10" />
-           </StackPanel>
-          </Button>
-         </Grid>
-         <Border Classes="rule" />
-         <Grid ColumnDefinitions="*,*,*" ColumnSpacing="20">
-          <StackPanel Spacing="3">
-           <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.category}" />
-           <TextBlock Classes="field-value" Text="{Binding SelectedCategoryText}" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="3">
-           <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.integration}" />
-           <TextBlock Classes="field-value" Text="{Binding SelectedIntegrationText}" />
-          </StackPanel>
-          <StackPanel Grid.Column="2" Spacing="3">
-           <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.application}" />
-           <TextBlock Classes="field-value" Text="{Binding SelectedApplicationText}" />
-          </StackPanel>
-         </Grid>
-         <StackPanel Spacing="6" IsVisible="{Binding HasHostPlatformSources}">
-          <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.sources}" />
-          <ItemsControl ItemsSource="{Binding SelectedHostSources}">
-           <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-           <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:ComponentSourceChip">
-             <Border Classes="pill" Classes.accent="{Binding Ready}">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-               <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" />
-               <TextBlock Text="{Binding Text}" />
-              </StackPanel>
-             </Border>
-            </DataTemplate>
-           </ItemsControl.ItemTemplate>
-          </ItemsControl>
-         </StackPanel>
-         <StackPanel Spacing="6" IsVisible="{Binding ShowOtherPlatformSources}">
-          <TextBlock Classes="field-label" Text="{loc:Loc component_center.field.sources_other}" />
-          <ItemsControl ItemsSource="{Binding SelectedOtherSources}">
-           <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-           <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:ComponentSourceChip">
-             <Border Classes="pill">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-               <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" />
-               <TextBlock Text="{Binding Text}" />
-              </StackPanel>
-             </Border>
-            </DataTemplate>
-           </ItemsControl.ItemTemplate>
-          </ItemsControl>
-         </StackPanel>
-        </StackPanel>
-       </Border>
+       <component:ComponentIdentityView IsVisible="{Binding HasComponentDetails}" OpenApplicationRequested="OpenApplication_Click" />
 
        <Border Classes="panel-card" IsVisible="{Binding ShowDesktopPackage}">
         <StackPanel Spacing="12">
@@ -157,23 +74,7 @@
         </StackPanel>
        </Border>
 
-       <!-- Honest stop sign for components whose lifecycle still lives in their own application. -->
-       <Border Classes="panel-card" IsVisible="{Binding ShowNotIntegrated}"
-               Background="{DynamicResource WarningMutedBrush}" BorderBrush="Transparent">
-        <StackPanel Spacing="12">
-         <StackPanel Orientation="Horizontal" Spacing="8">
-          <Path Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" StrokeThickness="1.6"
-                StrokeLineCap="Round" StrokeJoin="Round" Stroke="{DynamicResource WarningBrush}"
-                Data="M12 3 L22 20 H2 Z M12 9 V14 M12 17 V17.5" />
-          <TextBlock Classes="section-title" Text="{loc:Loc component_center.not_integrated_title}" />
-         </StackPanel>
-         <TextBlock Text="{Binding NotIntegratedMessage}" TextWrapping="Wrap" FontSize="13" LineHeight="19" />
-         <TextBlock Text="{loc:Loc component_center.not_integrated_scope}" TextWrapping="Wrap" FontSize="12"
-                    Foreground="{DynamicResource TextSecondaryBrush}" />
-         <Button Classes="on-notice" Content="{Binding SelectedApplicationOpenText}" Click="OpenApplication_Click"
-                 IsVisible="{Binding CanOpenSelectedApplication}" HorizontalAlignment="Left" />
-        </StackPanel>
-       </Border>
+       <component:ComponentApplicationNoticeView IsVisible="{Binding ShowNotIntegrated}" OpenApplicationRequested="OpenApplication_Click" />
 
        <component:ComponentHostObservationView IsVisible="{Binding ShowHostObservation}" />
        <Border Classes="panel-card" IsVisible="{Binding ShowOfficialDownloads}">

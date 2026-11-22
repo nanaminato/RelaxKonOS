@@ -20,8 +20,20 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 }
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
-public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation
+public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice
 {
+    IReadOnlyList<IComponentSourceChip> IComponentIdentity.SelectedHostSources => SelectedHostSources;
+    IReadOnlyList<IComponentSourceChip> IComponentIdentity.SelectedOtherSources => SelectedOtherSources;
+    string IComponentApplicationNotice.NotIntegratedMessage => NotIntegratedMessage.Resolve();
+    string IComponentApplicationLink.SelectedApplicationOpenText => SelectedApplicationOpenText.Resolve();
+    string IComponentIdentity.SelectedComponentTitle => SelectedComponentTitle.Resolve();
+    string IComponentIdentity.SelectedStatusText => SelectedStatusText.Resolve();
+    string IComponentIdentity.SelectedVersionText => SelectedVersionText.Resolve();
+    string IComponentIdentity.SelectedComponentDescription => SelectedComponentDescription.Resolve();
+    string IComponentIdentity.SelectedCategoryText => SelectedCategoryText.Resolve();
+    string IComponentIdentity.SelectedIntegrationText => SelectedIntegrationText.Resolve();
+    string IComponentIdentity.SelectedApplicationText => SelectedApplicationText.Resolve();
+
     string IComponentCenterEmptyState.EmptyMessage => EmptyMessage.Resolve();
     ICommand IComponentHostObservation.ObserveHostCommand => ObserveHostCommand;
     string IComponentHostObservation.HostObservationPlatformText => HostObservationPlatformText.Resolve();

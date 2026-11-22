@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentIdentityView" x:DataType="local:IComponentIdentity">
+ <Border Classes="panel-card">
+  <StackPanel Spacing="14">
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+    <StackPanel Spacing="7">
+     <WrapPanel ItemSpacing="8" LineSpacing="6">
+      <TextBlock Text="{Binding SelectedComponentTitle}" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+      <Border Classes="pill ok" IsVisible="{Binding SelectedToneOk}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+      <Border Classes="pill warn" IsVisible="{Binding SelectedToneWarning}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+      <Border Classes="pill bad" IsVisible="{Binding SelectedToneDanger}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+      <Border Classes="pill" IsVisible="{Binding SelectedToneIdle}"><TextBlock Text="{Binding SelectedStatusText}" /></Border>
+      <Border Classes="pill accent" IsVisible="{Binding SelectedHasUpdate}">
+       <TextBlock Text="{local:Loc component_center.badge.updates}" />
+      </Border>
+      <Border Classes="pill" IsVisible="{Binding HasSelectedVersion}">
+       <TextBlock Text="{Binding SelectedVersionText}" FontFamily="Consolas" />
+      </Border>
+     </WrapPanel>
+     <TextBlock Text="{Binding SelectedComponentDescription}" TextWrapping="Wrap" FontSize="13" LineHeight="19"
+                MaxWidth="680" HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
+     <TextBlock Text="{Binding SelectedCatalogProvenance}" TextWrapping="Wrap" FontSize="11"
+                MaxWidth="680" HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
+    </StackPanel>
+    <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Top" Click="OpenApplication_Click"
+            IsVisible="{Binding ShowHeaderOpenApplication}">
+     <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBlock Text="{Binding SelectedApplicationOpenText}" VerticalAlignment="Center" />
+      <Path Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"
+            Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.5" StrokeLineCap="Round"
+            Data="M5 11 L11 5 M6 5 H11 V10" />
+     </StackPanel>
+    </Button>
+   </Grid>
+   <Border Classes="rule" />
+   <Grid ColumnDefinitions="*,*,*" ColumnSpacing="20">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="field-label" Text="{local:Loc component_center.field.category}" />
+     <TextBlock Classes="field-value" Text="{Binding SelectedCategoryText}" />
+    </StackPanel>
+    <StackPanel Grid.Column="1" Spacing="3">
+     <TextBlock Classes="field-label" Text="{local:Loc component_center.field.integration}" />
+     <TextBlock Classes="field-value" Text="{Binding SelectedIntegrationText}" />
+    </StackPanel>
+    <StackPanel Grid.Column="2" Spacing="3">
+     <TextBlock Classes="field-label" Text="{local:Loc component_center.field.application}" />
+     <TextBlock Classes="field-value" Text="{Binding SelectedApplicationText}" />
+    </StackPanel>
+   </Grid>
+   <StackPanel Spacing="6" IsVisible="{Binding HasHostPlatformSources}">
+    <TextBlock Classes="field-label" Text="{local:Loc component_center.field.sources}" />
+    <ItemsControl ItemsSource="{Binding SelectedHostSources}">
+     <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="local:IComponentSourceChip">
+       <Border Classes="pill" Classes.accent="{Binding Ready}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+         <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" />
+         <TextBlock Text="{Binding Text}" />
+        </StackPanel>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+   <StackPanel Spacing="6" IsVisible="{Binding ShowOtherPlatformSources}">
+    <TextBlock Classes="field-label" Text="{local:Loc component_center.field.sources_other}" />
+    <ItemsControl ItemsSource="{Binding SelectedOtherSources}">
+     <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="local:IComponentSourceChip">
+       <Border Classes="pill">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+         <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" />
+         <TextBlock Text="{Binding Text}" />
+        </StackPanel>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+  </StackPanel>
+ </Border>
+</UserControl>
