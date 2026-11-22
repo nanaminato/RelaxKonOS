@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -51,7 +52,7 @@ internal static class TailscaleBoundaryChecks
                 Check(co.Describe(ModuleId)!.ActiveLeases == 0, "Status cancellation returns its real lease only after IPC completes");
             }
             await SleepAndCollectAsync(co, graph);
-            Check(graph.All(reference => !reference.IsAlive), "Actual runtime, coordinators and Helper bridges are collectable after release despite retained completed caller Tasks");
+            Check(graph.All(reference => !reference.IsAlive), "Runtime, coordinators, Helper bridges and execution load context are collectable after release despite retained caller Tasks");
 
             for (var cycle = 0; cycle < 16; cycle++)
             {
@@ -171,8 +172,12 @@ internal static class TailscaleBoundaryChecks
     {
         using var lease = await coordinator.AcquireAsync(ModuleId);
         var runtime = lease.Runtime;
-        return new[] { runtime, runtime.Resolve(typeof(ITailscaleManager)), runtime.Resolve(typeof(ITailscaleControl)),
-            runtime.Resolve(typeof(ITailscaleLogin)),
+        var control = runtime.Resolve(typeof(ITailscaleControl));
+        var login = runtime.Resolve(typeof(ITailscaleLogin));
+        var context = AssemblyLoadContext.GetLoadContext(control.GetType().Assembly);
+        if (context?.IsCollectible != true || context != AssemblyLoadContext.GetLoadContext(login.GetType().Assembly))
+            throw new Exception("Tailscale coordinators did not load in the same collectible generation.");
+        return new[] { runtime, runtime.Resolve(typeof(ITailscaleManager)), control, login, context,
             runtime.Resolve(typeof(ITailscaleControlHost)), runtime.Resolve(typeof(ITailscaleLoginHost)), runtime.Resolve(typeof(ITailscaleControlAuthorization)) }
             .Select(instance => new WeakReference(instance)).ToArray();
     }

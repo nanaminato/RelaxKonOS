@@ -4,6 +4,8 @@ using RelaxKonOS.Protocol.Tailscale;
 using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Server.Tailscale;
 using System.Security.Claims;
+using System.Text.Json;
+using RelaxKonOS.Protocol.Common;
 
 internal static class TailscaleLoginCoordinatorChecks
 {
@@ -47,6 +49,9 @@ internal static class TailscaleLoginCoordinatorChecks
             var observes = host.Observes;
             var request = Request();
             var prepared = await coordinator.PrepareAsync(principal, request, default);
+            var persisted = journal.Read(request.OperationId)!;
+            Check(JsonSerializer.SerializeToUtf8Bytes(persisted, RelaxKonOSJsonOptions.Default)
+                .SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(persisted, TailscaleJournalJsonContext.Format.StoredTailscaleLoginOperation)));
             Check(prepared.State == TailscaleLoginState.Prepared && prepared.OperationId == request.OperationId
                 && prepared.ExpectedRevision == host.Observation.Revision && host.Observes == observes + 1);
             Check((await coordinator.PrepareAsync(principal, request, default)) == prepared && host.Observes == observes + 1);

@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Tailscale;
 using RelaxKonOS.Server.Tailscale;
 using System.Security.Claims;
+using System.Text.Json;
+using RelaxKonOS.Protocol.Common;
 
 internal static class TailscaleControlChecks
 {
@@ -59,6 +61,9 @@ internal static class TailscaleControlChecks
             }
             var request = Request();
             var prepared = await coordinator.PrepareAsync(principal, request, default);
+            var persisted = journal.Read(request.OperationId)!;
+            Check(JsonSerializer.SerializeToUtf8Bytes(persisted, RelaxKonOSJsonOptions.Default)
+                .SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(persisted, TailscaleJournalJsonContext.Format.StoredTailscaleOperation)));
             Check(prepared.State == TailscaleOperationState.Prepared && host.Executions == 0);
             Check(await coordinator.PrepareAsync(principal, request, default) == prepared);
             await Reject(() => coordinator.PrepareAsync(principal, request with { Action = TailscaleAction.Disconnect }, default), 409, "tailscale.idempotency_conflict");

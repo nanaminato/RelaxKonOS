@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
-using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Tailscale;
 using System.Text.Json;
 
@@ -51,13 +50,13 @@ public sealed class TailscaleOperationJournal
         command.CommandText = "SELECT document FROM operations WHERE id = $id";
         command.Parameters.AddWithValue("$id", id.ToString("D"));
         return command.ExecuteScalar() is byte[] bytes
-            ? JsonSerializer.Deserialize<StoredTailscaleOperation>(_protector.Unprotect(bytes), RelaxKonOSJsonOptions.Default)
+            ? JsonSerializer.Deserialize(_protector.Unprotect(bytes), TailscaleJournalJsonContext.Format.StoredTailscaleOperation)
                 ?? throw new InvalidDataException("tailscale.operation.invalid_record") : null;
     }
 
     internal void Save(StoredTailscaleOperation stored)
     {
-        var bytes = _protector.Protect(JsonSerializer.SerializeToUtf8Bytes(stored, RelaxKonOSJsonOptions.Default));
+        var bytes = _protector.Protect(JsonSerializer.SerializeToUtf8Bytes(stored, TailscaleJournalJsonContext.Format.StoredTailscaleOperation));
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO operations(id, document) VALUES ($id, $document) ON CONFLICT(id) DO UPDATE SET document = excluded.document";
