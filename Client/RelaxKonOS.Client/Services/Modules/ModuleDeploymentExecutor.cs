@@ -81,9 +81,10 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
     {
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
-        if (module is null || module.ArtifactDigest != digest
-            || ModuleDeploymentCatalog.RequiresRecovery(module))
+        if (module is null || module.ArtifactDigest != digest)
             throw new InvalidOperationException("deployment-module-not-effective");
+        if (ModuleDeploymentCatalog.RequiresRecovery(module))
+            throw new ModuleDeploymentRecoveryException(module.Id, module.PendingOperationId);
         var version = release.ActivationOnly ? ModuleDeploymentCatalog.InstalledActivationVersion(module) : module.InstalledVersion;
         if (version != release.Version)
             throw new InvalidOperationException("deployment-module-not-effective");
@@ -107,6 +108,8 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
 
         cancellationToken.ThrowIfCancellationRequested();
         var operation = await client.ApplyAsync(preview.PlanId, cancellationToken);
+        if (operation.State == ServerModuleOperationState.RecoveryRequired)
+            throw new ModuleDeploymentRecoveryException(module.Id, operation.OperationId, operation.ProblemCode);
         if (operation.State != ServerModuleOperationState.Succeeded)
             throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
     }
@@ -148,6 +151,8 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
         var identity = release.ArtifactIdentity.Split('/')[^1];
+        if (module is not null && ModuleDeploymentCatalog.RequiresRecovery(module))
+            throw new ModuleDeploymentRecoveryException(module.Id, module.PendingOperationId);
         if (module is null || !ModuleDeploymentCatalog.IsEffective(module)
             || ModuleDeploymentCatalog.EffectivePackageVersion(module) != release.Version
             || !HasPlannedCapabilities(module, release)
@@ -178,4 +183,11 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             throw new InvalidOperationException("deployment-server-changed");
         return facts;
     }
+}
+
+internal sealed class ModuleDeploymentRecoveryException(string moduleId, Guid? operationId, string? problemCode = null)
+    : InvalidOperationException(problemCode ?? "deployment-module-recovery-required")
+{
+    public string ModuleId { get; } = moduleId;
+    public Guid? OperationId { get; } = operationId;
 }

@@ -387,6 +387,14 @@ internal static class JointDeploymentAcceptance
             var installed = await joint.ExecuteAsync(review, default);
             var executor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
             var moduleRelease = review.Plan.OrderedReleases.Single(item => item.Package.Id == ModuleId);
+            factory.FaultedModule = ModuleId;
+            try
+            {
+                await executor.VerifyAsync(review.Plan, moduleRelease, default);
+                throw new InvalidOperationException("Expected module recovery to block joint deployment verification.");
+            }
+            catch (ModuleDeploymentRecoveryException error) when (error.ModuleId == ModuleId) { }
+            finally { factory.FaultedModule = null; }
             factory.SubstituteHealthVersion = true;
             try
             {

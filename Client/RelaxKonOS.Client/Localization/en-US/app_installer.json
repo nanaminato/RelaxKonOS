@@ -51,6 +51,8 @@
         "app_installer.deployment.version_change": "{0}  {1} → {2}",
         "app_installer.deployment.restart_pending": "The server must restart before deployment can continue. Retry after reconnecting.",
         "app_installer.deployment.module_protection_unavailable": "The server could not protect a required module. Check that the module is active in Component Center and try again.",
+        "app_installer.deployment.module_recovery": "{0} requires recovery. Open Component Center on the connected server and resolve the module operation before retrying this deployment.",
+        "app_installer.deployment.module_recovery_operation": "{0} requires recovery for operation {1}. Resolve that operation in Component Center on the connected server before retrying this deployment.",
         "app_installer.deployment.activation_pending": "A required module is not active. Check its status in Component Center, then retry.",
         "app_installer.deployment.no_permission": "The current account does not have permission to manage server modules.",
         "app_installer.deployment.module_unavailable": "No compatible server module is available for {0}. Check the module and its sources in Component Center.",

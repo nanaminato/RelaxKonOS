@@ -3,6 +3,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.Developer;
+using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -213,6 +214,10 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
             LocalizedText.Format(package.Kind == DeploymentPackageKind.ServerModule
                 ? "app_installer.deployment.module_unavailable" : "app_installer.deployment.app_unavailable", package.Id),
         { Message: "deployment-module-AwaitingRestart" } => LocalizedText.Get("app_installer.deployment.restart_pending"),
+        ModuleDeploymentRecoveryException { OperationId: { } operation } recovery =>
+            LocalizedText.Format("app_installer.deployment.module_recovery_operation", recovery.ModuleId, operation),
+        ModuleDeploymentRecoveryException recovery =>
+            LocalizedText.Format("app_installer.deployment.module_recovery", recovery.ModuleId),
         { Message: "module-desktop-dependency-unavailable" } => LocalizedText.Get("app_installer.deployment.module_protection_unavailable"),
         { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),
