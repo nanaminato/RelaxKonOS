@@ -1,3 +1,5 @@
+extern alias modulehelper;
+
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Server.GatewayProxy;
@@ -423,6 +425,10 @@ internal static class JointDeploymentAcceptance
         var store = squidScope.ServiceProvider.GetRequiredService<SquidConfigurationStore>();
         var configuration = new SquidConfiguration();
         var renderedConfiguration = SquidConfigurationRenderer.Preview(configuration).Configuration!;
+        using var lateFatal = new MemoryStream(Encoding.UTF8.GetBytes(new string('x', 10238) + "FATAL: missing resource"));
+        using var lateFatalReader = new StreamReader(lateFatal);
+        Require(await modulehelper::RelaxKonOS.PrivilegedHelper.SquidOperations.ReadBoundedAsync(lateFatalReader)
+            is { Fatal: true, Text.Length: 8192 }, "the Helper detects Squid fatal diagnostics beyond its output limit");
         if (Environment.GetEnvironmentVariable("RK_TEST_SQUID") is { Length: > 0 } squidExecutable)
         {
             var configPath = Path.Combine(root, "squid-native.conf");
@@ -450,7 +456,10 @@ internal static class JointDeploymentAcceptance
                 var diagnostics = process.StandardError.ReadToEndAsync(timeout.Token);
                 await process.WaitForExitAsync(timeout.Token);
                 var output = await diagnostics;
-                if (process.ExitCode != 0 || output.Contains("FATAL:", StringComparison.Ordinal))
+                using var diagnosticStream = new MemoryStream(Encoding.UTF8.GetBytes(output));
+                using var diagnosticReader = new StreamReader(diagnosticStream);
+                var diagnosticsResult = await modulehelper::RelaxKonOS.PrivilegedHelper.SquidOperations.ReadBoundedAsync(diagnosticReader);
+                if (process.ExitCode != 0 || diagnosticsResult.Fatal)
                     throw new InvalidOperationException("Squid rejected the rendered publication candidate: " + output);
                 Console.WriteLine("PASS: the real Squid parser accepts the rendered publication candidate");
             }

@@ -132,7 +132,7 @@ internal static partial class SquidOperations
         try
         {
             await WriteNewAsync(candidate, preview.Configuration!);
-            var parsed = await RunAsync(Binary, ["-f", candidate, "-k", "parse"]);
+            var parsed = await RunAsync(Binary, ["-f", candidate, "-k", "parse"], rejectFatalDiagnostics: true);
             return parsed.Success ? parsed : parsed with { Error = "squid.configuration.parse_failed" };
         }
         finally { File.Delete(candidate); }
@@ -154,7 +154,7 @@ internal static partial class SquidOperations
         try
         {
             await WriteNewAsync(candidate, rendered);
-            var parsed = await RunAsync(Binary, ["-f", candidate, "-k", "parse"]);
+            var parsed = await RunAsync(Binary, ["-f", candidate, "-k", "parse"], rejectFatalDiagnostics: true);
             if (!parsed.Success) return parsed with { Error = "squid.configuration.parse_failed" };
             var wasRunning = (await RunAsync(Systemctl, ["is-active", "--quiet", "squid.service"])).Success;
             var existed = File.Exists(ConfigurationPath);
@@ -232,7 +232,8 @@ internal static partial class SquidOperations
     [DllImport("libc", SetLastError = true)]
     private static extern int statx(int directory, [MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags, uint mask, out FileMetadata metadata);
 
-    private static async Task<PrivilegedOperationResult> RunAsync(string executable, string[] arguments, TimeSpan? deadline = null)
+    private static async Task<PrivilegedOperationResult> RunAsync(string executable, string[] arguments, TimeSpan? deadline = null,
+        bool rejectFatalDiagnostics = false)
     {
         using var process = new Process { StartInfo = new(executable)
         { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
@@ -251,10 +252,13 @@ internal static partial class SquidOperations
             await Task.WhenAll(stdout, stderr);
             return Failure("squid.process.timed_out", PrivilegedProblemCode.TimedOut);
         }
-        var output = await stdout + await stderr;
-        return new(process.ExitCode == 0, process.ExitCode, Convert.ToBase64String(Encoding.UTF8.GetBytes(output)),
-            Error: process.ExitCode == 0 ? null : "squid.process.failed",
-            ProblemCode: process.ExitCode == 0 ? PrivilegedProblemCode.None : PrivilegedProblemCode.InternalError);
+        var standardOutput = await stdout;
+        var standardError = await stderr;
+        var success = process.ExitCode == 0 && (!rejectFatalDiagnostics || !(standardOutput.Fatal || standardError.Fatal));
+        var output = standardOutput.Text + standardError.Text;
+        return new(success, process.ExitCode, Convert.ToBase64String(Encoding.UTF8.GetBytes(output)),
+            Error: success ? null : "squid.process.failed",
+            ProblemCode: success ? PrivilegedProblemCode.None : PrivilegedProblemCode.InternalError);
     }
 
     /// <summary>
@@ -301,12 +305,23 @@ internal static partial class SquidOperations
         { return false; }
     }
 
-    private static async Task<string> ReadBoundedAsync(StreamReader reader)
+    internal static async Task<(string Text, bool Fatal)> ReadBoundedAsync(StreamReader reader)
     {
-        var text = new StringBuilder(); var buffer = new char[2048]; int count;
-        while ((count = await reader.ReadAsync(buffer)) > 0)
-            if (text.Length < 8192) text.Append(buffer, 0, Math.Min(count, 8192 - text.Length));
-        return text.ToString();
+        const string fatalMarker = "FATAL:";
+        var text = new StringBuilder();
+        var buffer = new char[2048];
+        var overlap = 0;
+        var fatal = false;
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(overlap))) > 0)
+        {
+            if (text.Length < 8192) text.Append(buffer, overlap, Math.Min(count, 8192 - text.Length));
+            var available = overlap + count;
+            fatal |= buffer.AsSpan(0, available).Contains(fatalMarker, StringComparison.Ordinal);
+            overlap = Math.Min(fatalMarker.Length - 1, available);
+            buffer.AsSpan(available - overlap, overlap).CopyTo(buffer);
+        }
+        return (text.ToString(), fatal);
     }
     private static PrivilegedOperationResult Json<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value)));
     private static PrivilegedOperationResult Failure(string error, PrivilegedProblemCode code = PrivilegedProblemCode.InternalError) => new(false, 1, Error: error, ProblemCode: code);
