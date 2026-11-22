@@ -45,7 +45,6 @@
         "browser.status.syncing": "ブックマークと履歴を同期しています…",
         "browser.status.sync_failed": "同期に失敗しました：{0}",
         "browser.login_required": "リモートブラウザーを使用するにはサインインが必要です。\nこのアプリを起動する前に RelaxKonOS Server に接続してください。",
-        "browser.error.not_signed_in": "サインインしていないため、ブラウザーサービスを利用できません。",
         "browser.toolbar.full_screen": "全画面表示",
         "browser.linux.external_browser_notice": "Web ページは Linux のシステムブラウザーで開きます。",
         "browser.enter_full_screen": "全画面表示にする",

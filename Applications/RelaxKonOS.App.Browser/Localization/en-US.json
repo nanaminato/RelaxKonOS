@@ -45,7 +45,6 @@
         "browser.status.syncing": "Syncing bookmarks and history…",
         "browser.status.sync_failed": "Sync failed: {0}",
         "browser.login_required": "Remote Browser requires sign-in.\nConnect to a RelaxKonOS Server before starting this app.",
-        "browser.error.not_signed_in": "Not signed in; browser services are unavailable.",
         "browser.toolbar.full_screen": "Full screen",
         "browser.linux.external_browser_notice": "Web pages open in your system browser on Linux.",
         "browser.enter_full_screen": "Enter full screen",

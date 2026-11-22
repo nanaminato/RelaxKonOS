@@ -19,6 +19,9 @@ language_dir = root / "Localization"
 image_viewer = repo / "Applications" / "RelaxKonOS.App.ImageViewer"
 notepad = repo / "Applications" / "RelaxKonOS.App.Notepad"
 ssh_files = repo / "Applications" / "RelaxKonOS.App.SshFiles"
+# LocalizationService merges these embedded resource sets. The Proxy Server and
+# Databases shared sets are linked into the host's published Localization directory.
+host_embedded_apps = ("CodeEditor", "Git", "FileServices", "Certificates", "WebServers", "Terminal")
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.
 valid_key = re.compile(r"[a-z][a-z0-9-]*(?:[._][A-Za-z0-9-]+)*$")
@@ -42,10 +45,14 @@ suffix_prefix = {
 xaml_key = re.compile(r"\{loc:Loc\s+([A-Za-z0-9_.]+)\s*\}")
 
 
-def load_language(culture: str, paths: list[Path] | None = None) -> dict[str, str]:
+def load_language(culture: str, paths: list[Path] | None = None, require_culture: bool = True) -> dict[str, str]:
     strings: dict[str, str] = {}
     if paths is None:
         paths = sorted((language_dir / culture).glob("*.json"))
+        paths.extend(repo / "Applications" / f"RelaxKonOS.App.{app}" / "Localization" / f"{culture}.json"
+                     for app in host_embedded_apps)
+        paths.append(repo / "Applications/RelaxKonOS.App.ProxyServer/Localization/Shared" / f"{culture}.json")
+        paths.append(repo / "Applications/RelaxKonOS.App.Databases/Localization/Shared" / f"{culture}.json")
         image_viewer_fragment = image_viewer / "Localization" / f"{culture}.json"
         if image_viewer_fragment.is_file():
             paths.append(image_viewer_fragment)
@@ -55,12 +62,12 @@ def load_language(culture: str, paths: list[Path] | None = None) -> dict[str, st
     for path in paths:
         location = path.relative_to(repo).as_posix()
         try:
-            document = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as error:
-            errors.append(f"{location}: invalid JSON ({error.msg})")
+            document = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append(f"{location}: {error}")
             continue
 
-        if document.get("Culture") != culture:
+        if document.get("Culture", None if require_culture else culture) != culture:
             errors.append(f"{location}: Culture must be {culture}")
         unexpected = set(document) - allowed_document_keys
         if unexpected:
@@ -169,34 +176,50 @@ for prefix, where in sorted(prefix_keys.items()):
     if not any(key.startswith(prefix) for key in expected):
         errors.append(f"{where}: composed key prefix {prefix} matches no en-US key")
 
-notepad_packs = {culture: load_language(culture, [notepad / "Localization" / f"{culture}.json"]) for culture in cultures}
-notepad_english = notepad_packs["en-US"]
-for culture, translated in notepad_packs.items():
-    if set(notepad_english) != set(translated):
-        errors.append(f"Notepad {culture}: resource keys differ from en-US")
-    for key in notepad_english.keys() & translated.keys():
-        if format_arguments(notepad_english[key]) != format_arguments(translated[key]):
-            errors.append(f"Notepad {culture}: format arguments differ for {key}")
+package_cultures = ("en-US", "zh-CN", "ja-JP")
+package_directories = sorted({path.parent for path in (repo / "Applications").glob("*/Localization/**/*.json")
+                              if path.stem in package_cultures})
+package_english = {}
+for directory in package_directories:
+    packs = {}
+    for culture in package_cultures:
+        path = directory / f"{culture}.json"
+        try:
+            document = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append(f"{path.relative_to(repo)}: {error}")
+            continue
+        if not isinstance(document, dict):
+            errors.append(f"{path.relative_to(repo)}: Expected a localization object.")
+            continue
+        values = load_language(culture, [path], require_culture=False) if "Strings" in document else document
+        if any(not isinstance(value, str) or not value.strip() for value in values.values()):
+            errors.append(f"{path.relative_to(repo)}: Resource values must be non-empty strings.")
+            continue
+        packs[culture] = values
+    original = packs.get("en-US", {})
+    package_english[directory] = original
+    for culture, translated in packs.items():
+        location = (directory / f"{culture}.json").relative_to(repo)
+        if original.keys() != translated.keys():
+            errors.append(f"{location}: Resource keys differ from en-US.")
+        for key in original.keys() & translated.keys():
+            if format_arguments(original[key]) != format_arguments(translated[key]):
+                errors.append(f"{location}: Format arguments differ for {key}.")
+
+notepad_english = package_english.get(notepad / "Localization", {})
 for source in (*notepad.glob("*.axaml"), *notepad.glob("*.cs")):
     for key in re.findall(r'"((?:common|notepad)\.[a-z0-9_.]+)"|Labels\[((?:common|notepad)\.[a-z0-9_.]+)\]', source.read_text(encoding="utf-8")):
         literal = key[0] or key[1]
         if literal not in notepad_english:
             errors.append(f"{source.name}: Notepad resource {literal} is missing from en-US")
 
-ssh_packs = {culture: load_language(culture, [ssh_files / "Localization" / f"{culture}.json"]) for culture in cultures}
-ssh_english = ssh_packs["en-US"]
-for culture, translated in ssh_packs.items():
-    if set(ssh_english) != set(translated):
-        errors.append(f"SSH Files {culture}: resource keys differ from en-US")
-    for key in ssh_english.keys() & translated.keys():
-        if format_arguments(ssh_english[key]) != format_arguments(translated[key]):
-            errors.append(f"SSH Files {culture}: format arguments differ for {key}")
+ssh_english = package_english.get(ssh_files / "Localization", {})
 for source in (*ssh_files.glob("*.cs"), *ssh_files.glob("Views/*.cs"), *ssh_files.glob("Views/*.axaml")):
     text = source.read_text(encoding="utf-8")
     keys = set(re.findall(r'"((?:ssh_files|explorer|common|server_center|application)\.[a-z0-9_.-]+)"', text))
     keys.update(xaml_key.findall(text))
     for key in keys - ssh_english.keys():
-        # The app ID is also a string literal in the entry point, but is not a resource key.
         errors.append(f"{source.name}: SSH Files resource {key} is missing from en-US")
 
 if errors:
@@ -204,7 +227,7 @@ if errors:
     raise SystemExit(1)
 
 print(
-    f"Localization verified: {len(expected)} keys in every language pack; "
+    f"Localization verified: {len(expected)} host keys and {len(package_directories)} independent application resource sets; "
     f"{len(requested_keys)} referenced by the client, {len(prefix_keys)} composed prefixes, "
     f"{len(expected) - len(requested_keys)} not referenced directly (dynamic keys)."
 )

@@ -22,6 +22,8 @@
         <Content Include="Localization\**\*.json" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="../../Applications/RelaxKonOS.App.ProxyServer/Localization/Shared/*.json"
                  Link="Localization/%(Filename)/proxy_server_shared.json" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="../../Applications/RelaxKonOS.App.Databases/Localization/Shared/*.json"
+                 Link="Localization/%(Filename)/database_shared.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <Import Project="../../deployment/launcher/Launchers.targets" />

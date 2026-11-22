@@ -1,0 +1,7 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "database.recover": "トランザクションを復旧",
+    "database.confirm.Recover": "記録済みトランザクションを確認し、安全な場合に再開しますか？"
+  }
+}

@@ -27,7 +27,14 @@ public static class DatabaseLocalization
 
     private static Dictionary<string, string> Load(string culture)
     {
-        var resource = $"Databases.Localization.{culture}.json";
+        var labels = LoadFragment($"Databases.Localization.{culture}.json");
+        foreach (var (key, value) in LoadFragment($"Databases.SharedLocalization.{culture}.json"))
+            labels.Add(key, value);
+        return labels;
+    }
+
+    private static Dictionary<string, string> LoadFragment(string resource)
+    {
         using var stream = typeof(DatabaseLocalization).Assembly.GetManifestResourceStream(resource)
             ?? throw new InvalidDataException($"Missing Databases localization resource '{resource}'.");
         return JsonSerializer.Deserialize<LanguageFile>(stream)!.Strings;

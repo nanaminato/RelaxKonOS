@@ -2,6 +2,7 @@
     "Culture": "zh-CN",
     "Strings": {
         "browser.settings.open_built_in": "内置浏览器",
-        "browser.settings.open_host": "本机浏览器"
+        "browser.settings.open_host": "本机浏览器",
+        "browser.error.not_signed_in": "未登录；浏览器服务不可用。"
     }
 }

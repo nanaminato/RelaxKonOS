@@ -1,0 +1,7 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "database.recover": "恢复事务",
+    "database.confirm.Recover": "检查已记录事务，并在安全检查点续接？"
+  }
+}

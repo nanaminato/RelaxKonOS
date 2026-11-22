@@ -45,7 +45,6 @@
         "browser.status.syncing": "正在同步书签和历史记录…",
         "browser.status.sync_failed": "同步失败：{0}",
         "browser.login_required": "需要登录。\n在启动此应用前请先连接到 RelaxKonOS Server。",
-        "browser.error.not_signed_in": "未登录；浏览器服务不可用。",
         "browser.toolbar.full_screen": "全屏",
         "browser.linux.external_browser_notice": "网页将在 Linux 系统浏览器中打开。",
         "browser.enter_full_screen": "进入全屏",

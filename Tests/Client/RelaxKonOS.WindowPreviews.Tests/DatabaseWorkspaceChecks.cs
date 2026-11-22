@@ -37,6 +37,12 @@ internal static class DatabaseWorkspaceChecks
         {
             settings.Language = culture;
             Dispatcher.UIThread.RunJobs();
+            foreach (var key in new[] { "database.recover", "database.confirm.Recover" })
+            {
+                var label = DatabaseLocalization.Resolve(localization, key, "[missing]");
+                Check(label != "[missing]" && localization.Get(key, "[missing]") == label,
+                    "Component Center and Databases share recovery labels in " + culture);
+            }
             Check(Equals(initialize.FindControl<Button>("ConfirmButton")?.Content, localization.Get("common.confirm", "[missing]"))
                 && Equals(confirm.FindControl<Button>("CancelButton")?.Content, localization.Get("common.cancel", "[missing]"))
                 && confirm.FindControl<TextBlock>("Message")?.Text == DatabaseLocalization.Resolve(localization, "database.mysql_remote_confirm", "[missing]") + "\n\nfixture",

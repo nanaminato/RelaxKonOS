@@ -1,0 +1,7 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "database.recover": "Recover transaction",
+    "database.confirm.Recover": "Inspect and resume the recorded transaction where safe?"
+  }
+}
