@@ -26,7 +26,8 @@ public sealed class ServerCenterPackageApp : IExternalRemoteApplication
                 new Rect(70, 50, 1120, 760), Manifest.IconGlyph).Window;
             content.AttachWindowHeader(window);
             return window;
-        }, (review, dialog, localize) => new ServerRollbackConfirmationView(review, dialog, localize));
+        }, (review, dialog, localize) => new ServerRollbackConfirmationView(review, dialog, localize),
+            (presentation, section, close, browse) => new ServerCenterManagementDialog(presentation, section, close, browse));
         return Task.CompletedTask;
     }
 }

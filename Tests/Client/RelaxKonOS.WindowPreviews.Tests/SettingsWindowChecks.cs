@@ -26,7 +26,6 @@ using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Apps.ServerCenter;
-using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.Services.HostSettings;
 using RelaxKonOS.Client.Services.Theming;
@@ -109,7 +108,8 @@ internal static class SettingsWindowChecks
         try
         {
             serverCenter!.Open(_ => throw new Exception("A retired Server Center package opened a window."),
-                (_, _, _) => throw new Exception("A retired Server Center package opened a dialog."));
+                (_, _, _) => throw new Exception("A retired Server Center package opened a rollback dialog."),
+                (_, _, _, _) => throw new Exception("A retired Server Center package opened a management dialog."));
             throw new Exception("A retired Server Center package retained its workspace.");
         }
         catch (OperationCanceledException) { }
@@ -654,6 +654,15 @@ internal static class SettingsWindowChecks
             Check(deployment.GetType().Name == "ServerCenterDeploymentPage" && deployment.GetType().Assembly == workspace.GetType().Assembly
                 && ReferenceEquals(deployment.FindControl<ComboBox>("DeploymentHosts")!.ItemsSource, model.Hosts),
                 "The package must own the deployment page and use the host inventory.");
+            var managementResult = model.ShowManagementDialogAsync!("details");
+            PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
+            var managementWindow = windows.Windows.Single(item => item.IsModalDialog);
+            var management = (UserControl)managementWindow.View.Content!;
+            Check(management.GetType().Name == "ServerCenterManagementDialog" && management.GetType().Assembly == workspace.GetType().Assembly,
+                "The package must own its management dialog.");
+            windows.Close(managementWindow);
+            PumpUntil(() => managementResult.IsCompleted && !windows.Windows.Contains(managementWindow));
+            managementResult.GetAwaiter().GetResult();
             var rollbackResult = model.ConfirmRollbackAsync!(new ServerRollbackReview("fixture.example", "2.0.0", "1.0.0"));
             PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
             var rollbackWindow = windows.Windows.Single(item => item.IsModalDialog);

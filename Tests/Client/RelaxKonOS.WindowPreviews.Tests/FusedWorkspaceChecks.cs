@@ -42,7 +42,6 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Apps.Git;
 using RelaxKonOS.Client.Apps.Git.Views;
 using RelaxKonOS.Client.Controls;

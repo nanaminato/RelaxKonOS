@@ -9,7 +9,7 @@ using RelaxKonOS.Client.Services.ServerCenter;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
-using RelaxKonOS.Client.Apps.ServerCenter.Views;
+using RelaxKonOS.Client.Apps.ServerCenter;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.WindowManager;
@@ -46,8 +46,9 @@ internal static class ServerCenterDialogChecks
             {
                 handle = dialog;
                 var services = RelaxKonOS.Client.App.Services;
-                return new ServerCenterManagementDialog(vm, section, dialog, services.GetRequiredService<LocalizationService>(),
-                    () => UsageMemoryStore.CaptureServices(services));
+                return ServerCenterHostWorkspace.CreateManagementDialog(vm, section, dialog, services.GetRequiredService<LocalizationService>(),
+                    () => UsageMemoryStore.CaptureServices(services),
+                    (presentation, name, close, browse) => new ServerCenterManagementDialog(presentation, name, close, browse));
             }, new RelaxKonOS.Core.Primitives.Size(640, 600));
             Dispatcher.UIThread.RunJobs();
             var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "server-center");

@@ -18,7 +18,7 @@
 | settings | Settings | 是 / 是 | 否 | 工作区设置与宿主设置 | 基础 | Windows 隔离安装、同版本修复、包窗口及深链接已验 |
 | explorer | Explorer | 是 / 是 | 否 | 文件 API；调用存储提供者的聚合入口 | 基础 | Windows 隔离发行安装、修复、未登录深链接通过 |
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
-| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 安装、修复、包窗口、向导和卸载通过，真实 SSH 待验 |
+| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 安装、修复、包窗口、管理对话框、向导和卸载通过，真实 SSH 待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
@@ -604,3 +604,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Server Center 部署页与操作布局迁入官方包，三个工作区页面均由包创建。宿主通过 SDK 提供状态和部署命令，并负责管理对话框的探测与配置核对。状态徽标由包部署页和宿主管理对话框共用。Windows Release 的重建归档、部署页切换和主机清单绑定、融合窗口及安装对话框回归通过。对话框视图及真实 SSH 操作待验。
 - Server Center 回滚确认视图迁入官方包。宿主提供已核对的主机及当前版本和上一版本，并保留原有语言绑定及回滚执行。Windows Release 的重建归档验证回滚弹窗由包程序集创建且取消返回拒绝，安装对话框专项验证确认和取消以及两个精确版本的显示。管理对话框、安装向导视图及真实 SSH 回滚待验。
 - 安装向导的视图、状态模型与选项迁入共享 UI，官方包入口与登录前本机入口复用。宿主提供部署回调及文件选择服务，并负责模态取消确认和清理敏感字段。Windows Release 实际包启动及取消向导、管理对话框和本机安装专项通过。完整 Server Center 客户端套件在本机 TLS 探测断言处中止。管理对话框外置和真实 SSH 部署仍待验。
+- Server Center 管理对话框迁入官方包。SDK 提供页面状态与命令，宿主保留 SSH 文件选择、关闭时的草稿保护及操作执行。Windows Release 重建归档验证管理对话框从包程序集加载和关闭，五个管理分区的关闭与草稿回归通过。完整桌面重发校验全部 29 个归档，并使用重发的 Server Center 包通过窗口回归。真实 SSH 部署仍待验。

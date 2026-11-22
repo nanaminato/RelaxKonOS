@@ -382,10 +382,11 @@ public sealed class ExternalAppContextFactory
         : IServerCenterPackageWorkspace
     {
         public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
-            Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation)
+            Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation,
+            ServerCenterManagementViewFactory createManagementView)
         {
             lifetime.ThrowIfCancellationRequested();
-            workspace.Open(showWindow, createRollbackConfirmation);
+            workspace.Open(showWindow, createRollbackConfirmation, createManagementView);
         }
     }
 

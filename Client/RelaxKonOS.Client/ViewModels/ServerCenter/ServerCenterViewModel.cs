@@ -1,4 +1,5 @@
 using RelaxKonOS.UI.ServerInstallation;
+using RelaxKonOS.UI;
 using System.Collections.ObjectModel;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
@@ -19,7 +20,7 @@ namespace RelaxKonOS.Client.ViewModels.ServerCenter;
 /// Login-independent desktop host inventory. It keeps selectable SSH server-and-user targets;
 /// credentials remain in platform secure storage and deployment remains a separate remote action.
 /// </summary>
-public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation, IServerCenterHostsPresentation, IServerCenterDeploymentPresentation, IServerInstallationWizardHost
+public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation, IServerCenterHostsPresentation, IServerCenterDeploymentPresentation, IServerInstallationWizardHost, IServerCenterManagementPresentation
 {
     private readonly IHostTargetStore _targets;
     private readonly IServerCenterConnectionResolver _connections;
@@ -170,9 +171,18 @@ public partial class ServerCenterViewModel : ObservableObject, IServerCenterWork
     public string NavigationMenuTitle => T("common.view", "View");
     public string HostsPageTitle => T("server_center.page.hosts", "Hosts");
     public string DeploymentPageTitle => T("server_center.page.deployment", "Installation and maintenance");
+    ICommand IServerCenterManagementPresentation.ConfigureCommand => ConfigureCommand;
+    IEnumerable<IServerStatusBadgePresentation> IServerCenterManagementPresentation.CurrentConfigurationDetails => CurrentConfigurationDetails;
+    ICommand IServerCenterManagementPresentation.EnsureFirewallCommand => EnsureFirewallCommand;
+    IServerStatusBadgePresentation IServerCenterManagementPresentation.HostStatus => HostStatus;
+    IEnumerable<IServerStatusBadgePresentation> IServerCenterManagementPresentation.InstallationDetails => InstallationDetails;
+    ICommand IServerCenterManagementPresentation.RemoveFirewallCommand => RemoveFirewallCommand;
+    ICommand IServerCenterManagementPresentation.RepairCommand => RepairCommand;
+    ICommand IServerCenterManagementPresentation.UninstallCommand => UninstallCommand;
+
     IServerCenterDeploymentPresentation IServerCenterWorkspacePresentation.Deployment => this;
     IEnumerable<ServerHostTarget> IServerCenterDeploymentPresentation.Hosts => Hosts;
-    RelaxKonOS.UI.IServerStatusBadgePresentation IServerCenterDeploymentPresentation.HostStatus => HostStatus;
+    IServerStatusBadgePresentation IServerCenterDeploymentPresentation.HostStatus => HostStatus;
     ICommand IServerCenterDeploymentPresentation.RecoverCommand => RecoverCommand;
     ICommand IServerCenterDeploymentPresentation.ProbeHostCommand => ProbeHostCommand;
     ICommand IServerCenterDeploymentPresentation.OpenInstallationWizardCommand => OpenInstallationWizardCommand;

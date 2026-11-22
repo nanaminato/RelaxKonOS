@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
 using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Core.Applications;

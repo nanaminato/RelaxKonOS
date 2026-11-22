@@ -4,6 +4,7 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Data;
 using RelaxKonOS.UI;
+using RelaxKonOS.UI.ServerInstallation;
 using RelaxKonOS.WindowManager;
 using RelaxKonOS.Protocol.ServerCenter;
 
@@ -12,7 +13,8 @@ namespace RelaxKonOS.AppSDK;
 public interface IServerCenterPackageWorkspace
 {
     void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
-        Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation);
+        Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation,
+        ServerCenterManagementViewFactory createManagementView);
 }
 
 public interface IServerCenterPackageContext
@@ -158,3 +160,83 @@ public interface IServerCenterDeploymentPresentation : INotifyPropertyChanged
 }
 
 public sealed record ServerRollbackReview(string Host, string CurrentVersion, string PreviousVersion);
+
+
+public delegate Control ServerCenterManagementViewFactory(IServerCenterManagementPresentation presentation,
+    string section, Action close, Func<Task> browseRepairPackage);
+
+public interface IServerCenterManagementPresentation : INotifyPropertyChanged
+{
+    string ApplyConfigurationText { get; }
+    string AutoStartText { get; }
+    string BrowseRepairPackageText { get; }
+    bool CanConfigureAutoStart { get; }
+    bool CanConfigureFileAccess { get; }
+    bool CanConfigureGuardian { get; }
+    bool CanManageCertificate { get; }
+    bool CanManageFirewall { get; }
+    string CloseText { get; }
+    string ComponentSelectionText { get; }
+    string ComponentsText { get; }
+    bool ConfigurationAutoStart { get; set; }
+    FileAccessOption? ConfigurationFileAccess { get; set; }
+    IReadOnlyList<FileAccessOption> ConfigurationFileAccesses { get; }
+    string ConfigurationFileRoots { get; set; }
+    bool ConfigurationGuardian { get; set; }
+    bool ConfigurationLan { get; set; }
+    string ConfigurationLanText { get; }
+    string ConfigurationNote { get; }
+    string ConfigurationPort { get; set; }
+    string ConfigurationPortText { get; }
+    ICommand ConfigureCommand { get; }
+    IEnumerable<IServerStatusBadgePresentation> CurrentConfigurationDetails { get; }
+    string CurrentConfigurationTitle { get; }
+    bool DeleteServerData { get; set; }
+    string DeleteServerDataText { get; }
+    ICommand EnsureFirewallCommand { get; }
+    string EnsureFirewallText { get; }
+    string ErrorMessage { get; }
+    string FileAccessDescription { get; }
+    string FileAccessText { get; }
+    string FileRootsText { get; }
+    string FirewallChoiceText { get; }
+    string FirewallHelpText { get; }
+    string GuardianChoiceText { get; }
+    string GuardianDescription { get; }
+    bool HasError { get; }
+    bool HasManagementStatus { get; }
+    IServerStatusBadgePresentation HostStatus { get; }
+    IEnumerable<IServerStatusBadgePresentation> InstallationDetails { get; }
+    string InstallationInfoNote { get; }
+    string InstallationInfoTitle { get; }
+    bool IsBusy { get; }
+    bool MaintenanceAddFirewallRule { get; set; }
+    string NetworkSettingsTitle { get; }
+    ICommand RemoveFirewallCommand { get; }
+    string RemoveFirewallText { get; }
+    bool RemoveFrp { get; set; }
+    string RemoveFrpText { get; }
+    bool RemoveMihomo { get; set; }
+    string RemoveMihomoText { get; }
+    bool RemoveNginx { get; set; }
+    string RemoveNginxText { get; }
+    bool RemoveSmb { get; set; }
+    string RemoveSmbText { get; }
+    string RepairActionDescription { get; }
+    string RepairCertificateIdentities { get; set; }
+    string RepairCertificateNote { get; }
+    string RepairCertificateText { get; }
+    ICommand RepairCommand { get; }
+    bool RepairLanCertificate { get; set; }
+    string RepairPackagePath { get; set; }
+    string RepairPackageText { get; }
+    string RepairPlanText { get; }
+    string RepairText { get; }
+    ServerHostTarget? SelectedHost { get; }
+    bool ShowConfigurationFileRoots { get; }
+    string StatusMessage { get; }
+    string UninstallActionDescription { get; }
+    ICommand UninstallCommand { get; }
+    string UninstallText { get; }
+    string VerifiedStateText { get; }
+}

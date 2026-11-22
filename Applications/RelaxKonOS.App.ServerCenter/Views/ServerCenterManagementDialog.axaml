@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:RelaxKonOS.UI;assembly=RelaxKonOS.UI" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" xmlns:setup="clr-namespace:RelaxKonOS.UI.ServerInstallation;assembly=RelaxKonOS.UI" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:RelaxKonOS.UI;assembly=RelaxKonOS.UI" xmlns:vm="clr-namespace:RelaxKonOS.AppSDK;assembly=RelaxKonOS.App.SDK" xmlns:setup="clr-namespace:RelaxKonOS.UI.ServerInstallation;assembly=RelaxKonOS.UI" x:Class="RelaxKonOS.App.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:IServerCenterManagementPresentation" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
     <UserControl.Styles>
         <Style Selector="Border.management-section">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
@@ -28,7 +28,7 @@
                     <TextBlock Text="{Binding InstallationInfoNote}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                     <ItemsControl ItemsSource="{Binding InstallationDetails}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="services:ServerInstallationDetail">
+                            <DataTemplate x:DataType="ui:IServerStatusBadgePresentation">
                                 <Grid ColumnDefinitions="150,*" ColumnSpacing="18" Margin="0,8">
                                     <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                     <StackPanel Grid.Column="1">
@@ -44,7 +44,7 @@
                     <Border Classes="management-section"><StackPanel Spacing="12">
                         <TextBlock Text="{Binding CurrentConfigurationTitle}" FontSize="15" FontWeight="SemiBold"/>
                         <ItemsControl ItemsSource="{Binding CurrentConfigurationDetails}"><ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="services:ServerInstallationDetail">
+                            <DataTemplate x:DataType="ui:IServerStatusBadgePresentation">
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="16" Margin="0,3">
                                     <TextBlock Text="{Binding Label}" Classes="action-description"/>
                                     <StackPanel Grid.Column="1">

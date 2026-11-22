@@ -10,7 +10,6 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.WindowManager;
 using RelaxKonOS.Core.Primitives;
 using Size = RelaxKonOS.Core.Primitives.Size;
@@ -21,7 +20,8 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
     : IServerCenterPackageWorkspace
 {
     public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
-        Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation)
+        Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation,
+        ServerCenterManagementViewFactory createManagementView)
     {
         var sshSession = services.GetRequiredService<SshDesktopSession>();
         var language = services.GetRequiredService<ISystemLanguage>();
@@ -41,7 +41,8 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
             if (!windowManager.Windows.Contains(window)) return;
             await windowManager.ShowDialogAsync<bool>(window,
                 section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
-                dialog => new ServerCenterManagementDialog(viewModel, section, dialog, language, CapturePickerMemory), new Size(640, 600));
+                dialog => CreateManagementDialog(viewModel, section, dialog, language, CapturePickerMemory, createManagementView),
+                new Size(640, 600));
         };
         viewModel.ShowInstallationWizardAsync = () => windowManager.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => CreateInstallationWizard(dialog,
@@ -80,6 +81,36 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
                     }), (storage, options, purpose) => UsageFilePicker.OpenFilePickerAsync(storage, options, CapturePickerMemory(), purpose)),
             new Size(620, 480));
         _ = viewModel.LoadAsync();
+    }
+
+    internal static Control CreateManagementDialog(ServerCenterViewModel viewModel, string section, ModalDialog<bool> dialog,
+        ISystemLanguage language, Func<UsageMemoryScope> capturePickerMemory, ServerCenterManagementViewFactory createView)
+    {
+        var view = createView(viewModel, section, dialog.Cancel,
+            () => viewModel.BrowseRepairPackageAsync(session => dialog.ShowDialogAsync<string?>(
+                viewModel.BrowseRepairPackageText,
+                picker => new SshFileBrowserView(session, language, new SshTransferPicker(capturePickerMemory),
+                    selectPackage: path => picker.Close(path), cancelPicker: picker.Cancel),
+                new RelaxKonOS.Core.Primitives.Size(860, 580))));
+        var configuration = (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian, viewModel.ConfigurationAutoStart, viewModel.ConfigurationFileAccess?.Scope, viewModel.ConfigurationFileRoots);
+        void AcceptConfiguration()
+        {
+            configuration = (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian, viewModel.ConfigurationAutoStart, viewModel.ConfigurationFileAccess?.Scope, viewModel.ConfigurationFileRoots);
+        }
+        if (section is "settings" or "components")
+        {
+            viewModel.ConfigurationApplied += AcceptConfiguration;
+            view.DetachedFromVisualTree += (_, _) => viewModel.ConfigurationApplied -= AcceptConfiguration;
+        }
+        var repair = (viewModel.MaintenanceAddFirewallRule, viewModel.RepairLanCertificate, viewModel.RepairCertificateIdentities, viewModel.RepairPackagePath);
+        var uninstall = (viewModel.RemoveSmb, viewModel.RemoveNginx, viewModel.RemoveFrp, viewModel.RemoveMihomo, viewModel.DeleteServerData);
+        DraftDialogGuard.Attach(dialog, () => viewModel.IsBusy,
+            () => section is "settings" or "components"
+                ? configuration != (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian, viewModel.ConfigurationAutoStart, viewModel.ConfigurationFileAccess?.Scope, viewModel.ConfigurationFileRoots)
+                : section == "repair"
+                ? repair != (viewModel.MaintenanceAddFirewallRule, viewModel.RepairLanCertificate, viewModel.RepairCertificateIdentities, viewModel.RepairPackagePath)
+                : section == "uninstall" && uninstall != (viewModel.RemoveSmb, viewModel.RemoveNginx, viewModel.RemoveFrp, viewModel.RemoveMihomo, viewModel.DeleteServerData));
+        return view;
     }
 
     internal static ServerInstallationWizardView CreateInstallationWizard(ModalDialog<bool> dialog,

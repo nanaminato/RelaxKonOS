@@ -9,7 +9,6 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Services.AppPermissions;
-using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Core.Applications;

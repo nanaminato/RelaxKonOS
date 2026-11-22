@@ -2,7 +2,6 @@ using RelaxKonOS.UI.ServerInstallation;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
-using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.WindowManager;
