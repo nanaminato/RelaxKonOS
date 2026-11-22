@@ -57,8 +57,8 @@ internal static class JointDeploymentAcceptance
     private static async Task RunLiveDatabasesAsync(Uri server, string archive, string state, string phase)
     {
         if (server.Scheme != "http" || server.Host != "127.0.0.1" || server.PathAndQuery != "/"
-            || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "resume" or "reuse"))
-            throw new ArgumentException("Expected a loopback Server and a start, resume or reuse phase.");
+            || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "resume" or "reuse" or "uninstall"))
+            throw new ArgumentException("Expected a loopback Server and a start, resume, reuse or uninstall phase.");
         var username = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_USER");
         var password = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_PASSWORD");
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
@@ -77,11 +77,18 @@ internal static class JointDeploymentAcceptance
         var applications = new ApplicationManager(windows, services);
         var drive = new VirtualSystemDrive(Path.Combine(state, "drive"));
         var permissions = DispatchProxy.Create<IAppPermissionManager, PermissionProxy>();
+        var factory = new LiveHttpFactory(moduleHttp);
         var packages = new DeveloperPackageManager(applications, null!, windows, permissions, new Diagnostics(), drive,
-            Path.GetDirectoryName(archive)!);
+            Path.GetDirectoryName(archive)!, moduleHttp: factory, moduleSession: auth);
         await packages.LoadInstalledAsync();
+        if (phase == "uninstall")
+        {
+            Require(await packages.UninstallAsync(ServerModules.DatabaseId) && !applications.IsRegistered(new AppId(ServerModules.DatabaseId)),
+                "the desktop uninstalls its own Databases application");
+            return;
+        }
         var installer = new AppPackageInstallerService(packages, null!, trust);
-        var deployment = new JointAppDeploymentService(new LiveHttpFactory(moduleHttp), auth, installer, packages,
+        var deployment = new JointAppDeploymentService(factory, auth, installer, packages,
             applications, new FileDeploymentJournal(Path.Combine(state, "journal")));
         var candidate = await installer.InspectLocalAsync(archive);
         Require(candidate.Manifest.Id == ServerModules.DatabaseId, "the fixture uses the Databases desktop package");
