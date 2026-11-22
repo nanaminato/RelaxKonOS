@@ -47,7 +47,7 @@ public sealed class SettingsWindow : ISettingsWindow
 {
     private SettingsViewModel? _viewModel;
     private ManagedWindow? _window;
-    public void Open(AppContext context)
+    public void Open(AppContext context, Func<ISettingsWorkspace, ManagedWindow> showWorkspace)
     {
         var settings = context.Services.GetRequiredService<ShellSettings>();
         var session = context.Services.GetRequiredService<IAuthSession>();
@@ -68,11 +68,16 @@ public sealed class SettingsWindow : ISettingsWindow
 
         var viewModel = new SettingsViewModel(settings, settingsClient, session, context.Services.GetRequiredService<WorkspacePreferencesEditor>(), apps, remote, system, registry, developerMode, packages,
             browserClient, networkInspector, wallpapers: wallpapers, sshDesktop: context.Services.GetRequiredService<Services.ServerCenter.SshDesktopSession>());
-        var view = new SettingsWorkspaceView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("settings.title"), view,
-            bounds: new Rect(180, 90, 820, 560),
-            iconGlyph: context.Manifest?.IconGlyph);
-        view.AttachWindowHeader(window);
+        ManagedWindow window;
+        try
+        {
+            window = showWorkspace(viewModel);
+        }
+        catch
+        {
+            viewModel.Dispose();
+            throw;
+        }
         _viewModel = viewModel;
         _window = window;
         var outboundProxy = viewModel.Pages.OfType<NetworkPageViewModel>().Single().OutboundProxy;
