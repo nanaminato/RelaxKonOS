@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
@@ -33,7 +34,8 @@ public sealed class SshFileBrowserApp : RemoteApplicationBase
             return null;
         }
 
-        var view = new SshFileBrowserView(session, context.Services,
+        var view = new SshFileBrowserView(session, context.Services.GetRequiredService<ISystemLanguage>(),
+            () => UsageMemoryStore.Capture(context),
             path => FindFileHandler(path) is not null,
             path => FindFileHandler(path) is { } handler
                 && context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(handler, path)).Succeeded);

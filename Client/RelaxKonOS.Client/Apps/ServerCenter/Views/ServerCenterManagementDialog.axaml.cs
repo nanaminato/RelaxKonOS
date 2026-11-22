@@ -3,6 +3,8 @@ using Avalonia.Interactivity;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.WindowManager;
 using RelaxKonOS.Client.Services.Dialogs;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Services;
 
 namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
 
@@ -10,16 +12,18 @@ public partial class ServerCenterManagementDialog : UserControl
 {
     private readonly Action _close;
     private readonly ModalDialog<bool> _dialog;
-    private readonly IServiceProvider _services;
+    private readonly ISystemLanguage _language;
+    private readonly Func<UsageMemoryScope> _capturePickerMemory;
 
     public ServerCenterManagementDialog(ServerCenterViewModel viewModel, string section, ModalDialog<bool> dialog,
-        IServiceProvider services)
+        ISystemLanguage language, Func<UsageMemoryScope> capturePickerMemory)
     {
         InitializeComponent();
         DataContext = viewModel;
         _close = dialog.Cancel;
         _dialog = dialog;
-        _services = services;
+        _language = language;
+        _capturePickerMemory = capturePickerMemory;
         var configuration = (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian, viewModel.ConfigurationAutoStart, viewModel.ConfigurationFileAccess?.Scope, viewModel.ConfigurationFileRoots);
         void AcceptConfiguration()
         {
@@ -52,7 +56,8 @@ public partial class ServerCenterManagementDialog : UserControl
         if (DataContext is ServerCenterViewModel viewModel)
             await viewModel.BrowseRepairPackageAsync(session => _dialog.ShowDialogAsync<string?>(
                 viewModel.BrowseRepairPackageText,
-                picker => new SshFileBrowserView(session, _services, selectPackage: path => picker.Close(path), cancelPicker: picker.Cancel),
+                picker => new SshFileBrowserView(session, _language, _capturePickerMemory,
+                    selectPackage: path => picker.Close(path), cancelPicker: picker.Cancel),
                 new RelaxKonOS.Core.Primitives.Size(860, 580)));
     }
 

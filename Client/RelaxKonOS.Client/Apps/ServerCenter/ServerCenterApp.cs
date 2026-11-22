@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
@@ -27,6 +28,8 @@ public sealed class ServerCenterApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var sshSession = context.Services.GetRequiredService<SshDesktopSession>();
+        var language = context.Services.GetRequiredService<ISystemLanguage>();
+        UsageMemoryScope CapturePickerMemory() => UsageMemoryStore.Capture(context);
         var viewModel = context.Services.GetRequiredService<ServerCenterViewModel>();
         var view = new ServerCenterWorkspace { DataContext = viewModel };
         var window = context.ShowWindow(viewModel.Title, view,
@@ -43,7 +46,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
             if (!context.WindowManager.Windows.Contains(window)) return;
             await context.ShowDialogAsync<bool>(window,
                 section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
-                dialog => new ServerCenterManagementDialog(viewModel, section, dialog, context.Services), new Size(640, 600));
+                dialog => new ServerCenterManagementDialog(viewModel, section, dialog, language, CapturePickerMemory), new Size(640, 600));
         };
         viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => new ServerInstallationWizardView(
@@ -51,7 +54,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
                     async () => { await dialog.CancelAsync(); return dialog.Result.IsCompleted; },
                     () => dialog.ShowDialogAsync<string?>(
                         viewModel.Text("server_center.wizard.choose_server_bundle", "Browse server files"),
-                        picker => new SshFileBrowserView(sshSession, context.Services, selectPackage: path => picker.Close(path),
+                        picker => new SshFileBrowserView(sshSession, language, CapturePickerMemory, selectPackage: path => picker.Close(path),
                             cancelPicker: picker.Cancel),
                         new Size(860, 580)),
                     async () =>

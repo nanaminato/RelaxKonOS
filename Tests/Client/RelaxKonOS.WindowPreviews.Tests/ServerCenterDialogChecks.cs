@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Avalonia.VisualTree;
 using Avalonia.Interactivity;
 using Avalonia;
@@ -41,7 +42,9 @@ internal static class ServerCenterDialogChecks
             var result = manager.ShowDialogAsync<bool>(owner, section, dialog =>
             {
                 handle = dialog;
-                return new ServerCenterManagementDialog(vm, section, dialog, RelaxKonOS.Client.App.Services);
+                var services = RelaxKonOS.Client.App.Services;
+                return new ServerCenterManagementDialog(vm, section, dialog, services.GetRequiredService<LocalizationService>(),
+                    () => UsageMemoryStore.CaptureServices(services));
             }, new RelaxKonOS.Core.Primitives.Size(640, 600));
             Dispatcher.UIThread.RunJobs();
             var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "server-center");
