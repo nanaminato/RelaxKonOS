@@ -9,6 +9,7 @@ import base64
 import hashlib
 import io
 import os
+import posixpath
 import secrets
 import socket
 import stat
@@ -32,9 +33,10 @@ class UploadHandle(paramiko.SFTPHandle):
 
 
 class Directory(paramiko.SFTPServerInterface):
-    def __init__(self, server, files):
+    def __init__(self, server, files, directories):
         super().__init__(server)
         self.files = files
+        self.directories = directories
 
     def canonicalize(self, path):
         return "/" + super().canonicalize(path).lstrip("/")
@@ -43,22 +45,36 @@ class Directory(paramiko.SFTPServerInterface):
         path = self.canonicalize(path)
         if path in self.files:
             return self.file_attributes(path)
-        if path != "/":
+        if path not in self.directories:
             return paramiko.SFTP_NO_SUCH_FILE
         directory = paramiko.SFTPAttributes()
+        directory.filename = posixpath.basename(path)
         directory.st_mode = stat.S_IFDIR | 0o555
         return directory
 
     lstat = stat
 
     def list_folder(self, path):
-        if self.canonicalize(path) != "/":
+        path = self.canonicalize(path)
+        if path not in self.directories:
             return paramiko.SFTP_NO_SUCH_FILE
-        return [self.file_attributes(path) for path in self.files]
+        return [self.stat(child) for child in sorted(self.files.keys() | self.directories)
+                if child != path and posixpath.dirname(child) == path]
+
+    def mkdir(self, path, attr):
+        path = self.canonicalize(path)
+        if path not in {"/tree", "/tree/nested", "/tree/empty"}:
+            return paramiko.SFTP_PERMISSION_DENIED
+        if path in self.directories or posixpath.dirname(path) not in self.directories:
+            return paramiko.SFTP_FAILURE
+        self.directories.add(path)
+        return paramiko.SFTP_OK
 
     def open(self, path, flags, attr):
         path = self.canonicalize(path)
-        if path == "/upload.txt" and flags & os.O_CREAT and flags & os.O_EXCL and path not in self.files:
+        if (path in {"/upload.txt", "/tree/root.txt", "/tree/nested/child.txt"}
+                and flags & os.O_CREAT and flags & os.O_EXCL
+                and path not in self.files and posixpath.dirname(path) in self.directories):
             return UploadHandle(flags, self.files, path)
         if flags != os.O_RDONLY:
             return paramiko.SFTP_PERMISSION_DENIED
@@ -70,7 +86,7 @@ class Directory(paramiko.SFTPServerInterface):
 
     def file_attributes(self, path):
         file = paramiko.SFTPAttributes()
-        file.filename = path[1:]
+        file.filename = posixpath.basename(path)
         file.st_mode = stat.S_IFREG | 0o644
         file.st_size = len(self.files[path])
         file.st_mtime = 1
@@ -114,6 +130,7 @@ class Server(paramiko.ServerInterface):
 
 def run(runner, package):
     files = {"/fixture.txt": b"RelaxKonOS SFTP fixture\n"}
+    directories = {"/"}
     key = paramiko.RSAKey.generate(2048)
     password = secrets.token_urlsafe(24)
     fingerprint = base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode().rstrip("=")
@@ -126,7 +143,7 @@ def run(runner, package):
         def serve_connection(connection):
             with connection, paramiko.Transport(connection) as transport:
                 transport.add_server_key(key)
-                transport.set_subsystem_handler("sftp", paramiko.SFTPServer, Directory, files)
+                transport.set_subsystem_handler("sftp", paramiko.SFTPServer, Directory, files, directories)
                 transport.start_server(server=Server(password))
                 while transport.is_active() and not stopped.wait(0.1):
                     pass

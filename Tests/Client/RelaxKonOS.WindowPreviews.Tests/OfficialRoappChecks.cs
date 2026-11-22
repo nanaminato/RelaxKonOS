@@ -400,6 +400,24 @@ internal static class OfficialRoappChecks
                         Check(remaining.Items is [{ Name: "fixture.txt" }],
                             "Delete must remove only the selected file.");
 
+                        var uploadTree = Directory.CreateDirectory(Path.Combine(root, "upload-tree"));
+                        var uploadNested = uploadTree.CreateSubdirectory("nested");
+                        uploadTree.CreateSubdirectory("empty");
+                        await File.WriteAllBytesAsync(Path.Combine(uploadTree.FullName, "root.txt"), uploadedBytes);
+                        await File.WriteAllBytesAsync(Path.Combine(uploadNested.FullName, "child.txt"), "nested fixture"u8.ToArray());
+                        Check(await files.UploadDirectoryAsync(connection, uploadTree, "/tree", (_, _, _) => { }, CancellationToken.None),
+                            "The package file capability must upload a nested directory.");
+                        Check(!await files.UploadDirectoryAsync(connection, uploadTree, "/tree", (_, _, _) => { }, CancellationToken.None),
+                            "Directory upload must refuse to merge into an existing remote directory.");
+                        var downloadRoot = Directory.CreateDirectory(Path.Combine(root, "download-tree")).FullName;
+                        await files.DownloadPathsAsync(connection, downloadRoot, [("/tree", "tree", true)],
+                            (_, _, _) => { }, CancellationToken.None);
+                        var rootFile = await File.ReadAllBytesAsync(Path.Combine(downloadRoot, "tree", "root.txt"));
+                        var childFile = await File.ReadAllBytesAsync(Path.Combine(downloadRoot, "tree", "nested", "child.txt"));
+                        Check(rootFile.AsSpan().SequenceEqual(uploadedBytes) && childFile.AsSpan().SequenceEqual("nested fixture"u8)
+                            && Directory.Exists(Path.Combine(downloadRoot, "tree", "empty")),
+                            "Directory round-trip must preserve nested contents and empty directories.");
+
                         var pin = typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!;
                         var expected = pin.GetValue(sshFixture);
                         pin.SetValue(sshFixture, ServerHostTrustRules.Fingerprint("different key"u8));
@@ -417,7 +435,7 @@ internal static class OfficialRoappChecks
                             }
                         }
                         finally { pin.SetValue(sshFixture, expected); }
-                        Console.WriteLine("SSH Files verified listing, download, upload, rename, delete, overwrite protection and host-key rejection over loopback SFTP.");
+                        Console.WriteLine("SSH Files verified file operations, nested directory round-trip, overwrite protection and host-key rejection over loopback SFTP.");
                     }
                 }
                 if (isDatabase)
