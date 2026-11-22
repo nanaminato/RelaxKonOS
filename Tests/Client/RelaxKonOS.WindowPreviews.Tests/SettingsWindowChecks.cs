@@ -34,7 +34,7 @@ using RelaxKonOS.Shell;
 
 internal static class SettingsWindowChecks
 {
-    public static void Run(ShellSettings settings, LocalizationService localization, string? packageSource = null)
+    public static void Run(ShellSettings settings, LocalizationService localization, string? packageSource = null, bool componentCenter = false)
     {
         const string pathValue = "/usr/bin::/bin";
         EnvironmentMutation? mutation = null;
@@ -68,14 +68,14 @@ internal static class SettingsWindowChecks
         typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
         var windows = new RelaxKonOS.WindowManager.WindowManager();
         var memory = new UsageMemoryStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "usage.json"));
-        ExternalAppContextFactory CreateFactory(RelaxKonOS.App.Settings.ISettingsWindow workspace) =>
+        ExternalAppContextFactory CreateFactory(RelaxKonOS.App.Settings.ISettingsWindow workspace, IComponentCenterWorkspace? centerWorkspace) =>
             new(null!, null!, localization, settings, null!, session,
             null!, windows, null!, new RelaxKonOS.Client.Apps.Explorer.ExplorerClient(http, session, memory),
             new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings), null!, null!, null!,
             null!, null!, memory, null!, null!, null!, null!,
             settingsWindow: workspace,
-            componentCenterWorkspace: new RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace(services));
-        var factory = CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services));
+            componentCenterWorkspace: centerWorkspace ?? new RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace(services));
+        var factory = CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null);
         var settingsManifest = new RelaxKonOS.App.Settings.SettingsPackageApp().Manifest;
         using var packageLifetime = new CancellationTokenSource();
         var official = RelaxKonOS.Client.Services.Developer.PackageOrigin.OfficialDistribution;
@@ -472,12 +472,18 @@ internal static class SettingsWindowChecks
             var closeCaption = managed.View.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "PART_Close");
             Click(window, closeCaption);
             Check(!windows.Windows.Contains(managed), "Host-owned close caption stopped working.");
-            if (packageSource is not null)
+            if (packageSource is not null && componentCenter)
+            {
+                var centerWorkspace = new CenterPackageWorkspace();
+                CheckCenterPackage(packageSource, windows, apps,
+                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), centerWorkspace), centerWorkspace);
+            }
+            else if (packageSource is not null)
             {
                 auth.Logout();
                 Pump();
                 var ssh = new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings);
-                CheckInstalledPackage(packageSource, windows, apps, CreateFactory, new ServiceCollection()
+                CheckInstalledPackage(packageSource, windows, apps, workspace => CreateFactory(workspace, null), new ServiceCollection()
                     .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
                     .AddSingleton(settings)
                     .AddSingleton(session)
@@ -508,6 +514,64 @@ internal static class SettingsWindowChecks
             typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, previousServices);
             settings.Apply(original); Pump();
         }
+    }
+
+    private static void CheckCenterPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
+        ApplicationManager applications, ExternalAppContextFactory factory, CenterPackageWorkspace workspace)
+    {
+        var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
+            Path.Combine(Path.GetTempPath(), "rk-center-package-" + Guid.NewGuid().ToString("N")));
+        var packages = new DeveloperPackageManager(applications, factory, windows, new RoappCatalogChecks.Permissions(),
+            new RoappCatalogChecks.Diagnostics(), drive, source);
+        const string id = "relaxkonos.component-center";
+        var path = Path.Combine(source, id + ".roapp");
+        var install = InstallAsync();
+        PumpUntil(() => install.IsCompleted);
+        install.GetAwaiter().GetResult();
+        try
+        {
+            var firstUri = new Uri("relaxkonos://components/server-modules?hostId=fixture");
+            var first = applications.Activate(new AppActivationRequest(firstUri));
+            Check(first.Status == AppActivationStatus.Activated, "The installed Component Center did not claim its route.");
+            PumpUntil(() => windows.Windows.Count > 0);
+            var window = windows.Windows.Single();
+            Check(window.Info.OwnerAppId.Value == id && ReferenceEquals(window.View.Content, workspace.Content)
+                && workspace.Target == firstUri, "The installed component center did not open its owned workspace and dispatch navigation.");
+            var secondUri = new Uri(firstUri + "&moduleId=relaxkonos.git");
+            var second = applications.Activate(new AppActivationRequest(secondUri));
+            Pump();
+            Check(second.Status == AppActivationStatus.Activated && windows.Windows.Single() == window
+                && workspace.Target == secondUri, "Component Center deep links did not reuse the package window.");
+            var rejected = applications.Activate(new AppActivationRequest(new Uri(firstUri + "&action=install")));
+            Check(rejected.Status == AppActivationStatus.RouteNotFound && workspace.Target == secondUri,
+                "A route with an action parameter reached the Component Center workspace.");
+            Console.WriteLine("PASS: installed Component Center archive owns its window and dispatches validated deep links.");
+        }
+        finally
+        {
+            var remove = packages.UninstallAsync(id);
+            PumpUntil(() => remove.IsCompleted);
+            remove.GetAwaiter().GetResult();
+        }
+
+        async Task InstallAsync()
+        {
+            var (_, digest) = await packages.InspectAsync(path, CancellationToken.None);
+            await using var stream = File.OpenRead(path);
+            await packages.InstallOfficialAsync(stream, path, id, digest!, null, CancellationToken.None);
+        }
+    }
+
+    private sealed class CenterPackageWorkspace : IComponentCenterWorkspace
+    {
+        public Control Content { get; } = new TextBlock();
+        public Uri? Target { get; private set; }
+
+        public void Open(Func<string, Control, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
+            showWorkspace("Component Center fixture", Content);
+
+        public bool CanNavigate(Uri uri) => RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.TryParse(uri, out _);
+        public void Navigate(Uri uri) => Target = uri;
     }
 
     private static void CheckInstalledPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,

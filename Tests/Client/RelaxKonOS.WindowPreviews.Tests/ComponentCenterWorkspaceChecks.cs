@@ -22,25 +22,13 @@ internal static class ComponentCenterWorkspaceChecks
 {
     public static void Run(ShellSettings settings)
     {
-        var manager = new RelaxKonOS.WindowManager.WindowManager();
-        manager.Attach(new Canvas { Width = 1280, Height = 900 });
-        var workspace = new LaunchWorkspace();
-        var application = new ComponentCenterApp(workspace);
         var packaged = new ComponentCenterPackageApp();
-        Check(packaged.Manifest.Id == application.Manifest.Id
-            && packaged.Manifest.Permissions.SequenceEqual(application.Manifest.Permissions)
+        Check(packaged.Manifest.Id.Value == "relaxkonos.component-center"
+            && packaged.Manifest.Permissions.Contains(RelaxKonOS.Core.Applications.AppPermissions.ServerComponentsManage)
             && packaged.CanHandleActivation(new Uri("relaxkonos://components/server-modules?hostId=fixture"))
             && !packaged.CanHandleActivation(new Uri("relaxkonos://settings/home"))
             && !packaged.CanHandleActivation(new Uri("relaxkonos://components/server-modules#approve")),
             "The Component Center package preserves application identity and only claims its Shell route namespace.");
-        application.Activate(new RelaxKonOS.AppSDK.AppContext(application.Manifest.Id, manager,
-            RelaxKonOS.Client.App.Services, application.Manifest));
-        var launched = manager.Windows.Single();
-        Check(launched.Info.OwnerAppId == application.Manifest.Id
-            && launched.Title == "Component Center fixture" && ReferenceEquals(launched.View.Content, workspace.Content),
-            "The Component Center entry opens and owns the workspace prepared by the host.");
-        manager.Close(launched);
-
         var singBox = ComponentCatalog.Find("sing-box")!;
         Check(singBox.Platforms.SequenceEqual(["linux"])
             && singBox.Sources.All(source => source.Platforms.SequenceEqual(["linux"])),
@@ -582,17 +570,6 @@ internal static class ComponentCenterWorkspaceChecks
         finally { settings.Language = languageBefore; settings.Appearance = appearanceBefore; }
         Console.WriteLine("Component Center layout checks passed (3 languages × 2 themes). Previews: " + output);
     }
-    private sealed class LaunchWorkspace : RelaxKonOS.AppSDK.IComponentCenterWorkspace
-    {
-        public Control Content { get; } = new TextBlock();
-
-        public void Open(Func<string, Control, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
-            showWorkspace("Component Center fixture", Content);
-
-        public bool CanNavigate(Uri uri) => false;
-        public void Navigate(Uri uri) { }
-    }
-
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
