@@ -355,7 +355,6 @@ public static class Bootstrapper
 
         // Built-in applications.
         services.AddSingleton<ISettingsWindow, SettingsWindow>();
-        services.AddSingleton<SettingsApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();

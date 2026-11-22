@@ -36,8 +36,6 @@ internal static class DesktopDistributionChecks
             .AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>()
             .AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>()
             .AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>()
-            .AddSingleton<RelaxKonOS.App.Settings.ISettingsWindow, RelaxKonOS.Client.Apps.Settings.SettingsWindow>()
-            .AddSingleton<RelaxKonOS.App.Settings.SettingsApp>()
             .BuildServiceProvider();
         var builtIns = new BuiltInApplicationRegistry(services);
         try
@@ -79,6 +77,26 @@ internal static class DesktopDistributionChecks
                             || applications.GetManifest(new AppId(id))?.Version != actual[id].Version)
                             throw new InvalidOperationException($"{profile} did not register the published package {id}.");
                     Console.WriteLine($"{profile}: provisioned {actual.Count} official packages from the published distribution.");
+                    const string settingsId = "relaxkonos.settings";
+                    if (profile == "minimal")
+                    {
+                        if (applications.GetManifest(new AppId(settingsId)) is not null)
+                            throw new InvalidOperationException("Minimal registered Settings before package recovery.");
+                        var archive = Path.Combine(source, settingsId + ".roapp");
+                        var candidate = await installer.InspectLocalAsync(archive, cancellationToken: cancellationToken);
+                        var recovered = await installer.InstallAsync(candidate, cancellationToken);
+                        var repair = await installer.InspectLocalAsync(archive, cancellationToken: cancellationToken);
+                        var repaired = await installer.InstallAsync(repair, cancellationToken);
+                        if (recovered.Id != settingsId || repaired.Version != recovered.Version
+                            || applications.IsBuiltIn(new AppId(settingsId))
+                            || applications.GetManifest(new AppId(settingsId))?.Version != repaired.Version)
+                            throw new InvalidOperationException("Minimal could not recover and repair Settings from its bundled archive.");
+                        Console.WriteLine("minimal: installed and repaired Settings through the bundled archive.");
+                    }
+                    else if (!actual.ContainsKey(settingsId))
+                    {
+                        throw new InvalidOperationException($"{profile} did not preinstall Settings.");
+                    }
                     if (profile == "developer")
                     {
                         await provisioner.RunAsync(["--installation-profile=minimal"], cancellationToken);

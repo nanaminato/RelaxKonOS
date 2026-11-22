@@ -22,3 +22,9 @@ $env:RELAXKONOS_MSIX_CERT_PASSWORD = '<certificate password>'
 ```
 
 MSIX upgrades in place only when `IdentityName` and `Publisher` stay unchanged and the package version increases. Do not commit a PFX file or its password; keep both in the release signing system.
+
+## Desktop Settings
+
+Standard and Developer install the bundled Settings package on first startup.
+Minimal starts with the App Installer recovery entry. To install or repair Settings
+offline, open the distribution's `OfficialApps/relaxkonos.settings.roapp` in App Installer.
