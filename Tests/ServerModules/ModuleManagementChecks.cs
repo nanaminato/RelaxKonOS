@@ -85,6 +85,15 @@ internal static class ModuleManagementChecks
                 Error(() => guarded.Apply("operator", original.PlanId, facts), "module-desktop-dependency-blocked");
                 check(true, "a desktop dependency registered after preview blocks apply");
             }
+            try
+            {
+                ModulePackageMaintenanceCommand.RemoveInstalledOffline(dependencyRoot, ServerModules.GitId);
+                throw new InvalidOperationException("Expected offline module removal to respect the desktop dependency.");
+            }
+            catch (RelaxKonOS.ModulePackaging.ModulePackageException error) when (error.ProblemCode == "module-desktop-dependency-blocked")
+            {
+                check(true, "offline module removal respects the persisted desktop dependency");
+            }
             using (var guarded = new ModuleManagementStore(configuration, dependencyRoot))
             {
                 var enabled = guarded.DesiredIds.ToArray();

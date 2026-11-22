@@ -98,10 +98,7 @@ internal static class ModulePackageMaintenanceCommand
                 throw new ModulePackageException("module-package-command-invalid");
             if (!AuthMaintenanceCommand.IsAdministrator())
                 throw new ModulePackageException("module-package-local-administrator-required");
-            if (identity.DesiredEnabledModuleIds.Contains(moduleId, StringComparer.Ordinal))
-                throw new ModulePackageException("module-package-module-enabled");
-            using var hostLock = AcquireHostLock(root);
-            InstalledModuleStore.Remove(root, moduleId, deleteFiles: false);
+            RemoveInstalledOffline(root, moduleId);
             Console.WriteLine(JsonSerializer.Serialize(new { removed = true, moduleId, filesPreserved = true }, ModulePackageJson.Options));
             return 0;
         }
@@ -187,6 +184,13 @@ internal static class ModulePackageMaintenanceCommand
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root, EnvironmentName = environment });
         builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
         return builder;
+    }
+
+    internal static void RemoveInstalledOffline(string root, string moduleId)
+    {
+        using var hostLock = AcquireHostLock(root);
+        ModuleManagementStore.VerifyOfflineRemoval(root, moduleId);
+        InstalledModuleStore.Remove(root, moduleId, deleteFiles: false);
     }
 
     private static FileStream AcquireHostLock(string root)

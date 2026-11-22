@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.ModulePackaging;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -7,6 +8,19 @@ internal sealed partial class ModuleManagementStore
     private const int MaxDesktopDependencies = 4096;
 
     internal sealed record DesktopDependency(string Actor, Guid InstallationId, string AppId, string[] RequiredModules);
+
+    // The maintenance command must hold the same exclusive host lock as the running server.
+    internal static void VerifyOfflineRemoval(string contentRoot, string moduleId)
+    {
+        var document = ReadDocument(Path.Combine(contentRoot, "data", "module-management", "state.json"));
+        if (document.DesktopDependencies?.Any(item => item.RequiredModules.Contains(moduleId, StringComparer.Ordinal)) == true)
+            throw new ModulePackageException("module-desktop-dependency-blocked");
+        if (document.EnabledIds.Contains(moduleId, StringComparer.Ordinal))
+            throw new ModulePackageException("module-package-module-enabled");
+        if (InstalledModuleStore.Read(contentRoot).Any(item => item.ModuleId != moduleId
+            && item.Requires.Contains(moduleId, StringComparer.Ordinal)))
+            throw new ModulePackageException("module-dependency-blocked");
+    }
 
     internal void RegisterDesktopDependency(string actor, Guid installationId, string appId,
         IReadOnlyList<string> requiredModules, IReadOnlyList<ServerModuleDto> inventory)
