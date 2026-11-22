@@ -308,16 +308,26 @@ internal static class JointDeploymentAcceptance
             using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
             await WaitForResponseAsync("before");
             await WriteConfigAsync("after");
-            var ports = new ModulePackageHttpChecks.WebServerReloadProbe(async token =>
-            {
-                using var reload = Start("-s", "reload");
-                await reload.WaitForExitAsync(token);
-                return reload.ExitCode == 0;
-            });
+            var ports = new ModulePackageHttpChecks.WebServerReloadProbe(RunReloadAsync);
             using var lease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", ports);
             Require(await lease.Executor.ReloadAsync(ct) == "" && ports.Confirmed, "the signed executor confirms a real Nginx reload");
             await WaitForResponseAsync("after");
             Require(!nginx.HasExited, "the original loopback Nginx master serves the new response after reload");
+
+            await File.WriteAllTextAsync(config, "invalid_directive_for_acceptance;", ct);
+            var failedPorts = new ModulePackageHttpChecks.WebServerReloadProbe(RunReloadAsync);
+            using var failedLease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", failedPorts);
+            Require(await failedLease.Executor.ReloadAsync(ct) == NginxReloadOutcome.RecoveryRequired && !failedPorts.Confirmed,
+                "the installed signed executor requires recovery when real Nginx rejects a candidate");
+            Require(await client.GetStringAsync("/", ct) == "after" && !nginx.HasExited,
+                "rejected configuration leaves the existing Nginx master serving the last valid response");
+
+            async Task<bool> RunReloadAsync(CancellationToken token)
+            {
+                using var reload = Start("-s", "reload");
+                await reload.WaitForExitAsync(token);
+                return reload.ExitCode == 0;
+            }
 
             async Task WaitForResponseAsync(string expected)
             {
