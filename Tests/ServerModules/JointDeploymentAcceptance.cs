@@ -613,7 +613,8 @@ internal static class JointDeploymentAcceptance
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                 $"after restart the desktop registers {moduleId} against the signed execution package without resubmitting installation");
             await verifyBusiness(host, root);
-            if (moduleId == ServerModules.ProxyId && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SHARED_APPS") == "1")
+            var verifySharedProxy = moduleId == ServerModules.ProxyId && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SHARED_APPS") == "1";
+            if (verifySharedProxy)
             {
                 string[] siblingIds = ["relaxkonos.proxy-server", "relaxkonos.squid"];
                 var sourceDirectory = Path.GetDirectoryName(archive)!;
@@ -636,11 +637,13 @@ internal static class JointDeploymentAcceptance
                 var dependents = packages.RequiredBy(keyForProxy);
                 Require(dependents.ToHashSet(StringComparer.Ordinal).SetEquals([installed.Id, .. siblingIds]),
                     "the three Proxy applications share the same signed server dependency");
+                Require(await IsDesktopDependencyProtectedAsync(), "the server blocks a shared Proxy disable while all three apps are installed");
                 foreach (var siblingId in siblingIds)
                 {
                     Require(await packages.UninstallAsync(siblingId) && !packages.RequiredBy(keyForProxy).Contains(siblingId)
                         && packages.RequiredBy(keyForProxy).Contains(installed.Id),
                         $"uninstalling {siblingId} preserves the remaining Proxy Manager dependency");
+                    Require(await IsDesktopDependencyProtectedAsync(), "the server still blocks Proxy disable after a dependent app is removed");
                 }
                 Require(ModulePackageOperationStore.Read(serverRoot).Count == 1
                     && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
@@ -662,6 +665,21 @@ internal static class JointDeploymentAcceptance
             Require(await packages.UninstallAsync(installed.Id) && !apps.IsRegistered(new AppId(installed.Id))
                 && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
                 $"uninstalling the desktop {moduleId} package releases the app without removing the server module");
+            if (verifySharedProxy)
+                Require(!await IsDesktopDependencyProtectedAsync(), "removing the final Proxy dependent clears the server-side desktop blocker");
+
+            async Task<bool> IsDesktopDependencyProtectedAsync()
+            {
+                var management = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                var inventory = await management.ReadAsync();
+                var target = inventory.Single(module => module.Id == moduleId);
+                var desired = inventory.Where(module => module.DesiredEnabled && module.Id != moduleId)
+                    .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+                var plan = await management.PreviewAsync(new(serviceId, ServerModuleAction.Disable, [moduleId],
+                    desired, target.DesiredRevision!, Guid.NewGuid().ToString("N")));
+                return plan.BlockedBy.Any(blocker => blocker.ModuleId == moduleId
+                    && blocker.ProblemCode == "module-desktop-dependency-blocked");
+            }
             if (moduleId == "relaxkonos.tunnels")
             {
                 using var managementHttp = factory.CreateClient("joint-fixture");
