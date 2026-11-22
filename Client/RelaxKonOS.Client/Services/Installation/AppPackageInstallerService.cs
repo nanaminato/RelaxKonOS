@@ -198,6 +198,7 @@ public sealed class AppPackageInstallerService
     internal async Task<AppPackageCandidate?> RecoverComponentArchiveAsync(DeploymentComponentRelease reviewed, string digest, CancellationToken ct)
     {
         var source = new HttpCatalogSource(_catalogSources, reviewed.SourceId);
+        source.Load();
         var authorization = source.Authorize(reviewed.ComponentId, RoappComponentInstallerProvider.Desktop);
         if (!MatchesReviewedComponentRelease(reviewed, digest, authorization)) return null;
         var plan = await new RoappComponentInstallerProvider(this).PlanAsync(source, reviewed.ComponentId, ct);

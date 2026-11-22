@@ -17,6 +17,7 @@ using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Runtime;
 
@@ -51,13 +52,14 @@ internal static class RoappCatalogChecks
         var packagePath = Path.Combine(root, "packages", "example.roapp");
         async Task PublishAsync(string version)
         {
+            var entryType = typeof(RelaxKonOS.App.SshFiles.SshFilesApp);
             if (File.Exists(packagePath)) File.Delete(packagePath);
             using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
             {
                 await using (var entry = archive.CreateEntry("manifest.json").Open())
                     await JsonSerializer.SerializeAsync(entry, new DeveloperPackageManifest(id, "Catalog fixture", version,
-                        "lib/fixture.dll", "Fixture.App", RequestedPermissions: [], PermissionModelVersion: 2), json);
-                archive.CreateEntryFromFile(typeof(RoappCatalogChecks).Assembly.Location, "lib/fixture.dll");
+                        "lib/fixture.dll", entryType.FullName!, RequestedPermissions: [], PermissionModelVersion: 2), json);
+                archive.CreateEntryFromFile(entryType.Assembly.Location, "lib/fixture.dll");
             }
             var digest = Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(packagePath)));
             var target = new ComponentInstallTarget(RoappComponentInstallerProvider.Desktop.Os,
@@ -125,7 +127,33 @@ internal static class RoappCatalogChecks
                 && ComponentCatalog.LaunchGate(id) is null, "remote data adds a desktop component without rewriting built-in launch gates");
             var remotePlan = await provider.PlanAsync(ComponentCatalog.SourceFor(id), id);
             Check(remotePlan.Package.CatalogAuthorization is not null, "remote plan freezes durable source authorization");
-            await installer.InstallAsync(remotePlan.Package);
+            var deploymentPath = Path.Combine(root, "joint-deployment");
+            var journal = new FileDeploymentJournal(deploymentPath);
+            var deployment = new JointAppDeploymentService(null!, null!, installer, packages, applications, journal);
+            var reviewed = await deployment.PrepareAsync(remotePlan.Package, [], CancellationToken.None);
+            await using (var lease = await journal.OpenAsync(reviewed.Plan, CancellationToken.None))
+                await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
+            installer.Discard(remotePlan.Package);
+            Check(!File.Exists(remotePlan.Package.LocalPath), "Recovery starts after the original staged archive is removed.");
+            var refreshedEnvelope = await ComponentCatalogPublisher.BuildAsync(root, "desktop-test-source", "example", 2,
+                "publisher-key", signingKey, now.AddMinutes(-1), now.AddDays(7).AddMinutes(-1), [], []);
+            await File.WriteAllBytesAsync(Path.Combine(root, "catalog.signed.json"), refreshedEnvelope);
+            await catalogSources.RefreshAsync("desktop-test-source");
+            var reopenedBytes = new AppPackageInstallerService(packages, null!, catalogSources);
+            var reopened = new JointAppDeploymentService(null!, null!, reopenedBytes, packages, applications,
+                new FileDeploymentJournal(deploymentPath));
+            var recovered = (await reopened.RecoverArchivesAsync([], CancellationToken.None)).Single();
+            try
+            {
+                Check(recovered.IsRecoveredDeployment && recovered.LocalPath != remotePlan.Package.LocalPath
+                    && recovered.CatalogAuthorization?.CatalogSequence == 2 && packages.FindInstalled(id) is null,
+                    "Recovery stages the same reviewed release under the current signed catalog without installing.");
+                var resume = await reopened.FindPendingAsync(recovered, CancellationToken.None, localOnly: true);
+                Check(resume?.Plan.Id == reviewed.Plan.Id, "The recovered archive must resume the original deployment.");
+                await reopened.ExecuteAsync(resume!, CancellationToken.None);
+                Check(!File.Exists(recovered.LocalPath), "A verified deployment cleans up the recovered archive.");
+            }
+            finally { reopenedBytes.Discard(recovered); }
             Check(packages.FindInstalled(id)?.Version == "1.0.1" && !applications.IsBuiltIn(new(id)), "remote signed package uses the real domain installer without BuiltIn promotion");
             var revokedPlan = await provider.PlanAsync(ComponentCatalog.SourceFor(id), id);
             Check(revokedPlan.Package.IsRepair && !revokedPlan.Package.IsUpdate, "same-version reinstall is a repair, never an upgrade");
@@ -137,7 +165,7 @@ internal static class RoappCatalogChecks
             installer.Discard(revokedPlan.Package);
             Check(packages.FindInstalled(id)?.Version == "1.0.1", "source disable preserves installed facts");
             await packages.UninstallAsync(id);
-            Console.WriteLine("Remote .roapp source review/discovery/installation/disable checks passed.");
+            Console.WriteLine("Remote .roapp source review, signed deployment recovery, installation and disable checks passed.");
         }
         finally
         {
@@ -145,7 +173,11 @@ internal static class RoappCatalogChecks
             catalogSources.Dispose();
             if (!Path.GetFullPath(root).StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new Exception("Unsafe test cleanup");
-            Directory.Delete(root, true);
+            try { Directory.Delete(root, true); }
+            catch (Exception error) when (OperatingSystem.IsWindows() && error is IOException or UnauthorizedAccessException)
+            {
+                // A collectible load context can retain a fixture assembly until this process exits.
+            }
         }
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
