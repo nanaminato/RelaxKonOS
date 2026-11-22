@@ -544,14 +544,17 @@ internal static class JointDeploymentAcceptance
             Require(Directory.EnumerateFiles(releaseDirectory, "*.json").Any(),
                 "offline desktop uninstall queues its server dependency release");
             session.Online = true;
-            await packages.LoadInstalledAsync();
-            Require(!Directory.EnumerateFiles(releaseDirectory, "*.json").Any(),
-                "startup releases an offline uninstall record on the original server and account");
             var sharedClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
             var sharedInventory = await sharedClient.ReadAsync();
             var sharedDisable = new ServerModulePlanRequest(serviceId, ServerModuleAction.Disable, [ModuleId],
                 sharedInventory.Where(module => module.DesiredEnabled && module.Id != ModuleId).Select(module => module.Id).ToArray(),
                 sharedInventory[0].DesiredRevision!, "second-desktop-still-installed");
+            Require((await sharedClient.PreviewAsync(sharedDisable with { IdempotencyKey = "offline-release-queued" })).BlockedBy.Any(blocker =>
+                    blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
+                "the server still blocks disable while the offline release is queued");
+            await packages.LoadInstalledAsync();
+            Require(!Directory.EnumerateFiles(releaseDirectory, "*.json").Any(),
+                "startup releases an offline uninstall record on the original server and account");
             Require((await sharedClient.PreviewAsync(sharedDisable)).BlockedBy.Any(blocker =>
                     blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
                 "uninstalling one desktop leaves the other desktop's module protection in force");
