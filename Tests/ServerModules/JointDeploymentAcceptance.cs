@@ -161,6 +161,12 @@ internal static class JointDeploymentAcceptance
                 }
                 Require(completed.State == CertificateOperationState.Succeeded && !ReferenceEquals(execution, AcmeExecution.Shared),
                     $"the certificate management route completes real signed ACME issuance: {completed.ProblemCode}");
+                using var replay = await client.PostAsJsonAsync(CertificateApiRoutes.Request, request, RelaxKonOSJsonOptions.Default, timeout.Token);
+                replay.EnsureSuccessStatusCode();
+                var replayed = await replay.Content.ReadFromJsonAsync<CertificateOperationDto>(RelaxKonOSJsonOptions.Default, timeout.Token);
+                Require(replayed is { State: CertificateOperationState.Succeeded }
+                    && replayed.OperationId == completed.OperationId && replayed.CertificateId == completed.CertificateId,
+                    "replaying the signed ACME request returns the same successful operation and certificate");
                 var reopened = new FileCertificateStore(builder.Environment, options,
                     new CertificateMetadataRepository(builder.Environment, builder.Configuration));
                 var paths = await reopened.GetNginxPathsAsync(completed.CertificateId ?? throw new InvalidOperationException("Missing certificate ID."), timeout.Token)

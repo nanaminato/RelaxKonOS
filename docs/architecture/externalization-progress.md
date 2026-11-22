@@ -822,3 +822,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Certificates 双包可用 RK_TEST_ACME_FIXTURE 在隔离 Pebble 环境复验真实签发。Core 重启并接续部署后，已安装签名程序集完成 HTTP-01 签发。返回的叶证书与私钥匹配并包含请求的域名。Pebble 记录一个订单及一次 finalization，桌面卸载后保留服务端签名包。此用例直接调用生产 ACME 服务，未覆盖签发 HTTP 管理入口与部署持久化。
 - Linux x64 签名联合部署后真实 Pebble 签发通过生产 FileCertificateStore 保存。重新创建存储实例从磁盘取得部署链，核对叶证书与签发结果一致，并用隔离测试 CA 根验证完整链。测试 CA 仍只记录一个订单及一次 finalization。管理 HTTP 签发入口仍待验。
 - Linux x64 签名证书双包的真实 Pebble 验收改走生产证书管理 HTTP。观察者缺少签发授权时返回 403，具备夹具签发授权的控制者提交请求，轮询台账至 Succeeded。生产存储写入证书，重新打开后以测试根校验部署链。CA 仅收到一个订单及一次 finalization，测试宿主正常关闭。
+- Linux x64 签名 Certificates 双包真实 HTTP 签发完成后复用同一幂等键和请求。返回原 Succeeded 回执、操作 ID 与证书 ID，Pebble 仍仅有一个订单及一次 finalization。
