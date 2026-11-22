@@ -13,8 +13,19 @@ using System.Text.Json;
 using RelaxKonOS.Server.Tailscale;
 using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Protocol.Tailscale;
+using RelaxKonOS.Protocol.Observability;
+using RelaxKonOS.Protocol.Privileged;
 
 static void Check(bool value) { if (!value) throw new Exception("Assertion failed"); }
+if (args is ["--tailscale-live-status"])
+{
+    var request = new PrivilegedOperationRequest(PrivilegedOperationKind.TailscaleStatus,
+        OperationId: Guid.NewGuid(), Correlation: CorrelationContext.Create(Guid.NewGuid(), "privileged.operation"));
+    var result = await RelaxKonOS.PrivilegedHelper.TailscaleOperations.ExecuteAsync(request);
+    Console.WriteLine($"Tailscale protected status: {result.TailscaleStatus?.State ?? "no-response"}");
+    Check(result.Success && result.TailscaleStatus is { State: "observed", BackendState.Length: > 0 });
+    return;
+}
 if (args.Length == 1 && args[0] == "--tailscale-installation-probe")
 {
     var observed = RelaxKonOS.PrivilegedHelper.TailscaleWindowsInstallation.Create().Read(default);

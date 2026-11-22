@@ -739,3 +739,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Tailscale 官方进程内执行包通过固定模块 ID、能力、RID 入口路径和入口类型接入现有安装器。Core 从已安装目录复验文件并以可卸载上下文加载执行代码，复用现有路由、授权与台账路径。Windows Release 的 29 项边界检查通过，覆盖签名校验、不可变目录安装、模块目录替换、已安装执行代码的登录和控制，以及休眠后的代码回收。管理 API 的更新与回滚及真实设备验收待验证。
 - Tailscale 进程内签名包的版本切换需要重启 Core。库存分别显示已安装、期望及当前生效版本，管理 API 对版本变更记录 update。Windows Release 34 项边界检查通过，覆盖两个签名包版本并存、启动选用新版本、回滚后重新启动选用原版本，以及两次切换后均能读取原控制回执。测试通过安装器和应用宿主运行，HTTP 端到端及实机验收待完成。
 - Windows Release 模块包 HTTP 验收通过。用真实 Tailscale 执行 DLL 构建并签署两个包版本，验证受认证的上传、计划预览、应用、更新及回滚 HTTP 路由和重启前回执，回滚按原摘要选定不可变安装目录。同期补齐 PrivilegedHelper 对 Tailscale 共享契约的项目引用，真实 Tailscale daemon 实机验收仍待完成。
+- Windows 本机 Tailscale 服务处于 Running。Release 的 --tailscale-live-status 通过 Helper 的生产只读处理器运行受保护的固定命令，确认真实 daemon 返回可解析的后端状态。探针只输出状态读取结果。常规 Tailscale 专项通过。该探针直接调用 Helper 处理器，真实 IPC、网络变更、登录及多设备验收仍待完成。
