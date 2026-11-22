@@ -96,6 +96,8 @@ RelaxKonOS.Server modules pack-package \
 
 可选参数：`--runtime in-process|module-host`、`--metadata <JSON文件>`（严格包含 `privileges` 与 `ui`）、`--host-api-min`、`--host-api-max`、`--capabilities a,b`、`--dependencies id:min:max,...`。命令把 publish 目录下所有普通文件放到 `server/<rid>/`，生成 `manifest.json`、`.rkmodule`、`catalog.json` 和 `public-key.spki`；私钥只用于本次签名，不写入输出或日志。它不读取/写入 Host 状态，也不安装模块。
 
+离线打包读取入口程序集的 CLR 元数据，核对清单中的完整入口类型名。程序集缺少该类型时，打包会在生成归档和签名前失败。
+
 ## 在线上传与安装 API
 
 ```text

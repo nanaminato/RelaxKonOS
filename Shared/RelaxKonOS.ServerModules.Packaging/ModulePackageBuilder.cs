@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -81,6 +83,7 @@ public static class ModulePackageBuilder
         var entryPath = entryRelative.StartsWith("server/" + options.Rid + "/", StringComparison.Ordinal)
             ? entryRelative : "server/" + options.Rid + "/" + entryRelative;
         var files = new List<ModulePackageFile>();
+        string? entryFile = null;
         long total = 0;
         foreach (var path in Directory.EnumerateFiles(publish, "*", SearchOption.AllDirectories)
                      .Order(StringComparer.Ordinal))
@@ -92,11 +95,12 @@ public static class ModulePackageBuilder
             var relative = Path.GetRelativePath(publish, path).Replace('\\', '/');
             var packagePath = "server/" + options.Rid + "/" + relative;
             if (!ModulePackageRules.Path(packagePath)) throw new ModulePackageException("module-package-build-file-invalid");
+            if (packagePath == entryPath) entryFile = path;
             total += info.Length;
             if (total > 1073741824 || files.Count >= 4096) throw new ModulePackageException("module-package-build-limits");
             files.Add(new ModulePackageFile(packagePath, info.Length, await HashAsync(path, cancellationToken)));
         }
-        if (files.Count == 0 || !files.Any(file => file.Path == entryPath))
+        if (entryFile is null)
             throw new ModulePackageException("module-package-build-entry-not-found");
         var manifest = new ModulePackageManifest(3, "server-module", options.ModuleId, options.ReleaseId,
             options.Version, options.PublisherId, options.Purpose, options.Rid,
@@ -105,6 +109,7 @@ public static class ModulePackageBuilder
             options.Capabilities?.Distinct(StringComparer.Ordinal).ToArray() ?? [], files.ToArray(), options.Runtime, options.Privileges?.ToArray() ?? [],
             options.Ui ?? new(options.ModuleId, "", "", null, "UNLICENSED"));
         ModulePackageRules.Manifest(manifest);
+        ValidateEntryType(entryFile, options.EntryType);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
         var archivePath = Path.Combine(output, options.ModuleId + "-" + options.Version + "-" + options.Rid + ".rkmodule");
         if (!archivePath.StartsWith(Path.TrimEndingDirectorySeparator(output) + Path.DirectorySeparatorChar, PathComparison))
@@ -115,6 +120,31 @@ public static class ModulePackageBuilder
         var release = new ModulePackageRelease(manifest, Sha256(manifestBytes), archiveSha, archiveBytes,
             origin + Path.GetFileName(archivePath));
         return release;
+    }
+
+    private static void ValidateEntryType(string assemblyPath, string entryType)
+    {
+        var separator = entryType.LastIndexOf('.');
+        var typeNamespace = separator < 0 ? "" : entryType[..separator];
+        var typeName = entryType[(separator + 1)..];
+        try
+        {
+            using var file = File.OpenRead(assemblyPath);
+            using var image = new PEReader(file);
+            if (image.HasMetadata)
+            {
+                var metadata = image.GetMetadataReader();
+                if (metadata.IsAssembly && metadata.TypeDefinitions.Select(metadata.GetTypeDefinition).Any(type =>
+                        type.GetDeclaringType().IsNil && metadata.StringComparer.Equals(type.Namespace, typeNamespace)
+                        && metadata.StringComparer.Equals(type.Name, typeName)))
+                    return;
+            }
+        }
+        catch (BadImageFormatException)
+        {
+            throw new ModulePackageException("module-package-build-entry-invalid");
+        }
+        throw new ModulePackageException("module-package-build-entry-type-not-found");
     }
 
 

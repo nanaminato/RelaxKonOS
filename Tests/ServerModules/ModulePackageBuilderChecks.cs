@@ -26,6 +26,19 @@ internal static class ModulePackageBuilderChecks
                 "fixture-builder-1.0.0-" + rid, "fixture", "official", rid, "FixtureModule.dll",
                 "FixtureModule.FixtureInstalledModule", "fixture-build", new string('a', 40), "official", 1,
                 "https://modules.example/", keyPath, "builder-key", 3600);
+            var wrongOutput = Path.Combine(root, "wrong-entry");
+            try
+            {
+                await ModulePackageBuilder.BuildAsync(options with
+                {
+                    OutputDirectory = wrongOutput, EntryType = "FormerAssembly.FixtureInstalledModule",
+                }, now);
+                throw new InvalidOperationException("Expected a missing entry type to be rejected.");
+            }
+            catch (ModulePackageException error) when (error.ProblemCode == "module-package-build-entry-type-not-found")
+            {
+                check(!Directory.EnumerateFiles(wrongOutput).Any(), "a missing entry type produces no signed artifacts");
+            }
             var result = await ModulePackageBuilder.BuildAsync(options, now);
             check(File.Exists(result.ArchivePath) && File.Exists(result.CatalogPath)
                 && File.Exists(Path.Combine(output, "manifest.json")) && File.Exists(Path.Combine(output, "public-key.spki")),
