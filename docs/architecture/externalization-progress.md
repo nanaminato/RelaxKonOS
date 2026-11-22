@@ -850,3 +850,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 签名 Proxy 双包在 RK_TEST_PROXY_SHARED_APPS=1 时从同一发行目录安装实际 Proxy Server 和 Squid 归档。两者选中已生效的同一签名版本，三应用均登记依赖；逐个卸载保留 Proxy Manager 登记。服务端仅有一次原包安装回执，归档摘要不变。
 - Linux x64 同轮通过 Proxy Manager、Proxy Server 和 Squid 共享独立签名 Proxy 包的验收。后两款直接复用版本，逐个卸载保留 Proxy Manager 登记，服务端只产生一次安装回执且摘要不变。真实 Mihomo 只读观察、直连发布与失败补偿同轮通过；未在此运行 sing-box 或 Squid 守护进程。
 - Windows Release 签名 Proxy 共享依赖验收通过服务端停用预览。三款应用均安装时返回 module-desktop-dependency-blocked，逐个卸载 Proxy Server 和 Squid 后仍保护 Proxy Manager。最后一款卸载后服务端移除桌面依赖阻止项，签名归档继续保留。
+- Linux x64 同轮通过签名 Proxy 共享依赖的服务端停用预览与真实 Mihomo 联调。三应用安装及逐个卸载前两款后，服务端均返回 module-desktop-dependency-blocked。最后一款卸载后阻止项消失，同一签名归档保留。
