@@ -4,6 +4,7 @@ using Renci.SshNet;
 namespace RelaxKonOS.Client.Services.ServerCenter;
 
 internal sealed record SshDirectoryItem(string Name, string Path, bool IsDirectory, bool IsLink, long Size, DateTime Modified);
+internal sealed class SshDirectoryAccessDeniedException(Exception cause) : IOException(cause.Message, cause);
 
 /// <summary>The SSH desktop's in-memory connection identity. Each terminal opens its own SSH channel.</summary>
 public sealed partial class SshDesktopSession(IServerCenterConnectionResolver connections, ShellSettings settings, string? preferencesDirectory = null)
@@ -99,16 +100,23 @@ public sealed partial class SshDesktopSession(IServerCenterConnectionResolver co
     internal Task<(string Path, SshDirectoryItem[] Items)> ReadDirectoryAsync(
         ServerCenterSshEndpoint endpoint, string path, bool resolvePath = false) => Task.Run(() =>
     {
-        using var client = OpenFileClient(endpoint);
-        if (resolvePath)
+        try
         {
-            client.ChangeDirectory(path);
-            path = client.WorkingDirectory;
+            using var client = OpenFileClient(endpoint);
+            if (resolvePath)
+            {
+                client.ChangeDirectory(path);
+                path = client.WorkingDirectory;
+            }
+            var items = client.ListDirectory(path).Where(file => file.Name is not ("." or ".."))
+                .Select(file => new SshDirectoryItem(file.Name, file.FullName, file.IsDirectory,
+                    file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray();
+            return (path, items);
         }
-        var items = client.ListDirectory(path).Where(file => file.Name is not ("." or ".."))
-            .Select(file => new SshDirectoryItem(file.Name, file.FullName, file.IsDirectory,
-                file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray();
-        return (path, items);
+        catch (Renci.SshNet.Common.SftpPermissionDeniedException error)
+        {
+            throw new SshDirectoryAccessDeniedException(error);
+        }
     });
 
     internal Task<bool> CreateDirectoryAsync(ServerCenterSshEndpoint endpoint, string path) => Task.Run(() =>

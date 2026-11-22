@@ -28,6 +28,68 @@ public sealed partial class SshDesktopSession
 
     private static string RemoteChild(string directory, string name) => directory.TrimEnd('/') + "/" + name;
 
+    internal Task TransferPathsAsync(ServerCenterSshEndpoint endpoint, string destination,
+        IReadOnlyList<(string Path, string Name, bool Directory, bool Link)> paths, bool copy,
+        Action<int, bool> moved) => Task.Run(() =>
+    {
+        using var client = OpenFileClient(endpoint);
+        for (var index = 0; index < paths.Count; index++)
+        {
+            var (path, name, directory, link) = paths[index];
+            if (link && copy)
+                throw new IOException($"{path}: {LocalizedText.Get("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
+            if (directory && (path == destination || destination.StartsWith(path.TrimEnd('/') + "/", StringComparison.Ordinal)))
+                throw new IOException(LocalizedText.Get("ssh_files.circular_copy", "Cannot paste a folder into itself"));
+            var target = RemoteChild(destination, name);
+            if (path == target && !copy)
+            {
+                moved(index, false);
+                continue;
+            }
+            if (path == target) target = UniqueCopyTarget(client, destination, name, directory);
+            if (client.Exists(target))
+                throw new IOException($"{LocalizedText.Get("ssh_files.exists", "Destination already exists")}: {name}");
+            if (copy)
+                CopyTree(client, path, target, directory);
+            else
+            {
+                client.RenameFile(path, target);
+                moved(index, true);
+            }
+        }
+    });
+
+    private static string UniqueCopyTarget(SftpClient client, string directory, string name, bool directoryEntry)
+    {
+        var dot = directoryEntry ? -1 : name.LastIndexOf('.');
+        var stem = dot > 0 ? name[..dot] : name;
+        var extension = dot > 0 ? name[dot..] : "";
+        for (var index = 1; ; index++)
+        {
+            var suffix = index == 1 ? " (copy)" : $" (copy {index})";
+            var target = RemoteChild(directory, stem + suffix + extension);
+            if (!client.Exists(target)) return target;
+        }
+    }
+
+    private static void CopyTree(SftpClient client, string source, string target, bool directory)
+    {
+        if (!directory)
+        {
+            using var input = client.OpenRead(source);
+            using var output = client.Open(target, FileMode.CreateNew, FileAccess.Write);
+            input.CopyTo(output);
+            return;
+        }
+        client.CreateDirectory(target);
+        foreach (var child in client.ListDirectory(source).Where(file => file.Name is not ("." or "..")))
+        {
+            if (child.IsSymbolicLink)
+                throw new IOException($"{child.FullName}: {LocalizedText.Get("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
+            CopyTree(client, child.FullName, RemoteChild(target, child.Name), child.IsDirectory);
+        }
+    }
+
     private static void UploadTree(SftpClient client, DirectoryInfo directory, string target, Action<string, long, long?> report, CancellationToken cancellationToken)
     {
         if (directory.Attributes.HasFlag(FileAttributes.ReparsePoint))

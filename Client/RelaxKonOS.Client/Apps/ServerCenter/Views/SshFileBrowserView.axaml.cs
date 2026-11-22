@@ -16,7 +16,6 @@ using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.ServerCenter;
-using Renci.SshNet;
 
 namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
 
@@ -660,7 +659,7 @@ internal partial class SshFileBrowserView : UserControl
         => !_busy && !IsPackagePicker && !source._busy && !source.IsPackagePicker
             && ReferenceEquals(source._session, _session) && !string.IsNullOrEmpty(target)
             && entries.Count > 0 && entries.All(entry => (!copy || !entry.IsLink)
-                && (!entry.IsDirectory || !IsWithin(entry.Path, target))
+                && (!entry.IsDirectory || !IsAtOrWithin(entry.Path, target))
                 && (copy || ParentPath(entry.Path) != target));
 
     private bool TryGetDrop(DragEventArgs e, out SshDragPayload? payload, out string? target)
@@ -822,13 +821,6 @@ internal partial class SshFileBrowserView : UserControl
         else if (e.Key == Key.Escape) { e.Handled = true; _presentation.ClearSelection(); }
     }
 
-    private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action)
-    {
-        var endpoint = _session.Endpoint ?? throw new InvalidOperationException("SSH session ended.");
-        using var client = await Task.Run(() => _session.OpenFileClient(endpoint));
-        return await Task.Run(() => action(client));
-    }
-
     private async Task OpenEntryAsync(SshFileEntry entry)
     {
         if (_busy) return;
@@ -929,7 +921,7 @@ internal partial class SshFileBrowserView : UserControl
         catch (Exception error)
         {
             if (generation != _listingGeneration || _busy) return;
-            if (error is Renci.SshNet.Common.SftpPermissionDeniedException || !_session.IsConnected)
+            if (error is SshDirectoryAccessDeniedException || !_session.IsConnected)
             { _listingCache.Clear(); _entries = []; ApplyView(); _showingCachedFiles = false; }
             StatusMessage = LocalizedStatus.Key("explorer.cache.refresh_failed", "Could not refresh cached files: {0}", error.Message);
         }
@@ -1350,59 +1342,19 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task<SshFileEntry[]> TransferEntriesAsync(SshFileEntry[] source, string destination, bool copy)
     {
+        if (_session.Endpoint is not { } endpoint) return [];
         var moved = new List<SshFileEntry>();
         var changedPaths = new List<string>();
-        await ChangeAsync(client =>
-        {
-            foreach (var entry in source)
+        await ChangeAsync(() => _session.TransferPathsAsync(endpoint, destination,
+            source.Select(entry => (entry.Path, entry.Name, entry.IsDirectory, entry.IsLink)).ToArray(), copy,
+            (index, changed) =>
             {
-                if (entry.IsLink && copy)
-                    throw new IOException($"{entry.Path}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
-                if (entry.IsDirectory && IsWithin(entry.Path, destination))
-                    throw new IOException(T("ssh_files.circular_copy", "Cannot paste a folder into itself"));
-                var target = Child(destination, entry.Name);
-                if (entry.Path == target && !copy) { moved.Add(entry); continue; }
-                if (entry.Path == target) target = UniqueCopyTarget(client, destination, entry.Name, entry.IsDirectory);
-                if (client.Exists(target)) throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {entry.Name}");
-                if (!copy) { client.RenameFile(entry.Path, target); moved.Add(entry); changedPaths.Add(entry.Path); }
-                else CopyTree(client, entry.Path, target, entry.IsDirectory && !entry.IsLink);
-            }
-        });
+                moved.Add(source[index]);
+                if (changed) changedPaths.Add(source[index].Path);
+            }));
+        if (!ReferenceEquals(endpoint, _session.Endpoint)) return [];
         _sessionClipboard.NotifyMoved(changedPaths.ToArray());
         return moved.ToArray();
-    }
-
-    private static string UniqueCopyTarget(SftpClient client, string directory, string name, bool directoryEntry)
-    {
-        var dot = directoryEntry ? -1 : name.LastIndexOf('.');
-        var stem = dot > 0 ? name[..dot] : name;
-        var extension = dot > 0 ? name[dot..] : "";
-        for (var index = 1; ; index++)
-        {
-            var suffix = index == 1 ? " (copy)" : $" (copy {index})";
-            var target = Child(directory, stem + suffix + extension);
-            if (!client.Exists(target)) return target;
-        }
-    }
-
-    private static bool IsWithin(string parent, string candidate) => candidate == parent ||
-        candidate.StartsWith(parent.TrimEnd('/') + "/", StringComparison.Ordinal);
-
-    private static void CopyTree(SftpClient client, string source, string target, bool directory)
-    {
-        if (!directory)
-        {
-            using var input = client.OpenRead(source);
-            using var output = client.OpenWrite(target);
-            input.CopyTo(output);
-            return;
-        }
-        client.CreateDirectory(target);
-        foreach (var child in client.ListDirectory(source).Where(file => file.Name is not ("." or "..")))
-        {
-            if (child.IsSymbolicLink) throw new IOException($"{child.FullName}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
-            CopyTree(client, child.FullName, Child(target, child.Name), child.IsDirectory);
-        }
     }
 
     private async Task UploadAsync()
@@ -1510,9 +1462,6 @@ internal partial class SshFileBrowserView : UserControl
         catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
     }
-
-    private Task<bool> ChangeAsync(Action<SftpClient> action) =>
-        ChangeAsync(() => ExecuteAsync(client => { action(client); return true; }));
 
     private async Task<bool> ChangeAsync(Func<Task> action)
     {
