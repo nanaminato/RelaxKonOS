@@ -863,3 +863,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 WSL 无头复验同一个新版 Server Center 官方归档。安装向导成功打开包程序集的主机地址弹窗，显示过滤后的 IPv4 和 IPv6，关闭后回到向导。包窗口复用、向导取消和卸载同轮通过。SSH 地址响应来自测试夹具。
 - 修复重复显式选择同一个安装配置集会清空已有排除项的问题。未提供新排除参数时保留已有选择。Windows Release 使用实际 Welcome 官方归档验证重启与重复选择 Standard 都保留排除，切换 Developer 后仍按新配置实施。图形化安装前选择仍待实现。
 - 首次启动配置选择已接入桌面预装入口。三语窗口默认 Standard，可切换配置和取消离线预装项，跳过时选用 Minimal。Windows Release 无头发行归档测试取消 Welcome 后预装 12 项，重启保留选择且不重开窗口。Minimal 恢复及 Developer 的 14 项预装也通过，三语资源核对通过。原生首次启动窗口与 Linux 交互复验仍待完成。
+- Windows x64 发布当前桌面宿主并复用已构建官方归档，使用 verify-windows-desktop-startup.ps1 的 FirstRun 模式在隔离应用数据下通过原生首次启动。选择窗口响应，关闭后进入登录并正常退出。原有显式 Minimal 冒烟也通过。Linux x64 WSL 无头发行回归验证选择窗口取消 Welcome 后安装其余 12 项，重启不再弹出，Minimal 恢复和 Developer 14 项预装通过。Linux 原生图形窗口仍待验。
