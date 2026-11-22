@@ -21,4 +21,5 @@ public sealed record ComponentCenterViewFactories(
     Func<Control> CreateModuleSecurity,
     Func<ModalDialog<bool>, Control> CreateModulePlan,
     Func<ModalDialog<bool>, Control> CreateModulePolicy,
-    Func<ModalDialog<bool>, Control> CreateModulePrivilege);
+    Func<ModalDialog<bool>, Control> CreateModulePrivilege,
+    Func<ModalDialog<bool>, Control> CreateModuleConsent);

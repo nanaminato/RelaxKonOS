@@ -281,6 +281,18 @@ internal static class ServerModuleCatalogChecks
             Dispatcher.UIThread.RunJobs(); consentView.UpdateLayout();
             Check(!digestInput.IsEffectivelyVisible && model.ConsentContentSha256.Length == 0,
                 "Switching to database permission hides and clears the file-specific content digest.");
+            var consentFact = new ModulePrivilegeConsent(Guid.NewGuid(), "fixture", "1.0.0", "publisher",
+                new string('a', 64), ModuleCapabilityCatalog.ServiceManage, "restart", "fixture.service",
+                "fixture reason", "fixture admin", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1),
+                "Approved", new string('b', 64), "fixture-confirmation-token");
+            model.Consents = [consentFact];
+            Dispatcher.UIThread.RunJobs();
+            var consentList = consentView.GetVisualDescendants().OfType<ListBox>().Single();
+            consentList.SelectedIndex = 0;
+            Dispatcher.UIThread.RunJobs();
+            Check(consentList.SelectedItem is RelaxKonOS.AppSDK.ServerModuleConsentRow { Target: "fixture.service" }
+                && ReferenceEquals(model.SelectedConsent, consentFact),
+                "The visible consent row selects its original host record without exposing confirmation credentials.");
             consentWindow.Close(); Dispatcher.UIThread.RunJobs();
             tabs.SelectedIndex = 0; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             window.Width = 1000; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();

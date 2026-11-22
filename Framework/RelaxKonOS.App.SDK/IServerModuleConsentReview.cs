@@ -1,8 +1,6 @@
 using System.Windows.Input;
-using RelaxKonOS.AppSDK;
-using RelaxKonOS.ModuleHost.Protocol;
 
-namespace RelaxKonOS.App.ComponentCenter;
+namespace RelaxKonOS.AppSDK;
 
 public interface IServerModuleConsentReview : IServerModuleReview
 {
@@ -16,8 +14,8 @@ public interface IServerModuleConsentReview : IServerModuleReview
     IReadOnlyList<ServerModuleConsentKindChoice> ConsentKinds { get; }
     string ConsentModuleText { get; }
     string ConsentReason { get; set; }
-    IReadOnlyList<ModulePrivilegeConsent> Consents { get; }
-    ModulePrivilegeConsent? SelectedConsent { get; set; }
+    IReadOnlyList<ServerModuleConsentRow> ConsentRows { get; }
+    ServerModuleConsentRow? SelectedConsentRow { get; set; }
     string ConsentTarget { get; set; }
     string ConsentText { get; }
     ICommand PrepareConsentCommand { get; }
@@ -30,3 +28,5 @@ public sealed record ServerModuleConsentKindChoice(string Kind, string Action, s
 {
     public string Label => Localize(LabelKey);
 }
+
+public sealed record ServerModuleConsentRow(Guid ConsentId, string ModuleId, string Target, string State);

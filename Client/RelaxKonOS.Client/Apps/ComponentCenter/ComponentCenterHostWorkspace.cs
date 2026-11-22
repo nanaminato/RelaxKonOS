@@ -231,7 +231,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
                 dialog => BindModuleReview(views.CreateModulePrivilege(dialog), modules), new Size(600, 560));
             modules.ConsentEditorRequested = async () => await ShowOwnedAsync<bool>(
                 LocalizedText.Get("server_modules.consent_title"),
-                dialog => new ServerModuleConsentView(dialog) { DataContext = modules }, new Size(700, 660));
+                dialog => BindModuleReview(views.CreateModuleConsent(dialog), modules), new Size(700, 660));
         }
         if (model.NginxSelection is { } nginxSelection)
             nginxSelection.RequestIntegrationConfirmationAsync = () => ConfirmAsync(

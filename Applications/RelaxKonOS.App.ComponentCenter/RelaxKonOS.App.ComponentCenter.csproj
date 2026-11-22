@@ -6,7 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
-    <ProjectReference Include="../../Shared/RelaxKonOS.ModuleHost.Protocol/RelaxKonOS.ModuleHost.Protocol.csproj" />
     <AvaloniaResource Include="Assets/component-center.png" />
     <EmbeddedResource Include="Localization/*.json" LogicalName="ComponentCenter.Localization.%(Filename).json" />
     <PackageReference Include="Avalonia" />

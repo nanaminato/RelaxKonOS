@@ -1,4 +1,4 @@
-using RelaxKonOS.App.ComponentCenter;
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -30,6 +30,16 @@ public sealed partial class ServerModulesViewModel
     [ObservableProperty] private IReadOnlyList<ModulePrivilegeConsent> consents = [];
     [ObservableProperty] private ModulePrivilegeConsent? selectedConsent;
     [ObservableProperty] private ModulePrivilegeConsent? consentPlan;
+    public IReadOnlyList<ServerModuleConsentRow> ConsentRows { get; private set; } = [];
+
+    public ServerModuleConsentRow? SelectedConsentRow
+    {
+        get => ConsentRows.FirstOrDefault(row => row.ConsentId == SelectedConsent?.ConsentId);
+        set => SelectedConsent = value is null
+            ? null
+            : Consents.FirstOrDefault(consent => consent.ConsentId == value.ConsentId);
+    }
+
     public bool ShowConsentContentSha256 => ConsentKind.Kind == ModuleCapabilityCatalog.FileManage;
 
     /// <summary>Summary shown on the security page: the dialog owns the form, the page states count
@@ -40,6 +50,10 @@ public sealed partial class ServerModulesViewModel
         : LocalizedStatus.Key("server_modules.privilege_none");
     partial void OnConsentsChanged(IReadOnlyList<ModulePrivilegeConsent> value)
     {
+        ConsentRows = value.Select(consent =>
+            new ServerModuleConsentRow(consent.ConsentId, consent.ModuleId, consent.Target, consent.State)).ToArray();
+        OnPropertyChanged(nameof(ConsentRows));
+        OnPropertyChanged(nameof(SelectedConsentRow));
         OnPropertyChanged(nameof(ConsentCountText));
         OnPropertyChanged(nameof(HasConsents));
     }
@@ -58,6 +72,7 @@ public sealed partial class ServerModulesViewModel
     {
         if (value?.ConsentId != ConsentPlan?.ConsentId) ConsentPlan = null;
         ConsentText = value is null ? "" : DescribeConsent(value);
+        OnPropertyChanged(nameof(SelectedConsentRow));
         OnPropertyChanged(nameof(CanRevokeConsent));
         RevokeConsentCommand.NotifyCanExecuteChanged();
     }

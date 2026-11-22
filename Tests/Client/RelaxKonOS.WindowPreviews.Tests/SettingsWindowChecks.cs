@@ -584,6 +584,7 @@ internal static class SettingsWindowChecks
                 (modules.PlanReviewRequested!, nameof(ServerModulePlanReviewView)),
                 (modules.PolicyEditorRequested!, nameof(ServerModulePolicyEditorView)),
                 (modules.PrivilegeReviewRequested!, nameof(ServerModulePrivilegeView)),
+                (modules.ConsentEditorRequested!, nameof(ServerModuleConsentView)),
             })
             {
                 var review = open();
