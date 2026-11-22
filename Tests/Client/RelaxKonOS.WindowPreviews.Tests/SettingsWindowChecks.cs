@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Apps.ComponentCenter;
+using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.App.Settings.Views;
 using System.Reflection;
 using Avalonia;
@@ -474,9 +476,19 @@ internal static class SettingsWindowChecks
             Check(!windows.Windows.Contains(managed), "Host-owned close caption stopped working.");
             if (packageSource is not null && componentCenter)
             {
-                var centerWorkspace = new CenterPackageWorkspace();
+                auth.State = AuthSessionState.Authenticated;
+                auth.User = new(Guid.NewGuid(), "fixture", RelaxKonOS.Protocol.Common.HostPlatformKind.Linux,
+                    "fixture", DateTimeOffset.UtcNow, null);
+                using var centerServices = new ServiceCollection()
+                    .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
+                    .AddSingleton(session)
+                    .AddSingleton(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>())
+                    .AddSingleton(new ComponentDraftStore())
+                    .AddSingleton(apps)
+                    .BuildServiceProvider();
+                var centerWorkspace = new ComponentCenterHostWorkspace(centerServices);
                 CheckCenterPackage(packageSource, windows, apps,
-                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), centerWorkspace), centerWorkspace);
+                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), centerWorkspace));
             }
             else if (packageSource is not null)
             {
@@ -517,7 +529,7 @@ internal static class SettingsWindowChecks
     }
 
     private static void CheckCenterPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
-        ApplicationManager applications, ExternalAppContextFactory factory, CenterPackageWorkspace workspace)
+        ApplicationManager applications, ExternalAppContextFactory factory)
     {
         var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
             Path.Combine(Path.GetTempPath(), "rk-center-package-" + Guid.NewGuid().ToString("N")));
@@ -530,22 +542,23 @@ internal static class SettingsWindowChecks
         install.GetAwaiter().GetResult();
         try
         {
-            var firstUri = new Uri("relaxkonos://components/server-modules?hostId=fixture");
+            var firstUri = ComponentCenterNavigation.Component("test-service", "relaxkonos.proxy-server", "sing-box", ComponentCenterPage.Updates);
             var first = applications.Activate(new AppActivationRequest(firstUri));
             Check(first.Status == AppActivationStatus.Activated, "The installed Component Center did not claim its route.");
             PumpUntil(() => windows.Windows.Count > 0);
             var window = windows.Windows.Single();
-            Check(window.Info.OwnerAppId.Value == id && ReferenceEquals(window.View.Content, workspace.Content)
-                && workspace.Target == firstUri, "The installed component center did not open its owned workspace and dispatch navigation.");
-            var secondUri = new Uri(firstUri + "&moduleId=relaxkonos.git");
+            var model = (window.View.Content as ComponentCenterWorkspace)?.DataContext as ComponentCenterViewModel;
+            Check(window.Info.OwnerAppId.Value == id && model?.SelectedPage == ComponentCenterPage.Updates,
+                "The installed package did not open the production workspace and dispatch navigation.");
+            var secondUri = ComponentCenterNavigation.Component("test-service", "relaxkonos.proxy-server", "sing-box", ComponentCenterPage.Installed);
             var second = applications.Activate(new AppActivationRequest(secondUri));
             Pump();
             Check(second.Status == AppActivationStatus.Activated && windows.Windows.Single() == window
-                && workspace.Target == secondUri, "Component Center deep links did not reuse the package window.");
+                && model?.SelectedPage == ComponentCenterPage.Installed, "Component Center deep links did not reuse the package window.");
             var rejected = applications.Activate(new AppActivationRequest(new Uri(firstUri + "&action=install")));
-            Check(rejected.Status == AppActivationStatus.RouteNotFound && workspace.Target == secondUri,
+            Check(rejected.Status == AppActivationStatus.RouteNotFound && model?.SelectedPage == ComponentCenterPage.Installed,
                 "A route with an action parameter reached the Component Center workspace.");
-            Console.WriteLine("PASS: installed Component Center archive owns its window and dispatches validated deep links.");
+            Console.WriteLine("PASS: installed Component Center opens its production workspace and dispatches validated deep links.");
         }
         finally
         {
@@ -560,18 +573,6 @@ internal static class SettingsWindowChecks
             await using var stream = File.OpenRead(path);
             await packages.InstallOfficialAsync(stream, path, id, digest!, null, CancellationToken.None);
         }
-    }
-
-    private sealed class CenterPackageWorkspace : IComponentCenterWorkspace
-    {
-        public Control Content { get; } = new TextBlock();
-        public Uri? Target { get; private set; }
-
-        public void Open(Func<string, Control, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
-            showWorkspace("Component Center fixture", Content);
-
-        public bool CanNavigate(Uri uri) => RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.TryParse(uri, out _);
-        public void Navigate(Uri uri) => Target = uri;
     }
 
     private static void CheckInstalledPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
@@ -685,6 +686,7 @@ internal static class SettingsWindowChecks
 public class SettingsWindowSession : DispatchProxy
 {
     public AuthSessionState State = AuthSessionState.Unauthenticated;
+    public UserDto? User { get; set; }
     private event EventHandler<AuthSessionStateChangedEventArgs>? Changed;
     private readonly AuthTokens tokens = new("test", "test", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow.AddDays(1));
     private WorkspaceDto workspace = new(Guid.NewGuid(), Guid.NewGuid(), "Test workspace", WorkspaceState.Running, DateTimeOffset.UtcNow, null);
@@ -698,7 +700,7 @@ public class SettingsWindowSession : DispatchProxy
         return method.Name switch
         {
             "get_State" => State, "get_ServiceId" => "test-service", "get_EffectiveBaseUrl" => "http://test.invalid/",
-            "get_Tokens" => tokens, "get_CurrentWorkspace" => workspace, "get_CurrentSession" => session,
+            "get_Tokens" => tokens, "get_CurrentWorkspace" => workspace, "get_CurrentSession" => session, "get_CurrentUser" => User,
             _ when method.Name.StartsWith("get_") => method.ReturnType.IsValueType ? Activator.CreateInstance(method.ReturnType) : null,
             _ => throw new InvalidOperationException(method.Name)
         };
