@@ -27,6 +27,7 @@ using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -108,45 +109,82 @@ internal static class JointDeploymentAcceptance
         var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.CertificatesId }, InstalledModuleCatalog.Load(serverRoot));
         modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
         if (fixture is not null)
+        {
             builder.Services.AddSingleton(_ => new DirectHttp01ChallengeStore("http://+:5002/.well-known/acme-challenge/"));
+            builder.Services.AddSingleton<ICertificateStore, FileCertificateStore>();
+            builder.Services.AddSingleton<HostOperationJournal>();
+            builder.Services.AddSingleton<KestrelCertificateRegistry>();
+            builder.Services.AddSingleton<CertificateDeploymentRepository>();
+            builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
+                new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+            builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IHostPrivilegeService, CertificateFixturePrivilege>();
+            builder.Services.AddSingleton<IHostElevationSessionStore, CertificateFixtureElevation>();
+            builder.Services.AddSingleton<IServerModeResolver>(new ServerModeResolver(builder.Configuration,
+                RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
+            builder.Services.AddAuthentication("module-test")
+                .AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
+            builder.Services.AddAuthorization();
+            builder.Services.ConfigureHttpJsonOptions(json => json.SerializerOptions.Converters.Add(
+                new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+        }
         await using var host = builder.Build();
         var execution = host.Services.GetRequiredService<AcmeExecution>();
-        var acme = host.Services.GetRequiredService<IAcmeService>();
         if (fixture is not null)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-            const string domain = "signed-joint.mb05.test";
-            var material = await acme.IssueAsync(Guid.NewGuid(), [domain],
-                RelaxKonOS.Protocol.Certificates.CertificateChallengeType.DirectHttp01,
-                RelaxKonOS.Protocol.Certificates.CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", timeout.Token);
-            using var leaf = X509Certificate2.CreateFromPem(material.CertificatePem, material.PrivateKeyPem);
-            Require(!ReferenceEquals(execution, AcmeExecution.Shared) && leaf.HasPrivateKey && leaf.MatchesHostname(domain),
-                "the joint-installed signed Certificates package issues a real Pebble certificate with the requested identity");
-            var metadata = host.Services.GetRequiredService<CertificateMetadataRepository>();
-            var storage = new FileCertificateStore(builder.Environment, options, metadata);
-            await storage.SaveAsync(material, timeout.Token);
-
-            var reopened = new FileCertificateStore(builder.Environment, options,
-                new CertificateMetadataRepository(builder.Environment, builder.Configuration));
-            var paths = await reopened.GetNginxPathsAsync(material.Id, timeout.Token)
-                ?? throw new InvalidOperationException("The issued certificate has no persisted deployment chain.");
-            var bundle = new X509Certificate2Collection();
-            bundle.ImportFromPemFile(paths.FullChainPath);
+            host.UseAuthentication();
+            host.UseAuthorization();
+            modules.MapEndpoints(host, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+            host.Urls.Add("http://127.0.0.1:0");
+            await host.StartAsync();
             try
             {
-                using var rootCertificate = X509Certificate2.CreateFromPem(await File.ReadAllTextAsync(Path.Combine(fixture, "issuance-root.pem"), timeout.Token));
-                using var chain = new X509Chain();
-                chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-                chain.ChainPolicy.CustomTrustStore.Add(rootCertificate);
-                chain.ChainPolicy.ExtraStore.AddRange(bundle);
-                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                chain.ChainPolicy.DisableCertificateDownloads = true;
-                Require(bundle.Count >= 2 && bundle[0].RawData.AsSpan().SequenceEqual(leaf.RawData) && chain.Build(bundle[0]),
-                    "the reopened certificate store exposes a deployment chain that validates against the isolated Pebble root");
+                using var client = new HttpClient { BaseAddress = new Uri(host.Urls.Single()) };
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                const string domain = "localhost";
+                client.DefaultRequestHeaders.Add("Idempotency-Key", "signed-acme-issuance");
+                var request = new RequestCertificateRequest([domain], CertificateChallengeType.DirectHttp01,
+                    "acceptance@example.test", true, PublicReachabilityConfirmed: true);
+                client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
+                using var forbidden = await client.PostAsJsonAsync(CertificateApiRoutes.Request, request, RelaxKonOSJsonOptions.Default, timeout.Token);
+                Require(forbidden.StatusCode == System.Net.HttpStatusCode.Forbidden, "signed certificate issuance requires its elevation grant");
+                client.DefaultRequestHeaders.Remove("test-user");
+                client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+                using var started = await client.PostAsJsonAsync(CertificateApiRoutes.Request, request, RelaxKonOSJsonOptions.Default, timeout.Token);
+                started.EnsureSuccessStatusCode();
+                var receipt = (await started.Content.ReadFromJsonAsync<CertificateOperationDto>(RelaxKonOSJsonOptions.Default, timeout.Token))!;
+                var status = CertificateApiRoutes.Operations.Replace("{operationId}", receipt.OperationId.ToString("D"));
+                var completed = receipt;
+                while (completed.State is CertificateOperationState.Queued or CertificateOperationState.Running)
+                {
+                    await Task.Delay(100, timeout.Token);
+                    completed = (await client.GetFromJsonAsync<CertificateOperationDto>(status, RelaxKonOSJsonOptions.Default, timeout.Token))!;
+                }
+                Require(completed.State == CertificateOperationState.Succeeded && !ReferenceEquals(execution, AcmeExecution.Shared),
+                    $"the certificate management route completes real signed ACME issuance: {completed.ProblemCode}");
+                var reopened = new FileCertificateStore(builder.Environment, options,
+                    new CertificateMetadataRepository(builder.Environment, builder.Configuration));
+                var paths = await reopened.GetNginxPathsAsync(completed.CertificateId ?? throw new InvalidOperationException("Missing certificate ID."), timeout.Token)
+                    ?? throw new InvalidOperationException("The issued certificate has no persisted deployment chain.");
+                var bundle = new X509Certificate2Collection();
+                bundle.ImportFromPemFile(paths.FullChainPath);
+                try
+                {
+                    using var rootCertificate = X509Certificate2.CreateFromPem(await File.ReadAllTextAsync(Path.Combine(fixture, "issuance-root.pem"), timeout.Token));
+                    using var chain = new X509Chain();
+                    chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                    chain.ChainPolicy.CustomTrustStore.Add(rootCertificate);
+                    chain.ChainPolicy.ExtraStore.AddRange(bundle);
+                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    chain.ChainPolicy.DisableCertificateDownloads = true;
+                    Require(bundle.Count >= 2 && bundle[0].MatchesHostname(domain) && chain.Build(bundle[0]),
+                        "the reopened certificate store exposes a deployment chain that validates against the isolated Pebble root");
+                }
+                finally { foreach (var certificate in bundle) certificate.Dispose(); }
             }
-            finally { foreach (var certificate in bundle) certificate.Dispose(); }
+            finally { await host.StopAsync(); }
             return;
         }
+        var acme = host.Services.GetRequiredService<IAcmeService>();
         var directory = new Uri("https://fixture.invalid/dir");
         var identity = new AcmeOrderIdentity(directory, new(directory, "/account"), "fixture", new(directory, "/order"));
         Require(!ReferenceEquals(execution, AcmeExecution.Shared)
@@ -1399,6 +1437,24 @@ internal static class JointDeploymentAcceptance
     {
         if (!passed) throw new InvalidOperationException(message);
         Console.WriteLine("PASS: " + message);
+    }
+
+    private sealed class CertificateFixturePrivilege : RelaxKonOS.Server.WebServer.IHostPrivilegeService
+    {
+        public bool IsAdministrator => true;
+    }
+
+    private sealed class CertificateFixtureElevation : IHostElevationSessionStore
+    {
+        public bool IsGranted(System.Security.Claims.ClaimsPrincipal principal, HostElevationCapability capability, string target) =>
+            principal.FindFirst("sub")?.Value == ModuleTestAuthentication.Admin
+            && capability == HostElevationCapability.CertificateIssue && target == "certificates/issue";
+
+        public DateTimeOffset Grant(System.Security.Claims.ClaimsPrincipal principal, HostElevationCapability capability,
+            string target, bool includeDescendants, string authenticationMethod, string? correlationId = null) =>
+            throw new NotSupportedException();
+
+        public void Revoke(System.Security.Claims.ClaimsPrincipal principal) => throw new NotSupportedException();
     }
 
     private sealed class TailscaleReadHelper : IPrivilegedOperationTransport
