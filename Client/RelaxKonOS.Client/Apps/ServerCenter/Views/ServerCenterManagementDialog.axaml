@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:RelaxKonOS.UI;assembly=RelaxKonOS.UI" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:RelaxKonOS.UI;assembly=RelaxKonOS.UI" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" xmlns:setup="clr-namespace:RelaxKonOS.UI.ServerInstallation;assembly=RelaxKonOS.UI" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
     <UserControl.Styles>
         <Style Selector="Border.management-section">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
@@ -63,7 +63,7 @@
                             <TextBlock Text="{Binding FileAccessText}" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding FileAccessDescription}" Classes="action-description"/>
                             <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding ConfigurationFileAccesses}" SelectedItem="{Binding ConfigurationFileAccess}">
-                                <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:FileAccessOption"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
+                                <ComboBox.ItemTemplate><DataTemplate x:DataType="setup:FileAccessOption"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
                             </ComboBox>
                             <TextBlock Text="{Binding FileRootsText}" IsVisible="{Binding ShowConfigurationFileRoots}"/>
                             <TextBox IsVisible="{Binding ShowConfigurationFileRoots}" TextWrapping="Wrap" Text="{Binding ConfigurationFileRoots}" AcceptsReturn="True" MinHeight="80"/>

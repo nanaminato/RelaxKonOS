@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.ServerInstallation;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
@@ -25,8 +26,8 @@ internal static class InstallationWizardDialogChecks
             wizard = new(center, () => dialog.Close(true),
                 async () => { await dialog.CancelAsync(); return dialog.Result.IsCompleted; },
                 () => Task.FromResult<string?>(null), () => Task.CompletedTask, _ => Task.FromResult(true));
-            return new ServerInstallationWizardView(wizard, dialog,
-                () => throw new InvalidOperationException("Draft cancellation should not open a file picker."));
+            return RelaxKonOS.Client.Apps.ServerCenter.ServerCenterHostWorkspace.CreateInstallationWizard(dialog, wizard,
+                (_, _, _) => throw new InvalidOperationException("Draft cancellation should not open a file picker."));
         });
         Check(!wizard!.HasDraftChanges, "Default installation options are not an edited draft.");
         wizard.ServerPortText = "invalid";

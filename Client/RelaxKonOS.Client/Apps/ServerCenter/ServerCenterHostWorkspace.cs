@@ -1,7 +1,10 @@
+using RelaxKonOS.UI.ServerInstallation;
 using RelaxKonOS.App.SshFiles.Views;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Threading;
+using RelaxKonOS.Client.Services.Dialogs;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
@@ -41,7 +44,7 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
                 dialog => new ServerCenterManagementDialog(viewModel, section, dialog, language, CapturePickerMemory), new Size(640, 600));
         };
         viewModel.ShowInstallationWizardAsync = () => windowManager.ShowDialogAsync<bool>(window, viewModel.DeployText,
-            dialog => new ServerInstallationWizardView(
+            dialog => CreateInstallationWizard(dialog,
                 new ServerInstallationWizardViewModel(viewModel, () => dialog.Close(true),
                     async () => { await dialog.CancelAsync(); return dialog.Result.IsCompleted; },
                     () => dialog.ShowDialogAsync<string?>(
@@ -74,9 +77,23 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
                                     Child = content
                                 };
                             }, new Size(440, 280));
-                    }), dialog, CapturePickerMemory),
+                    }), (storage, options, purpose) => UsageFilePicker.OpenFilePickerAsync(storage, options, CapturePickerMemory(), purpose)),
             new Size(620, 480));
         _ = viewModel.LoadAsync();
+    }
+
+    internal static ServerInstallationWizardView CreateInstallationWizard(ModalDialog<bool> dialog,
+        ServerInstallationWizardViewModel model, ServerInstallationFilePicker pickFile)
+    {
+        DraftDialogGuard.Attach(dialog, () => model.IsBusy || model.Progress.IsBusy, () => model.HasDraftChanges);
+        _ = ClearSecretsAfterCloseAsync(dialog, model);
+        return new ServerInstallationWizardView(model, pickFile);
+    }
+
+    private static async Task ClearSecretsAfterCloseAsync(ModalDialog<bool> dialog, ServerInstallationWizardViewModel model)
+    {
+        await dialog.Result;
+        await Dispatcher.UIThread.InvokeAsync(model.ClearSecrets);
     }
 
 }

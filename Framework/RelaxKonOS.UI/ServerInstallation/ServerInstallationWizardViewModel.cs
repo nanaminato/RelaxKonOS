@@ -3,12 +3,12 @@ using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
 
-namespace RelaxKonOS.Client.ViewModels.ServerCenter;
+namespace RelaxKonOS.UI.ServerInstallation;
 
 /// <summary>Short, modal install flow. It collects only supported package and mode choices before touching the host.</summary>
 public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 {
-    private readonly ServerCenterViewModel _serverCenter;
+    private readonly IServerInstallationWizardHost _serverCenter;
     private readonly Action _close;
     private readonly Func<Task<bool>> _cancelRequested;
     private object?[] _initialDraft;
@@ -18,7 +18,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public bool IsLocalInstallation { get; }
     public bool CanShowHostAddresses => !IsLocalInstallation;
 
-    public ServerInstallationWizardViewModel(ServerCenterViewModel serverCenter, Action close, Func<Task<bool>> cancelRequested,
+    public ServerInstallationWizardViewModel(IServerInstallationWizardHost serverCenter, Action close, Func<Task<bool>> cancelRequested,
         Func<Task<string?>> chooseServerBundle, Func<Task> showHostAddresses,
         Func<ServerInstallationOptions, Task<bool>>? localDeploy = null)
     {
@@ -40,7 +40,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         if (IsLocalInstallation) Sources = Sources.Where(source => source.Source != ServerPackageSourceKind.RemoteBundle).ToArray();
         SelectedSource = Sources[0];
 
-        Modes = BuildModes(IsLocalInstallation ? HostPlatformKind.Windows : serverCenter.SelectedPlatform?.Platform);
+        Modes = BuildModes(IsLocalInstallation ? HostPlatformKind.Windows : serverCenter.SelectedPlatformKind);
         Networks =
         [
             new(ServerNetworkProfile.Loopback, Text("server_center.wizard.network_loopback", "Local only (recommended)")),
@@ -130,7 +130,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string PersonalModeHint => Text("server_center.wizard.windows_personal_hint", "Your account owns this installation and is its RelaxKonOS administrator. Installation and maintenance request UAC; daily operations use an owner-bound privileged helper. Administrator terminals run as LocalSystem. Paired devices share this identity.");
     public bool IsUserMode => SelectedMode?.Mode == ServerInstallMode.LinuxUser;
     public bool IsLinuxSystemMode => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
-    public bool IsLinuxHost => !IsLocalInstallation && _serverCenter.SelectedPlatform?.Platform == HostPlatformKind.Linux;
+    public bool IsLinuxHost => !IsLocalInstallation && _serverCenter.SelectedPlatformKind == HostPlatformKind.Linux;
     // Automatic mode can resolve to System after SSH preflight. User modes do not configure
     // privileged host file access; the deployment layer discards system-only settings for them.
     public ServerFileAccessScope FileAccess => IsWindowsUserMode || IsUserMode
@@ -189,7 +189,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         IsOfficialSource ? $"{ReleaseCatalogLabel}: {ReleaseCatalogBaseUri}" : string.Empty, IsDirectUrl ? $"SHA-256: {PackageDigest}" : string.Empty
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
     public string Title => IsLocalInstallation ? Text("login.local_install", "Install on this computer") : Text("server_center.wizard.title", "Install RelaxKonOS");
-    public ServerCenterViewModel Progress => _serverCenter;
+    public IServerInstallationWizardHost Progress => _serverCenter;
     public string SourceStepTitle => Text("server_center.wizard.source_title", "Choose the release source");
     public string ModeStepTitle => Text("server_center.wizard.mode_title", "Choose the installation mode");
     public string SourceChecksText => IsWindowsUserMode ? PersonalModeHint : IsLocalInstallation
@@ -228,6 +228,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string BackText => Text("server_center.wizard.back", "Back");
     public string NextText => Text("server_center.wizard.next", "Next");
     public string CancelText => Text("server_center.wizard.cancel", "Cancel");
+    public string CertificatePasswordPlaceholder => Text("server_center.wizard.certificate_password_placeholder", "Certificate password");
     public string InstallText => _serverCenter.DeployText;
 
     public void SetLocalBundle(string? path)

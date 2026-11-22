@@ -1,7 +1,9 @@
+using RelaxKonOS.UI.ServerInstallation;
 using System.Collections.ObjectModel;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.UI.ServerInstallation;
 using RelaxKonOS.AppSDK;
 using System.Collections;
 using System.Windows.Input;
@@ -17,7 +19,7 @@ namespace RelaxKonOS.Client.ViewModels.ServerCenter;
 /// Login-independent desktop host inventory. It keeps selectable SSH server-and-user targets;
 /// credentials remain in platform secure storage and deployment remains a separate remote action.
 /// </summary>
-public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation, IServerCenterHostsPresentation, IServerCenterDeploymentPresentation
+public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation, IServerCenterHostsPresentation, IServerCenterDeploymentPresentation, IServerInstallationWizardHost
 {
     private readonly IHostTargetStore _targets;
     private readonly IServerCenterConnectionResolver _connections;
@@ -81,6 +83,8 @@ public partial class ServerCenterViewModel : ObservableObject, IServerCenterWork
 
     public ObservableCollection<ServerHostTarget> Hosts { get; } = [];
     public ObservableCollection<ServerCenterOperationRecord> Operations { get; } = [];
+    HostPlatformKind? IServerInstallationWizardHost.SelectedPlatformKind => SelectedPlatform?.Platform;
+
     public IReadOnlyList<HostPlatformOption> Platforms { get; } =
     [
         new(HostPlatformKind.Windows, "Windows"),
@@ -1608,31 +1612,11 @@ public partial class ServerCenterViewModel : ObservableObject, IServerCenterWork
         ServerDataRetention.Retain,
         mode);
 
+    string IServerInstallationWizardHost.Text(string key, string fallback) => Text(key, fallback);
+
     internal string Text(string key, string fallback) => _localization.Get(key, fallback);
 
     private string T(string key, string fallback) => Text(key, fallback);
 }
 
 public sealed record HostPlatformOption(HostPlatformKind Platform, string DisplayName);
-
-public sealed record ServerInstallationOptions(
-    ServerPackageSourceKind Source,
-    ServerInstallMode? Mode,
-    string? LocalBundlePath,
-    string? RemoteBundlePath,
-    ServerFileAccessScope FileAccess,
-    ServerNetworkProfile Network,
-    ServerCertificateMode CertificateMode,
-    ServerCertificateFormat CertificateFormat,
-    string? CertificatePath,
-    string? CertificatePrivateKeyPath,
-    string CertificatePassword,
-    string SelfSignedIdentities,
-    string SudoPassword = "",
-    int ServerPort = 5000,
-    string? PackageUri = null, string? PackageDigest = null, string? ReleaseCatalogBaseUri = null,
-    string? InstallRoot = null, string? DataRoot = null, string? ConfigRoot = null,
-    string? StateRoot = null, string? CacheRoot = null,
-    IReadOnlyList<string>? FileRoots = null, ServerFileAccessScope? AdministratorFileAccess = null,
-    IReadOnlyList<string>? AdministratorFileRoots = null, ServerFileAccessScope? RootFileAccess = null,
-    IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false, bool AddFirewallRule = false, bool GuardianEnabled = true);
