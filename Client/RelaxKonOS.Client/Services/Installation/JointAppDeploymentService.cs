@@ -297,9 +297,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             }
             VerifyApplicationBaseline();
             packages.EnsureReplacementVersionIsCompatible(candidate.Manifest.Id, candidate.Manifest.Version);
-            foreach (var dependency in plan.OrderedReleases)
-                if (dependency.Package.Kind == DeploymentPackageKind.Application && dependency.Satisfied)
-                    VerifyInstalledDependency(dependency);
+            VerifyInstalledApplicationDependencies(plan);
             await using var archive = File.OpenRead(candidate.LocalPath);
             await AppPackageInstallerService.VerifyFrozenAsync(archive, candidate.ExpectedSha256, cancellationToken);
         }
@@ -316,7 +314,11 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             if (release.Package.Kind == DeploymentPackageKind.ServerModule)
             {
                 if (!release.Satisfied)
+                {
                     await VerifyDependenciesAsync(plan, stepIndex, cancellationToken);
+                    // Other local prerequisites can appear after this module in dependency order.
+                    VerifyInstalledApplicationDependencies(plan);
+                }
                 await (modules ?? throw new InvalidOperationException("deployment-server-unavailable"))
                     .ApplyOrReconcileAsync(plan, release, cancellationToken);
                 return;
@@ -373,6 +375,13 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             if (current?.InstallationPath != release.ArtifactIdentity || current.Version != release.Version
                 || applications.GetManifest(new AppId(release.Package.Id))?.Version != release.Version)
                 throw new InvalidOperationException("deployment-client-dependency-changed");
+        }
+
+        private void VerifyInstalledApplicationDependencies(DeploymentPlan plan)
+        {
+            foreach (var dependency in plan.OrderedReleases)
+                if (dependency.Package.Kind == DeploymentPackageKind.Application && dependency.Satisfied)
+                    VerifyInstalledDependency(dependency);
         }
 
         private void VerifyApplicationBaseline()
