@@ -33,6 +33,21 @@ class ServerModulesWireTest {
         assertEquals(ServerModuleResidencyPolicy("KeepLoaded", 42), fact.desiredPolicy)
         assertEquals(ServerModuleResidencyPolicy("IdleDelayed", 300), fact.effectivePolicy)
     }
+    @Test fun `versioned server capability keeps the Android module inventory readable`() {
+        val value = row().put("capabilities", JSONArray(listOf("server.git")))
+            .put("capabilityContractVersions", JSONObject().put("server.git", "1.0"))
+        val fact = ServerModulesWire.facts(JSONArray().put(value).toString()).single()
+        assertEquals(listOf("server.git"), fact.capabilities)
+        assertTrue(fact.effectiveEnabled)
+    }
+    @Test fun `desktop dependency blocker survives Android module plan decoding`() {
+        val value = """{"planId":"10000000-0000-0000-0000-000000000001","serviceId":"host-one","expiresAt":"2099-01-01T00:00:00Z",
+            "expectedRevision":"revision","target":{"serviceId":"host-one","action":"Disable","moduleIds":["relaxkonos.git"],"enabledModuleIds":[],"expectedRevision":"revision","idempotencyKey":"key"},
+            "restartRequired":true,"added":[],"removed":["relaxkonos.git"],"blockedBy":[{"problemCode":"module-desktop-dependency-blocked","moduleId":"relaxkonos.git"}]}"""
+        val plan = ServerModulesWire.plan(value)
+        assertEquals("Disable", plan.action)
+        assertEquals(listOf("module-desktop-dependency-blocked"), plan.blockers)
+    }
     @Test fun `policy plan freezes strategy and integer grace and rejects malformed settings`() {
         val value = JSONObject("""{"planId":"10000000-0000-0000-0000-000000000001","serviceId":"host-one","expiresAt":"2099-01-01T00:00:00Z",
             "expectedRevision":"revision","target":{"serviceId":"host-one","action":"SetResidencyPolicy","moduleIds":["relaxkonos.git"],"enabledModuleIds":["relaxkonos.git"],"expectedRevision":"revision","idempotencyKey":"key","strategy":"KeepLoaded","idleGraceSeconds":42},
