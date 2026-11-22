@@ -7,11 +7,12 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.Database.Contracts/RelaxKonOS.ServerModule.Database.Contracts.csproj" />
   </ItemGroup>
   <Target Name="ValidateDatabaseModuleBoundary" BeforeTargets="ResolveReferences">
     <ItemGroup>
-      <InvalidDatabaseImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.Filename)' != 'RelaxKonOS.Protocol'" />
+      <InvalidDatabaseImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.Filename)' != 'RelaxKonOS.Protocol' and '%(ProjectReference.Filename)' != 'RelaxKonOS.ServerModule.Database.Contracts'" />
     </ItemGroup>
-    <Error Condition="'@(InvalidDatabaseImplementationProject)' != ''" Text="Database execution may reference shared protocol contracts only. Unexpected references: @(InvalidDatabaseImplementationProject)." />
+    <Error Condition="'@(InvalidDatabaseImplementationProject)' != ''" Text="Database execution may reference only shared protocol and database contracts. Unexpected references: @(InvalidDatabaseImplementationProject)." />
   </Target>
 </Project>

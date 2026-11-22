@@ -3,7 +3,7 @@ using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Components;
 using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Privileged;
-using RelaxKonOS.ServerModule.Database;
+using RelaxKonOS.ServerModule.Database.Contracts;
 
 namespace RelaxKonOS.Server.Databases;
 

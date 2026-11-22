@@ -3,7 +3,7 @@ using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Server.Databases;
 using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Privileged;
-using RelaxKonOS.ServerModule.Database;
+using RelaxKonOS.ServerModule.Database.Contracts;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -14,7 +14,7 @@ internal static class DatabaseEndpoints
         endpoints.MapPostgreSqlCredentialEndpoint();
         endpoints.MapPost(MySqlRoutes.Credentials, async (
             PostgreSqlCredentialRequest request, HttpContext http,
-            DatabaseQueries queries,
+            IDatabaseQueries queries,
             PostgreSqlCredentialStore credentials,
             IHostElevationSessionStore elevations, CancellationToken ct) =>
         {
@@ -35,7 +35,7 @@ internal static class DatabaseEndpoints
     {
         endpoints.MapPostgreSqlObservationEndpoints();
         endpoints.MapGet(MySqlRoutes.State,
-            async (DatabaseQueries queries, CancellationToken ct) =>
+            async (IDatabaseQueries queries, CancellationToken ct) =>
             {
                 try { return Results.Ok(await queries.ReadMySqlAsync(ct)); }
                 catch (InstallationException)

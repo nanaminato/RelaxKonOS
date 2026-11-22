@@ -6,7 +6,7 @@ using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Components;
 using RelaxKonOS.Server.Installations;
-using RelaxKonOS.ServerModule.Database;
+using RelaxKonOS.ServerModule.Database.Contracts;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -28,7 +28,7 @@ internal static class DatabaseObservationBroker
 
     private static async Task<IResult> ReadAsync<T>(HttpContext http, IServiceProvider services,
         Func<ModuleHostConnection, string, ClaimsPrincipal?> resolveUser,
-        Func<DatabaseQueries, CancellationToken, Task<T>> read)
+        Func<IDatabaseQueries, CancellationToken, Task<T>> read)
     {
         var hosts = services.GetRequiredService<ModuleHostSupervisor>();
         using var caller = hosts.AcquireAuthenticated(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString(),
@@ -43,7 +43,7 @@ internal static class DatabaseObservationBroker
                 .AuthorizeAsync(user, RuntimeCatalogEndpoints.ReadPolicy)).Succeeded)
             return Results.StatusCode(StatusCodes.Status403Forbidden);
 
-        var queries = services.GetService<DatabaseQueries>();
+        var queries = services.GetService<IDatabaseQueries>();
         if (queries is null)
             return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 

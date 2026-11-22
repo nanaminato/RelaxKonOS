@@ -3,17 +3,9 @@ using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
+using RelaxKonOS.ServerModule.Database.Contracts;
+
 namespace RelaxKonOS.ServerModule.Database;
-
-public interface IPostgreSqlBackupScheduleHost
-{
-    Task<PostgreSqlState> ReadScheduleAsync(CancellationToken cancellationToken);
-    InstallationOperationDto? ReadOperation(Guid operationId);
-    InstallationOperationDto? FindScheduledOperation(PostgreSqlInstallationRequest request, string key);
-    InstallationOperationDto StartScheduledOperation(PostgreSqlInstallationRequest request, string key);
-}
-
-public sealed class PostgreSqlBackupHostUnavailableException(Exception cause) : Exception("The database backup host is unavailable.", cause);
 
 /// <summary>Only dispatches explicitly granted root-owned policies through the shared durable coordinator.
 /// No credentials, native paths, privileged timers or direct database commands are owned by this worker.</summary>

@@ -1,4 +1,4 @@
-using RelaxKonOS.ServerModule.Database;
+using RelaxKonOS.ServerModule.Database.Contracts;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Server.Components;
 
@@ -8,17 +8,17 @@ public static class PostgreSqlEndpoints
 {
     internal static void MapPostgreSqlObservationEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(PostgreSqlRoutes.State, async (DatabaseQueries queries, Guid? instance, CancellationToken ct) =>
+        app.MapGet(PostgreSqlRoutes.State, async (IDatabaseQueries queries, Guid? instance, CancellationToken ct) =>
         {
             try { return Results.Ok(await queries.ReadPostgreSqlAsync(instance, ct)); }
             catch (ComponentLifecycleException ex) { return Results.Problem(statusCode: 503, extensions: new Dictionary<string, object?> { ["code"] = ex.ProblemCode }); }
         }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
-        app.MapGet(PostgreSqlRoutes.MaintenancePlan, async (DatabaseQueries queries, CancellationToken ct) =>
+        app.MapGet(PostgreSqlRoutes.MaintenancePlan, async (IDatabaseQueries queries, CancellationToken ct) =>
         {
             try { return Results.Ok(await queries.ReadPostgreSqlMaintenancePlanAsync(ct)); }
             catch(ComponentLifecycleException ex) {return Results.Problem(statusCode:503,extensions:new Dictionary<string,object?>{{"code",ex.ProblemCode}});}
         }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
-        app.MapGet(PostgreSqlRoutes.MigrationPlan, async (DatabaseQueries queries, CancellationToken ct) =>
+        app.MapGet(PostgreSqlRoutes.MigrationPlan, async (IDatabaseQueries queries, CancellationToken ct) =>
         {
             try { return Results.Ok(await queries.ReadPostgreSqlMigrationPlanAsync(ct)); }
             catch(ComponentLifecycleException ex) {return Results.Problem(statusCode:503,extensions:new Dictionary<string,object?>{{"code",ex.ProblemCode}});}
