@@ -170,6 +170,27 @@ internal static class JointDeploymentAcceptance
                     && await client.GetStringAsync("/fixture-core") == "ready"
                     && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
                     "disabling signed Tunnels withdraws its routes and leaves Core and the installed package available");
+
+                var enable = await restartedManagement.PreviewAsync(new(serviceId, ServerModuleAction.Enable, [moduleId],
+                    [.. desired, moduleId], restartedTarget.DesiredRevision!, "reenable-signed-tunnels"));
+                Require(enable.BlockedBy.Count == 0, "the existing signed Tunnels version can be enabled again");
+                var enableReceipt = await restartedManagement.ApplyAsync(enable.PlanId);
+                Require(enableReceipt.State == ServerModuleOperationState.AwaitingRestart, "Tunnels re-enable waits for restart");
+                await host.DisposeAsync();
+                host = null;
+                host = await TestHost.StartAsync(serverRoot, config);
+                session.Url = host.Url;
+                var enabledManagement = new ServerModuleManagementClient(managementHttp, auth);
+                var enabledInventory = await enabledManagement.ReadAsync();
+                var enabledReceipt = await enabledManagement.OperationAsync(enableReceipt.OperationId);
+                using var restoredClient = new HttpClient { BaseAddress = new Uri(host.Url) };
+                restoredClient.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+                var restoredProfiles = await restoredClient.GetFromJsonAsync<TunnelServerProfileDto[]>(TunnelApiRoutes.Profiles, RelaxKonOSJsonOptions.Default);
+                Require(enabledInventory.Single(module => module.Id == moduleId).EffectiveEnabled
+                    && enabledReceipt.State == ServerModuleOperationState.Succeeded
+                    && restoredProfiles?.Any(profile => profile.Name == "edge") == true
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 1,
+                    "re-enabling signed Tunnels restores its persisted profiles without reinstalling the package");
             }
         }
         finally
