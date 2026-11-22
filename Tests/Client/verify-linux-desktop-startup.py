@@ -1,7 +1,8 @@
-"""Verify a published desktop opens and closes an X11 window in Minimal mode."""
+"""Verify a published desktop provisions its profile and opens and closes an X11 window."""
 
 import argparse
 import ctypes as c
+import json
 import os
 from pathlib import Path
 import re
@@ -73,13 +74,20 @@ def main():
     parser.add_argument("publish_directory", type=Path)
     parser.add_argument("--dotnet", default="dotnet")
     parser.add_argument("--apphost", action="store_true", help="Run the published RelaxKonOS executable directly.")
+    parser.add_argument("--profile", choices=["minimal", "standard", "developer"], default="minimal")
     args = parser.parse_args()
     publish = args.publish_directory.resolve(strict=True)
     entry = publish / ("RelaxKonOS" if args.apphost else "RelaxKonOS.dll")
     command = [str(entry.resolve(strict=True))]
     if not args.apphost:
         command.insert(0, args.dotnet)
-    command.append("--installation-profile=minimal")
+    profile_path = publish / "OfficialApps" / "installation-profiles.json"
+    expected = set()
+    if args.profile != "minimal" or profile_path.is_file():
+        profiles = json.loads(profile_path.read_bytes())
+        expected = {entry["appId"] for entry in profiles["profiles"][args.profile] if entry["installPolicy"] == "offline"}
+    if args.profile != "standard":
+        command.append(f"--installation-profile={args.profile}")
     with tempfile.TemporaryDirectory(prefix="relaxkonos-desktop-") as temporary:
         home = Path(temporary)
         env = {**os.environ, "HOME": temporary}
@@ -90,8 +98,13 @@ def main():
                                        cwd=publish, env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
                 window = find_window(process)
-                if not (home / "data" / "RelaxKonOS" / "SystemDrive" / "System").is_dir():
+                drive = home / "data" / "RelaxKonOS" / "SystemDrive"
+                if not (drive / "System").is_dir():
                     raise RuntimeError("Desktop did not initialize the system drive under the isolated data directory.")
+                installed = {path.parent.name for path in (drive / "Programs" / "External").glob("*/current.json")}
+                if installed != expected:
+                    raise RuntimeError(f"Profile provisioning mismatch: missing {sorted(expected - installed)}, "
+                                       f"unexpected {sorted(installed - expected)}.")
                 request_close(window)
                 if process.wait(timeout=12) != 0:
                     raise RuntimeError(f"Desktop closed with status {process.returncode}.")
@@ -102,7 +115,7 @@ def main():
                 if process.poll() is None:
                     process.kill()
                     process.wait()
-    print("Linux Release opened a visible X11 window in Minimal mode and exited with status 0.")
+    print(f"Linux Release opened a visible X11 window with {len(expected)} {args.profile} packages and exited with status 0.")
 
 
 if __name__ == "__main__":
