@@ -58,14 +58,14 @@ internal static class ComponentCenterWorkspaceChecks
                     && headerButtons.Any(button => ReferenceEquals(button.Command, model.RefreshCommand)
                         && button.IsEnabled == model.Runtime.CanRefreshSources),
                     "Packaged header actions bind localized task text, host commands and refresh availability.");
-                var search = view.FindControl<TextBox>("Search")!;
+                var search = view.FindControl<ComponentCenterNavigationView>("Navigation")!.FindControl<TextBox>("Search")!;
                 search.Text = "missing"; Dispatcher.UIThread.RunJobs();
-                Check(view.FindControl<TreeView>("ComponentTree")!.ItemCount == 0, "Search hides nonmatching components");
+                Check(view.FindControl<ComponentCenterNavigationView>("Navigation")!.FindControl<TreeView>("ComponentTree")!.ItemCount == 0, "Search hides nonmatching components");
                 search.Text = "SING-BOX"; Dispatcher.UIThread.RunJobs();
-                Check(view.FindControl<TreeView>("ComponentTree")!.ItemCount == 1, "Search matches component identity without case");
+                Check(view.FindControl<ComponentCenterNavigationView>("Navigation")!.FindControl<TreeView>("ComponentTree")!.ItemCount == 1, "Search matches component identity without case");
                 Check(!model.CanPreview, "An unknown installation cannot execute a saved draft");
                 Check(view.FindControl<Border>("DraftFooter") is null
-                    && !view.FindControl<TreeView>("ComponentTree")!.GetVisualDescendants().OfType<CheckBox>().Any()
+                    && !view.FindControl<ComponentCenterNavigationView>("Navigation")!.FindControl<TreeView>("ComponentTree")!.GetVisualDescendants().OfType<CheckBox>().Any()
                     && model.BrowsePages.All(item => item.Page is not ComponentCenterPage.Tasks and not ComponentCenterPage.Workloads),
                     "Ordinary browsing has no task footer, bulk checkboxes or task navigation pages");
                 Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
@@ -353,7 +353,7 @@ internal static class ComponentCenterWorkspaceChecks
                 window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
                 window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, null);
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-                Check(navigationPane.IsVisible && !details.IsVisible && view.FindControl<TextBox>("Search")!.IsEffectivelyVisible,
+                Check(navigationPane.IsVisible && !details.IsVisible && view.FindControl<ComponentCenterNavigationView>("Navigation")!.FindControl<TextBox>("Search")!.IsEffectivelyVisible,
                     "Keyboard opens the full-width narrow navigation without changing a draft");
                 using (var bitmap = new RenderTargetBitmap(new PixelSize(640, 720)))
                 {

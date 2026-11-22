@@ -1,18 +1,25 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.App.ComponentCenter;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
 public enum ComponentCenterPage { All, Installed, Updates, Workloads, Tasks, Sources, ServerModules }
-public sealed record ComponentCenterNavigationItem(ComponentCenterPage Page)
+public sealed record ComponentCenterNavigationItem(ComponentCenterPage Page) : IComponentCenterPageItem
 {
+    string IComponentCenterPageItem.Label => Label.Resolve();
     public LocalizedStatus Label => LocalizedStatus.Key("component_center.page." + Page);
 }
 
 /// <summary>Selection aggregates local draft intents, independently of host installation status.</summary>
-public partial class ComponentTreeNode : ObservableObject
+public partial class ComponentTreeNode : ObservableObject, IComponentCenterTreeItem
 {
+    string IComponentCenterTreeItem.Label => Label.Resolve();
+    string IComponentCenterTreeItem.Status => Status.Resolve();
+    string IComponentCenterTreeItem.Requirement => Requirement.Resolve();
+    IReadOnlyList<IComponentCenterTreeItem> IComponentCenterTreeItem.VisibleChildren => VisibleChildren;
+
     private bool _synchronizing;
     public string Id { get; }
     public string? ComponentId { get; }

@@ -20,13 +20,26 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 }
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
-public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions
+public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation
 {
     ICommand IComponentCenterHeaderActions.OpenTasksCommand => OpenTasksCommand;
     ICommand IComponentCenterHeaderActions.RefreshCommand => RefreshCommand;
     IComponentCenterRefreshState IComponentCenterHeaderActions.Runtime => Runtime;
     public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
     public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
+
+    IEnumerable<IComponentCenterPageItem> IComponentCenterNavigation.BrowsePages => BrowsePages;
+    IEnumerable<IComponentCenterTreeItem> IComponentCenterNavigation.VisibleRoots => VisibleRoots;
+    IComponentCenterPageItem? IComponentCenterNavigation.SelectedNavigation
+    {
+        get => SelectedNavigation;
+        set => SelectedNavigation = (ComponentCenterNavigationItem?)value;
+    }
+    IComponentCenterTreeItem? IComponentCenterNavigation.SelectedNode
+    {
+        get => SelectedNode;
+        set => SelectedNode = (ComponentTreeNode?)value;
+    }
 
     public ServerModulesViewModel? ServerModules { get; set; }
     public bool ShowServerModules => SelectedPage == ComponentCenterPage.ServerModules;

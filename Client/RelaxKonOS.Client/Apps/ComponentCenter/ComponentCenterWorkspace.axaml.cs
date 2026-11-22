@@ -43,7 +43,7 @@ public partial class ComponentCenterWorkspace : UserControl
         NavigationToggle.IsVisible = compact;
         NavigationToggle.IsChecked = false;
         UpdateNavigation();
-        if (!compact && toggleFocused) Search.Focus();
+        if (!compact && toggleFocused) Navigation.FocusSearch();
     }
     private void NavigationToggle_Changed(object? sender, RoutedEventArgs e) => UpdateNavigation();
     private void UpdateNavigation()
