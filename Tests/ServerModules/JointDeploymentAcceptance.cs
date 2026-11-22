@@ -613,6 +613,39 @@ internal static class JointDeploymentAcceptance
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                 $"after restart the desktop registers {moduleId} against the signed execution package without resubmitting installation");
             await verifyBusiness(host, root);
+            if (moduleId == ServerModules.ProxyId && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SHARED_APPS") == "1")
+            {
+                string[] siblingIds = ["relaxkonos.proxy-server", "relaxkonos.squid"];
+                var sourceDirectory = Path.GetDirectoryName(archive)!;
+                var keyForProxy = new DeploymentPackageKey(DeploymentPackageKind.ServerModule, moduleId);
+                foreach (var siblingId in siblingIds)
+                {
+                    var filename = siblingId + ".roapp";
+                    var path = Path.Combine(official, filename);
+                    File.Copy(Path.Combine(sourceDirectory, filename), path);
+                    File.Copy(Path.Combine(sourceDirectory, filename + ".sha256"), path + ".sha256");
+                    var sibling = await installer.InspectLocalAsync(path);
+                    var siblingReview = await joint.PrepareAsync(sibling, [], default);
+                    Require(siblingReview.Plan.PreparedSteps.IsEmpty && siblingReview.Plan.OrderedReleases.Any(
+                        release => release.Package == keyForProxy && release.Satisfied && release.Version == version),
+                        $"{siblingId} reuses the active signed Proxy version");
+                    var siblingInstalled = await joint.ExecuteAsync(siblingReview, default);
+                    Require(siblingInstalled.Id == siblingId && apps.IsRegistered(new AppId(siblingId)),
+                        $"{siblingId} registers without another module installation");
+                }
+                var dependents = packages.RequiredBy(keyForProxy);
+                Require(dependents.ToHashSet(StringComparer.Ordinal).SetEquals([installed.Id, .. siblingIds]),
+                    "the three Proxy applications share the same signed server dependency");
+                foreach (var siblingId in siblingIds)
+                {
+                    Require(await packages.UninstallAsync(siblingId) && !packages.RequiredBy(keyForProxy).Contains(siblingId)
+                        && packages.RequiredBy(keyForProxy).Contains(installed.Id),
+                        $"uninstalling {siblingId} preserves the remaining Proxy Manager dependency");
+                }
+                Require(ModulePackageOperationStore.Read(serverRoot).Count == 1
+                    && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
+                    "sharing the Proxy module leaves the single installed signed archive intact");
+            }
             if (moduleId == "relaxkonos.tunnels")
             {
                 var protectionHttp = factory.CreateClient("joint-fixture");
