@@ -1,6 +1,6 @@
 using RelaxKonOS.Protocol.Workspace;
 
-namespace RelaxKonOS.Client.Apps.Settings;
+namespace RelaxKonOS.Client.Services.WorkspaceSettings;
 
 /// <summary>访问 Workspace 托管图片壁纸的 HTTP 客户端。</summary>
 public interface IWallpaperClient

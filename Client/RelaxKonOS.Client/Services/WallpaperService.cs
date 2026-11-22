@@ -1,6 +1,6 @@
 using Avalonia.Media.Imaging;
-using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Services;

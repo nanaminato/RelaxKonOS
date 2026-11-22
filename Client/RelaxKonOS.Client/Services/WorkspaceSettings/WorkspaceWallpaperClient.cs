@@ -5,7 +5,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Workspace;
 
-namespace RelaxKonOS.Client.Apps.Settings;
+namespace RelaxKonOS.Client.Services.WorkspaceSettings;
 
 /// <summary>Workspace 图片壁纸客户端。每次请求使用绝对 URI，避免修改共享 HttpClient 的 BaseAddress。</summary>
 public sealed class WorkspaceWallpaperClient(HttpClient http) : IWallpaperClient
