@@ -30,7 +30,7 @@
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | Windows 和 Linux 签名双包、真实 Engine 临时项目部署和删除已验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows 和 Linux 签名双包、生产路由授权拒绝及 Windows 真实 Helper 状态读取已验 |
-| proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows Release 包生命周期已验，真实 mihomo 待验 |
+| proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows、Linux 签名双包已验，Linux 真实 Mihomo 总览、直连重载和补偿已验 |
 | proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows Release 包生命周期及启动守卫已验，真实 sing-box 待验 |
 | squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows Release 包生命周期已验，真实 Squid 待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
@@ -846,3 +846,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Proxy 双包复验从已安装且复验摘要的包加载订阅解析入口，Base64 YAML 解码保留原文与原始字节数，非法 UTF-8 被拒。同轮真实 Mihomo 活动连接读取通过。用例直接提供已授权响应体，订阅下载与发布未纳入本次。
 - Windows Release 签名 Proxy 双包通过生产订阅下载器验收。HTTPS 环回来源在 HTTP 发送前拒绝，可接受的公网地址由测试传输应答一次，已安装签名模块将响应解码为预期 YAML。测试没有公网请求，未覆盖配置发布。
 - Linux x64 签名 Proxy 双包通过 RK_TEST_MIHOMO_CONFIG 接入隔离 Mihomo 的临时配置。已安装签名直连发布执行包调用生产控制器适配器重载，从控制器观察日志级别变更为 warning 后确认，清理时恢复并读回 info。用例使用测试文件与确认端口，未覆盖系统代理、TUN 或完整订阅持久化事务。
+- Linux x64 签名 Proxy 双包用真实 Mihomo 复验直连发布补偿。候选重载后的实际日志级别为 debug，测试健康条件未通过，已安装签名执行包恢复此前 warning 文件并再次重载。控制器实际读回 warning，补偿完成且发布返回 ConfigApplyFailed，最后恢复测试初始 info。

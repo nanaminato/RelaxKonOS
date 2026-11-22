@@ -501,6 +501,31 @@ internal static class JointDeploymentAcceptance
                 () => Task.CompletedTask,
                 _ => { }));
             Require(result is null && confirmed, "the installed signed publication executor reloads real Mihomo and confirms the observed change");
+
+            var lastValid = await File.ReadAllTextAsync(path, ct);
+            await File.WriteAllTextAsync(path, lastValid.Replace("log-level: warning", "log-level: debug", StringComparison.Ordinal), ct);
+            var observations = new List<string>();
+            var completedCompensation = false;
+            string? reportedCompensation = null;
+            var failed = await execution.PublishProfileAsync(new(
+                () => controller.ReloadAsync(ct),
+                async () =>
+                {
+                    var state = await controller.GetListenerStateAsync(ct);
+                    if (!state.Succeeded || state.Value is not { } listener) return false;
+                    observations.Add(listener.LogLevel);
+                    return listener.LogLevel == "warning";
+                },
+                () => true,
+                () => throw new InvalidOperationException("The loopback reload must return a known result."),
+                () => throw new InvalidOperationException("The fixture always has a previous configuration."),
+                () => File.WriteAllText(path, lastValid),
+                () => throw new InvalidOperationException("The failed candidate must not be confirmed."),
+                () => { completedCompensation = true; return Task.CompletedTask; },
+                problem => reportedCompensation = problem));
+            Require(failed == ProxyProblemCodes.ConfigApplyFailed && reportedCompensation == failed
+                && completedCompensation && observations is ["debug", "warning"],
+                "the signed executor compensates after a failed health check and observes the previous real Mihomo configuration");
         }
         finally
         {
