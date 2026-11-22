@@ -140,6 +140,11 @@ internal static class JointDeploymentAcceptance
             Require(!applications.IsRegistered(new AppId(prerequisiteId))
                 && ModulePackageOperationStore.Read(serverRoot).Count == 0,
                 "removing a local prerequisite during snapshot observation prevents the module operation");
+            var reopenedMixedJournal = new FileDeploymentJournal(journalPath);
+            Require(await Service().FindPendingAsync(mixedCandidate, default) is null
+                && (await reopenedMixedJournal.ReadPendingPlansAsync(auth.CurrentUser!.Id, auth.ServiceId!))
+                    .Any(plan => plan.Id == mixed.Plan.Id),
+                "the reopened journal offers a new review instead of resuming the invalidated mixed plan");
 
             var optional = candidate.Manifest.Dependencies!.Optional.Single();
             var requestsBeforeInvalidSelection = factory.Requests;

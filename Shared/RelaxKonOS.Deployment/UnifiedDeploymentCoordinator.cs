@@ -82,7 +82,7 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
         await using var lease = await journal.OpenAsync(plan, cancellationToken);
         var checkpoint = lease.Checkpoint;
         if (checkpoint?.RequiresReview == true)
-            throw new DeploymentPlanReviewRequiredException("deployment-module-plan-expired");
+            throw new DeploymentPlanReviewRequiredException("deployment-plan-review-required");
         if (checkpoint is null)
             CheckExpiration();
 

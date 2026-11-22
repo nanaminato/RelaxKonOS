@@ -141,7 +141,7 @@ Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, roo
 Check((await reopenedJournal.ReadPendingPlansAsync(binding.AccountId, binding.ConnectionIdentity))
     .Any(pending => pending.Id == expiredStepPlan.Id));
 backend.ReviewRequiredAt = null;
-await Reject(expiredStepPlan, "deployment-module-plan-expired");
+await Reject(expiredStepPlan, "deployment-plan-review-required");
 Check(backend.Applied.Count == attempts);
 var replacement = plan with { Id = Guid.NewGuid(), ExpiresAt = expiredStepPlan.ExpiresAt.AddMinutes(1) };
 await coordinator.ExecuteAsync(replacement);

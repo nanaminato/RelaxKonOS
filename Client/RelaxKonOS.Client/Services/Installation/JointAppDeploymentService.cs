@@ -374,7 +374,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             var current = packages.FindInstalled(release.Package.Id);
             if (current?.InstallationPath != release.ArtifactIdentity || current.Version != release.Version
                 || applications.GetManifest(new AppId(release.Package.Id))?.Version != release.Version)
-                throw new InvalidOperationException("deployment-client-dependency-changed");
+                throw new DeploymentPlanReviewRequiredException("deployment-client-dependency-changed");
         }
 
         private void VerifyInstalledApplicationDependencies(DeploymentPlan plan)

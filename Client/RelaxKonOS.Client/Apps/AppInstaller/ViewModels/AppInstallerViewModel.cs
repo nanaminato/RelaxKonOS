@@ -179,7 +179,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         }
         catch (Exception exception)
         {
-            if (exception.Message is "deployment-plan-expired" or "deployment-snapshot-changed"
+            if (exception is DeploymentPlanReviewRequiredException
+                || exception.Message is "deployment-plan-expired" or "deployment-snapshot-changed"
                 or "deployment-module-plan-expired" or "deployment-server-changed" or "module-server-mismatch"
                 or "deployment-client-dependency-changed")
             {
@@ -218,6 +219,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
             LocalizedText.Get("app_installer.deployment.session_changed"),
         { Message: "deployment-server-changed" or "module-server-mismatch" } =>
             LocalizedText.Get("app_installer.deployment.server_changed"),
+        DeploymentPlanReviewRequiredException or
         { Message: "deployment-plan-expired" or "deployment-module-plan-expired" or "deployment-snapshot-changed"
             or "deployment-client-dependency-changed" } =>
             LocalizedText.Get("app_installer.deployment.review_again"),
