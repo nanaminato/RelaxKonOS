@@ -80,7 +80,7 @@ try
     // 详见 docs/RelaxKonOS.Storage.md。
     builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
     var storageOpts = builder.Configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
-    var storageProvider = string.IsNullOrWhiteSpace(storageOpts.Provider) ? "sqlite" : storageOpts.Provider.ToLowerInvariant();
+    var storageProvider = StorageOptions.ResolveProvider(storageOpts.Provider);
 
     using var identityHostLock = storageProvider == "sqlite"
         ? StorageStartup.AcquireIdentityHostLock(Path.Combine(builder.Environment.ContentRootPath, storageOpts.DatabasePath)) : null;

@@ -32,7 +32,7 @@ internal static class ModuleRecoveryHost
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddSingleton(new ServerRuntimeSettingsStore(Path.Combine(builder.Environment.ContentRootPath, "data", "server-runtime-settings.json")));
         var storage = builder.Configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
-        var provider = string.IsNullOrWhiteSpace(storage.Provider) ? "sqlite" : storage.Provider.ToLowerInvariant();
+        var provider = StorageOptions.ResolveProvider(storage.Provider);
         if (provider is not ("sqlite" or "memory")) throw new InvalidOperationException("Unknown recovery storage provider.");
         builder.AddServerStorage(storage, provider, identityOnly: true);
         var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, provider);

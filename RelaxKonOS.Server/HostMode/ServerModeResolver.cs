@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.UserExecution;
 using RelaxKonOS.Server.Identity;
+using RelaxKonOS.Server.Storage;
 
 namespace RelaxKonOS.Server.HostMode;
 
@@ -29,9 +30,11 @@ public sealed class ServerModeResolver : IServerModeResolver
     private readonly string _listenerScope;
     private readonly ServerExecutionIdentityDto _identity;
     private readonly UserExecutionBackend _userExecutionBackend;
+    private readonly bool _tunnelStorageAvailable;
     public ServerModeResolver(IConfiguration configuration, UserExecutionBackend userExecutionBackend)
     {
         _userExecutionBackend = userExecutionBackend;
+        _tunnelStorageAvailable = StorageOptions.ResolveProvider(configuration["Storage:Provider"]) == "sqlite";
         var configured = configuration["Server:Mode"]?.Trim().ToLowerInvariant() ?? "system";
         Mode = configured switch
         {
@@ -72,17 +75,19 @@ public sealed class ServerModeResolver : IServerModeResolver
 
     public ServerMode Mode { get; }
 
-    public bool Supports(ServerHostFeature feature) => Mode != ServerMode.User || feature switch
+    public bool Supports(ServerHostFeature feature)
     {
-        _ when OperatingSystem.IsWindows() => true,
+        if (feature == ServerHostFeature.Tunnels && !_tunnelStorageAvailable)
+            return false;
+        if (Mode != ServerMode.User || OperatingSystem.IsWindows())
+            return true;
         // Containerised deployment composes the Docker engine, so it inherits the Docker boundary:
         // a no-sudo User Mode host cannot reach the engine and must not be offered the feature.
-        ServerHostFeature.Docker or ServerHostFeature.ApplicationDeployments or ServerHostFeature.Firewall or
-        ServerHostFeature.FileServices or ServerHostFeature.WebServer or ServerHostFeature.Certificates or
-        ServerHostFeature.Tunnels or ServerHostFeature.Proxy or ServerHostFeature.NativeServices or
-        ServerHostFeature.AgentInstallation or ServerHostFeature.PrivilegedOperations => false,
-        _ => true,
-    };
+        return feature is not (ServerHostFeature.Docker or ServerHostFeature.ApplicationDeployments or ServerHostFeature.Firewall or
+            ServerHostFeature.FileServices or ServerHostFeature.WebServer or ServerHostFeature.Certificates or
+            ServerHostFeature.Tunnels or ServerHostFeature.Proxy or ServerHostFeature.NativeServices or
+            ServerHostFeature.AgentInstallation or ServerHostFeature.PrivilegedOperations);
+    }
 
     public ServerCapabilitiesDto Describe()
     {
@@ -91,7 +96,7 @@ public sealed class ServerModeResolver : IServerModeResolver
         var capabilities = new ServerHostCapabilitiesDto(
             Files: true, Terminal: true, Git: true, Metrics: true, Processes: true, Guardian: !user || !OperatingSystem.IsWindows(),
             Docker: Supports(ServerHostFeature.Docker), Firewall: privileged, FileServices: privileged, WebServer: privileged, Certificates: privileged,
-            Tunnels: privileged, Proxy: privileged, PrivilegedOperations: privileged, ApplicationDeployments: Supports(ServerHostFeature.ApplicationDeployments));
+            Tunnels: Supports(ServerHostFeature.Tunnels), Proxy: privileged, PrivilegedOperations: privileged, ApplicationDeployments: Supports(ServerHostFeature.ApplicationDeployments));
         var limitations = new List<string>();
         if (user)
             limitations.AddRange(OperatingSystem.IsWindows()

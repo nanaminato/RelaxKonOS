@@ -3,6 +3,9 @@ namespace RelaxKonOS.Server.Storage;
 /// <summary>服务端持久化配置。对应 appsettings.json 的 "Storage" 节。</summary>
 public sealed class StorageOptions
 {
+    internal static string ResolveProvider(string? provider) =>
+        string.IsNullOrWhiteSpace(provider) ? "sqlite" : provider.ToLowerInvariant();
+
     /// <summary>持久化提供程序：sqlite（默认，EF Core + SQLite）或 memory（内存仓储，开发回退）。</summary>
     public string Provider { get; set; } = "sqlite";
 

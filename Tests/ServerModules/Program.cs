@@ -504,12 +504,17 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
 // Web server / website publication is asserted without a host: its publication coordinator is bound
 // to the application-deployment domain, and its routes are verified against a real Server process.
 {
-    static ServerDescriptorDto Describe(ServerModules modules) => ServerDescriptorFactory.Create(
+    static ServerDescriptorDto Describe(ServerModules modules, IConfiguration? configuration = null) => ServerDescriptorFactory.Create(
         HostPlatformKind.Windows,
-        new ServerModeResolver(new ConfigurationBuilder().Build(), RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper),
+        new ServerModeResolver(configuration ?? new ConfigurationBuilder().Build(),
+            RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper),
         new EventAlertsOptions(), new ConfigurationBackupRecoveryKeyProvider(new BackupRecoveryOptions()), modules.Capabilities);
 
     var advertised = Describe(defaults);
+    var memory = Describe(defaults, Config(("Storage:Provider", "memory")));
+    Check(advertised.Host!.Capabilities.Tunnels && advertised.Capabilities.Contains(ServerCapabilities.Tunnels)
+          && !memory.Host!.Capabilities.Tunnels && !memory.Capabilities.Contains(ServerCapabilities.Tunnels),
+        "the server descriptor advertises tunnels only with the required storage provider");
     Check(advertised.Capabilities.Contains(ServerCapabilities.Database)
           && !Describe(ServerModules.Create(Config(("Modules:Database:Enabled", "false")))).Capabilities.Contains(ServerCapabilities.Database),
         "the server descriptor follows database module enablement");
