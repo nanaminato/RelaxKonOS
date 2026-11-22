@@ -485,3 +485,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows Release 隔离双包回归模拟同一连接地址和登录下服务端实例标识变化。旧计划返回 `deployment-server-changed`，未创建执行检查点，未增加模块操作，也未登记桌面应用。恢复原标识后，原计划通过正常安装和恢复流程。
 - Settings 外置拆分开始。Workspace 壁纸传输接口及 HTTP 实现迁至宿主 WorkspaceSettings 服务，Shell 壁纸服务不再引用 Settings 应用命名空间。Windows Release 壁纸与工作区设置专项通过。Settings 界面、独立包和恢复入口迁移仍待完成。
 - Settings 搜索栏已迁入独立 `RelaxKonOS.App.Settings` 程序集，只依赖 Avalonia。宿主工作区通过双向查询属性和本地化提示属性接线。Windows Release `--settings-window-only` 通过，覆盖键盘焦点、搜索、导航、缩放和三语界面。完整 Settings 应用仍由宿主登记，独立 `.roapp` 待完成。
+- Settings 的搜索目标附加属性和高亮焦点逻辑已迁入独立程序集。14 个设置页直接使用新程序集的附加属性。Windows Release 设置交互和完整窗口专项均通过，覆盖隐藏控件、只读控件、任意远程目标拒绝、导航与三语。

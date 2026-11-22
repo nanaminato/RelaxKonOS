@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Settings.Views;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;

@@ -4,7 +4,7 @@ using Avalonia.Automation;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 
-namespace RelaxKonOS.Client.Apps.Settings.Views;
+namespace RelaxKonOS.App.Settings.Views;
 
 /// <summary>Only view-owned setting IDs can be revealed; remote metadata cannot select arbitrary controls.</summary>
 public sealed class SettingsSearchTarget : AvaloniaObject

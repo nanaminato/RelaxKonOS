@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
+             xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.App.Settings"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AccessibilityPageView"
