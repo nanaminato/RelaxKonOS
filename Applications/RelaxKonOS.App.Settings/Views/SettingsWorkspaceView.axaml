@@ -50,6 +50,9 @@
         <DataTemplate DataType="settingsApp:IPersonalizationColorsPage">
             <settingsApp:PersonalizationColorsView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:IDeveloperPage">
+            <settingsApp:DeveloperPageView VerticalAlignment="Top" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 

@@ -23,8 +23,5 @@
         <DataTemplate DataType="vm:AppsPageViewModel">
                 <pages:AppsPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:DeveloperPageViewModel">
-                <pages:DeveloperPageView VerticalAlignment="Top" />
-        </DataTemplate>
     </UserControl.DataTemplates>
 </UserControl>

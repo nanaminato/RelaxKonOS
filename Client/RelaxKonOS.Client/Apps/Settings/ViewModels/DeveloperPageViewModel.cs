@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Diagnostics;
@@ -8,12 +10,13 @@ using CommunityToolkit.Mvvm.Input;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Developer features are a top-level Settings category, separate from Applications.</summary>
-public sealed class DeveloperPageViewModel : SettingsPageViewModel
+public sealed class DeveloperPageViewModel : SettingsPageViewModel, IDeveloperPage
 {
     public DeveloperPageViewModel(ShellSettings settings, DeveloperModeService developerMode,
         NetworkInspectorWindowService networkInspector, LocalizationService localization, Action? save)
         : base(settings, save)
     {
+        Labels = key => localization.Get(key, key);
         DeveloperMode = new DeveloperModeViewModel(developerMode);
         NetworkInspector = new NetworkInspectorLauncherViewModel(developerMode, networkInspector, localization);
     }
@@ -23,11 +26,21 @@ public sealed class DeveloperPageViewModel : SettingsPageViewModel
     public override string Route => "developer";
     public override string DisplayNameKey => "settings.page.developer";
     public override string DisplayName => "Developer";
+    public Func<string, string> Labels { get; }
+    IDeveloperModePresentation IDeveloperPage.DeveloperMode => DeveloperMode;
+    INetworkInspectorLauncher IDeveloperPage.NetworkInspector => NetworkInspector;
+
+    protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
+    {
+        base.OnLanguageChanged(sender, e);
+        OnPropertyChanged(nameof(Labels));
+    }
+
     public DeveloperModeViewModel DeveloperMode { get; }
     public NetworkInspectorLauncherViewModel NetworkInspector { get; }
 }
 
-public sealed partial class NetworkInspectorLauncherViewModel : ObservableObject, IDisposable
+public sealed partial class NetworkInspectorLauncherViewModel : ObservableObject, IDisposable, INetworkInspectorLauncher
 {
     private readonly DeveloperModeService _developerMode;
     private readonly NetworkInspectorWindowService _networkInspector;
@@ -42,6 +55,8 @@ public sealed partial class NetworkInspectorLauncherViewModel : ObservableObject
         _developerMode.Changed += OnDeveloperModeChanged;
         _localization.LanguageChanged += OnLanguageChanged;
     }
+
+    ICommand INetworkInspectorLauncher.OpenCommand => OpenCommand;
 
     public bool CanOpen => _networkInspector.CanOpen;
     public string Status => !_developerMode.IsEnabled ? LocalizedText.Get("settings.network_inspector.requires_developer_mode")
@@ -67,7 +82,7 @@ public sealed partial class NetworkInspectorLauncherViewModel : ObservableObject
     }
 }
 
-public sealed partial class DeveloperModeViewModel : ObservableObject
+public sealed partial class DeveloperModeViewModel : ObservableObject, IDeveloperModePresentation
 {
     private readonly DeveloperModeService _developerMode;
 
@@ -76,6 +91,8 @@ public sealed partial class DeveloperModeViewModel : ObservableObject
         _developerMode = developerMode;
         _isEnabled = developerMode.IsEnabled;
     }
+
+    ICommand IDeveloperModePresentation.RegeneratePairingTokenCommand => RegeneratePairingTokenCommand;
 
     [ObservableProperty] private bool _isEnabled;
     public string Endpoint => _developerMode.Endpoint;

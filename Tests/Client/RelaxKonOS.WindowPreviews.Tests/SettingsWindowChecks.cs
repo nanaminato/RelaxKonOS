@@ -273,6 +273,12 @@ internal static class SettingsWindowChecks
             var stylePicker = stylePage.GetVisualDescendants().OfType<ComboBox>().Single();
             Check(Equals(stylePicker.SelectedValue, settings.SystemStyleId),
                 "The system style page lost the selected style ID.");
+            model.OpenPageCommand.Execute("developer"); Pump();
+            var developerPage = view.GetVisualDescendants()
+                .OfType<RelaxKonOS.App.Settings.Views.DeveloperPageView>().Single();
+            Check(developerPage.GetVisualDescendants().OfType<TextBox>()
+                    .Any(box => box.IsReadOnly && box.Text == developer.Endpoint),
+                "The developer page failed to show the local endpoint as read-only.");
 
             // The same window under every window-chrome recipe. The Settings view names no column and
             // no inset, so this is the assertion that the host's role slots really do the placing -
