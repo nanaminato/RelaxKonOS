@@ -61,7 +61,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                         ? module.Requires.Select(id => new DeploymentRequirement(Key(id)))
                         : signed.Dependencies.Select(ToRequirement);
                     releases.Add(new(Key(module.Id), activationVersion, module.ArtifactDigest!, false,
-                        [.. requirements], Capabilities(module.Capabilities))
+                        [.. requirements], UnversionedCapabilities(module.Capabilities))
                     {
                         ActivationOnly = true,
                         CurrentVersion = activationVersion,
@@ -87,14 +87,14 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                 ? signedRelease.Dependencies.Select(ToRequirement)
                 : module.Requires.Select(id => new DeploymentRequirement(Key(id)));
             releases.Add(new(Key(module.Id), effectiveVersion, identity, true, [..dependencies],
-                Capabilities(module.Capabilities)));
+                UnversionedCapabilities(module.Capabilities)));
         }
 
         foreach (var entry in store)
         {
             var release = entry.Value;
             releases.Add(new(Key(release.ModuleId), release.Version, entry.Key, false,
-                [..release.Dependencies.Select(ToRequirement)], Capabilities(release.Capabilities))
+                [..release.Dependencies.Select(ToRequirement)], UnversionedCapabilities(release.Capabilities))
             {
                 CurrentVersion = modules.SingleOrDefault(item => item.Id == release.ModuleId)?.EffectiveVersion
                     ?? installed.SingleOrDefault(item => item.ModuleId == release.ModuleId)?.Version,
@@ -121,7 +121,9 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             module.DesiredVersion, module.EffectiveVersion, module.InstalledVersion, module.ArtifactDigest,
             module.DesiredEnabled, module.EffectiveEnabled, module.RecoveryState, module.RestartRequired,
             RequiresRecovery = RequiresRecovery(module),
-            module.PendingOperationId
+            module.PendingOperationId, module.Packaging, module.TrustState, module.ConfigurationWritable,
+            Requires = module.Requires.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
+            Capabilities = module.Capabilities.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
         });
         var packages = installed.OrderBy(package => package.ModuleId, StringComparer.Ordinal).Select(package => new
         {
@@ -180,6 +182,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
     private static string Identity(string sourceId, string releaseId, string digest) =>
         $"{sourceId}/{releaseId}/{digest}";
 
-    private static ImmutableDictionary<string, string> Capabilities(IEnumerable<string> capabilities) =>
+    // The module endpoints report names only. A module version does not prove a capability contract version.
+    internal static ImmutableDictionary<string, string> UnversionedCapabilities(IEnumerable<string> capabilities) =>
         capabilities.Distinct(StringComparer.Ordinal).ToImmutableDictionary(name => name, _ => "", StringComparer.Ordinal);
 }

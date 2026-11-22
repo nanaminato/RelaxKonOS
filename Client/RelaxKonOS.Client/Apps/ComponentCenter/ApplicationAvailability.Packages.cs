@@ -64,8 +64,7 @@ public sealed partial class ApplicationAvailabilityService
                     .Select(item => new DeploymentRelease(
                         new(DeploymentPackageKind.ServerModule, item.Module.Id), item.Version!, item.Module.ArtifactDigest ?? "",
                         true, [.. item.Module.Requires.Select(dependency => new DeploymentRequirement(new(DeploymentPackageKind.ServerModule, dependency)))],
-                        item.Module.Capabilities.Distinct(StringComparer.Ordinal)
-                            .ToImmutableDictionary(capability => capability, _ => "", StringComparer.Ordinal)))), []);
+                        ModuleDeploymentCatalog.UnversionedCapabilities(item.Module.Capabilities)))), []);
                 if (result.ProblemPackage is { Kind: DeploymentPackageKind.ServerModule } unavailable
                     && modules.SingleOrDefault(module => module.Id == unavailable.Id) is { } dependency)
                 {
