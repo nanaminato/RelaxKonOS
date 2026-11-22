@@ -825,6 +825,20 @@ internal static class JointDeploymentAcceptance
                 var priorRoot = Path.Combine(serverRoot, "data", "module-management", prior.PackagePath);
                 ZipFile.ExtractToDirectory(incompatible.ArchivePath, priorRoot);
                 InstalledModuleStore.WriteInstallMetadata(priorRoot, prior);
+                await using (var retryArchive = File.OpenRead(incompatible.ArchivePath))
+                {
+                    try
+                    {
+                        await InstalledModuleInstaller.InstallVerifiedAsync(serverRoot, prior.SourceId, incompatible.Manifest,
+                            prior.ManifestSha256, prior.ArtifactSha256, retryArchive, now, activate: false);
+                        throw new InvalidOperationException("An incompatible staged Proxy package was reused.");
+                    }
+                    catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                    {
+                        Require(Directory.Exists(priorRoot) && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == active.ArtifactSha256,
+                            "a staged reuse rejects incompatible Proxy code without changing either immutable version");
+                    }
+                }
                 try
                 {
                     await InstalledModuleInstaller.RollbackAsync(serverRoot, config, moduleId, prior.Version);
