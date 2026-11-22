@@ -71,6 +71,34 @@ internal static class ModuleManagementChecks
                 check(true, "management external state edits invalidate running-process previews");
             }
             var readonlyRoot = Path.Combine(root, "readonly");
+            var dependencyRoot = Path.Combine(root, "desktop-dependencies");
+            var installId = Guid.NewGuid();
+            using (var guarded = new ModuleManagementStore(configuration, dependencyRoot))
+            {
+                var enabled = guarded.DesiredIds.ToArray();
+                var facts = enabled.Select(id => new ServerModuleDto(id, true, [], [], [], [])).ToArray();
+                var disable = new ServerModulePlanRequest(guarded.ServiceId, ServerModuleAction.Disable,
+                    [ServerModules.GitId], enabled.Where(id => id != ServerModules.GitId).ToArray(), guarded.Revision, "before-claim");
+                var original = guarded.Preview("operator", disable, facts);
+                guarded.RegisterDesktopDependency("owner", installId, "fixture.editor", [ServerModules.GitId], facts);
+                guarded.RegisterDesktopDependency("owner", installId, "fixture.editor", [ServerModules.GitId], facts);
+                Error(() => guarded.Apply("operator", original.PlanId, facts), "module-desktop-dependency-blocked");
+                check(true, "a desktop dependency registered after preview blocks apply");
+            }
+            using (var guarded = new ModuleManagementStore(configuration, dependencyRoot))
+            {
+                var enabled = guarded.DesiredIds.ToArray();
+                var facts = enabled.Select(id => new ServerModuleDto(id, true, [], [], [], [])).ToArray();
+                var disable = new ServerModulePlanRequest(guarded.ServiceId, ServerModuleAction.Disable,
+                    [ServerModules.GitId], enabled.Where(id => id != ServerModules.GitId).ToArray(), guarded.Revision, "after-restart");
+                guarded.ReleaseDesktopDependency("other", installId);
+                check(guarded.Preview("operator", disable, facts).BlockedBy.Any(item =>
+                    item.ProblemCode == "module-desktop-dependency-blocked" && item.ModuleId == ServerModules.GitId),
+                    "desktop dependency survives restart and cannot be released by another actor");
+                guarded.ReleaseDesktopDependency("owner", installId);
+                check(guarded.Preview("operator", disable with { IdempotencyKey = "after-release" }, facts).BlockedBy.Count == 0,
+                    "removing the owning desktop dependency restores module disable eligibility");
+            }
             using var readOnly = new ModuleManagementStore(new ConfigurationBuilder().Build(), readonlyRoot);
             check(readOnly.Admissions().All(x => !x.Allowed), "deployment-owned configuration exposes no writable action");
             var conflicting = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

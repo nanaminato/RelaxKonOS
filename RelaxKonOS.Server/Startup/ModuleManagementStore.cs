@@ -22,7 +22,8 @@ internal sealed partial class ModuleManagementStore : IDisposable
     internal sealed record SavedPlan(string Actor, string Fingerprint, ServerModulePlanDto Plan, Guid? OperationId, InstalledModuleRecord? RemovalTarget = null);
     internal sealed record Document(string ServiceId, string Revision, string[] EnabledIds,
         [property: JsonRequired] Dictionary<string, ServerModuleResidencyPolicyDto> Policies,
-        List<SavedPlan> Plans, List<ServerModuleOperationDto> Operations);
+        List<SavedPlan> Plans, List<ServerModuleOperationDto> Operations,
+        List<DesktopDependency>? DesktopDependencies = null);
     internal sealed record InventoryState(string Revision, IReadOnlySet<string> EnabledIds, IReadOnlyDictionary<string, Guid> PendingOperations,
         IReadOnlyDictionary<string, ServerModuleResidencyPolicyDto> Policies);
     private readonly object _gate = new();
@@ -228,6 +229,13 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 if (!_document.Policies.ContainsKey(id)) blockers.Add(new("module-action-unsupported", id));
         }
         var desired = request.EnabledModuleIds.ToHashSet(StringComparer.Ordinal);
+        if (request.Action is ServerModuleAction.Disable or ServerModuleAction.Remove)
+        {
+            var affected = request.ModuleIds.ToHashSet(StringComparer.Ordinal);
+            foreach (var id in (_document.DesktopDependencies ?? []).SelectMany(claim => claim.RequiredModules)
+                .Where(affected.Contains).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+                blockers.Add(new("module-desktop-dependency-blocked", id));
+        }
         if (request.Action == ServerModuleAction.Remove)
         {
             if (request.ModuleIds.Count != 1) blockers.Add(new("module-request-invalid"));
@@ -375,6 +383,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
             || result.EnabledIds is null || result.EnabledIds.Length > 128 || result.EnabledIds.Any(string.IsNullOrWhiteSpace)
             || result.EnabledIds.Distinct(StringComparer.Ordinal).Count() != result.EnabledIds.Length
             || result.Policies is null || result.Policies.Count > 128
+            || !ValidDesktopDependencies(result.DesktopDependencies)
             || result.Plans is null || result.Operations is null || result.Plans.Count > 10000 || result.Operations.Count > 10000
             || result.Plans.Any(x => x.Plan is null || string.IsNullOrWhiteSpace(x.Actor) || x.Plan.ServiceId != result.ServiceId
                 || x.Plan.Target is null || x.Plan.Target.ServiceId != result.ServiceId)
