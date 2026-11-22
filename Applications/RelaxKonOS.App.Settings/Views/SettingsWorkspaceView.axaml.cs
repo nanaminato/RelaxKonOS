@@ -93,7 +93,7 @@ public partial class SettingsWorkspaceView : UserControl
             NavigateTo(route);
     }
 
-    private void OnHomeRouteRequested(object? sender, string route) => NavigateTo(route);
+    private void OnPageRouteRequested(object? sender, string route) => NavigateTo(route);
 
     private void NavigateTo(string route)
     {

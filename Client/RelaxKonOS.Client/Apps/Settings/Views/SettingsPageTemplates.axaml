@@ -23,9 +23,6 @@
         <DataTemplate DataType="vm:SystemPageViewModel">
                 <pages:SystemPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:PersonalizationPageViewModel">
-                <pages:PersonalizationPageView VerticalAlignment="Top" />
-        </DataTemplate>
         <DataTemplate DataType="vm:NetworkAdapterPageViewModel">
             <pages:HostNetworkView DataContext="{Binding Editor}" IsAdapterDetailPage="True" VerticalAlignment="Top" />
         </DataTemplate>

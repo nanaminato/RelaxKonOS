@@ -15,7 +15,7 @@
     </UserControl.Styles>
     <UserControl.DataTemplates>
         <DataTemplate DataType="vm:SettingsHomePageContent">
-            <settingsApp:SettingsHomePageView VerticalAlignment="Top" RouteRequested="OnHomeRouteRequested" />
+            <settingsApp:SettingsHomePageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
         </DataTemplate>
         <DataTemplate DataType="vm:DefaultAppsPageContent">
             <settingsApp:DefaultAppsPageView VerticalAlignment="Top" />
@@ -34,6 +34,9 @@
         </DataTemplate>
         <DataTemplate DataType="settingsApp:ITimeLanguagePage">
             <settingsApp:TimeLanguagePageView VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="settingsApp:IPersonalizationOverview">
+            <settingsApp:PersonalizationPageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
         </DataTemplate>
     </UserControl.DataTemplates>
 
