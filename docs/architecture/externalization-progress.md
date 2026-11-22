@@ -801,3 +801,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Tunnels 双包验收覆盖真实 TCP 转发。认证 HTTP 写入环回代理定义，Core 经签名模块生成配置并启动 frpc 0.71.0。frps 环回端口接收探针连接，后端收到逐字节一致的载荷。停止路由返回已断开，卸载桌面包保留服务端签名包。模块 HTTP 专项 133 条 PASS。受管 Helper 路径仍待验。
 - Linux x64 真实外部 FRP 复验覆盖双向 TCP 载荷及停止后的端口释放。后端回显经同一 frpc/frps 连接返回，Core 停止后 frps 环回代理端口拒绝新连接。同轮模块 HTTP 专项 133 条 PASS。现有隔离 WSL 的 PID 1 为 WSL init，尚未在该环境验证依赖 systemd 的真实受管 Helper。
 - Windows Release 签名 Tunnels 双包验收在桌面卸载后验证服务端依赖登记已释放。停用计划进入 AwaitingRestart，重启重新绑定模块管理客户端后，原回执完成且生效状态为停用。隧道档案 HTTP 路由返回 404，Core 就绪路由仍可用，签名包摘要不变。真实受管 Helper 未覆盖。
+- Linux x64 自包含宿主使用真实外部 FRP 复验签名 Tunnels 的双向转发、停止释放端口、桌面卸载和依赖释放。服务端停用重启后原回执完成，隧道档案路由返回 404，Core 就绪且签名包摘要保持一致。同轮模块 HTTP 专项 133 条 PASS。
