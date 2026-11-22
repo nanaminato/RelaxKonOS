@@ -1,14 +1,17 @@
 using System.IO.Compression;
+using System.Reflection;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Runtime;
 
 internal static class DesktopDistributionChecks
@@ -36,8 +39,15 @@ internal static class DesktopDistributionChecks
             .ToArray();
         var parent = Path.Combine(System.AppContext.BaseDirectory, "preview-qa");
         var root = Path.Combine(parent, "desktop-profile-" + Guid.NewGuid().ToString("N"));
+        var auth = DispatchProxy.Create<IAuthSession, DesktopDistributionAuth>();
+        var session = (DesktopDistributionAuth)(object)auth;
+        var server = new ServerDescriptorDto(HostPlatformKind.Windows,
+            [ServerCapabilities.Terminal, ServerCapabilities.Metrics, ServerCapabilities.Processes]);
+        session.Server = server;
         using var services = new ServiceCollection()
             .AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>()
+            .AddSingleton<IApplicationCompatibilityEvaluator>(
+                new ApplicationCompatibilityService(auth, null!, null!, new EmptyModuleCatalog(), null!))
             .BuildServiceProvider();
         var builtIns = new BuiltInApplicationRegistry(services);
         try
@@ -107,6 +117,8 @@ internal static class DesktopDistributionChecks
                             throw new InvalidOperationException($"{profile} did not preinstall {basicApp}.");
                         }
                     }
+                    if (profile == "standard")
+                        await VerifyBasicLaunchRequirementsAsync(applications, session, server, cancellationToken);
                     if (profile == "developer")
                     {
                         await provisioner.RunAsync(["--installation-profile=minimal"], cancellationToken);
@@ -142,6 +154,41 @@ internal static class DesktopDistributionChecks
         }
     }
 
+    private static async Task VerifyBasicLaunchRequirementsAsync(ApplicationManager applications, DesktopDistributionAuth session,
+        ServerDescriptorDto server, CancellationToken cancellationToken)
+    {
+        foreach (var (appId, capabilities) in new (string, string[])[]
+        {
+            ("relaxkonos.terminal", [ServerCapabilities.Terminal]),
+            ("relaxkonos.taskmanager", [ServerCapabilities.Metrics, ServerCapabilities.Processes]),
+        })
+        {
+            var id = new AppId(appId);
+            var manifest = applications.GetManifest(id)!;
+            var launches = 0;
+            Task Activate() { launches++; return Task.CompletedTask; }
+
+            session.Server = null;
+            if (applications.EvaluateCompatibility(manifest).Status != ApplicationCompatibilityStatus.ServerUnavailable
+                || await applications.LaunchObservedAsync(id, Activate, cancellationToken))
+                throw new InvalidOperationException($"{appId} was launchable without a server.");
+
+            foreach (var capability in capabilities)
+            {
+                session.Server = server with { Capabilities = server.Capabilities.Where(name => name != capability).ToArray() };
+                var result = applications.EvaluateCompatibility(manifest);
+                if (result.Status != ApplicationCompatibilityStatus.MissingServerCapability || result.Expected != capability
+                    || await applications.LaunchObservedAsync(id, Activate, cancellationToken))
+                    throw new InvalidOperationException($"{appId} did not block launch without {capability}.");
+            }
+
+            session.Server = server;
+            if (launches != 0 || !await applications.LaunchObservedAsync(id, Activate, cancellationToken) || launches != 1)
+                throw new InvalidOperationException($"{appId} did not recover launch after capabilities returned.");
+            Console.WriteLine($"{appId}: published launch requirements blocked activation until server capabilities returned.");
+        }
+    }
+
     private static string ReadRepairAsset(string archive)
     {
         using var package = ZipFile.OpenRead(archive);
@@ -153,4 +200,12 @@ internal static class DesktopDistributionChecks
             throw new InvalidDataException($"No safe repair asset in {archive}.");
         return asset;
     }
+}
+
+public class DesktopDistributionAuth : EventAlertsAuthFixture
+{
+    public ServerDescriptorDto? Server { get; set; }
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args) =>
+        method?.Name == "get_CurrentServer" ? Server : base.Invoke(method, args);
 }
