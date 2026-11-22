@@ -2,9 +2,11 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
 using RelaxKonOS.Server.Tailscale;
 using RelaxKonOS.Server.Tunnels;
+using RelaxKonOS.Server.WebServer;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -254,8 +256,11 @@ internal static class InstalledModuleInstaller
             else if (InstalledFirewallModule.MatchesManifest(manifest)) CollectibleFirewallExecution.VerifyStagedExecution(entry);
             else if (InstalledTailscaleModule.MatchesManifest(manifest)) CollectibleTailscaleExecution.VerifyStagedExecution(entry);
             else if (InstalledTunnelsModule.MatchesManifest(manifest)) CollectibleTunnelExecution.VerifyStagedExecution(entry);
+            else if (InstalledDockerModule.MatchesManifest(manifest)) DockerComposeExecution.ValidateEntryPoints(entry);
+            else if (InstalledWebServerModule.MatchesManifest(manifest)) WebServerExecutionCode.ValidateEntryPoints(entry);
         }
-        catch (InvalidDataException) { throw new ModulePackageException("module-package-execution-contract"); }
+        catch (Exception error) when (error is InvalidDataException or TypeLoadException or FileLoadException or BadImageFormatException)
+        { throw new ModulePackageException("module-package-execution-contract"); }
     }
 
     private static async Task<byte[]> ReadBoundedAsync(ZipArchiveEntry entry, int limit, CancellationToken cancellationToken)

@@ -676,7 +676,8 @@ internal static class JointDeploymentAcceptance
                 "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability, .. additionalCapabilities ?? []],
                 Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
             ModulePackageBuildResult? incompatible = null;
-            if (moduleId is ServerModules.ProxyId or ServerModules.FirewallId or "relaxkonos.tailscale" or "relaxkonos.tunnels")
+            if (moduleId is ServerModules.ProxyId or ServerModules.FirewallId or ServerModules.DockerId or ServerModules.WebServerId
+                or "relaxkonos.tailscale" or "relaxkonos.tunnels")
             {
                 var incompatibleSource = Directory.CreateDirectory(Path.Combine(root, "incompatible-execution")).FullName;
                 var bytes = await File.ReadAllBytesAsync(Path.Combine(executionDirectory, entryAssembly));
@@ -684,6 +685,8 @@ internal static class JointDeploymentAcceptance
                 {
                     ServerModules.ProxyId => "ProxyQueuedSubscriptionExecutor\0"u8,
                     ServerModules.FirewallId => "IFirewallExecutionModule\0"u8,
+                    ServerModules.DockerId => "DockerImageMirrorExecution\0"u8,
+                    ServerModules.WebServerId => "NginxReloadExecutor\0"u8,
                     "relaxkonos.tailscale" => "ITailscaleExecution\0"u8,
                     _ => "ITunnelExecution\0"u8,
                 });
@@ -694,7 +697,8 @@ internal static class JointDeploymentAcceptance
                     Path.Combine(root, "incompatible-module"), moduleId, "98.0.0", "incompatible-execution-" + rid,
                     "fixture", "official", rid, entryAssembly, entryType, "joint-execution", new string('a', 40),
                     "official", 1, "https://modules.example/", key, "fixture-key", 3600,
-                    Capabilities: [capability, .. additionalCapabilities ?? []]), now);
+                    Capabilities: [capability, .. additionalCapabilities ?? []], Dependencies: dependencies,
+                    CapabilityContractVersions: contractVersions), now);
                 await using var invalidArchive = File.OpenRead(incompatible.ArchivePath);
                 try
                 {

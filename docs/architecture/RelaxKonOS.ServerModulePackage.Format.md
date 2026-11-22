@@ -130,6 +130,7 @@ Proxy 包解包并验证文件摘要后，宿主检查总览、连接快照、�
 Firewall 包在相同的安装、暂存复用和回退边界校验 `IFirewallExecutionModule` 接口及接收 `FirewallExecutionContext` 的公开构造函数。
 Tailscale 包在这些边界校验 `ITailscaleExecution` 接口及公开无参构造函数。
 Tunnels 包在这些边界校验 `ITunnelExecution` 接口及公开无参构造函数。
+Docker 与 Web Server 包在这些边界复用启动时的全部入口检查。Docker 覆盖 Compose、Engine 控制、镜像源、代理投影和操作结果。Web Server 覆盖站点发布、Nginx 集成、重载、网站根目录和生命周期。
 
 ## 在线上传与安装 API
 
