@@ -27,11 +27,26 @@ Check(JsonSerializer.Deserialize<WorkspacePreferencesDto>(readinessJson, RelaxKo
 await WorkspaceEnvironmentTransportChecks.RunAsync();
 
 // Settings activation must reach the new detail routes without accepting arbitrary pages.
-var settingsApp = new RelaxKonOS.App.Settings.SettingsApp(new RelaxKonOS.Client.Apps.Settings.SettingsWindow());
+var settingsWindow = new SettingsWindowProbe();
+var settingsApp = new RelaxKonOS.App.Settings.SettingsApp(settingsWindow);
 foreach (var route in new[] { "home", "accessibility", "system/preferences", "system/environment", "personalization/colors", "personalization/style", "personalization/layout", "personalization/background", "default-apps" })
     Check(settingsApp.CanHandleActivation(new Uri("relaxkonos://settings/" + route)), $"Settings rejected route '{route}'.");
-foreach (var uri in new[] { "relaxkonos://settings/personalization/unknown", "relaxkonos://settings/image-mirrors", "https://settings/home", "relaxkonos://other/home" })
+foreach (var uri in new[] { "relaxkonos://settings/personalization/unknown", "relaxkonos://settings/image-mirrors", "https://settings/home", "relaxkonos://other/home", "relaxkonos://settings/system%2Fenvironment" })
     Check(!settingsApp.CanHandleActivation(new Uri(uri)), $"Settings accepted unsupported activation '{uri}'.");
+foreach (var (route, target) in new[]
+{
+    ("relaxkonos://settings/Personalization/Colors", "personalization/colors"),
+    ("relaxkonos://settings/system/environment", "environment dialog"),
+    ("relaxkonos://settings/apps/example.App/permissions", "permissions:example.App"),
+})
+{
+    var uri = new Uri(route);
+    Check(settingsApp.CanHandleActivation(uri), $"Settings rejected '{route}'.");
+    settingsApp.HandleActivation(null!, new(uri), null);
+    Check(settingsWindow.Target == target, $"Settings dispatched '{route}' to the wrong destination.");
+}
+settingsApp.HandleActivation(null!, new(new Uri("https://settings/home")), null);
+Check(settingsWindow.Target == "permissions:example.App", "Settings dispatched an unsupported activation.");
 
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
 // This console harness has no dispatcher loop; async HTTP checks must use the thread pool.
@@ -227,6 +242,15 @@ static async Task Until(Func<bool> condition)
 {
     for (var i = 0; i < 500; i++) { if (condition()) return; await Task.Delay(10); }
     throw new Exception("Timed out waiting for preference editor state.");
+}
+
+sealed class SettingsWindowProbe : RelaxKonOS.App.Settings.ISettingsWindow
+{
+    public string? Target { get; private set; }
+    public void Open(RelaxKonOS.AppSDK.AppContext context) => Target = "window";
+    public void Navigate(string route) => Target = route;
+    public void OpenEnvironment() => Target = "environment dialog";
+    public void OpenApplicationPermissions(string appId) => Target = $"permissions:{appId}";
 }
 
 public class SessionProxy : DispatchProxy
