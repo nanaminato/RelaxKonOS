@@ -741,3 +741,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 模块包 HTTP 验收通过。用真实 Tailscale 执行 DLL 构建并签署两个包版本，验证受认证的上传、计划预览、应用、更新及回滚 HTTP 路由和重启前回执，回滚按原摘要选定不可变安装目录。同期补齐 PrivilegedHelper 对 Tailscale 共享契约的项目引用，真实 Tailscale daemon 实机验收仍待完成。
 - Windows 本机 Tailscale 服务处于 Running。Release 的 --tailscale-live-status 通过 Helper 的生产只读处理器运行受保护的固定命令，确认真实 daemon 返回可解析的后端状态。探针只输出状态读取结果。常规 Tailscale 专项通过。该探针直接调用 Helper 处理器，真实 IPC、网络变更、登录及多设备验收仍待完成。
 - Windows Release 的 --tailscale-live-pipe 通过。生产 Core 状态适配器经受 ACL 和消息认证保护的一次性命名管道调用生产 Helper 处理器，获得真实 Tailscale daemon 的后端状态。测试宿主在同一进程启动管道两端，未安装系统服务也未修改网络配置。独立服务进程、网络变更、登录及多设备验收待完成。
+- Windows Release 的 --tailscale-live-pipe 改用独立 Helper 测试子进程并通过。Core 状态适配器通过生产认证协议跨进程读取真实 daemon，子进程经匿名标准输入接收一次性配置并在测试后退出。已安装的 LocalSystem 服务模式、网络变更、登录及多设备验收仍待完成。
