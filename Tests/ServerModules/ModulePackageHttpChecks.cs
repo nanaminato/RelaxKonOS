@@ -60,14 +60,23 @@ internal static class ModulePackageHttpChecks
                 Dependencies = [new("fixture-http", "1.0.0", "2.0.0")],
                 Ui = new("Dependent Module", "", "", null, "UNLICENSED"),
             }, now);
+            var database = isolated ? null : await ModulePackageBuilder.BuildAsync(packageOptions with
+            {
+                ModuleId = ServerModules.DatabaseId,
+                ReleaseId = "fixture-database-" + rid,
+                Runtime = "module-host",
+                HostApiMinimum = "2.4.0",
+                HostApiMaximumExclusive = "3.0.0",
+                Ui = new("Database Observation", "", "", null, "UNLICENSED"),
+            }, now);
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
-                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!)], [], []), "builder-key", keyPath)).Envelope;
+                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
-                "https://modules.example/", dependent is null ? ["fixture-http"] : ["fixture-http", "fixture-dependent"],
+                "https://modules.example/", dependent is null ? ["fixture-http"] : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -122,6 +131,14 @@ internal static class ModulePackageHttpChecks
             await app.StartAsync();
             using var client = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+            if (database is not null)
+            {
+                var databaseOffers = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
+                    ServerModuleManagementRoutes.ModuleStoreSearch + "?q=" + ServerModules.DatabaseId, RelaxKonOSJsonOptions.Default);
+                check(database.Manifest.Capabilities.Length == 0 && databaseOffers?.Items is
+                    [{ ModuleId: ServerModules.DatabaseId, Capabilities: [ServerCapabilities.Database], RidCompatible: true }],
+                    "the accepted official database offer advertises the Core-owned database capability");
+            }
 
             foreach (var query in new[] { "fixture-http", "FixtureHttp", " sample module " })
             {
@@ -135,7 +152,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 3),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));

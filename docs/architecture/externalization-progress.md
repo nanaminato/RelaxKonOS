@@ -369,3 +369,4 @@
 - Databases 桌面包 0.3.0 声明同 ID 的服务端模块和 server.database 能力。Windows Release 使用实际 .roapp 验证清单、拒绝绕过联合部署、只读启动、升级、重启和卸载。客户端生命周期测试使用受控的联合部署回执，真实 Linux 联合安装仍待验。
 - Windows 隔离 HTTP 联合部署使用实际 Databases 0.3.0 归档验证复用已生效的内置数据库模块。安装登记模块依赖，卸载移除该依赖，两步均不新增模块包操作。Linux 独立包的联合安装与真实 Helper 查询待验。
 - Windows 隔离 HTTP 联合部署使用实际 Databases 0.3.0 归档验证内置数据库模块停用后的启用计划。启用既有模块无需下载，Core 重启确认前桌面安装保持待处理，重启后可继续完成安装。
+- 模块商店为已接纳的官方 Databases ModuleHost 发行投影 Core 提供的 server.database 能力，使联合部署能以该能力匹配签名候选。独立包清单继续不声明 Core 能力。

@@ -45,7 +45,9 @@ internal static class ModulePackageStore
                         manifest.HostApiMinimum, manifest.HostApiMaximumExclusive,
                         manifest.Dependencies.Select(dependency => new ServerModuleReleaseDependencyDto(dependency.ModuleId,
                             dependency.MinimumVersion, dependency.MaximumVersionExclusive)).ToArray(),
-                        manifest.Capabilities, rid, api, revoked, blockers));
+                        // Core supplies this capability through the fixed database routes and read broker.
+                        ServerModules.IsOfficialDatabaseModuleHost(manifest) ? [ServerCapabilities.Database] : manifest.Capabilities,
+                        rid, api, revoked, blockers));
                 }
             }
             catch (ModulePackageException) { }

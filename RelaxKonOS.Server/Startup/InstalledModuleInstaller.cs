@@ -63,8 +63,7 @@ internal static class InstalledModuleInstaller
         var candidate = await ModulePackageVerifier.VerifyCandidateAsync(archive, Encoding.UTF8.GetBytes(envelope),
             policy, context, verified.NextHistory, releaseId, now, cancellationToken);
         if (ServerModules.Create(new ConfigurationBuilder().Build()).KnownModuleIds.Contains(candidate.Manifest.ModuleId)
-            && !(candidate.Manifest.ModuleId == ServerModules.DatabaseId
-                && candidate.Manifest.Runtime == "module-host" && candidate.Manifest.Purpose == "official"))
+            && !ServerModules.IsOfficialDatabaseModuleHost(candidate.Manifest))
             throw new ModulePackageException("module-package-module-id-conflict");
         if (checkInstalledDependencies) ValidateDependencies(contentRoot, configuration, candidate.Manifest);
         return new(candidate.Manifest, release.ManifestSha256, candidate.ArchiveSha256, candidate.ArchiveBytes,

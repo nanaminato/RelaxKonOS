@@ -5,6 +5,9 @@ namespace RelaxKonOS.Server.Startup;
 // on their own, and gives future assembly-per-module work a single place to register a module.
 internal sealed partial class ServerModules
 {
+    internal static bool IsOfficialDatabaseModuleHost(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
+        manifest.ModuleId == DatabaseId && manifest.Runtime == "module-host" && manifest.Purpose == "official";
+
     /// <summary>
     /// The operator-facing name of a module is derived from its ID so a module cannot drift between
     /// the two: <c>relaxkonos.system-performance</c> is configured as <c>Modules:SystemPerformance:Enabled</c>.
