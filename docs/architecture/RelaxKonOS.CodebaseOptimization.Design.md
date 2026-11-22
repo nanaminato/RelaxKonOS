@@ -50,7 +50,7 @@
 | `Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.cs` | 1695 | 89 个方法、19 处 `catch (Exception)`；仅两个很小的 partial |
 | `Client/RelaxKonOS.Client/Views/Shell/LauncherDesktopShells.cs` | 1556 | 4 个 shell 类 + 3 个 helper（含画笔转换器）同文件 |
 | `Client/RelaxKonOS.Client/ViewModels/ServerCenter/ServerCenterViewModel.cs` | 1500 | 48 个方法、12 处 `catch`；已有一个 partial |
-| `Client/RelaxKonOS.Client/Apps/ServerCenter/Views/SshFileBrowserView.axaml.cs` | 1488 | 128 个方法、22 个 `async void`，没有 ViewModel |
+| `Applications/RelaxKonOS.App.SshFiles/Views/SshFileBrowserView.axaml.cs` | 1488 | 128 个方法、22 个 `async void`，没有 ViewModel |
 | `Tests/Server/RelaxKonOS.Server.Tests/ServerCoreChecks.cs` | 1467 | 21 个互不相关的检查（用户执行、XDG、SMB、主题、性能采样、壁纸…） |
 | `RelaxKonOS.PrivilegedHelper/LinuxUserFileOperations.cs` | 1325 | 10 个类型、88 个方法 |
 | `RelaxKonOS.PrivilegedHelper/Program.cs` | 1055 | 命令分派与实现同文件 |

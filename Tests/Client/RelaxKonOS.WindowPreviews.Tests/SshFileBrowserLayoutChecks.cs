@@ -1,3 +1,4 @@
+using RelaxKonOS.App.SshFiles.Views;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using Avalonia;
@@ -24,14 +25,15 @@ internal static class SshFileBrowserLayoutChecks
     {
         CheckExternalSessionBinding();
         var original = settings.ToPreferences();
+        var labels = RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>();
         // Disconnected session and local fixtures keep layout checks independent of an SSH host.
         var view = CreateView(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
         Set("_path", "/home/demo/workspace");
         Set("_entries", new[] {
-            new SshFileEntry("src", "/home/demo/workspace/src", true, false, 0, DateTime.Now),
-            new SshFileEntry("photo.png", "/home/demo/workspace/photo.png", false, false, 12345, DateTime.Now),
-            new SshFileEntry("app.cs", "/home/demo/workspace/app.cs", false, false, 120, DateTime.Now),
-            new SshFileEntry(".hidden", "/home/demo/workspace/.hidden", false, false, 8, DateTime.Now) });
+            new SshFileEntry("src", "/home/demo/workspace/src", true, false, 0, DateTime.Now, labels),
+            new SshFileEntry("photo.png", "/home/demo/workspace/photo.png", false, false, 12345, DateTime.Now, labels),
+            new SshFileEntry("app.cs", "/home/demo/workspace/app.cs", false, false, 120, DateTime.Now, labels),
+            new SshFileEntry(".hidden", "/home/demo/workspace/.hidden", false, false, 8, DateTime.Now, labels) });
         Invoke("BuildBreadcrumbs"); Invoke("ApplyView");
         var canvas = new Canvas();
         var host = new Window { Width = 1100, Height = 800, Content = canvas };
@@ -74,6 +76,8 @@ internal static class SshFileBrowserLayoutChecks
                     Check(Math.Abs(point.Y - actions[0].TranslatePoint(default, bar)!.Value.Y) < 1, "SSH toolbar wraps.");
                 }
                 Check(view.FindControl<Button>("MoreActionsButton")!.IsEffectivelyVisible, "SSH overflow entry disappeared.");
+                Check(Equals(ToolTip.GetTip(view.FindControl<Button>("CompactSearchButton")!),
+                    labels.Get("ssh_files.search", "Filter this folder")), "SSH toolbar labels retained the previous language.");
                 var navigation = view.FindControl<Border>("NavigationToolbar")!;
                 Check(view.FindControl<Button>("CompactSearchButton")!.IsVisible == (navigation.Bounds.Width < 600),
                     "SSH search did not adapt to the fused navigation width.");
@@ -114,7 +118,7 @@ internal static class SshFileBrowserLayoutChecks
             picker.NewTab();
             Check(picker.Tabs.Count == 0 && !picker.FindControl<Grid>("HeaderTabs")!.IsVisible,
                 "Package picker acquired multiple tabs.");
-            var pickedFixture = new SshFileEntry("release.zip", "/release.zip", false, false, 8, DateTime.Now);
+            var pickedFixture = new SshFileEntry("release.zip", "/release.zip", false, false, 8, DateTime.Now, labels);
             typeof(SshFileBrowserView).GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(picker, new[] { pickedFixture });
             typeof(SshFileBrowserView).GetMethod("ApplyView", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(picker, null);
             picker.FindControl<DataGrid>("EntriesGrid")!.SelectedItem = pickedFixture;
@@ -176,10 +180,10 @@ internal static class SshFileBrowserLayoutChecks
                 "SSH tab arrows remained after closing overflow tabs.");
 
             var fixture = new[] {
-                new SshFileEntry("file10.txt", "/demo/file10.txt", false, false, 10, DateTime.Now),
-                new SshFileEntry("folder20", "/demo/folder20", true, false, 0, DateTime.Now),
-                new SshFileEntry("file2.txt", "/demo/file2.txt", false, false, 2, DateTime.Now),
-                new SshFileEntry("folder3", "/demo/folder3", true, false, 0, DateTime.Now) };
+                new SshFileEntry("file10.txt", "/demo/file10.txt", false, false, 10, DateTime.Now, labels),
+                new SshFileEntry("folder20", "/demo/folder20", true, false, 0, DateTime.Now, labels),
+                new SshFileEntry("file2.txt", "/demo/file2.txt", false, false, 2, DateTime.Now, labels),
+                new SshFileEntry("folder3", "/demo/folder3", true, false, 0, DateTime.Now, labels) };
             Set("_entries", fixture); view.SearchText = "";
             sort.SelectedIndex = 0; view.FindControl<CheckBox>("DescendingBox")!.IsChecked = false;
             Invoke("ApplyView"); Pump();

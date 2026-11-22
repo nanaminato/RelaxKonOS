@@ -411,3 +411,4 @@
 - SSH 文件浏览器实现 `IExternalRemoteApplication` 启动接口，通过外部上下文创建窗口、选择本地路径并调用 SFTP。打开远端文件继续优先交给图像查看器，其次交给代码编辑器，由宿主校验当前 SSH 连接和应用关联。Windows Release 构建与 fused-apps 专项通过。外部入口仍编译在桌面宿主中，独立加载和真实 SFTP 待验。
 - Explorer 与 SSH 文件浏览器共用的目录树节点、列表布局、框选和工具栏样式移至 `RelaxKonOS.UI`。Explorer 通过列表描述回调保留驱动器容量文本。Windows Release 构建、467 项 Explorer 回归检查和 fused-apps 专项通过。SSH 文件浏览器仍有本地化和路径排序依赖待迁移。
 - 文件名自然排序和扩展名提取移至 `RelaxKonOS.UI`，Explorer 和 SSH 文件浏览器使用同一实现。Windows Release 构建、467 项 Explorer 回归检查和 fused-apps 专项通过，覆盖长数字文件名及 SSH 列表排序。SSH 文件浏览器仍需迁移本地化资源并验证独立打包。
+- SSH 文件浏览器的外部入口、视图、对话框和中英日资源移至独立的 `RelaxKonOS.App.SshFiles` 项目。桌面宿主与服务器中心复用该项目的视图，目录缓存由 `RelaxKonOS.UI` 提供。Windows Release 构建、467 项 Explorer 回归检查及 fused-apps 专项通过，覆盖语言切换、工具栏提示和安装包选择器。全仓本地化检查仍报告迁移前已有的 60 项缺失。正式应用包接入和真实 SFTP 联调待完成。

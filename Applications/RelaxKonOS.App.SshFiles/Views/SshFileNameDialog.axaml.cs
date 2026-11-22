@@ -1,13 +1,17 @@
+using RelaxKonOS.AppSDK;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
+namespace RelaxKonOS.App.SshFiles.Views;
 
 internal partial class SshFileNameDialog : Window
 {
-    public SshFileNameDialog(string title, string initial)
+    public SshLabels Labels { get; }
+
+    public SshFileNameDialog(string title, string initial, ISystemLanguage language)
     {
+        Labels = new SshLabels(language);
         InitializeComponent();
         Title = title;
         NameEditor.Text = initial;

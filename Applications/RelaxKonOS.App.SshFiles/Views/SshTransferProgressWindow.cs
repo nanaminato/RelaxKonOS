@@ -1,10 +1,10 @@
+using RelaxKonOS.AppSDK;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
+namespace RelaxKonOS.App.SshFiles.Views;
 
 internal sealed class SshTransferProgressWindow : Window, IDisposable
 {
@@ -16,12 +16,12 @@ internal sealed class SshTransferProgressWindow : Window, IDisposable
     private bool _finished;
     public CancellationToken Cancellation => _cancellation.Token;
 
-    public SshTransferProgressWindow(Control owner, bool uploading)
+    public SshTransferProgressWindow(Control owner, ISystemLanguage language, bool uploading)
     {
-        Title = LocalizedText.Get(uploading ? "explorer.operations.upload" : "explorer.operations.download");
+        Title = SshFilesLocalization.Get(language, uploading ? "explorer.operations.upload" : "explorer.operations.download");
         Width = 460; Height = 220; CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var cancel = new Button { Content = LocalizedText.Get("common.cancel"), HorizontalAlignment = HorizontalAlignment.Right };
+        var cancel = new Button { Content = SshFilesLocalization.Get(language, "common.cancel"), HorizontalAlignment = HorizontalAlignment.Right };
         cancel.Click += (_, _) => { _cancellation.Cancel(); cancel.IsEnabled = false; };
         Content = new StackPanel { Margin = new Thickness(20), Spacing = 16, Children = { _file, _bar, _bytes, cancel } };
         Closing += (_, args) => { if (!_finished) { args.Cancel = true; _cancellation.Cancel(); cancel.IsEnabled = false; } };

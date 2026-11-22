@@ -2,7 +2,6 @@ using RelaxKonOS.UI.FileBrowser;
 using RelaxKonOS.UI.Imaging;
 using RelaxKonOS.AppSDK;
 using System.Runtime.CompilerServices;
-using RelaxKonOS.Client.Services;
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
@@ -12,12 +11,15 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
 using RelaxKonOS.WindowManager;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
+namespace RelaxKonOS.App.SshFiles.Views;
 
 internal partial class SshFileBrowserView : UserControl
 {
+    public static readonly StyledProperty<SshLabels> LabelsProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, SshLabels>(nameof(Labels));
+    public SshLabels Labels => GetValue(LabelsProperty);
+
     public static readonly StyledProperty<string> SearchTextProperty =
         AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SearchText), string.Empty);
     public static readonly StyledProperty<double> TabContentWidthProperty =
@@ -108,11 +110,11 @@ internal partial class SshFileBrowserView : UserControl
     private bool _cutMode { get => _sessionClipboard.Cut; set => _sessionClipboard.Cut = value; }
     private SshFileEntry? _editingEntry;
     private bool _renameCommitInProgress;
-    private LocalizedStatus _statusMessage;
-    private LocalizedStatus StatusMessage
+    private SshStatus _statusMessage;
+    private SshStatus StatusMessage
     {
         get => _statusMessage;
-        set { _statusMessage = value; StatusText.Text = value.Resolve(); }
+        set { _statusMessage = value; StatusText.Text = value.Resolve(_language); }
     }
     private int _sortIndex;
     private bool _descending;
@@ -130,7 +132,7 @@ internal partial class SshFileBrowserView : UserControl
     private readonly Flyout _searchFlyout;
     private bool _compactSearch;
     private readonly ObservableCollection<SshFileBrowserTab> _tabs = [];
-    private SshFileBrowserTab _activeTab = new();
+    private SshFileBrowserTab _activeTab;
     private bool _syncingTabs;
     private int _treeSelectionRevision;
     public Action? CloseAction { get; set; }
@@ -163,6 +165,8 @@ internal partial class SshFileBrowserView : UserControl
         _openFile = openFile ?? (_ => false);
         _selectPackage = selectPackage;
         _cancelPicker = cancelPicker;
+        _activeTab = new SshFileBrowserTab(language);
+        SetValue(LabelsProperty, new SshLabels(language));
         InitializeComponent();
         HeaderTabs.IsVisible = !IsPackagePicker;
         if (!IsPackagePicker) _tabs.Add(_activeTab);
@@ -240,15 +244,16 @@ internal partial class SshFileBrowserView : UserControl
 
     private void LanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
     {
+        SetValue(LabelsProperty, new SshLabels(_language));
         foreach (var entry in _entries.Concat(_tabs.SelectMany(tab => tab.Entries)).Distinct()) entry.RefreshLocalizedText();
         foreach (var tab in _tabs) tab.RefreshLocalizedText();
         if (_homeNode is not null) _homeNode.Label = T("ssh_files.home", "Home");
         if (_rootNode is not null) _rootNode.Label = T("ssh_files.root", "Root");
         BuildBreadcrumbs();
-        StatusText.Text = StatusMessage.Resolve();
+        StatusText.Text = StatusMessage.Resolve(_language);
         if (IsPackagePicker) PickerFilterText.Text = T("server_center.wizard.bundle_file_type", "RelaxKonOS release bundle") + " (*.zip)";
         if (_editingEntry is { } editing && !ValidName(editing.RenameDraft))
-            StatusMessage = LocalizedStatus.Key("explorer.status.file_name_invalid", "Invalid file name");
+            StatusMessage = SshStatus.Key("explorer.status.file_name_invalid", "Invalid file name");
         UpdateControls();
     }
 
@@ -354,7 +359,7 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (_busy || IsPackagePicker) return;
         CaptureActiveTab();
-        var tab = new SshFileBrowserTab { Path = _path, Entries = _entries,
+        var tab = new SshFileBrowserTab(_language) { Path = _path, Entries = _entries,
             SortIndex = _sortIndex, Descending = _descending, ShowHidden = _showHidden,
             ViewModeIndex = ViewModeBox.SelectedIndex, HistoryIndex = 0 };
         tab.History.Add(_path);
@@ -513,7 +518,7 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (!CanConfirmPackage())
         {
-            StatusMessage = LocalizedStatus.Key("server_center.wizard.bundle_required", "Choose a signed .zip release bundle to continue.");
+            StatusMessage = SshStatus.Key("server_center.wizard.bundle_required", "Choose a signed .zip release bundle to continue.");
             return;
         }
         _selectPackage!(Selection()[0].Path);
@@ -832,7 +837,7 @@ internal partial class SshFileBrowserView : UserControl
             return;
         }
         if (_canOpenFile(entry.Path) && !_openFile(entry.Path))
-            StatusMessage = LocalizedStatus.Key("ssh_files.file_open_failed", "Unable to open this file with an associated application");
+            StatusMessage = SshStatus.Key("ssh_files.file_open_failed", "Unable to open this file with an associated application");
     }
 
     private async Task NavigateAsync(string path, bool addHistory = true, bool forceRefresh = false)
@@ -847,7 +852,7 @@ internal partial class SshFileBrowserView : UserControl
         {
             CommitListing(cachePath, CloneEntries(cached), addHistory);
             _showingCachedFiles = true;
-            StatusMessage = LocalizedStatus.Key("explorer.cache.refreshing");
+            StatusMessage = SshStatus.Key("explorer.cache.refreshing");
             _ = RevalidateDirectoryAsync(cachePath, generation);
             return;
         }
@@ -855,7 +860,7 @@ internal partial class SshFileBrowserView : UserControl
         CancelRename();
         _busy = true;
         UpdateControls();
-        StatusMessage = LocalizedStatus.Key("ssh_files.loading", "Loading…");
+        StatusMessage = SshStatus.Key("ssh_files.loading", "Loading…");
         try
         {
             var requested = path == "." || path.StartsWith('/') ? path : Child(_path, path);
@@ -872,7 +877,7 @@ internal partial class SshFileBrowserView : UserControl
         {
             if (!ReferenceEquals(endpoint, _session.Connection)) return;
             AddressBox.Text = _path;
-            StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.open_failed", "Unable to open folder"), LocalizedStatus.Literal(ex.Message)]);
+            StatusMessage = SshStatus.Join(": ", [SshStatus.Key("ssh_files.open_failed", "Unable to open folder"), SshStatus.Literal(ex.Message)]);
         }
         finally { _busy = false; CaptureActiveTab(); UpdateControls(); }
     }
@@ -897,11 +902,11 @@ internal partial class SshFileBrowserView : UserControl
         CaptureActiveTab(); UpdateControls();
     }
 
-    private static SshFileEntry[] CloneEntries(IEnumerable<SshFileEntry> entries) => entries
-        .Select(entry => new SshFileEntry(entry.Name, entry.Path, entry.IsDirectory, entry.IsLink, entry.Size, entry.Modified)).ToArray();
+    private SshFileEntry[] CloneEntries(IEnumerable<SshFileEntry> entries) => entries
+        .Select(entry => new SshFileEntry(entry.Name, entry.Path, entry.IsDirectory, entry.IsLink, entry.Size, entry.Modified, _language)).ToArray();
 
-    private static SshFileEntry[] ToEntries(IEnumerable<SshDirectoryItem> items) => items
-        .Select(item => new SshFileEntry(item.Name, item.Path, item.IsDirectory, item.IsLink, item.Size, item.Modified)).ToArray();
+    private SshFileEntry[] ToEntries(IEnumerable<SshDirectoryItem> items) => items
+        .Select(item => new SshFileEntry(item.Name, item.Path, item.IsDirectory, item.IsLink, item.Size, item.Modified, _language)).ToArray();
 
     private async Task RevalidateDirectoryAsync(string path, long generation)
     {
@@ -920,7 +925,7 @@ internal partial class SshFileBrowserView : UserControl
             if (generation != _listingGeneration || _busy) return;
             if (error is SshDirectoryAccessDeniedException || !_session.IsConnected)
             { _listingCache.Clear(); _entries = []; ApplyView(); _showingCachedFiles = false; }
-            StatusMessage = LocalizedStatus.Key("explorer.cache.refresh_failed", "Could not refresh cached files: {0}", error.Message);
+            StatusMessage = SshStatus.Key("explorer.cache.refresh_failed", "Could not refresh cached files: {0}", error.Message);
         }
     }
 
@@ -1062,7 +1067,7 @@ internal partial class SshFileBrowserView : UserControl
         catch (Exception ex)
         {
             if (revision == _treeRevision)
-                StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.tree_load_failed", "Unable to load folder tree"), LocalizedStatus.Literal(ex.Message)]);
+                StatusMessage = SshStatus.Join(": ", [SshStatus.Key("ssh_files.tree_load_failed", "Unable to load folder tree"), SshStatus.Literal(ex.Message)]);
         }
         finally { node.IsLoading = false; }
     }
@@ -1150,10 +1155,10 @@ internal partial class SshFileBrowserView : UserControl
     private async Task ShowPropertiesAsync()
     {
         if (EntriesGrid.SelectedItem is not SshFileEntry entry || TopLevel.GetTopLevel(this) is not Window owner) return;
-        await new SshFilePropertiesDialog(entry).ShowDialog(owner);
+        await new SshFilePropertiesDialog(entry, _language).ShowDialog(owner);
     }
 
-    private static string T(string key, string fallback) => LocalizedText.Get(key, fallback);
+    private string T(string key, string fallback) => SshFilesLocalization.Get(_language, key, fallback);
 
     private static string ParentPath(string path)
     {
@@ -1171,7 +1176,7 @@ internal partial class SshFileBrowserView : UserControl
     private async Task<string?> PromptAsync(string title, string initial = "")
     {
         if (TopLevel.GetTopLevel(this) is not Window owner) return null;
-        return await new SshFileNameDialog(title, initial).ShowDialog<string?>(owner);
+        return await new SshFileNameDialog(title, initial, _language).ShowDialog<string?>(owner);
     }
 
     private async Task CreateDirectoryAsync()
@@ -1244,7 +1249,7 @@ internal partial class SshFileBrowserView : UserControl
         if (name == entry.Name) { CancelRename(); _presentation.Focus(); return; }
         if (!ValidName(name))
         {
-            StatusMessage = LocalizedStatus.Key("explorer.status.file_name_invalid", "Invalid file name");
+            StatusMessage = SshStatus.Key("explorer.status.file_name_invalid", "Invalid file name");
             Dispatcher.UIThread.Post(() => FindRenameEditor(entry)?.Focus());
             return;
         }
@@ -1278,7 +1283,7 @@ internal partial class SshFileBrowserView : UserControl
         if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var selected = Selection();
         if (selected.Length == 0 || TopLevel.GetTopLevel(this) is not Window owner) return;
-        if (!await new SshFileDeleteDialog(selected.Length).ShowDialog<bool>(owner)
+        if (!await new SshFileDeleteDialog(selected.Length, _language).ShowDialog<bool>(owner)
             || !ReferenceEquals(endpoint, _session.Connection)) return;
         await ChangeAsync(() => _session.DeletePathsAsync(endpoint,
             selected.Select(entry => (entry.Path, entry.IsDirectory && !entry.IsLink)).ToArray()));
@@ -1294,7 +1299,7 @@ internal partial class SshFileBrowserView : UserControl
         _sessionClipboard.Revision++;
         _sessionClipboard.Notify();
         UpdateCutAppearance();
-        StatusMessage = LocalizedStatus.Key(cut ? "ssh_files.cut_ready" : "ssh_files.copy_ready",
+        StatusMessage = SshStatus.Key(cut ? "ssh_files.cut_ready" : "ssh_files.copy_ready",
             cut ? "{0} items ready to move" : "{0} items ready to copy", selected.Length);
         UpdateControls();
     }
@@ -1318,6 +1323,7 @@ internal partial class SshFileBrowserView : UserControl
     private void UpdateCutAppearance()
     {
         var paths = _cutMode ? _clipboard.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal) : [];
+        SetValue(LabelsProperty, new SshLabels(_language));
         foreach (var entry in _entries.Concat(_tabs.SelectMany(tab => tab.Entries)).Distinct())
             entry.CutOpacity = paths.Contains(entry.Path) ? 0.45 : 1;
     }
@@ -1361,14 +1367,14 @@ internal partial class SshFileBrowserView : UserControl
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
         var picked = await _transferPicker.PickUploadFilesAsync(storage);
         if (picked.Count == 0 || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
-        using var progress = new SshTransferProgressWindow(this, uploading: true);
+        using var progress = new SshTransferProgressWindow(this, _language, uploading: true);
         _busy = true; UpdateControls();
         var uploaded = 0;
         try
         {
             foreach (var file in picked)
             {
-                StatusMessage = LocalizedStatus.Key("ssh_files.uploading", "Uploading {0} of {1}: {2}", uploaded + 1, picked.Count, file.Name);
+                StatusMessage = SshStatus.Key("ssh_files.uploading", "Uploading {0} of {1}: {2}", uploaded + 1, picked.Count, file.Name);
                 await using var input = await file.OpenReadAsync();
                 progress.Report(file.Name, 0, input.CanSeek ? input.Length : null);
                 if (!await _session.UploadFileAsync(endpoint, input, Child(directory, file.Name),
@@ -1377,11 +1383,11 @@ internal partial class SshFileBrowserView : UserControl
                 uploaded++;
             }
         }
-        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.upload_failed", "Upload failed"), LocalizedStatus.Literal(ex.Message)]); }
+        catch (Exception ex) { StatusMessage = SshStatus.Join(": ", [SshStatus.Key("ssh_files.upload_failed", "Upload failed"), SshStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
         var message = StatusMessage;
         await NavigateAsync(_path, false);
-        if (uploaded == picked.Count) StatusMessage = LocalizedStatus.Key("ssh_files.uploaded", "Uploaded {0} files", uploaded);
+        if (uploaded == picked.Count) StatusMessage = SshStatus.Key("ssh_files.uploaded", "Uploaded {0} files", uploaded);
         else StatusMessage = message;
     }
 
@@ -1393,20 +1399,20 @@ internal partial class SshFileBrowserView : UserControl
         var localPath = await _transferPicker.PickUploadFolderAsync(storage);
         if (localPath is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
         var folder = new DirectoryInfo(localPath);
-        using var progress = new SshTransferProgressWindow(this, uploading: true);
+        using var progress = new SshTransferProgressWindow(this, _language, uploading: true);
         _busy = true; UpdateControls();
         try
         {
-            StatusMessage = LocalizedStatus.Key("ssh_files.uploading_folder", "Uploading folder {0}", folder.Name);
+            StatusMessage = SshStatus.Key("ssh_files.uploading_folder", "Uploading folder {0}", folder.Name);
             if (!await _session.UploadDirectoryAsync(endpoint, folder, Child(directory, folder.Name), progress.Report, progress.Cancellation))
                 throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {folder.Name}");
-            StatusMessage = LocalizedStatus.Key("ssh_files.uploaded_folder", "Uploaded folder {0}", folder.Name);
+            StatusMessage = SshStatus.Key("ssh_files.uploaded_folder", "Uploaded folder {0}", folder.Name);
         }
-        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.upload_failed", "Upload failed"), LocalizedStatus.Literal(ex.Message)]); }
+        catch (Exception ex) { StatusMessage = SshStatus.Join(": ", [SshStatus.Key("ssh_files.upload_failed", "Upload failed"), SshStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
         var message = StatusMessage;
         await NavigateAsync(_path, false);
-        if (!string.IsNullOrEmpty(message)) StatusMessage = message;
+        if (message.Resolve(_language).Length != 0) StatusMessage = message;
     }
 
     private async Task DownloadAsync()
@@ -1416,7 +1422,7 @@ internal partial class SshFileBrowserView : UserControl
         if (selected.Length == 0 || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
         if (selected.FirstOrDefault(file => file.IsLink) is { } link)
         {
-            StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Literal(link.Path), LocalizedStatus.Key("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")]);
+            StatusMessage = SshStatus.Join(": ", [SshStatus.Literal(link.Path), SshStatus.Key("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")]);
             return;
         }
         if (selected.Length == 1 && !selected[0].IsDirectory)
@@ -1428,23 +1434,23 @@ internal partial class SshFileBrowserView : UserControl
         }
         var folder = await _transferPicker.PickDownloadFolderAsync(storage);
         if (folder is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
-        using var progress = new SshTransferProgressWindow(this, uploading: false);
+        using var progress = new SshTransferProgressWindow(this, _language, uploading: false);
         _busy = true; UpdateControls();
         try
         {
-            StatusMessage = LocalizedStatus.Key("ssh_files.downloading", "Downloading {0}", string.Join(", ", selected.Select(file => file.Name)));
+            StatusMessage = SshStatus.Key("ssh_files.downloading", "Downloading {0}", string.Join(", ", selected.Select(file => file.Name)));
             await _session.DownloadPathsAsync(endpoint, folder,
                 selected.Select(entry => (entry.Path, entry.Name, entry.IsDirectory)).ToArray(),
                 progress.Report, progress.Cancellation);
-            StatusMessage = LocalizedStatus.Key("ssh_files.downloaded", "Downloaded {0} items", selected.Length);
+            StatusMessage = SshStatus.Key("ssh_files.downloaded", "Downloaded {0} items", selected.Length);
         }
-        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }
+        catch (Exception ex) { StatusMessage = SshStatus.Join(": ", [SshStatus.Key("ssh_files.download_failed", "Download failed"), SshStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
     }
 
     private async Task RunDownloadAsync(ISshFileConnection endpoint, SshFileEntry entry, IStorageFile file)
     {
-        using var progress = new SshTransferProgressWindow(this, uploading: false);
+        using var progress = new SshTransferProgressWindow(this, _language, uploading: false);
         progress.Report(entry.Name, 0, entry.Size);
         _busy = true; UpdateControls();
         try
@@ -1452,9 +1458,9 @@ internal partial class SshFileBrowserView : UserControl
             await using var output = await file.OpenWriteAsync();
             await _session.DownloadFileAsync(endpoint, entry.Path, output,
                 downloaded => progress.Report(entry.Name, (long)downloaded, entry.Size));
-            StatusMessage = LocalizedStatus.Key("ssh_files.downloaded", "Downloaded {0} items", 1);
+            StatusMessage = SshStatus.Key("ssh_files.downloaded", "Downloaded {0} items", 1);
         }
-        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }
+        catch (Exception ex) { StatusMessage = SshStatus.Join(": ", [SshStatus.Key("ssh_files.download_failed", "Download failed"), SshStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
     }
 
@@ -1474,7 +1480,7 @@ internal partial class SshFileBrowserView : UserControl
         finally { _busy = false; UpdateControls(); }
         var message = StatusMessage;
         await RefreshAsync();
-        if (!string.IsNullOrEmpty(message)) StatusMessage = message;
+        if (message.Resolve(_language).Length != 0) StatusMessage = message;
         return completed;
     }
 }

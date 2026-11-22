@@ -18,6 +18,7 @@ root = repo / "Client" / "RelaxKonOS.Client"
 language_dir = root / "Localization"
 image_viewer = repo / "Applications" / "RelaxKonOS.App.ImageViewer"
 notepad = repo / "Applications" / "RelaxKonOS.App.Notepad"
+ssh_files = repo / "Applications" / "RelaxKonOS.App.SshFiles"
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.
 valid_key = re.compile(r"[a-z][a-z0-9-]*(?:[._][A-Za-z0-9-]+)*$")
@@ -181,6 +182,22 @@ for source in (*notepad.glob("*.axaml"), *notepad.glob("*.cs")):
         literal = key[0] or key[1]
         if literal not in notepad_english:
             errors.append(f"{source.name}: Notepad resource {literal} is missing from en-US")
+
+ssh_packs = {culture: load_language(culture, [ssh_files / "Localization" / f"{culture}.json"]) for culture in cultures}
+ssh_english = ssh_packs["en-US"]
+for culture, translated in ssh_packs.items():
+    if set(ssh_english) != set(translated):
+        errors.append(f"SSH Files {culture}: resource keys differ from en-US")
+    for key in ssh_english.keys() & translated.keys():
+        if format_arguments(ssh_english[key]) != format_arguments(translated[key]):
+            errors.append(f"SSH Files {culture}: format arguments differ for {key}")
+for source in (*ssh_files.glob("*.cs"), *ssh_files.glob("Views/*.cs"), *ssh_files.glob("Views/*.axaml")):
+    text = source.read_text(encoding="utf-8")
+    keys = set(re.findall(r'"((?:ssh_files|explorer|common|server_center|application)\.[a-z0-9_.-]+)"', text))
+    keys.update(xaml_key.findall(text))
+    for key in keys - ssh_english.keys():
+        # The app ID is also a string literal in the entry point, but is not a resource key.
+        errors.append(f"{source.name}: SSH Files resource {key} is missing from en-US")
 
 if errors:
     print("\n".join(errors), file=sys.stderr)

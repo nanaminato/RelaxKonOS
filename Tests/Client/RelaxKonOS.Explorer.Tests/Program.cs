@@ -349,14 +349,14 @@ using (var scopedView = new ExplorerViewModel(cachedClient) { FileListCacheEnabl
     cacheFake.Pending.SetResult(ExplorerFake.Directory("/slow"));
     await newSessionRead;
 }
-var bounded = new RelaxKonOS.Client.Services.DirectoryListingCache<int>();
+var bounded = new DirectoryListingCache<int>();
 for (var index = 0; index < 65; index++) bounded.Put("/" + index, index, 1);
 Check(!bounded.TryGet("/0", out _) && bounded.TryGet("/64", out _), "Directory snapshots evict least-recently-used folders at their bound");
 bounded.Put("/oversize", 0, 50001);
 Check(!bounded.TryGet("/oversize", out _), "Oversized directory snapshots are not retained");
 
 var snapshotTime = DateTimeOffset.UtcNow;
-var expiring = new RelaxKonOS.Client.Services.DirectoryListingCache<int>(() => snapshotTime);
+var expiring = new DirectoryListingCache<int>(() => snapshotTime);
 expiring.Put("/ttl", 1, 1);
 snapshotTime += TimeSpan.FromMinutes(4);
 Check(expiring.TryGet("/ttl", out _), "Directory snapshot is available before its expiry");

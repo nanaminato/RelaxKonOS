@@ -1,7 +1,7 @@
-namespace RelaxKonOS.Client.Services;
+namespace RelaxKonOS.UI.FileBrowser;
 
 /// <summary>Session-owned bounded directory snapshots. Never persisted or used to authorize IO.</summary>
-internal sealed class DirectoryListingCache<T>(Func<DateTimeOffset>? clock = null)
+public sealed class DirectoryListingCache<T>(Func<DateTimeOffset>? clock = null)
 {
     private sealed record Snapshot(T Value, int Weight, DateTimeOffset Written, long Access);
     private readonly Dictionary<string, Snapshot> _entries = new(StringComparer.Ordinal);

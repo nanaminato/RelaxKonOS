@@ -1,18 +1,18 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.UI.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
+namespace RelaxKonOS.App.SshFiles.Views;
 
 /// <summary>Window-local SFTP directory snapshot and independent navigation state.</summary>
-internal sealed partial class SshFileBrowserTab : ObservableObject
+internal sealed partial class SshFileBrowserTab(ISystemLanguage language) : ObservableObject
 {
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Title))]
     [NotifyPropertyChangedFor(nameof(IconKind))]
     private string _path = ".";
     public void RefreshLocalizedText() => OnPropertyChanged(nameof(Title));
-    public string Title => Path == "." ? LocalizedText.Get("ssh_files.home")
+    public string Title => Path == "." ? SshFilesLocalization.Get(language, "ssh_files.home")
         : Path == "/" ? "/" : Path.TrimEnd('/').Split('/').Last();
     public TreeNodeIconKind IconKind => Path == "/" ? TreeNodeIconKind.Drive : TreeNodeIconKind.Folder;
     public List<string> History { get; } = [];

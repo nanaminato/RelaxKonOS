@@ -117,7 +117,7 @@
 | 13 | 任务管理器 | `Apps/TaskManager/Views/TaskManagerMainView.axaml` | 工具条 | 无 | **已接入** |
 | 14 | 图片查看器 | `Applications/RelaxKonOS.App.ImageViewer/ImageViewerView.axaml` | 查看工具条 | 无 | **已接入** |
 | 15 | 浏览器 | `Apps/Browser/Views/BrowserMainView.axaml` | `DockPanel.Dock="Top"` 的标签条 + 导航工具条与地址栏 | **已有** `ListBox.browser-tabs` | **已接入** |
-| 16 | SSH 文件浏览器 | `Apps/ServerCenter/Views/SshFileBrowserView.axaml` | SFTP 导航 / 地址 / 筛选 | **已有**独立目录快照、历史 / 搜索 / 视图状态 | **已接入** |
+| 16 | SSH 文件浏览器 | `Applications/RelaxKonOS.App.SshFiles/Views/SshFileBrowserView.axaml` | SFTP 导航 / 地址 / 筛选 | **已有**独立目录快照、历史 / 搜索 / 视图状态 | **已接入** |
 
 必读注意：
 

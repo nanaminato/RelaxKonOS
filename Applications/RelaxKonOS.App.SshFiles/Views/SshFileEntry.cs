@@ -1,10 +1,10 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
+namespace RelaxKonOS.App.SshFiles.Views;
 
-internal sealed class SshFileEntry(string name, string path, bool isDirectory, bool isLink, long size, DateTime modified) : ObservableObject
+internal sealed class SshFileEntry(string name, string path, bool isDirectory, bool isLink, long size, DateTime modified, ISystemLanguage? language = null) : ObservableObject
 {
     public string Name { get; } = name;
     public string Path { get; } = path;
@@ -37,8 +37,8 @@ internal sealed class SshFileEntry(string name, string path, bool isDirectory, b
         OnPropertyChanged(nameof(ModifiedText));
     }
 
-    public string Kind => IsLink ? LocalizedText.Get("ssh_files.link", "Link")
-        : IsDirectory ? LocalizedText.Get("ssh_files.folder", "Folder") : LocalizedText.Get("ssh_files.file", "File");
+    public string Kind => IsLink ? SshFilesLocalization.Get(language, "ssh_files.link", "Link")
+        : IsDirectory ? SshFilesLocalization.Get(language, "ssh_files.folder", "Folder") : SshFilesLocalization.Get(language, "ssh_files.file", "File");
     public string SizeText => IsDirectory ? "" : $"{Size:N0} B";
     public string ModifiedText => Modified.ToLocalTime().ToString("yyyy/MM/dd HH:mm");
 }
