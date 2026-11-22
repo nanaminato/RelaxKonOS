@@ -38,6 +38,7 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
         });
         _application = builder.Build();
         CloudProviderRelay.Map(_application, services);
+        DatabaseObservationBroker.Map(_application, services, ResolveObservationUser);
         _application.MapPost("/background", async (ModulePrivilegeBackgroundRequest request, HttpContext http) => await Respond(async () =>
         {
             using var connection = services.GetRequiredService<ModuleHostSupervisor>()
@@ -257,6 +258,11 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             ?? throw new ModulePrivilegeException("module.privilege_unsupported", 400);
         return new(action, package.SourceRef, package.Resolution);
     }
+    private ClaimsPrincipal? ResolveObservationUser(ModuleHostConnection caller, string key) =>
+        _contexts.TryGetValue(key, out var context) && context.ModuleId == caller.ModuleId
+            && context.GenerationId == caller.GenerationId && context.ExpiresAt > DateTimeOffset.UtcNow
+            ? context.User : null;
+
     internal string IssueRequestContext(string moduleId, Guid generationId, ClaimsPrincipal principal)
     {
         foreach (var item in _contexts.Where(p => p.Value.ExpiresAt <= DateTimeOffset.UtcNow)) _contexts.TryRemove(item.Key, out _);

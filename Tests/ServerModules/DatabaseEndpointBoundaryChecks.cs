@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ServerModule.Database;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
@@ -115,7 +118,30 @@ internal static class DatabaseEndpointBoundaryChecks
                 work.Description.Contains("installation ledger cannot be read")))
             throw new InvalidOperationException("A damaged installation ledger must block database deactivation.");
 
-        Console.WriteLine("Database registration, endpoint policies and deactivation ownership checks passed.");
+        var brokerBuilder = WebApplication.CreateBuilder();
+        brokerBuilder.Services.AddSingleton(new ModuleHostSupervisor(brokerBuilder.Environment, brokerBuilder.Configuration,
+            NullLogger<ModuleHostSupervisor>.Instance, null!));
+        await using var broker = brokerBuilder.Build();
+        DatabaseObservationBroker.Map(broker, broker.Services, (_, _) =>
+            throw new InvalidOperationException("An unauthenticated request cannot resolve an observation user."));
+        var privateRoutes = ((IEndpointRouteBuilder)broker).DataSources.SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>().ToArray();
+        if (!privateRoutes.Select(endpoint => endpoint.RoutePattern.RawText).ToHashSet().SetEquals(new[]
+            {
+                DatabaseObservationProtocol.PostgreSqlState, DatabaseObservationProtocol.PostgreSqlMaintenancePlan,
+                DatabaseObservationProtocol.PostgreSqlMigrationPlan, DatabaseObservationProtocol.MySqlState
+            }) || privateRoutes.Any(route => route.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods.Single() != "GET"))
+            throw new InvalidOperationException("The private database broker must expose only the four fixed read routes.");
+        foreach (var route in privateRoutes)
+        {
+            var request = new DefaultHttpContext { RequestServices = broker.Services };
+            request.Request.Method = "GET";
+            await route.RequestDelegate!(request);
+            if (request.Response.StatusCode != StatusCodes.Status403Forbidden)
+                throw new InvalidOperationException("A request without a trusted module generation reached the observation broker.");
+        }
+
+        Console.WriteLine("Database registration, endpoint policies, deactivation and private observation admission checks passed.");
 
         void Check(string route, string method, string? policy)
         {
