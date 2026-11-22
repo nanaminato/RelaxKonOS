@@ -24,6 +24,9 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Diagnostics;
+using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Apps.ServerCenter;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
@@ -65,6 +68,8 @@ internal static class SettingsWindowChecks
         var windows = new RelaxKonOS.WindowManager.WindowManager();
         using var services = new ServiceCollection()
             .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
+            .AddSingleton(session)
+            .AddSingleton(DispatchProxy.Create<IExplorerClient, ExplorerPackageFiles>())
             .AddSingleton(new DesktopDevicePreferences(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "desktop-device.json")))
             .AddSingleton(localization)
             .AddSingleton<IHostTimeService>(DispatchProxy.Create<IHostTimeService, SettingsWindowHostService>())
@@ -560,7 +565,7 @@ internal static class SettingsWindowChecks
             {
                 auth.Logout();
                 Pump();
-                CheckExplorerPackage(packageSource, windows, apps, factory);
+                CheckExplorerPackage(packageSource, windows, apps, factory, auth);
             }
             else if (packageSource is not null)
             {
@@ -703,7 +708,7 @@ internal static class SettingsWindowChecks
     }
 
     private static void CheckExplorerPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
-        ApplicationManager applications, ExternalAppContextFactory factory)
+        ApplicationManager applications, ExternalAppContextFactory factory, SettingsWindowSession auth)
     {
         var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
             Path.Combine(Path.GetTempPath(), "rk-explorer-package-" + Guid.NewGuid().ToString("N")));
@@ -727,7 +732,17 @@ internal static class SettingsWindowChecks
                 "The installed Explorer must open one package-owned sign-in window.");
             Check(applications.Activate(new AppActivationRequest(new Uri("relaxkonos://explorer/open?path=%2Fa&path=%2Fb"))).Status
                 == AppActivationStatus.RouteNotFound, "Explorer accepted an ambiguous directory route.");
-            Console.WriteLine("PASS: installed Explorer owns its validated directory route and sign-in window.");
+            windows.ForceClose(window);
+            auth.State = AuthSessionState.Authenticated;
+            const string directoryPath = "/documents/project files";
+            Check(applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.ExplorerPath(directoryPath))).IsAccepted,
+                "Installed Explorer did not accept an authenticated directory route.");
+            PumpUntil(() => windows.Windows.Any(item => item.View.Content is Control { DataContext: ExplorerViewModel }));
+            var explorer = (ExplorerViewModel)((Control)windows.Windows.Single().View.Content!).DataContext!;
+            PumpUntil(() => !explorer.IsBusy && explorer.AddressbarPath == directoryPath);
+            Check(windows.Windows.Single().Info.OwnerAppId.Value == id,
+                "The authenticated Explorer route did not open one package-owned workspace.");
+            Console.WriteLine("PASS: installed Explorer opens the sign-in prompt and navigates authenticated directory routes.");
         }
         finally
         {
@@ -992,6 +1007,18 @@ internal static class SettingsWindowChecks
     /// <summary>Horizontal overlap only: the title bar is a single row, so vertical position carries no information.</summary>
     private static bool Overlaps(Visual first, Visual second, Visual ancestor) =>
         LeftEdge(first, ancestor) < RightEdge(second, ancestor) && LeftEdge(second, ancestor) < RightEdge(first, ancestor);
+}
+
+public class ExplorerPackageFiles : DispatchProxy
+{
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
+    {
+        nameof(IExplorerClient.GetDrivesAsync) => Task.FromResult<IReadOnlyList<DriveDto>>([]),
+        nameof(IExplorerClient.GetSpecialLocationsAsync) => Task.FromResult<IReadOnlyList<SpecialLocationDto>>([]),
+        nameof(IExplorerClient.GetDirectoryAsync) when args?[0] is string path =>
+            Task.FromResult(new DirectoryDto(path, "project files", FileSystemEntryType.Directory, [], [], null, null)),
+        _ => throw new InvalidOperationException("Unexpected Explorer file call: " + method.Name),
+    };
 }
 
 public class SettingsWindowSession : DispatchProxy
