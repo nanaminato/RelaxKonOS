@@ -16,8 +16,11 @@ internal sealed class DatabaseModule : IServerModule, IServerModuleDeactivationG
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context) =>
         builder.Services.AddDatabaseServices();
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) =>
-        endpoints.MapDatabaseEndpoints();
+    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    {
+        endpoints.MapDatabaseCredentialEndpoints();
+        endpoints.MapDatabaseObservationEndpoints();
+    }
 
     public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)

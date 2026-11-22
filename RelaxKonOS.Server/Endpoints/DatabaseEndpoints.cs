@@ -9,9 +9,9 @@ namespace RelaxKonOS.Server.Endpoints;
 
 internal static class DatabaseEndpoints
 {
-    public static void MapDatabaseEndpoints(this IEndpointRouteBuilder endpoints)
+    internal static void MapDatabaseCredentialEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPostgreSqlEndpoints();
+        endpoints.MapPostgreSqlCredentialEndpoint();
         endpoints.MapPost(MySqlRoutes.Credentials, async (
             PostgreSqlCredentialRequest request, HttpContext http,
             DatabaseQueries queries,
@@ -29,6 +29,11 @@ internal static class DatabaseEndpoints
                 return Results.Problem(statusCode: 409, title: "database.instance_invalid");
             return Results.Ok(credentials.Stage(request, InstallationEndpoints.Actor(http.User)));
         }).RequireAuthorization();
+    }
+
+    internal static void MapDatabaseObservationEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapPostgreSqlObservationEndpoints();
         endpoints.MapGet(MySqlRoutes.State,
             async (DatabaseQueries queries, CancellationToken ct) =>
             {

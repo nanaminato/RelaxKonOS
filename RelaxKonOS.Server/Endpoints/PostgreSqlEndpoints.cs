@@ -6,7 +6,7 @@ namespace RelaxKonOS.Server.Endpoints;
 
 public static class PostgreSqlEndpoints
 {
-    public static IEndpointRouteBuilder MapPostgreSqlEndpoints(this IEndpointRouteBuilder app)
+    internal static void MapPostgreSqlObservationEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(PostgreSqlRoutes.State, async (DatabaseQueries queries, Guid? instance, CancellationToken ct) =>
         {
@@ -23,6 +23,10 @@ public static class PostgreSqlEndpoints
             try { return Results.Ok(await queries.ReadPostgreSqlMigrationPlanAsync(ct)); }
             catch(ComponentLifecycleException ex) {return Results.Problem(statusCode:503,extensions:new Dictionary<string,object?>{{"code",ex.ProblemCode}});}
         }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
+    }
+
+    internal static void MapPostgreSqlCredentialEndpoint(this IEndpointRouteBuilder app)
+    {
         app.MapPost(PostgreSqlRoutes.Credentials, (PostgreSqlCredentialRequest request, HttpContext http,
             RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials, RelaxKonOS.Server.Privileged.IHostElevationSessionStore elevations) =>
         {
@@ -33,6 +37,5 @@ public static class PostgreSqlEndpoints
             return Results.Ok(credentials.Stage(request, InstallationEndpoints.Actor(http.User)));
         }).RequireAuthorization();
         // All mutations use the authenticated, elevated and durable InstallationCoordinator API.
-        return app;
     }
 }

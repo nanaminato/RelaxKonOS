@@ -356,3 +356,5 @@
 - Databases 已实现独立 ModuleHost 只读入口，候选发行元数据指定 Linux x64 和 ABI 2.4。Windows Release 数据库专项验证仅映射四条 GET、传递 PostgreSQL 实例参数并保留代理的 HTTP 状态、内容类型和问题正文。内置模块仍占用同一 ID，签名归档、生产接线和真实 Linux 验收待完成。
 - 使用 Windows Release 生成的托管模块文件和一次性本地 P-256 密钥，离线打包命令已生成 Databases 0.1.0 测试归档和签名目录。保留 ID relaxkonos.database 要求目录用途为 official，development 用途被打包器拒绝。本地测试签名未接纳到任何设备。Linux RID publish 未成功，归档仅用于打包验证，设备安装与健康检查仍待验。
 - Databases Linux x64 framework-dependent Release 发布已通过。使用该发布目录和一次性 P-256 密钥生成 0.1.0 本地候选，独立核对目录签名与归档 SHA-256。尚未接纳该目录或部署候选包。
+- Core 已将 Databases 的四条查询和两条凭据暂存拆为独立路由注册入口，为后续将查询映射到 ModuleHost 提供切换点。当前内置模块调用两个入口，公开路径及授权策略保持原样。安装器仍以 module-package-module-id-conflict 拒绝与内置 ID 冲突的候选。
+- Databases 路由拆分通过 Windows 专项，使用新编译的 Server 程序集和既有测试程序集，核对六条公开路由及授权、停用保护和私有代理拒绝路径。
