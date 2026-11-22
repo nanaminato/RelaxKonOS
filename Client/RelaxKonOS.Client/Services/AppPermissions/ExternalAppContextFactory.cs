@@ -1,3 +1,5 @@
+using RelaxKonOS.App.Settings;
+using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Apps.ProcessGuardian;
 using RelaxKonOS.Protocol.ProcessGuardian;
 using Avalonia.Controls;
@@ -81,6 +83,7 @@ public sealed class ExternalAppContextFactory
     private readonly IPortForwardingService? _portForwarding;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
+    private readonly ISettingsWindow? _settingsWindow;
     private readonly DesktopDevicePreferences? _devicePreferences;
     private readonly RelaxKonOS.Client.Apps.Terminal.ITerminalSettingsClient? _terminalSettings;
     private readonly RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? _diagnostics;
@@ -130,7 +133,8 @@ public sealed class ExternalAppContextFactory
         IServerTailscale? tailscale = null,
         IServerTailscaleLogin? tailscaleLogin = null,
         ITailscaleOperationReferences? tailscaleReferences = null, Func<IServerPostgreSql>? createPostgreSqlClient = null,
-        Func<IServerMySql>? createMySqlClient = null, Func<IInstallationOperations>? createInstallationClient = null)
+        Func<IServerMySql>? createMySqlClient = null, Func<IInstallationOperations>? createInstallationClient = null,
+        ISettingsWindow? settingsWindow = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -177,13 +181,25 @@ public sealed class ExternalAppContextFactory
         _portForwarding = portForwarding;
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
+        _settingsWindow = settingsWindow;
         _diagnostics = diagnostics;
         _devicePreferences = devicePreferences;
         _terminalSettings = terminalSettings;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
-        Action<ManagedWindow>? onWindowCreated = null, string? openedFile = null)
+        Action<ManagedWindow>? onWindowCreated = null, string? openedFile = null) =>
+        CreateCore(manifest, lifetime, onWindowCreated, openedFile, null);
+
+    internal IExternalAppContext CreateForInstalledPackage(ApplicationManifest manifest, PackageOrigin origin,
+        CancellationToken lifetime, Action<ManagedWindow>? onWindowCreated, string? openedFile) =>
+        CreateCore(manifest, lifetime, onWindowCreated, openedFile,
+            origin == PackageOrigin.OfficialDistribution && manifest.Id == SettingsApp.Id && _settingsWindow is { } workspace
+                ? new SettingsPackageWindow(workspace, lifetime)
+                : null);
+
+    private IExternalAppContext CreateCore(ApplicationManifest manifest, CancellationToken lifetime,
+        Action<ManagedWindow>? onWindowCreated, string? openedFile, ISettingsWindow? settingsWindow)
     {
         var appId = manifest.Id;
         var sshEndpoint = _sshSession.Endpoint;
@@ -262,7 +278,7 @@ public sealed class ExternalAppContextFactory
         _systemLanguage,
         new ExternalAppActivation(appId, _activations),
         _settingsNavigation,
-        new ExternalAppWindowService(manifest, _windowManager, lifetime, onWindowCreated));
+        new ExternalAppWindowService(manifest, _windowManager, lifetime, onWindowCreated), settingsWindow);
     }
 
     private ISshFileSession GetSshFileCapability(ServerCenterSshEndpoint endpoint, CancellationToken lifetime)
@@ -275,6 +291,33 @@ public sealed class ExternalAppContextFactory
             var session = new ExternalSshFileSession(_sshSession, endpoint, lifetime);
             _sshFileCapability = (endpoint, lifetime, session);
             return session;
+        }
+    }
+
+    private sealed class SettingsPackageWindow(ISettingsWindow workspace, CancellationToken lifetime) : ISettingsWindow
+    {
+        public void Open(Func<RelaxKonOS.App.Settings.Views.ISettingsWorkspace, ManagedWindow> showWorkspace)
+        {
+            lifetime.ThrowIfCancellationRequested();
+            workspace.Open(showWorkspace);
+        }
+
+        public void Navigate(string route)
+        {
+            lifetime.ThrowIfCancellationRequested();
+            workspace.Navigate(route);
+        }
+
+        public void OpenEnvironment()
+        {
+            lifetime.ThrowIfCancellationRequested();
+            workspace.OpenEnvironment();
+        }
+
+        public void OpenApplicationPermissions(string appId)
+        {
+            lifetime.ThrowIfCancellationRequested();
+            workspace.OpenApplicationPermissions(appId);
         }
     }
 
@@ -327,7 +370,8 @@ public sealed class ExternalAppContextFactory
         ISystemLanguage SystemLanguage,
         IAppActivation Activations,
         ISettingsNavigation Settings,
-        IExternalAppWindowService Windows) : IExternalAppContext;
+        IExternalAppWindowService Windows,
+        ISettingsWindow? SettingsWindow) : IExternalAppContext, ISettingsPackageContext;
 
     private sealed class ExternalComponentDependencies(AppId appId, UsageMemoryScope connection,
         IComponentLifecycleClient? lifecycle, IAppPermissionRequestService permissions,

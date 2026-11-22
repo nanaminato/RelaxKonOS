@@ -989,7 +989,7 @@ public sealed partial class DeveloperPackageManager
             _loaded = null;
         }
 
-        protected IExternalAppContext CreateContext(string? openedFile = null) => ContextFactory.Create(Manifest, _lifetime.Token,
+        protected IExternalAppContext CreateContext(string? openedFile = null) => ContextFactory.CreateForInstalledPackage(Manifest, Record.Origin, _lifetime.Token,
             _observedWindows is { } windows ? window => windows.Add(window) : null, openedFile);
 
         protected IExternalRemoteApplication GetOrLoad()

@@ -67,6 +67,32 @@ internal static class SettingsWindowChecks
             .AddSingleton<IRemoteDockerClient>(DispatchProxy.Create<IRemoteDockerClient, UnusedPreviewServices>()).BuildServiceProvider();
         typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
         var windows = new RelaxKonOS.WindowManager.WindowManager();
+        var memory = new UsageMemoryStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "usage.json"));
+        var factory = new ExternalAppContextFactory(null!, null!, localization, settings, null!, session,
+            null!, windows, null!, new RelaxKonOS.Client.Apps.Explorer.ExplorerClient(http, session, memory),
+            new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings), null!, null!, null!,
+            null!, null!, memory, null!, null!, null!, null!,
+            settingsWindow: new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services));
+        var settingsManifest = new RelaxKonOS.App.Settings.SettingsPackageApp().Manifest;
+        using var packageLifetime = new CancellationTokenSource();
+        var official = RelaxKonOS.Client.Services.Developer.PackageOrigin.OfficialDistribution;
+        var local = RelaxKonOS.Client.Services.Developer.PackageOrigin.LocalPackage;
+        var capability = ((RelaxKonOS.App.Settings.ISettingsPackageContext)
+            factory.CreateForInstalledPackage(settingsManifest, official, packageLifetime.Token, null, null)).SettingsWindow;
+        Check(capability is not null, "Official Settings did not receive the workspace capability.");
+        Check(((RelaxKonOS.App.Settings.ISettingsPackageContext)factory.Create(settingsManifest)).SettingsWindow is null
+            && ((RelaxKonOS.App.Settings.ISettingsPackageContext)factory.CreateForInstalledPackage(settingsManifest, local, default, null, null)).SettingsWindow is null
+            && ((RelaxKonOS.App.Settings.ISettingsPackageContext)factory.CreateForInstalledPackage(
+                settingsManifest with { Id = new AppId("relaxkonos.other") }, official, default, null, null)).SettingsWindow is null,
+            "A workspace capability was exposed outside official Settings package activation.");
+        packageLifetime.Cancel();
+        try
+        {
+            capability!.Navigate("home");
+            throw new Exception("A retired Settings package retained workspace access.");
+        }
+        catch (OperationCanceledException) { }
+
         var apps = new ApplicationManager(windows, services);
         var developer = new DeveloperModeService();
         using var diagnostics = new NetworkDiagnosticsService(developer, () => session);
