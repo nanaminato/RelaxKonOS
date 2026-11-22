@@ -210,13 +210,7 @@ internal static class AuthenticationServiceRegistration
                         !context.User.HasClaim(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType)
                         || context.User.HasClaim(RelaxKonOSAuthSchemes.ScopeClaim, requiredScope)));
             }
-            // JwtBearer may map the standard role claim to ClaimTypes.Role depending on the host's
-            // inbound-claim mapping setting. Accept either representation, but never a client app id.
-            options.AddPolicy("TunnelsRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-                context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
-                || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
-            options.AddPolicy("TunnelsManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-                context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+            AddTunnelPolicies(options);
             options.AddPolicy("EventsRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
                 || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
@@ -262,5 +256,16 @@ internal static class AuthenticationServiceRegistration
                     context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
         });
         return forwardedHeaders;
+    }
+
+    internal static void AddTunnelPolicies(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)
+    {
+        // JwtBearer may map the standard role claim to ClaimTypes.Role depending on the host's
+        // inbound-claim mapping setting. Accept either representation, but never a client app id.
+        options.AddPolicy("TunnelsRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
+            || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+        options.AddPolicy("TunnelsManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
     }
 }

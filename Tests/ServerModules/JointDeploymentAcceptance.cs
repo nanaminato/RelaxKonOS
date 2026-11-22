@@ -190,6 +190,21 @@ internal static class JointDeploymentAcceptance
             request with { Domain = "app.example.test" }, RelaxKonOSJsonOptions.Default);
         accepted.EnsureSuccessStatusCode();
         var saved = (await accepted.Content.ReadFromJsonAsync<TunnelDefinitionDto>(RelaxKonOSJsonOptions.Default))!;
+        var ownerProfiles = await client.GetFromJsonAsync<TunnelServerProfileDto[]>(TunnelApiRoutes.Profiles, RelaxKonOSJsonOptions.Default);
+        Require(ownerProfiles is [var owned] && owned.Id == profile.Id, "the signed Tunnels route reports the saved profile to its owner");
+
+        client.DefaultRequestHeaders.Remove("test-user");
+        client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
+        var observerProfiles = await client.GetFromJsonAsync<TunnelServerProfileDto[]>(TunnelApiRoutes.Profiles, RelaxKonOSJsonOptions.Default);
+        Require(observerProfiles is [], "the observer can read profiles but cannot see a different account's profile");
+        using var forbidden = await client.PostAsJsonAsync(TunnelApiRoutes.Tunnels,
+            request with { Domain = "observer.example.test" }, RelaxKonOSJsonOptions.Default);
+        Require(forbidden.StatusCode == System.Net.HttpStatusCode.Forbidden, "the observer cannot write a tunnel definition");
+
+        client.DefaultRequestHeaders.Remove("test-user");
+        client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.SecondAdmin);
+        using var hidden = await client.GetAsync($"{TunnelApiRoutes.Tunnels}/{saved.Id}");
+        Require(hidden.StatusCode == System.Net.HttpStatusCode.NotFound, "a different controller cannot read the owner's definition by ID");
         await using var scope = host.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
         Require(await db.TunnelDefinitions.AnyAsync(row => row.Id == saved.Id && row.Domain == "app.example.test")
@@ -1195,9 +1210,7 @@ internal static class JointDeploymentAcceptance
             {
                 options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
                     policy => policy.RequireAuthenticatedUser().RequireAssertion(user => ServerModuleManagementEndpoints.CanManage(user.User)));
-                options.AddPolicy("TunnelsRead", policy => policy.RequireAuthenticatedUser());
-                options.AddPolicy("TunnelsManage", policy => policy.RequireAuthenticatedUser()
-                    .RequireAssertion(user => ServerModuleManagementEndpoints.CanManage(user.User)));
+                AuthenticationServiceRegistration.AddTunnelPolicies(options);
             });
             WebApplication? app = null;
             try
