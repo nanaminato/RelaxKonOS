@@ -540,7 +540,8 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
         try
         {
             var applied = await provider.ApplyAsync(profile.Id, "apply-user", CancellationToken.None);
-            TestAssert.Assert(applied.Succeeded && applied.State == TunnelConnectionState.Starting, "Managed FRP desired state was not started.");
+            TestAssert.Assert(applied.Succeeded && applied.State == TunnelConnectionState.Connected,
+                $"Managed FRP did not report the fixture Helper connection: {applied.State}, {applied.ProblemCode}.");
             IReadOnlyList<TunnelDefinitionDto> current = [];
             for (var attempt = 0; attempt < 10; attempt++)
             {
