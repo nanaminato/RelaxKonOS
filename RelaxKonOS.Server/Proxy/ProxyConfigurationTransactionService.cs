@@ -36,6 +36,7 @@ public sealed class ProxyConfigurationTransactionService(
     IMihomoRuntimeReceiptReader? managedRuntime = null,
     IProxySubscriptionRepository? subscriptions = null) : IProxyConfigurationTransactionService
 {
+    internal ProxyExecutionCodeGate DirectPublication { private get; set; } = MihomoDirectPublicationCode.BundledGate;
     private SemaphoreSlim _gate => publication.Gate;
     public async Task<string?> ApplyAsync(Guid profileId, string yaml, CancellationToken cancellationToken)
     {
@@ -194,7 +195,7 @@ public sealed class ProxyConfigurationTransactionService(
                 var selection = await CaptureSelectionAsync(profileId, refresh?.Metadata, cancellationToken, activation?.SubscriptionId);
                 await profiles.ValidatePublicationAsync(selection, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                try { execution = MihomoDirectPublicationCode.Acquire(); }
+                try { execution = MihomoDirectPublicationCode.Acquire(DirectPublication); }
                 catch (InvalidDataException) { return ProxyProblemCodes.ConfigApplyFailed; }
                 var previous = File.Exists(active) ? await File.ReadAllTextAsync(active, cancellationToken) : null;
                 if (previous is not null) File.Copy(active, backup, overwrite: false);

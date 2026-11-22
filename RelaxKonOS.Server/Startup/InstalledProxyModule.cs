@@ -1,6 +1,7 @@
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Startup.Modules;
 
 namespace RelaxKonOS.Server.Startup;
@@ -12,6 +13,8 @@ internal sealed class InstalledProxyModule(InstalledModuleRecord record, string 
         new(TimeSpan.FromSeconds(30), () => ResolveEntry(record, contentRoot));
     private protected override ProxyExecutionCodeGate SubscriptionExecution { get; } =
         new("subscription", () => ResolveEntry(record, contentRoot));
+    private protected override ProxyExecutionCodeGate DirectPublication { get; } =
+        new("direct-publication", () => ResolveEntry(record, contentRoot));
     public string InstalledVersion => record.Version;
     public string ArtifactDigest => record.ArtifactSha256;
     public string SourceId => record.SourceId;
@@ -33,6 +36,7 @@ internal sealed class InstalledProxyModule(InstalledModuleRecord record, string 
         using var verified = Execution.AcquireOverview();
         using var subscription = SubscriptionExecution.Acquire();
         _ = subscription.Create<IProxySubscriptionNormalizer>("RelaxKonOS.Server.Proxy.ProxySubscriptionNormalizer");
+        using var publication = MihomoDirectPublicationCode.Acquire(DirectPublication);
         base.ConfigureServices(builder, context);
     }
 

@@ -5,15 +5,15 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 internal sealed class MihomoDirectPublicationCode(ProxyExecutionCodeGate.Lease code, IMihomoDirectPublicationExecutor executor) : IDisposable
 {
-    private static readonly ProxyExecutionCodeGate Gate = new("direct-publication");
+    internal static ProxyExecutionCodeGate BundledGate { get; } = new("direct-publication");
     private static readonly DirectPublicationProblems Problems = new(ProxyProblemCodes.RecoveryRequired, ProxyProblemCodes.ConfigApplyFailed,
         ProxyProblemCodes.ControllerUnavailable, ProxyProblemCodes.PrivilegedOperationUnavailable, ProxyProblemCodes.SystemProxyConflict);
 
     private IMihomoDirectPublicationExecutor? execution = executor;
 
-    internal static MihomoDirectPublicationCode Acquire()
+    internal static MihomoDirectPublicationCode Acquire(ProxyExecutionCodeGate gate)
     {
-        var code = Gate.Acquire();
+        var code = gate.Acquire();
         try
         {
             return new(code, code.Create<IMihomoDirectPublicationExecutor>("RelaxKonOS.Server.Proxy.MihomoDirectPublicationExecutor"));

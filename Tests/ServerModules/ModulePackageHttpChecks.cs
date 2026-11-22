@@ -513,7 +513,7 @@ internal static class ModulePackageHttpChecks
                 proxyModules.ConfigureServices(proxyHost, ServerModuleContext.Create(proxyHost.Configuration, proxyHost.Environment, "memory"));
                 await using (var restoredProxyHost = proxyHost.Build())
                     check(!ReferenceEquals(restoredProxyHost.Services.GetRequiredService<ProxyConnectionExecutionGate>(), ProxyConnectionExecutionGate.Shared),
-                        "a fresh Core host validates restored Proxy overview and subscription executors from the installed package");
+                        "a fresh Core host validates restored Proxy overview, subscription and direct publication executors from the installed package");
                 await VerifyRestoredWebServerAsync(root, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
                 var mirrorOwner = Guid.NewGuid();

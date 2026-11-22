@@ -23,6 +23,7 @@ public sealed class MihomoSettingsService(
     IMihomoApplicationConfigurationPublisher? managedPublication = null,
     IMihomoRuntimeReceiptReader? managedRuntime = null) : IProxySettingsWriter
 {
+    internal ProxyExecutionCodeGate DirectPublication { private get; set; } = MihomoDirectPublicationCode.BundledGate;
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
     private SemaphoreSlim _gate => publication.Gate;
 
@@ -94,7 +95,7 @@ public sealed class MihomoSettingsService(
                 await File.WriteAllTextAsync(temporary, updated, cancellationToken);
                 if (!OperatingSystem.IsWindows() && originalMode is { } mode) File.SetUnixFileMode(temporary, mode);
                 cancellationToken.ThrowIfCancellationRequested();
-                try { execution = MihomoDirectPublicationCode.Acquire(); }
+                try { execution = MihomoDirectPublicationCode.Acquire(DirectPublication); }
                 catch (InvalidDataException) { return ProxyProblemCodes.ConfigApplyFailed; }
                 checkpoint = await publication.BeginDirectReloadAsync(original, updated, cancellationToken);
                 File.Move(temporary, active, overwrite: true);

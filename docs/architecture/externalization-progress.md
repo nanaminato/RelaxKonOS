@@ -767,3 +767,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 签名包 HTTP 验收通过生产 DI 解析回滚后的 ACME 服务并实际加载已安装执行代次。无效 CA 目录返回 unavailable。现有 WSL 环境与缓存镜像未找到 Pebble 和挑战 DNS 夹具，隔离签发仍待验。
 - Proxy 的总览和 Mihomo 连接解析接入官方签名 .rkmodule，模块清单要求三项现有能力。Core 仍拥有运行时和恢复路径。Windows Release 双版本 HTTP 安装、更新、回滚和 Mihomo 控制器回归通过。订阅解析与直接发布仍用随附加载路径，已安装包的真实 Mihomo 验收待完成。
 - Proxy 订阅下载后的解析与后台队列执行使用已安装签名包；Core 继续限制地址、下载和台账所有权。Windows Release 的 44 项订阅后台边界检查和模块包 HTTP 回归通过，回滚后新宿主验证并注册已安装订阅入口。直接发布仍使用随附加载路径。
+- Mihomo 设置写入和配置事务的直接发布执行从已安装 Proxy 签名包加载。Core 继续拥有发布锁、持久化及恢复。Windows Release 配置激活与回滚专项通过，签名包 HTTP 回归验证恢复版本可通过直接发布入口启动校验。真实 Mihomo 联调仍待验。

@@ -52,6 +52,7 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
     public IReadOnlyList<string> Requires => [];
     private protected virtual ProxyConnectionExecutionGate Execution => ProxyConnectionExecutionGate.Shared;
     private protected virtual ProxyExecutionCodeGate SubscriptionExecution => ProxySubscriptionContentNormalizer.BundledGate;
+    private protected virtual ProxyExecutionCodeGate DirectPublication => MihomoDirectPublicationCode.BundledGate;
 
     public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
@@ -62,7 +63,12 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
         builder.Services.AddScoped<IProxyEngineRegistry, ProxyEngineRegistry>();
         builder.Services.AddScoped<IProxyPlatformService, ProxyPlatformService>();
         builder.Services.AddScoped<MihomoExternalVersionProbe>();
-        builder.Services.AddScoped<IProxySettingsWriter, MihomoSettingsService>();
+        builder.Services.AddScoped<IProxySettingsWriter>(services =>
+        {
+            var writer = ActivatorUtilities.CreateInstance<MihomoSettingsService>(services);
+            writer.DirectPublication = DirectPublication;
+            return writer;
+        });
         builder.Services.AddScoped<IMihomoApplicationConfigurationPublisher>(services =>
             services.GetRequiredService<MihomoConfigurationPublicationService>());
 
@@ -119,7 +125,12 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
             builder.Services.AddTransient<IProxyProfileService, ProxyProfileService>();
             builder.Services.AddScoped<IProxySubscriptionService, ProxySubscriptionService>();
             builder.Services.AddScoped<IProxySubscriptionActions, ProxySubscriptionActions>();
-            builder.Services.AddScoped<IProxyConfigurationTransactionService, ProxyConfigurationTransactionService>();
+            builder.Services.AddScoped<IProxyConfigurationTransactionService>(services =>
+            {
+                var transaction = ActivatorUtilities.CreateInstance<ProxyConfigurationTransactionService>(services);
+                transaction.DirectPublication = DirectPublication;
+                return transaction;
+            });
             builder.Services.AddScoped<IProxyConfigurationService, ProxyConfigurationService>();
         }
     }
