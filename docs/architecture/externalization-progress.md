@@ -702,3 +702,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 真实 Ubuntu Core 的 Databases HTTPS 双包验收新增第二个独立桌面 VSD，并扩展测试入口的 uninstall 阶段。两端以同一 PAM 账户登记不同安装实例，第二端复用已运行的签名模块。卸载第一端后服务端停用预览仍因第二端依赖而受阻，最后一端卸载后解除阻止，ModuleHost 仍运行且包操作历史不变。测试在同一一次性容器中运行两个独立桌面状态目录。
 - Databases 在线双包跨主机环境验收通过。Ubuntu 容器内的 Linux 桌面运行器发起安装和重启续跑，Windows 宿主进程通过仅绑定宿主回环的端口连接同一真实 Core，使用独立 VSD 复用签名模块。Linux 端卸载后，Windows 依赖仍阻止停用。Windows 卸载后解除阻止，ModuleHost 和原包回执保持运行及成功状态，四条观察者查询经真实 Helper 通过。验收入口按进程平台报告 Windows 或 Linux。测试仍使用单台物理主机。
 - 从 Standard 配置及桌面发布项目映射取出全部 13 个基础应用项目。各以自身 .csproj 为入口单独执行 Release 构建，全部通过。复验现有 Windows 与 Linux 发行目录，各 29 个归档的摘要、清单和入口程序集均匹配，桌面宿主依赖图未包含应用实现，Shell 的 RelaxKonOS 项目依赖限于 Core，协调器传递依赖限于 Protocol。此轮核对现有发行目录，未重新打包。
+- 当前 Android Debug 与测试 APK 离线构建通过。强制执行 JVM 测试任务后，1,906 项通过，失败和跳过均为零。只读 Android 模拟器上的应用目录与服务维护恢复共 11 项 instrumentation 测试全部通过。此轮未连接真实远端服务或物理 Android 设备。
