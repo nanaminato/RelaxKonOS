@@ -7,12 +7,11 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
-    <ProjectReference Include="../../Shared/RelaxKonOS.ModuleHost.Sdk/RelaxKonOS.ModuleHost.Sdk.csproj" />
   </ItemGroup>
   <Target Name="ValidateDatabaseModuleBoundary" BeforeTargets="ResolveReferences">
     <ItemGroup>
-      <InvalidDatabaseImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.Filename)' != 'RelaxKonOS.Protocol' and '%(ProjectReference.Filename)' != 'RelaxKonOS.ModuleHost.Sdk' and '%(ProjectReference.Filename)' != 'RelaxKonOS.ModuleHost.Protocol'" />
+      <InvalidDatabaseImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.Filename)' != 'RelaxKonOS.Protocol'" />
     </ItemGroup>
-    <Error Condition="'@(InvalidDatabaseImplementationProject)' != ''" Text="Database execution may reference shared protocol and ModuleHost SDK contracts only. Unexpected references: @(InvalidDatabaseImplementationProject)." />
+    <Error Condition="'@(InvalidDatabaseImplementationProject)' != ''" Text="Database execution may reference shared protocol contracts only. Unexpected references: @(InvalidDatabaseImplementationProject)." />
   </Target>
 </Project>

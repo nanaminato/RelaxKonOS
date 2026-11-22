@@ -132,6 +132,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.Tailscale", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.Databases", "Applications\RelaxKonOS.App.Databases\RelaxKonOS.App.Databases.csproj", "{53C5D31F-EB90-437F-B658-F0EC397C83E0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.ServerModule.DatabaseObservation", "ServerModules\RelaxKonOS.ServerModule.DatabaseObservation\RelaxKonOS.ServerModule.DatabaseObservation.csproj", "{0C060261-58B0-4F8C-BCA6-441D094DB63E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -886,6 +888,18 @@ Global
 		{53C5D31F-EB90-437F-B658-F0EC397C83E0}.Release|x86.ActiveCfg = Release|Any CPU
 		{4594AD7B-129D-4ED1-B77F-9092FBBEA96F}.Release|x86.Build.0 = Release|Any CPU
 		{53C5D31F-EB90-437F-B658-F0EC397C83E0}.Release|x86.Build.0 = Release|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Debug|x64.Build.0 = Debug|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Debug|x86.Build.0 = Debug|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Release|x64.ActiveCfg = Release|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Release|x64.Build.0 = Release|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Release|x86.ActiveCfg = Release|Any CPU
+		{0C060261-58B0-4F8C-BCA6-441D094DB63E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

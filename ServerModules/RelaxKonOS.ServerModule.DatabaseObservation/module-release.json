@@ -1,0 +1,11 @@
+{
+  "moduleId": "relaxkonos.database",
+  "name": "Database Observation",
+  "project": "RelaxKonOS.ServerModule.DatabaseObservation.csproj",
+  "entryAssembly": "RelaxKonOS.ServerModule.DatabaseObservation.dll",
+  "entryType": "RelaxKonOS.ServerModule.DatabaseObservation.DatabaseModuleHostEntry",
+  "runtime": "module-host",
+  "rids": ["linux-x64"],
+  "hostApiMinimum": "2.4.0",
+  "hostApiMaximumExclusive": "3.0.0"
+}

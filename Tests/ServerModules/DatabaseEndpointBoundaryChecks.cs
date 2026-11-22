@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ServerModule.Database;
+using RelaxKonOS.ServerModule.DatabaseObservation;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -209,6 +210,12 @@ internal static class DatabaseEndpointBoundaryChecks
 
     private static async Task CheckModuleEntryAsync()
     {
+        var entryAssembly = typeof(DatabaseModuleHostEntry).Assembly;
+        var executionAssembly = typeof(DatabaseQueries).Assembly;
+        if (entryAssembly == executionAssembly || entryAssembly.GetReferencedAssemblies()
+                .Any(reference => reference.Name == executionAssembly.GetName().Name))
+            throw new InvalidOperationException("The isolated observation entry must not include or reference database execution.");
+
         var observation = new EntryObservationFixture();
         var entry = new DatabaseModuleHostEntry();
         var context = new EntryContext(entry.Id, observation);

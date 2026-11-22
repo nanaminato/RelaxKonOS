@@ -209,3 +209,4 @@ Helper 从宿主 `os-release`、进程架构和 systemd 判定准入。按平台
 验收入口见 [PostgreSQL 测试说明](../../Tests/PostgreSql/README.md#db-07d-native-platforms)。两套组合的真实主机部署、跨补丁数据更新与完整远程访问验收待补。
 
 桌面包 0.3.0 在联合部署中声明必需的服务端模块 `relaxkonos.database`，匹配能力 `server.database`。已经启用且满足要求的数据库模块可由联合部署复用。
+独立候选的发布入口位于 `RelaxKonOS.ServerModule.DatabaseObservation`，只包含观察路由和共享 SDK 契约。Core 的数据库执行程序集持有安装适配器、备份调度与凭据存储。

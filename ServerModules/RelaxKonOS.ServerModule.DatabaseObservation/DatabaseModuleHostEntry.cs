@@ -5,7 +5,7 @@ using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using RelaxKonOS.Protocol.Databases;
 
-namespace RelaxKonOS.ServerModule.Database;
+namespace RelaxKonOS.ServerModule.DatabaseObservation;
 
 /// <summary>The isolated database entry serves observation through the Core-owned read broker.</summary>
 public sealed class DatabaseModuleHostEntry : IModuleHostEntry, IModuleHostHttp
