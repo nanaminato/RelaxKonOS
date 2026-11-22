@@ -175,35 +175,7 @@
         </StackPanel>
        </Border>
 
-       <!-- Read-only facts from the application that still owns this component's lifecycle. -->
-       <Border Classes="panel-card" IsVisible="{Binding ShowHostObservation}">
-        <StackPanel Spacing="12">
-         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-          <StackPanel Spacing="3">
-           <TextBlock Classes="section-title" Text="{loc:Loc component_center.observation.title}" />
-           <TextBlock Classes="section-hint" Text="{loc:Loc component_center.observation.hint}" />
-          </StackPanel>
-          <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc component_center.observation.read}"
-                  Command="{Binding ObserveHostCommand}" IsEnabled="{Binding CanObserveHost}" VerticalAlignment="Center" />
-         </Grid>
-         <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsObservingHost}" />
-         <Grid ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto" RowSpacing="6"
-               IsVisible="{Binding HasHostObservation}">
-          <TextBlock Classes="field-value" FontSize="12" Text="{Binding HostObservationPlatformText}" />
-          <TextBlock Grid.Column="1" Classes="field-value" FontSize="12" Text="{Binding HostObservationManagementText}" />
-          <TextBlock Grid.Row="1" Classes="field-value" FontSize="12" Text="{Binding HostObservationVersionText}" />
-          <TextBlock Grid.Row="1" Grid.Column="1" Classes="field-value" FontSize="12" Text="{Binding HostObservationStateText}" />
-         </Grid>
-         <Border Classes="inset-block" IsVisible="{Binding HasHostObservation}">
-          <TextBlock Text="{Binding HostObservationNoteText}" TextWrapping="Wrap" FontSize="12"
-                     Foreground="{DynamicResource TextSecondaryBrush}" />
-         </Border>
-         <TextBlock Text="{Binding HostObservationNotice}" TextWrapping="Wrap" FontSize="12"
-                    IsVisible="{Binding !HostObservationNotice.IsEmpty}"
-                    Foreground="{DynamicResource TextTertiaryBrush}" />
-        </StackPanel>
-       </Border>
-
+       <component:ComponentHostObservationView IsVisible="{Binding ShowHostObservation}" />
        <Border Classes="panel-card" IsVisible="{Binding ShowOfficialDownloads}">
         <StackPanel Spacing="14">
          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -382,23 +354,7 @@
         <views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding DetailRuntime}" />
        </StackPanel>
 
-       <!-- Nothing matched: say what the host knows instead of leaving the page blank. This lives
-            inside the component branch, so the module page never shows a component empty state. -->
-       <Border HorizontalAlignment="Center" Margin="0,64,0,0" IsVisible="{Binding !HasResults}">
-        <StackPanel Spacing="12" MaxWidth="380" HorizontalAlignment="Center">
-         <Border Width="46" Height="46" CornerRadius="23" HorizontalAlignment="Center"
-                 Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}"
-                 BorderThickness="1">
-          <Path Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
-                StrokeThickness="1.5" StrokeJoin="Round" Stroke="{DynamicResource TextTertiaryBrush}"
-                Data="M3 3 H10 V10 H3 Z M14 3 H21 V10 H14 Z M3 14 H10 V21 H3 Z M14 14 H21 V21 H14 Z" />
-         </Border>
-         <TextBlock Text="{loc:Loc component_center.choose_component}" FontSize="15" FontWeight="SemiBold"
-                    HorizontalAlignment="Center" />
-         <TextBlock Text="{Binding EmptyMessage}" TextWrapping="Wrap" FontSize="12" LineHeight="18" TextAlignment="Center"
-                    Foreground="{DynamicResource TextTertiaryBrush}" />
-        </StackPanel>
-       </Border>
+       <component:ComponentCenterEmptyView IsVisible="{Binding !HasResults}" />
       </StackPanel>
      </StackPanel>
   </component:ComponentCenterLayout.Details>

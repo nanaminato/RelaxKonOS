@@ -20,8 +20,17 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 }
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
-public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout
+public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation
 {
+    string IComponentCenterEmptyState.EmptyMessage => EmptyMessage.Resolve();
+    ICommand IComponentHostObservation.ObserveHostCommand => ObserveHostCommand;
+    string IComponentHostObservation.HostObservationPlatformText => HostObservationPlatformText.Resolve();
+    string IComponentHostObservation.HostObservationManagementText => HostObservationManagementText.Resolve();
+    string IComponentHostObservation.HostObservationVersionText => HostObservationVersionText.Resolve();
+    string IComponentHostObservation.HostObservationStateText => HostObservationStateText.Resolve();
+    string IComponentHostObservation.HostObservationNoteText => HostObservationNoteText.Resolve();
+    string IComponentHostObservation.HostObservationNotice => HostObservationNotice.Resolve();
+
     string IComponentCenterLayout.ConnectionText => ConnectionText.Resolve();
     string IComponentCenterLayout.HeaderOutcomeText => HeaderOutcomeText.Resolve();
 

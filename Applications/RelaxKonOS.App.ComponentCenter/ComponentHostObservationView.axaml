@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ xmlns:converters="using:Avalonia.Data.Converters"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentHostObservationView" x:DataType="local:IComponentHostObservation">
+ <Border Classes="panel-card">
+  <StackPanel Spacing="12">
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="section-title" Text="{local:Loc component_center.observation.title}" />
+     <TextBlock Classes="section-hint" Text="{local:Loc component_center.observation.hint}" />
+    </StackPanel>
+    <Button Grid.Column="1" Classes="ghost-action" Content="{local:Loc component_center.observation.read}"
+            Command="{Binding ObserveHostCommand}" IsEnabled="{Binding CanObserveHost}" VerticalAlignment="Center" />
+   </Grid>
+   <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsObservingHost}" />
+   <Grid ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto" RowSpacing="6"
+         IsVisible="{Binding HasHostObservation}">
+    <TextBlock Classes="field-value" FontSize="12" Text="{Binding HostObservationPlatformText}" />
+    <TextBlock Grid.Column="1" Classes="field-value" FontSize="12" Text="{Binding HostObservationManagementText}" />
+    <TextBlock Grid.Row="1" Classes="field-value" FontSize="12" Text="{Binding HostObservationVersionText}" />
+    <TextBlock Grid.Row="1" Grid.Column="1" Classes="field-value" FontSize="12" Text="{Binding HostObservationStateText}" />
+   </Grid>
+   <Border Classes="inset-block" IsVisible="{Binding HasHostObservation}">
+    <TextBlock Text="{Binding HostObservationNoteText}" TextWrapping="Wrap" FontSize="12"
+               Foreground="{DynamicResource TextSecondaryBrush}" />
+   </Border>
+   <TextBlock Text="{Binding HostObservationNotice}" TextWrapping="Wrap" FontSize="12"
+              IsVisible="{Binding HostObservationNotice, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}"
+              Foreground="{DynamicResource TextTertiaryBrush}" />
+  </StackPanel>
+ </Border>
+</UserControl>
