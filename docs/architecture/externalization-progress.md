@@ -676,3 +676,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 当前 Linux x64 自包含 ModuleHost 和 Helper 发布通过。一次性 WSL 服务目录用正式 `modules host-probe` 探测已离线安装的 Databases 9.0.0 归档，独立进程加载入口、报告健康并正常退出，安装目录索引和包操作回执逐字节不变。该命令是进程级诊断，实际监督启动和通过真实 Helper 的查询仍待复验。
 - 一次性 Ubuntu 容器用发行 Core 和真实 Linux Helper 核对已停用 Databases 时的启动。移除执行程序集后，Helper 未运行时 Core 拒绝启动。启动 root Helper 后，非特权 Core 通过正式 Unix socket 发出 PostgreSQL 与 MySQL 查询，Helper 日志确认两项请求完成，Core `/healthz` 返回 200。此轮核对停用保护，尚未执行独立模块在线联合部署。
 - 一次性无外网 Ubuntu 容器使用正式安装脚本配置固定 sudo launcher。非特权发行 Core 重启后监督 Databases 9.0.0 在独立 Unix 身份下运行，Core 健康返回 200，同一离线安装回执从 AwaitingRestart 转为 Succeeded，Core 退出后独立工作进程已回收。代码信任由夹具为精确归档预置；桌面在线授权及真实 Helper 业务查询仍待复验。
+- 一次性 Ubuntu 容器以发行 Core、正式 sudo launcher 和真实 Unix socket Helper 运行 Databases 9.0.0。临时 PAM 用户两次登录后刷新首设备令牌，核对其观察者角色。模块健康和版本匹配，四条公开数据库查询均返回 200 和 JSON，Helper 日志确认四项请求完成。代码信任仍由夹具为精确安装记录预置，桌面发起的 HTTPS 联合安装及多设备实机验收仍待完成。
