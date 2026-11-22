@@ -62,12 +62,8 @@ internal static class InstalledModuleInstaller
             65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
         var candidate = await ModulePackageVerifier.VerifyCandidateAsync(archive, Encoding.UTF8.GetBytes(envelope),
             policy, context, verified.NextHistory, releaseId, now, cancellationToken);
-        if (ServerModules.Create(new ConfigurationBuilder().Build()).KnownModuleIds.Contains(candidate.Manifest.ModuleId)
-            && !ServerModules.IsOfficialDatabaseModuleHost(candidate.Manifest)
-            && !InstalledTailscaleModule.MatchesManifest(candidate.Manifest)
-            && !InstalledFirewallModule.MatchesManifest(candidate.Manifest)
-            && !InstalledGitModule.MatchesManifest(candidate.Manifest))
-            throw new ModulePackageException("module-package-module-id-conflict");
+        if (ServerModules.ConflictsWithBundledModule(candidate.Manifest))
+            throw new ModulePackageException(ServerModules.PackageModuleIdConflict);
         if (checkInstalledDependencies) ValidateDependencies(contentRoot, configuration, candidate.Manifest);
         return new(candidate.Manifest, release.ManifestSha256, candidate.ArchiveSha256, candidate.ArchiveBytes,
             sourceId, releaseId);

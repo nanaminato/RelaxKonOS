@@ -5,6 +5,15 @@ namespace RelaxKonOS.Server.Startup;
 // on their own, and gives future assembly-per-module work a single place to register a module.
 internal sealed partial class ServerModules
 {
+    internal const string PackageModuleIdConflict = "module-package-module-id-conflict";
+    private static readonly Lazy<HashSet<string>> BundledIds = new(() =>
+        Catalog().Select(module => module.Id).ToHashSet(StringComparer.Ordinal));
+
+    internal static bool ConflictsWithBundledModule(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
+        BundledIds.Value.Contains(manifest.ModuleId) && !IsOfficialDatabaseModuleHost(manifest)
+        && !InstalledTailscaleModule.MatchesManifest(manifest) && !InstalledFirewallModule.MatchesManifest(manifest)
+        && !InstalledGitModule.MatchesManifest(manifest);
+
     internal static bool IsOfficialDatabaseModuleHost(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
         manifest.ModuleId == DatabaseId && manifest.Runtime == "module-host" && manifest.Purpose == "official";
 

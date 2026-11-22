@@ -76,6 +76,7 @@ internal static class ModulePackageHttpChecks
             ModulePackageBuildResult[] tailscale = [];
             ModulePackageBuildResult[] firewall = [];
             ModulePackageBuildResult[] git = [];
+            ModulePackageBuildResult? incompatibleGit = null;
             if (!isolated)
             {
                 var tailscalePublish = Path.Combine(AppContext.BaseDirectory, "Modules", "Tailscale");
@@ -122,11 +123,13 @@ internal static class ModulePackageHttpChecks
                 git = [await ModulePackageBuilder.BuildAsync(gitOptions, now),
                     await ModulePackageBuilder.BuildAsync(gitOptions with
                     { Version = "2.0.0", ReleaseId = "git-2.0.0-" + rid }, now)];
+                incompatibleGit = await ModulePackageBuilder.BuildAsync(gitOptions with
+                { Version = "3.0.0", ReleaseId = "git-3.0.0-" + rid, CapabilityContractVersions = null }, now);
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
                     now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
-                        .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release)], [], []), "builder-key", keyPath)).Envelope;
+                        .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
@@ -208,7 +211,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4 + tailscale.Length + firewall.Length + git.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -216,6 +219,33 @@ internal static class ModulePackageHttpChecks
                 "official", releaseId, now, downloadHandler);
             check(downloaded.Bytes == built.ArchiveBytes && downloaded.Sha256 == built.ArchiveSha256,
                 "module store download writes the exact catalog artifact into staging");
+            if (incompatibleGit is not null)
+            {
+                var gitOffers = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
+                    ServerModuleManagementRoutes.ModuleStoreSearch + "?q=" + ServerModules.GitId, RelaxKonOSJsonOptions.Default);
+                check(gitOffers?.Items.Single(item => item.Version == "3.0.0").BlockedBy is
+                    [{ ProblemCode: ServerModules.PackageModuleIdConflict }],
+                    "the store blocks a correctly signed Git package without its required capability contract");
+                try
+                {
+                    await ModulePackageDownloader.DownloadAsync(root, builder.Configuration, builder.Environment,
+                        "official", incompatibleGit.Manifest.ReleaseId, now, downloadHandler);
+                    check(false, "the blocked Git package must not download");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == ServerModules.PackageModuleIdConflict)
+                {
+                    check(true, "the downloader rejects the same package before using the delivery handler");
+                }
+                using var conflictingUpload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
+                    new ByteArrayContent(await File.ReadAllBytesAsync(incompatibleGit.ArchivePath)));
+                conflictingUpload.EnsureSuccessStatusCode();
+                var conflictingStage = (await conflictingUpload.Content.ReadFromJsonAsync<ServerModulePackageUploadDto>(RelaxKonOSJsonOptions.Default))!;
+                using var conflictingPlan = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                    new ServerModulePackageInstallRequest("official", incompatibleGit.Manifest.ReleaseId, conflictingStage.UploadId), RelaxKonOSJsonOptions.Default);
+                using var conflictProblem = JsonDocument.Parse(await conflictingPlan.Content.ReadAsStringAsync());
+                check(!conflictingPlan.IsSuccessStatusCode && conflictProblem.RootElement.GetProperty("problemCode").GetString() == ServerModules.PackageModuleIdConflict,
+                    "a manual upload cannot bypass the same bundled module replacement check");
+            }
 
             string? dependentApplyRoute = null;
             if (dependent is not null)
@@ -417,7 +447,8 @@ internal static class ModulePackageHttpChecks
         var moduleId = packages[0].Manifest.ModuleId;
         var offers = await client.GetFromJsonAsync<ServerModuleStorePageDto>(ServerModuleManagementRoutes.ModuleStoreSearch
             + "?q=" + moduleId, RelaxKonOSJsonOptions.Default);
-        check(offers?.Items.Count == packages.Length && offers.Items.All(offer => offer.ModuleId == moduleId
+        var available = offers?.Items.Where(offer => offer.BlockedBy.Count == 0).ToArray();
+        check(available?.Length == packages.Length && available.All(offer => offer.ModuleId == moduleId
             && offer.RidCompatible && offer.Capabilities.SequenceEqual(packages[0].Manifest.Capabilities)),
             $"HTTP advertises both signed {moduleId} versions with their declared capability");
         foreach (var package in packages)

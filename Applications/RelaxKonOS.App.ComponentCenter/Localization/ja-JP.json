@@ -805,6 +805,7 @@
     "server_modules.problem.module_package_release_revoked": "リリースは取り消されています。",
     "server_modules.problem.module_package_rid_mismatch": "パッケージはこのプラットフォームと互換しません。",
     "server_modules.problem.module_package_host_api_incompatible": "パッケージが要求する Host API はこのサーバーと互換しません。",
+    "server_modules.problem.module_package_module_id_conflict": "このパッケージは組み込みモジュールを置き換えるためのサーバー要件を満たしていません。",
     "server_modules.problem.module_package_artifact_verification_required": "先に成果物を検証してください。",
     "server_modules.problem.module_package_dependency_verification_required": "先に依存関係を検証してください。",
     "server_modules.problem.module_package_actions_unsupported": "同梱モジュールは個別パッケージ操作を提供しません。",

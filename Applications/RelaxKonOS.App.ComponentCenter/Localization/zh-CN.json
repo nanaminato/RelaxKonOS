@@ -805,6 +805,7 @@
     "server_modules.problem.module_package_release_revoked": "发布已撤销。",
     "server_modules.problem.module_package_rid_mismatch": "包与当前平台不兼容。",
     "server_modules.problem.module_package_host_api_incompatible": "包要求的 Host API 与当前服务器不兼容。",
+    "server_modules.problem.module_package_module_id_conflict": "此包不符合服务器替换该内置模块的要求。",
     "server_modules.problem.module_package_artifact_verification_required": "需要先验证制品。",
     "server_modules.problem.module_package_dependency_verification_required": "需要先验证依赖。",
     "server_modules.problem.module_package_actions_unsupported": "内置模块不开放独立包操作。",

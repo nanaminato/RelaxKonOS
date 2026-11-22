@@ -805,6 +805,7 @@
     "server_modules.problem.module_package_release_revoked": "The release has been revoked.",
     "server_modules.problem.module_package_rid_mismatch": "The package does not match this platform.",
     "server_modules.problem.module_package_host_api_incompatible": "The package requires an incompatible Host API.",
+    "server_modules.problem.module_package_module_id_conflict": "The package does not meet the server’s requirements for replacing this built-in module.",
     "server_modules.problem.module_package_artifact_verification_required": "Verify the artifact first.",
     "server_modules.problem.module_package_dependency_verification_required": "Verify the dependencies first.",
     "server_modules.problem.module_package_actions_unsupported": "Bundled modules do not expose independent package actions.",

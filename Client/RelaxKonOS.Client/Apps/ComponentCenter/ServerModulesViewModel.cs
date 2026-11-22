@@ -406,7 +406,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public bool CanRollbackPackage => !Busy && CanManage && SelectedPackageVersion is { Active: false } version
         && !Modules.Any(module => module.Id == version.ModuleId && module.EffectiveEnabled && module.ResourceReleaseLevel == "process");
     public bool CanInstallStoreItem => !Busy && CanManage
-        && SelectedStoreItem is { Revoked: false, RidCompatible: true, HostApiCompatible: true };
+        && SelectedStoreItem is { Revoked: false, RidCompatible: true, HostApiCompatible: true, BlockedBy.Count: 0 };
     private int _versionRequest;
     public IReadOnlyList<ServerModulePolicyChoice> PolicyChoices { get; } = [new("KeepLoaded", LocalizedText.Get), new("IdleDelayed", LocalizedText.Get), new("ReleaseOnLogout", LocalizedText.Get)];
     [ObservableProperty] private ServerModulePolicyChoice policyChoice = new("IdleDelayed", LocalizedText.Get);
@@ -1573,6 +1573,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             "module-package-release-revoked" => LocalizedStatus.Key("server_modules.problem.module_package_release_revoked"),
             "module-package-rid-mismatch" => LocalizedStatus.Key("server_modules.problem.module_package_rid_mismatch"),
             "module-package-host-api-incompatible" => LocalizedStatus.Key("server_modules.problem.module_package_host_api_incompatible"),
+            "module-package-module-id-conflict" => LocalizedStatus.Key("server_modules.problem.module_package_module_id_conflict"),
             "module-package-artifact-verification-required" => LocalizedStatus.Key("server_modules.problem.module_package_artifact_verification_required"),
             "module-package-dependency-verification-required" => LocalizedStatus.Key("server_modules.problem.module_package_dependency_verification_required"),
             "module-package-actions-unsupported" => LocalizedStatus.Key("server_modules.problem.module_package_actions_unsupported"),
