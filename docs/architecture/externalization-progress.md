@@ -868,3 +868,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Proxy 联合验收使用发行 Developer 配置与官方 Proxy 归档的测试副本，排除离线项以隔离场景。官方商店自动选中该归档，生产审阅生成包含一个缺失签名 Proxy 版本的计划。拒绝计划后，服务端没有安装回执，桌面应用未登记。随后原签名安装、重启恢复和共享依赖验收同轮通过。
 - Developer 商店签名 Proxy 审阅在服务端连接或名称解析失败时显示本地化的重试提示。Linux x64 在首个服务端请求模拟连接失败，确认保留同一个已暂存归档、未请求确认且未产生安装回执。恢复传输后同一入口生成签名计划，后续安装与重启恢复同轮通过。中英日资源校验通过。
 - Developer 中已选但缺失或版本不足的应用在官方商店显示最低要求并禁止暂存。Linux x64 联合验收用缺失的 Docker 和提高最低版本的 Git 验证两条路径，均保留选项且无法提交。满足条件的 Proxy 仍可生成签名计划并完成独立安装。三语校验通过。
+- 安装配置按配置集保存排除项。Windows Release 发行验收确认切到 Minimal 再返回 Standard 仍排除 Welcome，返回 Developer 仍排除 Squid 并保留 Proxy 选择。切换时已安装包及用户主动卸载状态均得到保留。

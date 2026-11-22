@@ -150,11 +150,22 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             if (exclusions.Length == 0 || saved.Excluded.SequenceEqual(exclusions, StringComparer.Ordinal))
                 return saved;
         }
-        return new(profile, exclusions);
+        if (saved is null || saved.Profile == profile)
+            return new(profile, exclusions, saved?.OtherProfileExclusions);
+
+        var other = saved.OtherProfileExclusions is null
+            ? new Dictionary<string, string[]>(StringComparer.Ordinal)
+            : new Dictionary<string, string[]>(saved.OtherProfileExclusions, StringComparer.Ordinal);
+        if (saved.Profile is { Length: > 0 } && document.Profiles.ContainsKey(saved.Profile) && saved.Excluded is { Length: > 0 })
+            other[saved.Profile] = saved.Excluded;
+        if (other.Remove(profile, out var previous) && exclusions.Length == 0 && previous is not null)
+            exclusions = previous;
+        return new(profile, exclusions, other);
     }
 
     internal sealed record ProfileDocument(int SchemaVersion, string DefaultProfile, Dictionary<string, ProfileApplication[]> Profiles);
     internal sealed record ProfileApplication(string AppId, string MinimumVersion, string InstallPolicy);
-    internal sealed record ProfileSelection(string Profile, string[] Excluded);
+    internal sealed record ProfileSelection(string Profile, string[] Excluded,
+        Dictionary<string, string[]>? OtherProfileExclusions = null);
     private sealed record ProvisionedApplication(string Id, string Version);
 }

@@ -431,4 +431,4 @@ GET {origin}/{catalogPath}
 - [外部 Shell 包](../desktop/RelaxKonOS.ExternalShellPackages.md)
 - [应用兼容性](../development/RelaxKonOS.ApplicationCompatibility.md)
 - [Android 应用包方案](../../Client/RelaxKonOS.Client.Android/docs/design/ApplicationPackages.Design.md)
-桌面首次启动且没有已保存的配置集或显式启动参数时，在预装前打开应用选择窗口。默认选中 Standard。用户可以切换配置、取消应用，或跳过预装并选用 Minimal。确认后通过原协调器预装，重启读取已保存的选择。应用安装器把已经选择、版本满足配置集要求且仍需安装或升级的交互式应用列在官方应用清单前面。用户从该清单打开应用，继续在原有联合部署流程中审阅和确认。
+桌面首次启动且没有已保存的配置集或显式启动参数时，在预装前打开应用选择窗口。默认选中 Standard。用户可以切换配置、取消应用，或跳过预装并选用 Minimal。确认后通过原协调器预装。每个配置集分别保存排除项，切回该配置集时恢复它的选择。应用安装器在官方应用清单中标注已选且仍需安装或升级的交互式应用。缺少满足最低版本的发行包时保留该条目并显示版本要求。用户从清单打开可用归档，在原有联合部署流程中审阅和确认。

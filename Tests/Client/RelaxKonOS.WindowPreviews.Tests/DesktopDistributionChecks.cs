@@ -100,6 +100,10 @@ internal static class DesktopDistributionChecks
                         expected.Remove(excludedApp);
                         await provisioner.RunAsync([], cancellationToken, _ =>
                             throw new InvalidOperationException("The first-run window reopened after saving its selection."));
+                        await provisioner.RunAsync(["--installation-profile=minimal"], cancellationToken);
+                        await provisioner.RunAsync(["--installation-profile=standard"], cancellationToken);
+                        if (packages.FindInstalled(excludedApp) is not null)
+                            throw new InvalidOperationException("Returning to Standard installed an excluded application.");
                     }
                     else
                     {
@@ -176,6 +180,10 @@ internal static class DesktopDistributionChecks
                         if (packages.FindInstalled(removed) is not null || packages.Installed.Count != actual.Count - 1
                             || actual.Any(pair => pair.Key != removed && packages.FindInstalled(pair.Key) != pair.Value))
                             throw new InvalidOperationException("Returning to Developer restored a removed package or replaced a remaining one.");
+                        var restoredChoices = await provisioner.ReadInteractiveChoicesAsync(cancellationToken);
+                        if (restoredChoices.All(entry => entry.AppId != proxy.Id)
+                            || restoredChoices.Any(entry => entry.AppId == "relaxkonos.squid"))
+                            throw new InvalidOperationException("Returning to Developer erased its saved application exclusions.");
                         Console.WriteLine("Profile switching preserved installed packages and the user's removal.");
                     }
                 }
