@@ -93,6 +93,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Linux 客户端打包脚本在生成 ZIP 前自动执行同一发行校验。Bash 语法检查和 Windows Release 的实际 29 个归档校验通过。本轮未生成完整 Linux 客户端发行 ZIP。
 - 使用 Windows SDK 跨平台发布自包含 Linux x64 桌面及无头测试宿主。Linux RID 发行的 29 个官方归档、预装配置及宿主依赖图通过校验。专用 WSL 使用同一发行归档跑完三配置预装、13 个基础应用缺失修复、Terminal / Task Manager 启动前能力检查及配置切换。图形进程已进入 Avalonia X11 初始化，因 WSL 缺少 `libX11.so.6` 无法打开窗口。本轮未生成 Linux ZIP。
 - 使用正式 PowerShell 打包脚本生成 Linux x64 自包含客户端 ZIP，版本为 `0.3.0-externalization`。ZIP 摘要与描述符及独立摘要文件相符。解包后，文件清单校验、29 个官方应用包和桌面依赖边界校验均通过。此轮使用 Windows 跨平台打包，未执行 Linux Bash 打包入口。
+- 在 WSL 临时目录解出 X11 运行库并复验上述正式 ZIP 的解包产物。Minimal、Standard、Developer 分别登记 0、13、14 个应用，三次均打开归属于客户端进程的可见 X11 窗口，并响应窗口关闭请求以状态 0 退出。图形库未安装到 WSL 系统目录。
 - Android 离线 Gradle 检查通过，当前缓存报告包含 1,906 项通过、无跳过。Debug 与测试 APK 已装入本机只读模拟器。Server Center 维护恢复的 9 项设备测试全部通过，覆盖活动重建、旧确认失效、草稿保留，以及读取原回执而不重复提交。此轮未连接真实远端服务。
 - Windows Release 使用实际发行归档复验 Standard 列出的全部 13 个基础应用。Minimal 对每个应用先恢复缺失安装，再删除已装版本的图标或应用依赖清单，通过同版本修复核对文件字节和应用登记。Standard / Developer 预装和配置切换回归通过。
 - Windows Release 使用 Standard 实际预装的 Terminal 和 Task Manager 验证启动要求。无服务端及逐项缺失终端、指标或进程能力时均在激活前阻断，服务端能力恢复后观察回调执行一次。独立应用可用性专项也复验 URI、已有窗口、文件打开、文本回退和终端路径均受启动守卫约束。

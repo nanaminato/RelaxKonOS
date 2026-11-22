@@ -6,6 +6,8 @@ The client has two supported distribution forms: a portable ZIP for Linux and Wi
 
 Download the client ZIP for the host architecture, verify its published SHA-256 checksum, then extract and run it. No .NET runtime or environment variables are required.
 
+On Linux, the desktop client requires a graphical session with X11 access and the system X11 libraries. If startup reports that `libX11.so.6` could not be loaded, make the X11 client library available on the host before launching again.
+
 ```bash
 unzip RelaxKonOS-*-linux-x64-client.zip -d RelaxKonOS-client
 chmod +x RelaxKonOS-client/payload/linux/client/RelaxKonOS
