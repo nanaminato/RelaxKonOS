@@ -35,7 +35,7 @@
 | squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows Release 包生命周期已验，真实 Squid 待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
-| certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
+| certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows、Linux 签名双包已验，Linux 隔离 Pebble 真实签发及重启恢复已验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 隔离模块启用、重启恢复和证书依赖保护已验，Nginx 业务联调待验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
@@ -825,3 +825,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Certificates 双包真实 HTTP 签发完成后复用同一幂等键和请求。返回原 Succeeded 回执、操作 ID 与证书 ID，Pebble 仍仅有一个订单及一次 finalization。
 - 仓库 run-acme-live.sh 可在隔离网络命名空间直接复跑签名 Certificates 真实签发。将 RK_TEST_ACME_APP 指向实际桌面归档，第二参数传 Linux 自包含 ServerModules 测试宿主，第三和第四参数传 Pebble 与挑战 DNS 二进制。签名模式校验一个订单和一次 finalization；本轮 HTTP 授权、签发回执、重放、链校验及卸载全部通过。
 - Linux x64 签名 Certificates 的真实 Pebble HTTP 验收增加签发宿主重启后恢复。新宿主从持久化回执读取原成功的操作和证书 ID，使用相同幂等键再次提交返回同一完整回执，Pebble 确认仍只有一个订单及一次 finalization。
+- Linux x64 真实 Pebble 双包验收在签发宿主重启后按原回执的证书 ID 读取详情及证书清单，两处均返回同一有效证书和指纹。CA 保持一个订单及一次 finalization。

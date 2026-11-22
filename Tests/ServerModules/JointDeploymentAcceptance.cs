@@ -218,6 +218,13 @@ internal static class JointDeploymentAcceptance
                     && recovered.OperationId == completed.OperationId && recovered.CertificateId == completed.CertificateId
                     && replayed == recovered,
                     "after restart the production certificate API recovers and replays the original issuance receipt");
+                var certificatePath = CertificateApiRoutes.ById.Replace("{id}", completed.CertificateId!.Value.ToString("D"));
+                var certificate = await client.GetFromJsonAsync<CertificateDto>(certificatePath, RelaxKonOSJsonOptions.Default);
+                var inventory = await client.GetFromJsonAsync<CertificateDto[]>(CertificateApiRoutes.Certificates, RelaxKonOSJsonOptions.Default);
+                Require(certificate is { PrimaryDomain: "localhost", Status: CertificateStatus.Active, Thumbprint.Length: > 0 }
+                    && certificate.Id == completed.CertificateId
+                    && inventory is [var listed] && listed.Id == certificate.Id && listed.Thumbprint == certificate.Thumbprint,
+                    "after restart certificate detail and inventory expose the same persisted ACME certificate");
             }
             finally { await restarted.StopAsync(); }
 
