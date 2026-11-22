@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services.AppPackages;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
@@ -30,7 +31,14 @@ internal static class DesktopDistributionChecks
         var published = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(source, "installation-profiles.json"), cancellationToken))!;
         var parent = Path.Combine(System.AppContext.BaseDirectory, "preview-qa");
         var root = Path.Combine(parent, "desktop-profile-" + Guid.NewGuid().ToString("N"));
-        using var services = new ServiceCollection().BuildServiceProvider();
+        using var services = new ServiceCollection()
+            .AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>()
+            .AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>()
+            .AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>()
+            .AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>()
+            .AddSingleton<RelaxKonOS.Client.Apps.Settings.SettingsApp>()
+            .BuildServiceProvider();
+        var builtIns = new BuiltInApplicationRegistry(services);
         try
         {
             foreach (var profile in new[] { "minimal", "standard", "developer" })
@@ -41,8 +49,12 @@ internal static class DesktopDistributionChecks
                 var windows = new RelaxKonOS.WindowManager.WindowManager();
                 var applications = new ApplicationManager(windows, services);
                 var permissions = new RoappCatalogChecks.Permissions();
+                var diagnostics = new RoappCatalogChecks.Diagnostics();
+                var scanner = new ApplicationCatalogScanner(drive, new BuiltInDescriptorSeeder(drive, builtIns), builtIns,
+                    services, diagnostics);
+                await scanner.ScanAndRegisterBuiltInsAsync(applications, cancellationToken);
                 var packages = new DeveloperPackageManager(applications, null!, windows, permissions,
-                    new RoappCatalogChecks.Diagnostics(), drive, source);
+                    diagnostics, drive, source);
                 var installer = new AppPackageInstallerService(packages, null!, catalog);
                 var coordinator = new JointAppDeploymentService(null!, null!, installer, packages, applications,
                     new FileDeploymentJournal(Path.Combine(destination, "journal")));
@@ -58,6 +70,9 @@ internal static class DesktopDistributionChecks
                     var extra = actual.Keys.Except(expected.Keys);
                     if (missing.Any() || extra.Any())
                         throw new InvalidOperationException($"{profile} profile mismatch. Missing: {string.Join(", ", missing)}. Extra: {string.Join(", ", extra)}.");
+                    var recoveryApp = new AppId("relaxkonos.appinstaller");
+                    if (!applications.IsBuiltIn(recoveryApp) || !applications.SupportsFile(recoveryApp, "recovery.roapp"))
+                        throw new InvalidOperationException($"{profile} is missing the built-in package recovery entry.");
                     foreach (var (id, floor) in expected)
                         if (Version.Parse(actual[id].Version) < Version.Parse(floor) || applications.IsBuiltIn(new AppId(id))
                             || applications.GetManifest(new AppId(id))?.Version != actual[id].Version)
