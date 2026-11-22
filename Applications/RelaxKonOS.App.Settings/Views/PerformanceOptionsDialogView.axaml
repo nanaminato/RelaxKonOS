@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
-             x:Class="RelaxKonOS.Client.Apps.Settings.Views.PerformanceOptionsDialogView"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.Settings.Views"
+             x:Class="RelaxKonOS.App.Settings.Views.PerformanceOptionsDialogView"
              x:DataType="vm:PerformanceOptionsDialogViewModel"
              Background="{DynamicResource SurfaceBrush}" Width="520" Classes="builtin-app">
     <!-- Fixed heading -> scrolling options -> pinned action row. -->

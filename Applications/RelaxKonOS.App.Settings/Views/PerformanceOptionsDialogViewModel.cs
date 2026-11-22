@@ -1,26 +1,27 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Services;
 
-namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
+namespace RelaxKonOS.App.Settings.Views;
 
 /// <summary>Workspace-persisted visual-performance settings backed by effects that the desktop
 /// shell actually provides: managed-window shadows, drag rendering and taskbar previews.</summary>
 public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
 {
-    private readonly ShellSettings _settings;
-    private readonly Action _save;
+    private readonly Func<WindowEffects> _read;
+    private readonly Action<WindowEffects> _save;
     private readonly Action _close;
     private bool _applyingPreset;
 
-    public PerformanceOptionsDialogViewModel(ShellSettings settings, Action save, Action close)
+    public PerformanceOptionsDialogViewModel(Func<WindowEffects> read, Action<WindowEffects> save, Action close, Func<string, string> labels)
     {
-        _settings = settings;
+        _read = read;
+        Labels = labels;
+        var settings = read();
         _save = save;
         _close = close;
-        ShowShadows = settings.ShowWindowShadows;
-        ShowWindowContents = settings.ShowWindowContentsWhileDragging;
-        ShowThumbnails = settings.ShowTaskbarWindowPreviews;
+        ShowShadows = settings.ShowShadows;
+        ShowWindowContents = settings.ShowWindowContents;
+        ShowThumbnails = settings.ShowThumbnails;
         Preset = InferPreset();
     }
 
@@ -33,9 +34,9 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
     public bool BestAppearance { get => Preset == PerformancePreset.BestAppearance; set { if (value) Preset = PerformancePreset.BestAppearance; } }
     public bool BestPerformance { get => Preset == PerformancePreset.BestPerformance; set { if (value) Preset = PerformancePreset.BestPerformance; } }
     public bool Custom { get => Preset == PerformancePreset.Custom; set { if (value) Preset = PerformancePreset.Custom; } }
-    public bool HasChanges => ShowShadows != _settings.ShowWindowShadows
-        || ShowWindowContents != _settings.ShowWindowContentsWhileDragging
-        || ShowThumbnails != _settings.ShowTaskbarWindowPreviews;
+    public Func<string, string> Labels { get; }
+    private WindowEffects Current => new(ShowShadows, ShowWindowContents, ShowThumbnails);
+    public bool HasChanges => Current != _read();
 
     partial void OnPresetChanged(PerformancePreset value)
     {
@@ -89,10 +90,7 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(HasChanges))]
     private void Apply()
     {
-        _settings.ShowWindowShadows = ShowShadows;
-        _settings.ShowWindowContentsWhileDragging = ShowWindowContents;
-        _settings.ShowTaskbarWindowPreviews = ShowThumbnails;
-        _save();
+        _save(Current);
         OnPropertyChanged(nameof(HasChanges));
         ApplyCommand.NotifyCanExecuteChanged();
         OkCommand.NotifyCanExecuteChanged();
@@ -108,6 +106,8 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
     [RelayCommand]
     private void Cancel() => _close();
 }
+
+public readonly record struct WindowEffects(bool ShowShadows, bool ShowWindowContents, bool ShowThumbnails);
 
 public enum PerformancePreset
 {

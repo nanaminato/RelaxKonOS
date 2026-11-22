@@ -500,7 +500,17 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         systemPage.RequestPerformanceOptionsAsync = () =>
             context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.performance.title"), dialog => new PerformanceOptionsDialogView
             {
-                DataContext = new PerformanceOptionsDialogViewModel(settings, viewModel.Save, () => dialog.Close(true)),
+                DataContext = new PerformanceOptionsDialogViewModel(
+                    () => new WindowEffects(settings.ShowWindowShadows, settings.ShowWindowContentsWhileDragging, settings.ShowTaskbarWindowPreviews),
+                    effects =>
+                    {
+                        settings.ShowWindowShadows = effects.ShowShadows;
+                        settings.ShowWindowContentsWhileDragging = effects.ShowWindowContents;
+                        settings.ShowTaskbarWindowPreviews = effects.ShowThumbnails;
+                        viewModel.Save();
+                    },
+                    () => dialog.Close(true),
+                    key => LocalizedText.Get(key)),
             }, new Size(560, 610));
         var appsPage = viewModel.Pages.OfType<AppsPageViewModel>().Single();
         var personalizationPage = viewModel.Pages.OfType<PersonalizationPageViewModel>().Single();
