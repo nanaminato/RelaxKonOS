@@ -130,6 +130,22 @@ Check(backend.Applied.Count == attempts);
 var replacement = plan with { Id = Guid.NewGuid(), ExpiresAt = expiredStepPlan.ExpiresAt.AddMinutes(1) };
 await coordinator.ExecuteAsync(replacement);
 Check((await reopenedJournal.ReadPendingPlansAsync(binding.AccountId, binding.ConnectionIdentity)).Count == 0);
+var sourceA = new DeploymentComponentRelease("source-a", "fixture", "publisher-a", "release-a");
+var sourceB = sourceA with { SourceId = "source-b", PublisherId = "publisher-b" };
+var downloadA = plan with { Id = Guid.NewGuid(), ClientBinding = binding with { ComponentRelease = sourceA } };
+var downloadB = plan with { Id = Guid.NewGuid(), ExpiresAt = plan.ExpiresAt.AddMinutes(1),
+    ClientBinding = binding with { ComponentRelease = sourceB } };
+foreach (var download in new[] { downloadA, downloadB })
+{
+    await using var lease = await reopenedJournal.OpenAsync(download, CancellationToken.None);
+    await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
+}
+Check((await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
+    binding.AccountId, binding.ConnectionIdentity, componentRelease: sourceA))?.Id == downloadA.Id);
+Check((await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
+    binding.AccountId, binding.ConnectionIdentity, componentRelease: sourceB))?.Id == downloadB.Id);
+Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
+    binding.AccountId, binding.ConnectionIdentity) is null);
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend

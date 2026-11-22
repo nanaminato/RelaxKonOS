@@ -78,8 +78,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         {
             ArchivePath = archivePath,
             RecoverFromOfficialCatalog = candidate.OfficialRelease is not null && candidate.CatalogAuthorization is null,
-            ComponentRelease = candidate is { CatalogAuthorization: { } authorization, CatalogComponentId: { } componentId }
-                ? new(authorization.SourceId, componentId, authorization.PublisherId, authorization.ReleaseIdentity) : null,
+            ComponentRelease = ComponentReleaseOf(candidate),
         };
     }
 
@@ -88,11 +87,12 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     {
         var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
         var key = App(candidate.Manifest.Id);
+        var componentRelease = ComponentReleaseOf(candidate);
         var plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
-            digest, Guid.Empty, "", cancellationToken);
+            digest, Guid.Empty, "", cancellationToken, componentRelease);
         if (!localOnly && plan is null && session.CurrentUser is { } user && session.ServiceId is { } connection)
             plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
-                digest, user.Id, connection, cancellationToken);
+                digest, user.Id, connection, cancellationToken, componentRelease);
         if (plan?.ClientBinding is not { } binding) return null;
         if (!MatchesComponentRelease(binding, candidate, digest)) return null;
         return new(plan, candidate with
@@ -103,9 +103,14 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         });
     }
 
+    private static DeploymentComponentRelease? ComponentReleaseOf(AppPackageCandidate candidate) =>
+        candidate is { CatalogAuthorization: { } authorization, CatalogComponentId: { } componentId }
+            ? new(authorization.SourceId, componentId, authorization.PublisherId, authorization.ReleaseIdentity) : null;
+
     private static bool MatchesComponentRelease(DeploymentClientBinding? binding, AppPackageCandidate candidate, string digest) =>
         binding?.ComponentRelease is not { } reviewed
-        || candidate.CatalogComponentId == reviewed.ComponentId
+        ? candidate.CatalogAuthorization is null
+        : candidate.CatalogComponentId == reviewed.ComponentId
             && candidate.CatalogAuthorization is { } authorization
             && AppPackageInstallerService.MatchesReviewedComponentRelease(reviewed, digest, authorization);
 
@@ -126,13 +131,14 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             plans = [.. plans, .. await journal.ReadPendingPlansAsync(user.Id, connection, cancellationToken)];
 
         var candidates = new List<AppPackageCandidate>();
-        var recovered = new HashSet<(DeploymentPackageKey Package, string Digest)>();
+        var recovered = new HashSet<(DeploymentPackageKey Package, string Digest, DeploymentComponentRelease? Source)>();
         foreach (var plan in plans)
         {
             if (cancellationToken.IsCancellationRequested) break;
             if (plan.ClientBinding is not { } binding || !CanRecover(binding)) continue;
             var root = plan.OrderedReleases[^1];
-            if (recovered.Contains((root.Package, root.ArtifactIdentity))) continue;
+            var identity = (root.Package, root.ArtifactIdentity, binding.ComponentRelease);
+            if (recovered.Contains(identity)) continue;
             AppPackageCandidate? candidate = null;
             try
             {
@@ -147,7 +153,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 if (candidate is null) continue;
                 if (root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version) continue;
                 var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
-                if (digest == root.ArtifactIdentity && CanRecover(binding) && recovered.Add((root.Package, digest)))
+                if (digest == root.ArtifactIdentity && MatchesComponentRelease(binding, candidate, digest)
+                    && CanRecover(binding) && recovered.Add(identity))
                 {
                     candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true });
                     candidate = null; // The installer queue now owns the staged archive.

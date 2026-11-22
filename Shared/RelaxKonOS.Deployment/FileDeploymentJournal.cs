@@ -7,11 +7,13 @@ namespace RelaxKonOS.Deployment;
 public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
 {
     public async Task<DeploymentPlan?> FindPendingPlanAsync(DeploymentPackageKey package, string version,
-        string artifactIdentity, Guid accountId, string connectionIdentity, CancellationToken cancellationToken = default)
+        string artifactIdentity, Guid accountId, string connectionIdentity, CancellationToken cancellationToken = default,
+        DeploymentComponentRelease? componentRelease = null)
     {
         var entries = await ReadPendingEntriesAsync(accountId, connectionIdentity, cancellationToken);
         var match = entries.FirstOrDefault(entry => entry.Plan.OrderedReleases[^1] is var root
-            && root.Package == package && root.Version == version && root.ArtifactIdentity == artifactIdentity);
+            && root.Package == package && root.Version == version && root.ArtifactIdentity == artifactIdentity
+            && entry.Plan.ClientBinding?.ComponentRelease == componentRelease);
         return match?.Checkpoint.RequiresReview == false ? match.Plan : null;
     }
 
