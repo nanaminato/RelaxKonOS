@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Startup;
@@ -27,7 +28,11 @@ internal sealed class InstalledIsolatedModule(InstalledModuleRecord record, stri
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         _supervisor = endpoints.ServiceProvider.GetService<ModuleHostSupervisor>();
-        _database?.MapEndpoints(endpoints, context);
+        if (_database is not null)
+        {
+            endpoints.MapDatabaseCredentialEndpoints();
+            endpoints.MapDatabaseObservationRelay();
+        }
     }
 
     public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(

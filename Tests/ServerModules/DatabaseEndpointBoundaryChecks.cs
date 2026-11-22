@@ -83,6 +83,20 @@ internal static class DatabaseEndpointBoundaryChecks
             || packagedDisabled.Capabilities.Contains(ServerCapabilities.Database))
             throw new InvalidOperationException("An installed database ModuleHost must share the database module switch and capability.");
 
+        var packagedBuilder = WebApplication.CreateBuilder();
+        module.ConfigureServices(packagedBuilder, context);
+        packagedBuilder.Services.AddSingleton<IHostElevationSessionStore>(_ => throw new NotSupportedException());
+        await using (var packagedApp = packagedBuilder.Build())
+        {
+            packagedDatabase.MapEndpoints(packagedApp, context);
+            var packagedRoutes = ((IEndpointRouteBuilder)packagedApp).DataSources.SelectMany(source => source.Endpoints)
+                .OfType<RouteEndpoint>().ToDictionary(endpoint => endpoint.RoutePattern.RawText!);
+            if (packagedRoutes.Count != endpoints.Count || endpoints.Keys.Any(path => !packagedRoutes.ContainsKey(path))
+                || packagedRoutes.Values.Count(endpoint => endpoint.Metadata.GetMetadata<IAuthorizeData>()?.Policy
+                    == RuntimeCatalogEndpoints.ReadPolicy) != 4)
+                throw new InvalidOperationException("The packaged database must keep its four authorized reads and two credential routes.");
+        }
+
         using var native = new ServiceCollection().AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>().BuildServiceProvider();
         var helper = (IdleDatabaseHelper)native.GetRequiredService<IPrivilegedOperationTransport>();
         var queryHost = new DatabaseQueryHost(helper);
