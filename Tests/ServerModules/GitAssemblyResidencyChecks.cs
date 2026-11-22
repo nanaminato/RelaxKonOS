@@ -9,8 +9,11 @@ internal static class GitAssemblyResidencyChecks
 {
     internal static async Task RunAsync(Action<bool, string> check)
     {
-        check(!typeof(ServerModules).Assembly.GetReferencedAssemblies().Any(name => name.Name == "RelaxKonOS.ServerModule.Git"),
-            "Server has no static reference to the Git execution implementation");
+        var coreReferences = typeof(ServerModules).Assembly.GetReferencedAssemblies().Select(reference => reference.Name).ToHashSet();
+        foreach (var module in new[] { "Git", "Proxy", "Firewall", "Docker", "Certificates", "WebServer", "DatabaseObservation",
+                     "CloudStorage", "CloudBaidu", "CloudS3", "CloudWebDav" })
+            check(!coreReferences.Contains($"RelaxKonOS.ServerModule.{module}"),
+                $"Server has no static reference to the {module} execution implementation");
         check(!typeof(GitBuildLedger).Assembly.GetReferencedAssemblies().Any(name => name.Name is "RelaxKonOS.Server" or "RelaxKonOS.ServerModule.Git"),
             "Git shared contracts and read-only ledger inspection do not reference implementations");
         var root = Path.Combine(AppContext.BaseDirectory, "test-data", "git-code-" + Guid.NewGuid().ToString("N"));
