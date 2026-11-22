@@ -891,3 +891,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的 Server Center 官方归档通过真实环回 SSH 地址查询。验收固定临时 ECDSA 主机公钥，经生产连接解析器与 SSH.NET 握手，SSH 测试服务仅响应 hostname -I。已安装包弹窗显示过滤和去重后的 IPv4、IPv6，关闭后返回向导。主机响应由测试服务提供，真实远端部署仍待验。
 - Server Center 环回 SSH 地址验收可由 Tests/Client/verify-server-center-address-ssh.py 重现。脚本使用临时公钥、一次性测试密码，仅允许固定地址查询。Windows Release 与独立网络中的 Linux x64 WSL 均使用各自完整重建的官方归档通过。脚本依赖 Paramiko，Linux 依赖解包至临时目录。真实远端部署仍待验。
 - Firewall 签名执行包在提交版本目录、复用暂存版本及回退之前核对执行接口与构造签名。Windows Release 使用保留主入口但缺少合同接口的签名测试包验证三个边界均拒绝，现有版本保持生效。兼容 Firewall 仍通过联合安装、重启和授权回归，Proxy 专项同轮通过。
+- Linux x64 自包含 Firewall 双包复验不兼容签名版本，在首次安装、暂存复用和历史回退均拒绝，不会换掉活动版本。兼容签名包仍通过重启续跑。生产路由拒绝缺少防火墙提升授权的写入，测试传输没有执行该操作。Linux 真实 UFW Helper 仍待验。
