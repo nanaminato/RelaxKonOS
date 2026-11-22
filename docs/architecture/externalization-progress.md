@@ -704,3 +704,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 从 Standard 配置及桌面发布项目映射取出全部 13 个基础应用项目。各以自身 .csproj 为入口单独执行 Release 构建，全部通过。复验现有 Windows 与 Linux 发行目录，各 29 个归档的摘要、清单和入口程序集均匹配，桌面宿主依赖图未包含应用实现，Shell 的 RelaxKonOS 项目依赖限于 Core，协调器传递依赖限于 Protocol。此轮核对现有发行目录，未重新打包。
 - 当前 Android Debug 与测试 APK 离线构建通过。强制执行 JVM 测试任务后，1,906 项通过，失败和跳过均为零。只读 Android 模拟器上的应用目录与服务维护恢复共 11 项 instrumentation 测试全部通过。此轮未连接真实远端服务或物理 Android 设备。
 - 修正内存存储模式的隧道能力声明，使登录描述和 `/server/capabilities` 与实际路由一致。一次性 Ubuntu 容器以当前 Linux 自包含 Core、真实 Helper 和 PAM 账户验证，SQLITE 模式声明隧道且配置列表返回 200，内存模式撤下声明且相同路由返回 404。Windows Release 模块套件的新断言通过，整套随后在 Proxy 的共享运行时注册断言处停止。
+- Windows Release 完整模块套件通过。断言按当前边界核对 Core 保留 Proxy 共享读取和恢复服务，模块独占作用域内配置写入，覆盖启用及停用、SQLite 及内存组合。独立 HTTP 夹具按其测试范围选取模块，数据库端点和调度注册单独通过验收。一次复跑曾在 WebDAV 上传凭据拒绝断言处停止，最终整组通过。

@@ -565,10 +565,12 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         builder.Services.AddDataProtection();
         // The Host registers the backbone first; a module may only add its own surface on top.
         builder.AddProxyRuntimeServices();
+        var settingsWriter = typeof(RelaxKonOS.Server.Proxy.IProxySettingsWriter);
+        Check(builder.Services.All(service => service.ServiceType != settingsWriter),
+            "Core proxy runtime does not register the management settings writer");
         var backbone = new[]
         {
             typeof(RelaxKonOS.Server.Proxy.IProxySettingsReader),
-            typeof(RelaxKonOS.Server.Proxy.IProxySettingsWriter),
             typeof(RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler),
             typeof(RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore),
             typeof(RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager),
@@ -578,6 +580,9 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         modules.ConfigureServices(builder, context);
         Check(backbone.All(entry => builder.Services.Count(service => service.ServiceType == entry.Key) == entry.Value),
             $"the proxy module never registers the shared runtime backbone enabled={enabled} storage={storage}");
+        var writerRegistrations = builder.Services.Where(service => service.ServiceType == settingsWriter).ToArray();
+        Check(enabled ? writerRegistrations is [{ Lifetime: ServiceLifetime.Scoped }] : writerRegistrations.Length == 0,
+            $"the scoped proxy settings writer belongs to the enabled management module enabled={enabled} storage={storage}");
         // The profile/subscription services only exist where their repositories do; a memory-storage
         // host must not gain a service whose repository is missing.
         Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Proxy.IProxyProfileService))
@@ -789,6 +794,8 @@ foreach (var enabled in new[] { true, false })
         // The proxy module is asserted in its own block below with the Host backbone registered.
         // Starting it here would run its background guards against a host this test does not build.
         ["Modules:Proxy:Enabled"] = "false",
+        // Database endpoint and scheduler coverage use their own host fixtures.
+        ["Modules:Database:Enabled"] = "false",
     });
     var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite");
     var modules = ServerModules.Create(builder.Configuration);
@@ -1153,16 +1160,6 @@ foreach (var enabled in new[] { true, false })
     {
         ["ModuleResidency:IdleGraceSeconds"] = "0",
         ["GitBuilds:RootDirectory"] = "builds",
-        // Only the pilot is part of this host: other modules bring their own recovery workers and
-        // Core dependencies that would test them, not residency.
-        ["Modules:Terminal:Enabled"] = "false",
-        ["Modules:Firewall:Enabled"] = "false",
-        ["Modules:SystemPerformance:Enabled"] = "false",
-        ["Modules:Docker:Enabled"] = "false",
-        ["Modules:Certificates:Enabled"] = "false",
-        ["Modules:WebServer:Enabled"] = "false",
-        ["Modules:Proxy:Enabled"] = "false",
-        ["Modules:Tailscale:Enabled"] = "false",
     });
     pilotBuilder.Services.AddDbContextFactory<RelaxKonOS.Server.Storage.Sqlite.RelaxKonOSDbContext>(options =>
         options.UseSqlite("Data Source=" + Path.Combine(pilotRoot, "pilot.db")));
@@ -1178,7 +1175,8 @@ foreach (var enabled in new[] { true, false })
         .AddScheme<AuthenticationSchemeOptions, TestUserAuthentication>("test", _ => { });
     pilotBuilder.Services.AddAuthorization();
     var pilotContext = ServerModuleContext.Create(pilotBuilder.Configuration, pilotBuilder.Environment, "sqlite");
-    var pilotModules = ServerModules.Create(pilotBuilder.Configuration);
+    // Only the pilot is part of this host. Other modules have independent fixtures for their workers.
+    var pilotModules = ServerModules.CreateManaged(new HashSet<string>(StringComparer.Ordinal) { ServerModules.GitId });
     pilotModules.ConfigureServices(pilotBuilder, pilotContext);
     await using var pilotApp = pilotBuilder.Build();
     await using (var scope = pilotApp.Services.CreateAsyncScope())

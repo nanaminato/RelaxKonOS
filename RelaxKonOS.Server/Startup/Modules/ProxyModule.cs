@@ -28,7 +28,7 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// <c>SingBoxRuntimeService</c> and the proxy-server store it reads stay in Core.</item>
 /// <item><c>Docker.DockerProxyResolver</c> reads <c>IProxySettingsReader</c> to derive the managed
 /// outbound proxy, and the mihomo installation bootstrap reads the same saved intent,
-/// so the lightweight reader remains in Core while the settings writer can be migrated separately.</item>
+/// so the lightweight reader remains in Core while the scoped settings writer belongs to the module.</item>
 /// </list>
 /// This module owns management surfaces and scoped execution facades. Core owns TUN recovery,
 /// system-proxy reconciliation, grant expiry and durable publication recovery across module disable.
