@@ -213,7 +213,6 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         var backend = new Backend(review.Candidate, installer, packages, applications, binding => MatchesScope(binding, scope));
         if (review.Plan.Target != LocalTarget)
             backend.BindModuleClient(NewModuleClient(review.Plan.ClientBinding, scope));
-        await backend.VerifyBeforeExecutionAsync(review.Plan, cancellationToken);
         var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
         await coordinator.ExecuteAsync(review.Plan, cancellationToken);
         var installed = backend.InstalledApplication()

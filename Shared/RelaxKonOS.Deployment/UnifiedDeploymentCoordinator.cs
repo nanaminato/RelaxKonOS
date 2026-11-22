@@ -43,6 +43,7 @@ public sealed class DeploymentPlanReviewRequiredException(string problem) : Inva
 /// <summary>A backend must use the plan ID and step index to reconcile retries with durable installer receipts.</summary>
 public interface IDeploymentBackend
 {
+    Task VerifyBeforeExecutionAsync(DeploymentPlan plan, CancellationToken cancellationToken);
     Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken);
     Task ApplyOrReconcileAsync(DeploymentPlan plan, int stepIndex, CancellationToken cancellationToken);
     Task VerifyAsync(DeploymentPlan plan, CancellationToken cancellationToken);
@@ -86,6 +87,18 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
         if (checkpoint is null)
             CheckExpiration();
 
+        if (checkpoint is not null && (checkpoint.CompletedSteps < 0
+            || checkpoint.CompletedSteps > plan.OrderedReleases.Length
+            || checkpoint.Verified && checkpoint.CompletedSteps != plan.OrderedReleases.Length))
+            throw new InvalidDataException("Invalid deployment checkpoint.");
+
+        try { await backend.VerifyBeforeExecutionAsync(plan, cancellationToken); }
+        catch (DeploymentPlanReviewRequiredException) when (checkpoint is { Verified: false })
+        {
+            await lease.SaveAsync(checkpoint with { RequiresReview = true }, CancellationToken.None);
+            throw;
+        }
+
         var current = await backend.ObserveAsync(cancellationToken);
         if (current.ServerIdentity != plan.Target.ServerIdentity)
             throw new InvalidOperationException("deployment-server-changed");
@@ -100,9 +113,6 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
             await lease.SaveAsync(checkpoint, cancellationToken);
         }
 
-        if (checkpoint.CompletedSteps < 0 || checkpoint.CompletedSteps > plan.OrderedReleases.Length
-            || checkpoint.Verified && checkpoint.CompletedSteps != plan.OrderedReleases.Length)
-            throw new InvalidDataException("Invalid deployment checkpoint.");
         if (checkpoint.Verified) return;
 
         for (var index = checkpoint.CompletedSteps; index < plan.OrderedReleases.Length; index++)

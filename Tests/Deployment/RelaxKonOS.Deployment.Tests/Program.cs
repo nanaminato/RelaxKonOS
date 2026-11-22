@@ -222,6 +222,17 @@ await secondCoordinator.ExecuteAsync(retryVerification);
 Check(backend.Applied.Count == appliedBeforeRetry);
 await using (var lease = await reopenedJournal.OpenAsync(retryVerification, CancellationToken.None))
     Check(lease.Checkpoint is { Verified: true, RequiresReview: false });
+var reviewAtPreflight = plan with { Id = Guid.NewGuid() };
+await using (var lease = await journal.OpenAsync(reviewAtPreflight, CancellationToken.None))
+    await lease.SaveAsync(new(1, false), CancellationToken.None);
+var appliedBeforePreflight = backend.Applied.Count;
+backend.ReviewRequiredOnPreflight = true;
+await Reject(reviewAtPreflight, "deployment-client-dependency-changed");
+backend.ReviewRequiredOnPreflight = false;
+await using (var lease = await reopenedJournal.OpenAsync(reviewAtPreflight, CancellationToken.None))
+    Check(lease.Checkpoint is { RequiresReview: true, CompletedSteps: 1, Verified: false });
+await Reject(reviewAtPreflight, "deployment-plan-review-required");
+Check(backend.Applied.Count == appliedBeforePreflight);
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
@@ -235,6 +246,13 @@ sealed class Backend : IDeploymentBackend
     public bool Offline;
     public bool ReviewRequiredOnVerification;
     public bool VerificationOffline;
+    public bool ReviewRequiredOnPreflight;
+    public Task VerifyBeforeExecutionAsync(DeploymentPlan plan, CancellationToken cancellationToken)
+    {
+        if (ReviewRequiredOnPreflight)
+            throw new DeploymentPlanReviewRequiredException("deployment-client-dependency-changed");
+        return Task.CompletedTask;
+    }
     public Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken) =>
         Offline ? Task.FromException<DeploymentTarget>(new IOException("Server unreachable")) : Task.FromResult(Target);
     public Task ApplyOrReconcileAsync(DeploymentPlan plan, int index, CancellationToken cancellationToken)
