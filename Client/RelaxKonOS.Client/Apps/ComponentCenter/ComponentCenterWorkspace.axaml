@@ -16,41 +16,23 @@
 
  <component:ComponentCenterLayout x:Name="WorkspaceLayout">
   <component:ComponentCenterLayout.Details>
-    <StackPanel Spacing="16">
-      <Border IsVisible="{Binding ShowServerModules}"><vm:ServerModulesView DataContext="{Binding ServerModules}" /></Border>
-      <Border IsVisible="{Binding ShowCatalogSources}"><component:CatalogSourcesView DataContext="{Binding CatalogSources}" /></Border>
-      <StackPanel Spacing="16" IsVisible="{Binding ShowComponentBrowser}">
-       <component:ComponentIdentityView IsVisible="{Binding HasComponentDetails}" OpenApplicationRequested="OpenApplication_Click" />
-
-       <component:ComponentDesktopPackageView IsVisible="{Binding ShowDesktopPackage}" />
-
-       <Border Classes="panel-card" IsVisible="{Binding ShowNginxSelection}">
-        <ContentControl Content="{Binding NginxSelection}">
-         <ContentControl.ContentTemplate>
-          <DataTemplate>
-           <web:CurrentNginxSelectionView />
-          </DataTemplate>
-         </ContentControl.ContentTemplate>
-        </ContentControl>
-       </Border>
-
-       <component:ComponentGitInstallationView IsVisible="{Binding ShowGitInstallation}" />
-
-       <component:ComponentApplicationNoticeView IsVisible="{Binding ShowNotIntegrated}" OpenApplicationRequested="OpenApplication_Click" />
-
-       <component:ComponentHostObservationView IsVisible="{Binding ShowHostObservation}" />
-       <component:ComponentOfficialDownloadsView IsVisible="{Binding ShowOfficialDownloads}" />
-
-       <component:ComponentPackageCandidateView IsVisible="{Binding ShowPackageFreeze}" />
-
-       <!-- Domain runtime page: sources, versions, actions, uninstall, recovery. -->
-       <StackPanel IsVisible="{Binding HasRuntimeDetails}">
-        <views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding DetailRuntime}" />
-       </StackPanel>
-
-       <component:ComponentCenterEmptyView IsVisible="{Binding !HasResults}" />
-      </StackPanel>
-     </StackPanel>
+   <component:ComponentCenterDetailsView OpenApplicationRequested="OpenApplication_Click">
+    <component:ComponentCenterDetailsView.ModulesView>
+     <vm:ServerModulesView DataContext="{Binding ServerModules}" />
+    </component:ComponentCenterDetailsView.ModulesView>
+    <component:ComponentCenterDetailsView.NginxView>
+     <ContentControl Content="{Binding NginxSelection}">
+      <ContentControl.ContentTemplate>
+       <DataTemplate>
+        <web:CurrentNginxSelectionView />
+       </DataTemplate>
+      </ContentControl.ContentTemplate>
+     </ContentControl>
+    </component:ComponentCenterDetailsView.NginxView>
+    <component:ComponentCenterDetailsView.RuntimeView>
+     <views:ProxyServerRuntimeView x:Name="RuntimeView" DataContext="{Binding DetailRuntime}" />
+    </component:ComponentCenterDetailsView.RuntimeView>
+   </component:ComponentCenterDetailsView>
   </component:ComponentCenterLayout.Details>
  </component:ComponentCenterLayout>
 </UserControl>

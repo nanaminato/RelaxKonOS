@@ -556,6 +556,12 @@ internal static class SettingsWindowChecks
             var controls = workspace!.GetLogicalDescendants().ToArray();
             Check(controls.OfType<ComponentCenterHeaderActions>().Any()
                 && controls.OfType<ComponentCenterNavigationView>().Any()
+                && controls.OfType<ComponentCenterDetailsView>().Any()
+                && controls.OfType<ComponentIdentityView>().Any()
+                && controls.OfType<ComponentDesktopPackageView>().Any()
+                && controls.OfType<ComponentGitInstallationView>().Any()
+                && controls.OfType<ComponentOfficialDownloadsView>().Any()
+                && controls.OfType<ComponentPackageCandidateView>().Any()
                 && controls.OfType<CatalogSourcesView>().Any()
                 && controls.OfType<ServerModuleSecurityView>().Any(),
                 "The installed package workspace is missing a migrated Component Center view.");

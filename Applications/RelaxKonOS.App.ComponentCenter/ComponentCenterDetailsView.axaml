@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:component="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentCenterDetailsView"
+ x:Name="Page" x:DataType="component:IComponentCenterDetails">
+ <StackPanel Spacing="16">
+   <Border IsVisible="{Binding ShowServerModules}"><ContentControl Content="{Binding #Page.ModulesView}" /></Border>
+   <Border IsVisible="{Binding ShowCatalogSources}"><component:CatalogSourcesView DataContext="{Binding CatalogSources}" /></Border>
+   <StackPanel Spacing="16" IsVisible="{Binding ShowComponentBrowser}">
+    <component:ComponentIdentityView IsVisible="{Binding HasComponentDetails}" OpenApplicationRequested="OpenApplication_Click" />
+    <component:ComponentDesktopPackageView IsVisible="{Binding ShowDesktopPackage}" />
+    <Border Classes="panel-card" IsVisible="{Binding ShowNginxSelection}">
+     <ContentControl Content="{Binding #Page.NginxView}" />
+    </Border>
+
+    <component:ComponentGitInstallationView IsVisible="{Binding ShowGitInstallation}" />
+    <component:ComponentApplicationNoticeView IsVisible="{Binding ShowNotIntegrated}" OpenApplicationRequested="OpenApplication_Click" />
+    <component:ComponentHostObservationView IsVisible="{Binding ShowHostObservation}" />
+    <component:ComponentOfficialDownloadsView IsVisible="{Binding ShowOfficialDownloads}" />
+    <component:ComponentPackageCandidateView IsVisible="{Binding ShowPackageFreeze}" />
+    <!-- Domain runtime page: sources, versions, actions, uninstall, recovery. -->
+    <StackPanel IsVisible="{Binding HasRuntimeDetails}">
+     <ContentControl Content="{Binding #Page.RuntimeView}" />
+    </StackPanel>
+    <component:ComponentCenterEmptyView IsVisible="{Binding !HasResults}" />
+   </StackPanel>
+  </StackPanel>
+</UserControl>
