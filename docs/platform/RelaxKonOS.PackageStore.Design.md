@@ -431,3 +431,4 @@ GET {origin}/{catalogPath}
 - [外部 Shell 包](../desktop/RelaxKonOS.ExternalShellPackages.md)
 - [应用兼容性](../development/RelaxKonOS.ApplicationCompatibility.md)
 - [Android 应用包方案](../../Client/RelaxKonOS.Client.Android/docs/design/ApplicationPackages.Design.md)
+桌面首次启动且没有已保存的配置集或显式启动参数时，在预装前打开应用选择窗口。默认选中 Standard。用户可以切换配置、取消预装项，或跳过预装并选用 Minimal。交互式应用标记为可从应用商店安装。确认后通过原协调器预装，重启读取已保存的选择。

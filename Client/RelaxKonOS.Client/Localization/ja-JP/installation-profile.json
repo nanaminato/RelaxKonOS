@@ -1,0 +1,13 @@
+{
+    "Culture": "ja-JP",
+    "Strings": {
+        "installation_profile.title": "デスクトップアプリの選択",
+        "installation_profile.minimal": "最小",
+        "installation_profile.standard": "標準",
+        "installation_profile.developer": "開発者",
+        "installation_profile.in_store": "{0} · アプリストアからインストール可能",
+        "installation_profile.empty": "アプリは後からアプリストアでインストールできます。",
+        "installation_profile.continue": "続行",
+        "installation_profile.skip": "事前インストールをスキップ"
+    }
+}

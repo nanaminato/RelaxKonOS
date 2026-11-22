@@ -1,0 +1,13 @@
+{
+    "Culture": "zh-CN",
+    "Strings": {
+        "installation_profile.title": "选择桌面应用",
+        "installation_profile.minimal": "最小",
+        "installation_profile.standard": "标准",
+        "installation_profile.developer": "开发者",
+        "installation_profile.in_store": "{0} · 可在应用商店安装",
+        "installation_profile.empty": "稍后可从应用商店安装应用。",
+        "installation_profile.continue": "继续",
+        "installation_profile.skip": "跳过预装"
+    }
+}

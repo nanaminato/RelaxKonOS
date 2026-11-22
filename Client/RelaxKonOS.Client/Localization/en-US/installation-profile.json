@@ -1,0 +1,13 @@
+{
+    "Culture": "en-US",
+    "Strings": {
+        "installation_profile.title": "Choose desktop apps",
+        "installation_profile.minimal": "Minimal",
+        "installation_profile.standard": "Standard",
+        "installation_profile.developer": "Developer",
+        "installation_profile.in_store": "{0} · available in the app store",
+        "installation_profile.empty": "You can install apps later from the app store.",
+        "installation_profile.continue": "Continue",
+        "installation_profile.skip": "Skip preinstallation"
+    }
+}

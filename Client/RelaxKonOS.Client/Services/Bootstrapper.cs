@@ -442,8 +442,11 @@ public static class Bootstrapper
 
         // Development packages follow the same runtime registry as built-in applications.
         await provider.GetRequiredService<DeveloperPackageManager>().LoadInstalledAsync();
+        var desktop = app.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
         await provider.GetRequiredService<BundledApplicationProvisioner>()
-            .RunAsync((app.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Args);
+            .RunAsync(desktop?.Args, chooseProfile: desktop is null ? null : profiles =>
+                new Views.Login.InstallationProfileWindow(profiles, provider.GetRequiredService<LoginLocalizationService>())
+                    .ShowSelectionAsync());
         provider.GetRequiredService<DeveloperBridgeService>();
 
         // Build the desktop / start menu entries.

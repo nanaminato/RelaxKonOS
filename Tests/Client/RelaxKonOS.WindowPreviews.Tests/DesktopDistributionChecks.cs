@@ -2,12 +2,15 @@ using System.IO.Compression;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
+using RelaxKonOS.Client.Views.Login;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
@@ -75,7 +78,32 @@ internal static class DesktopDistributionChecks
                     .ToDictionary(entry => (string)entry!["appId"]!, entry => (string)entry!["minimumVersion"]!, StringComparer.Ordinal);
                 try
                 {
-                    await provisioner.RunAsync(profile == "standard" ? [] : [$"--installation-profile={profile}"], cancellationToken);
+                    if (profile == "standard")
+                    {
+                        const string excludedApp = "relaxkonos.welcome";
+                        await provisioner.RunAsync([], cancellationToken, profiles =>
+                        {
+                            var window = new InstallationProfileWindow(profiles, new LoginLocalizationService(new LocalLanguageStore()));
+                            var result = window.ShowSelectionAsync();
+                            var layout = (DockPanel)window.Content!;
+                            var heading = (StackPanel)layout.Children[0];
+                            var picker = heading.Children.OfType<ComboBox>().Single();
+                            if (profiles.Profiles.Keys.ElementAt(picker.SelectedIndex) != "standard")
+                                throw new InvalidOperationException("The first-run window must default to Standard.");
+                            var entries = (StackPanel)((ScrollViewer)layout.Children[2]).Content!;
+                            entries.Children.OfType<CheckBox>().Single(item => Equals(item.Content, "welcome")).IsChecked = false;
+                            ((StackPanel)layout.Children[1]).Children.OfType<Button>().Single(item => item.IsDefault)
+                                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            return result;
+                        });
+                        expected.Remove(excludedApp);
+                        await provisioner.RunAsync([], cancellationToken, _ =>
+                            throw new InvalidOperationException("The first-run window reopened after saving its selection."));
+                    }
+                    else
+                    {
+                        await provisioner.RunAsync([$"--installation-profile={profile}"], cancellationToken);
+                    }
                     var actual = packages.Installed.ToDictionary(app => app.Id, StringComparer.Ordinal);
                     var missing = expected.Keys.Except(actual.Keys);
                     var extra = actual.Keys.Except(expected.Keys);
@@ -91,6 +119,7 @@ internal static class DesktopDistributionChecks
                     Console.WriteLine($"{profile}: provisioned {actual.Count} official packages from the published distribution.");
                     foreach (var basicApp in basicApps)
                     {
+                        if (profile == "standard" && basicApp == "relaxkonos.welcome") continue;
                         var appId = new AppId(basicApp);
                         if (profile == "minimal")
                         {

@@ -16,7 +16,8 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
-    public async Task RunAsync(IEnumerable<string>? arguments = null, CancellationToken cancellationToken = default)
+    public async Task RunAsync(IEnumerable<string>? arguments = null, CancellationToken cancellationToken = default,
+        Func<ProfileDocument, Task<ProfileSelection>>? chooseProfile = null)
     {
         var manifest = packages.OfficialSource.BundledProfilesPath;
         if (!File.Exists(manifest)) return;
@@ -35,11 +36,18 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
 
             var selectionPath = drive.ResolveRootChild("System/installation-profile.json");
             var saved = File.Exists(selectionPath) ? await drive.ReadJsonAsync<ProfileSelection>(selectionPath, cancellationToken) : null;
-            var selection = SelectProfile(profiles, saved, arguments ?? []);
+            var options = arguments?.ToArray() ?? [];
+            var selection = saved is null && chooseProfile is not null
+                && !options.Any(option => option.StartsWith(ProfileFlag, StringComparison.Ordinal)
+                    || option.StartsWith(ExcludeFlag, StringComparison.Ordinal))
+                ? await chooseProfile(profiles)
+                : SelectProfile(profiles, saved, options);
+            if (!profiles.Profiles.TryGetValue(selection.Profile, out var selectedEntries) || selection.Excluded is null)
+                throw new InvalidDataException("Invalid installation profile selection.");
             if (selection != saved)
                 await drive.WriteJsonAtomicallyAsync(selectionPath, selection, cancellationToken);
 
-            foreach (var entry in profiles.Profiles[selection.Profile])
+            foreach (var entry in selectedEntries)
             {
                 var id = entry.AppId;
                 if (entry.InstallPolicy == "interactive" || selection.Excluded.Contains(id, StringComparer.Ordinal)) continue;
@@ -95,15 +103,15 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         RuntimeSemanticVersion.TryParse(version, out var release)
         && RuntimeSemanticVersion.TryParse(minimum, out var floor) && release.CompareTo(floor) >= 0;
 
-    private static ProfileSelection SelectProfile(ProfileDocument document, ProfileSelection? saved, IEnumerable<string> arguments)
+    private const string ProfileFlag = "--installation-profile=";
+    private const string ExcludeFlag = "--exclude-bundled-app=";
+
+    private static ProfileSelection SelectProfile(ProfileDocument document, ProfileSelection? saved, string[] options)
     {
-        const string profileFlag = "--installation-profile=";
-        const string excludeFlag = "--exclude-bundled-app=";
-        var options = arguments.ToArray();
-        var requested = options.Where(option => option.StartsWith(profileFlag, StringComparison.Ordinal))
-            .Select(option => option[profileFlag.Length..]).ToArray();
-        var exclusions = options.Where(option => option.StartsWith(excludeFlag, StringComparison.Ordinal))
-            .Select(option => option[excludeFlag.Length..]).Distinct(StringComparer.Ordinal).ToArray();
+        var requested = options.Where(option => option.StartsWith(ProfileFlag, StringComparison.Ordinal))
+            .Select(option => option[ProfileFlag.Length..]).ToArray();
+        var exclusions = options.Where(option => option.StartsWith(ExcludeFlag, StringComparison.Ordinal))
+            .Select(option => option[ExcludeFlag.Length..]).Distinct(StringComparer.Ordinal).ToArray();
         if (requested.Length > 1) throw new InvalidDataException("Choose one installation profile.");
         var profile = requested.SingleOrDefault() ?? saved?.Profile ?? document.DefaultProfile;
         if (profile is null || !document.Profiles.TryGetValue(profile, out var entries)
@@ -118,8 +126,8 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         return new(profile, exclusions);
     }
 
-    private sealed record ProfileDocument(int SchemaVersion, string DefaultProfile, Dictionary<string, ProfileApplication[]> Profiles);
-    private sealed record ProfileApplication(string AppId, string MinimumVersion, string InstallPolicy);
-    private sealed record ProfileSelection(string Profile, string[] Excluded);
+    internal sealed record ProfileDocument(int SchemaVersion, string DefaultProfile, Dictionary<string, ProfileApplication[]> Profiles);
+    internal sealed record ProfileApplication(string AppId, string MinimumVersion, string InstallPolicy);
+    internal sealed record ProfileSelection(string Profile, string[] Excluded);
     private sealed record ProvisionedApplication(string Id, string Version);
 }

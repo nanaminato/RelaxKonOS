@@ -862,3 +862,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的已安装 Server Center 包验收从安装向导打开主机地址弹窗。受控 SSH 会话返回混合地址文本，生产宿主过滤无效和重复地址，显示 IPv4 与 IPv6。测试核对弹窗来自官方包程序集，并使用关闭按钮返回向导。真实 SSH 宿主查询仍待验。
 - Linux x64 WSL 无头复验同一个新版 Server Center 官方归档。安装向导成功打开包程序集的主机地址弹窗，显示过滤后的 IPv4 和 IPv6，关闭后回到向导。包窗口复用、向导取消和卸载同轮通过。SSH 地址响应来自测试夹具。
 - 修复重复显式选择同一个安装配置集会清空已有排除项的问题。未提供新排除参数时保留已有选择。Windows Release 使用实际 Welcome 官方归档验证重启与重复选择 Standard 都保留排除，切换 Developer 后仍按新配置实施。图形化安装前选择仍待实现。
+- 首次启动配置选择已接入桌面预装入口。三语窗口默认 Standard，可切换配置和取消离线预装项，跳过时选用 Minimal。Windows Release 无头发行归档测试取消 Welcome 后预装 12 项，重启保留选择且不重开窗口。Minimal 恢复及 Developer 的 14 项预装也通过，三语资源核对通过。原生首次启动窗口与 Linux 交互复验仍待完成。
