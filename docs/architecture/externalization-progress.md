@@ -672,3 +672,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 恢复已启动计划时，在本地部署结果预检前核对服务端实例身份。Windows Release 实际 Welcome 归档联合部署回归通过。协调器测试初次及重复运行时复现 Windows 原子替换检查点偶发拒绝访问，加入仅在 Windows 短暂拒绝访问或共享冲突时的有限重试后，协调器测试连续六次通过。
 - Windows Release 增加检查点文件持续被读取占用的回归。原子替换失败后，旧检查点在内存和磁盘均保持原样，临时文件已清理。释放文件句柄后可再次写入，并可从重新打开的日志读取更新。Windows Release 和 Linux x64 WSL 自包含协调器专项均通过。
 - 当前分支重新发布 Linux x64 Databases 观察模块，生成短期一次性 P-256 签名的 9.0.0 测试候选。OpenSSL 独立验证目录签名，并核对归档摘要、ZIP 完整性及入口程序集字节。原版 Linux Databases .roapp 的测试副本只修改最低模块版本为 9.0.0，逐条核对其余内容不变。两份归档暂存于本地，尚未接纳来源或运行真实 Helper 联合安装。
+- 当前 Databases 9.0.0 签名候选通过 Linux 发行 Core 的一次性服务目录验收。非特权用户不能接纳来源，管理员接纳后可由服务用户只读核验归档。离线安装返回 installed=true/effective=false，回执 ID 与持久化 AwaitingRestart 记录一致，期望启用集合逐字节不变。此夹具用于离线验收，桌面发起在线安装及真实 Helper 仍待复验。
