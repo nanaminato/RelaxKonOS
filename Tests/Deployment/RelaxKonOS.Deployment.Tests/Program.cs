@@ -182,7 +182,7 @@ try
         await secondCoordinator.ExecuteAsync(concurrentPlan).WaitAsync(TimeSpan.FromSeconds(10));
         throw new Exception("Expected a concurrent execution to be rejected.");
     }
-    catch (IOException) { }
+    catch (IOException error) when (error.Message == "deployment-plan-in-progress") { }
     Check(backend.Applied.Count == appliedBefore + 1 && backend.Verifications == verifiedBefore);
 }
 finally

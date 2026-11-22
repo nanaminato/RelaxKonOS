@@ -55,6 +55,7 @@
         "app_installer.deployment.module_unavailable": "No compatible server module is available for {0}. Check the module and its sources in Component Center.",
         "app_installer.deployment.app_unavailable": "No compatible installed application satisfies the dependency on {0}.",
         "app_installer.deployment.session_changed": "The login session changed. Review the deployment again after signing in.",
+        "app_installer.deployment.plan_in_progress": "This deployment plan is already running. Wait for it to finish before trying again.",
         "app_installer.deployment.review_again": "The deployment plan is no longer current. Review the deployment again before installing.",
         "app_installer.deployment.server_changed": "The connected server changed. Review a new deployment plan for this server.",
         "app_installer.deployment.enable_installed": "Enable installed module {0} ({1})",

@@ -65,7 +65,15 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
     {
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, plan.Id.ToString("N"));
-        var fileLock = new FileStream(path + ".lock", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+        FileStream fileLock;
+        try
+        {
+            fileLock = new FileStream(path + ".lock", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+        }
+        catch (IOException error) when (IsLockContention(error))
+        {
+            throw new IOException("deployment-plan-in-progress", error);
+        }
         try
         {
             var identity = ComputeIdentity(plan);
@@ -84,6 +92,11 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             throw;
         }
     }
+
+    private static bool IsLockContention(IOException error) =>
+        OperatingSystem.IsWindows()
+            ? error.HResult == unchecked((int)0x80070020) // ERROR_SHARING_VIOLATION
+            : OperatingSystem.IsLinux() && error.HResult == 11; // EAGAIN from the exclusive file lock
 
     private static string ComputeIdentity(DeploymentPlan plan) =>
         Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new

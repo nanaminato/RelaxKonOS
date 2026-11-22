@@ -215,6 +215,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         { Message: "deployment-module-AwaitingRestart" } => LocalizedText.Get("app_installer.deployment.restart_pending"),
         { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),
+        { Message: "deployment-plan-in-progress" } => LocalizedText.Get("app_installer.deployment.plan_in_progress"),
         { Message: "deployment-account-changed" or "module-session-changed" } =>
             LocalizedText.Get("app_installer.deployment.session_changed"),
         { Message: "deployment-server-changed" or "module-server-mismatch" } =>
