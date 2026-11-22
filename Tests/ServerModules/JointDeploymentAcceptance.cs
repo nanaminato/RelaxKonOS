@@ -65,8 +65,9 @@ internal static class JointDeploymentAcceptance
             throw new InvalidOperationException("Provide the dedicated fixture login.");
         using var loginHttp = new HttpClient(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false });
         var auth = new AuthSession(new RelaxKonOSClient(loginHttp), null!, null!);
+        var platform = OperatingSystem.IsWindows() ? ClientPlatformKind.Windows : ClientPlatformKind.Linux;
         await auth.LoginAsync(ServerConnectionIdentityRules.Direct(server.AbsoluteUri),
-            new(username, password, ClientPlatformKind.Linux, "databases-joint-acceptance", "0.3.0"), false, false);
+            new(username, password, platform, "databases-joint-acceptance", "0.3.0"), false, false);
         using var moduleHttp = new HttpClient(new AuthenticatedHttpHandler(auth)
         {
             InnerHandler = new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false },
