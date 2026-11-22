@@ -658,3 +658,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Databases 停用保护由 Core 直接读取宿主安装台账并查询 Helper，停用时无需加载随附执行程序集。Windows Release 专项以受控 Linux Helper 验证空闲状态可停用且未加载执行程序集，待处理工作、二级实例备份计划、Helper 不可用和损坏台账仍会阻止停用。PostgreSQL Release 60 项检查通过。
 - 重新发布 Linux x64 Core 并在 WSL 以非特权用户运行。SQLite 模式显式停用 Firewall、移除其发行程序集后健康检查通过，内存存储模式也通过。移除 Databases 执行程序集后，启用时明确报告缺少程序集，停用时仍能进入宿主停用检查。用户模式没有 Helper，因此无法确认原生工作归属并拒绝启动。此轮未验证真实 Helper 判定空闲后的停用启动。
 - 当前分支 Windows Release 联合部署专项通过 135 项断言，使用 Welcome 和另 9 个 Windows 发行归档，覆盖已生效模块复用、可选依赖取消、共享 Proxy 依赖、重启恢复及双桌面卸载。Windows Debug Direct Deploy 以发行 Docker 归档验证启动守卫拒绝替换时保留原版本及其依赖。协调器 Release 专项新增程序集引用检查，仅允许 .NET 及 RelaxKonOS.Protocol 引用，解析和检查点回归通过。
+- Windows Release 使用实际 Welcome 发行归档运行生产安装器界面回归，覆盖可选模块默认勾选及取消、必需模块无取消入口、准确展示升级前后版本及已满足模块。版本显示使用受控计划数据。实际 Windows 发行目录复验 Minimal、Standard、Developer 分别预装 0、13、14 个包，Minimal 可逐一从发行归档安装和修复 13 个基础应用。Terminal 和 Task Manager 在服务能力恢复前阻止激活，切换配置保留用户卸载状态。

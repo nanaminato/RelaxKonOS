@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using RelaxKonOS.WindowManager;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services.AppPackages;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -57,14 +58,27 @@ internal static class OfficialRoappChecks
         try
         {
             var required = new DeploymentRelease(new(DeploymentPackageKind.ServerModule, "fixture.required"),
-                "1.0.0", "fixture-artifact", false, [], System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
-            var display = plan with { OrderedReleases = [required, .. plan.OrderedReleases] };
+                "2.0.0", "fixture-artifact", false, [], System.Collections.Immutable.ImmutableDictionary<string, string>.Empty)
+                with { CurrentVersion = "1.0.0" };
+            var satisfied = required with
+            {
+                Package = new(DeploymentPackageKind.ServerModule, "fixture.satisfied"),
+                Satisfied = true,
+                CurrentVersion = "2.0.0"
+            };
+            var display = plan with { OrderedReleases = [required, satisfied, .. plan.OrderedReleases] };
             Control? view = null;
             var result = windows.ShowDialogAsync<bool>(owner, "Review",
                 dialog => view = AppInstallerApp.CreateDeploymentReview(dialog, display));
             var descendants = view!.GetLogicalDescendants().ToArray();
             Check(descendants.OfType<TextBlock>().Any(text => text.Text?.Contains(required.Package.Id, StringComparison.Ordinal) == true)
                 && !descendants.OfType<CheckBox>().Any(), "The production review lists required modules without a deselection control.");
+            var messages = descendants.OfType<TextBlock>().Select(text => text.Text).ToArray();
+            Check(messages.Contains(LocalizedText.Format("app_installer.deployment.version_change",
+                    required.Package.Id, required.CurrentVersion!, required.Version))
+                && messages.Contains(LocalizedText.Format("app_installer.deployment.satisfied",
+                    satisfied.Package.Id, satisfied.Version)),
+                "The production review shows the exact upgrade and identifies the reused module.");
             ClickReview(view, approved ? "common.install" : "common.cancel");
             return await result;
         }
