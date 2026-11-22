@@ -8,6 +8,7 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Threading;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -31,6 +32,7 @@ using RelaxKonOS.Runtime;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Git;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Storage.Sqlite;
 
 internal static class JointDeploymentAcceptance
 {
@@ -107,14 +109,28 @@ internal static class JointDeploymentAcceptance
             Require(apps.IsRegistered(new AppId(installed.Id)) && InstalledModuleStore.Read(serverRoot).Single() is { Version: version }
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                 "after restart the desktop registers Git against the signed execution package without resubmitting installation");
-            using var businessClient = new HttpClient();
-            using var probe = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(host.Url), GitApiRoutes.EngineStatus));
-            probe.Headers.Add("test-user", ModuleTestAuthentication.Admin);
-            using var response = await businessClient.SendAsync(probe);
-            response.EnsureSuccessStatusCode();
-            var engine = await response.Content.ReadFromJsonAsync<GitEngineStatusDto>(RelaxKonOSJsonOptions.Default);
+            using var businessClient = new HttpClient { BaseAddress = new Uri(host.Url) };
+            businessClient.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+            var engine = await businessClient.GetFromJsonAsync<GitEngineStatusDto>(GitApiRoutes.EngineStatus, RelaxKonOSJsonOptions.Default);
             Require(engine is { IsAvailable: true, Version.Length: > 0 },
                 "the Git endpoint invokes the real local Git CLI through the installed signed execution package");
+            var worktree = Directory.CreateDirectory(Path.Combine(root, "checkout")).FullName;
+            using var initialized = await businessClient.PostAsync(GitApiRoutes.Init + "?path=" + Uri.EscapeDataString(worktree), null);
+            initialized.EnsureSuccessStatusCode();
+            Require((await initialized.Content.ReadFromJsonAsync<GitOperationResult>(RelaxKonOSJsonOptions.Default))?.Success == true,
+                "the installed Git package initializes a real temporary worktree through HTTP");
+            using var registration = await businessClient.PostAsJsonAsync(GitApiRoutes.Repositories,
+                new GitRepositoryRegistration("Signed Git", worktree), RelaxKonOSJsonOptions.Default);
+            registration.EnsureSuccessStatusCode();
+            var repository = (await registration.Content.ReadFromJsonAsync<GitRepositoryDto>(RelaxKonOSJsonOptions.Default))!;
+            await File.WriteAllTextAsync(Path.Combine(worktree, "joint.txt"), "signed Git deployment");
+            using var staged = await businessClient.PostAsJsonAsync(GitApiRoutes.Stage.Replace("{id}", repository.Id),
+                new GitStageRequest(["joint.txt"]), RelaxKonOSJsonOptions.Default);
+            staged.EnsureSuccessStatusCode();
+            var worktreeStatus = await businessClient.GetFromJsonAsync<GitStatusDto>(GitApiRoutes.Status.Replace("{id}", repository.Id),
+                RelaxKonOSJsonOptions.Default);
+            Require((await staged.Content.ReadFromJsonAsync<GitOperationResult>(RelaxKonOSJsonOptions.Default))?.Success == true
+                && worktreeStatus?.Staged is [{ Path: "joint.txt" }], "the joint-installed Git package stages and reads the real Git index");
             Require(await packages.UninstallAsync(installed.Id) && !apps.IsRegistered(new AppId(installed.Id))
                 && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
                 "uninstalling the desktop Git package releases the app without removing the server module");
@@ -1090,7 +1106,8 @@ internal static class JointDeploymentAcceptance
                 ServerModules.CreateManaged(new HashSet<string> { ServerModules.GitId }, installed).ConfigureServices(builder, context);
                 builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
                     new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
-                builder.Services.AddSingleton(DispatchProxy.Create<IGitRepositoryStorage, GitRepositoryAssemblyChecks.RejectTransport>());
+                builder.Services.AddDbContextFactory<RelaxKonOSDbContext>(options =>
+                    options.UseSqlite($"Data Source={Path.Combine(root, "git-test.sqlite")};Pooling=False"));
                 builder.Services.AddSingleton(DispatchProxy.Create<IGitRepositoryHost, GitEngineProbeHost>());
             }
             foreach (var module in online.Where(module => module.Id != ServerModules.GitId)) module.ConfigureServices(builder, context);
@@ -1110,6 +1127,11 @@ internal static class JointDeploymentAcceptance
             try
             {
                 app = builder.Build();
+                if (online.Any(module => module.Id == ServerModules.GitId))
+                {
+                    await using var database = await app.Services.GetRequiredService<IDbContextFactory<RelaxKonOSDbContext>>().CreateDbContextAsync();
+                    await database.Database.EnsureCreatedAsync();
+                }
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.MapGet(ServerApiRoutes.Modules, async (HttpContext http, CancellationToken ct) => Results.Ok(
@@ -1147,7 +1169,8 @@ internal static class JointDeploymentAcceptance
         {
             "get_UsesHelper" => false,
             "get_CurrentUserId" => null,
-            _ => throw new NotSupportedException("Only the local Git probe is supported."),
+            "IsPathWithin" when args is [string root, string candidate] => RelaxKonOS.Server.PathSafety.IsWithin(root, candidate),
+            _ => throw new NotSupportedException("Only local Git worktree operations are supported."),
         };
     }
 
