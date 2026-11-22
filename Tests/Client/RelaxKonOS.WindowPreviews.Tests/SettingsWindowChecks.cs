@@ -34,7 +34,7 @@ using RelaxKonOS.Shell;
 
 internal static class SettingsWindowChecks
 {
-    public static void Run(ShellSettings settings, LocalizationService localization)
+    public static void Run(ShellSettings settings, LocalizationService localization, string? packageSource = null)
     {
         const string pathValue = "/usr/bin::/bin";
         EnvironmentMutation? mutation = null;
@@ -68,11 +68,13 @@ internal static class SettingsWindowChecks
         typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
         var windows = new RelaxKonOS.WindowManager.WindowManager();
         var memory = new UsageMemoryStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "usage.json"));
-        var factory = new ExternalAppContextFactory(null!, null!, localization, settings, null!, session,
+        ExternalAppContextFactory CreateFactory(RelaxKonOS.App.Settings.ISettingsWindow workspace) =>
+            new(null!, null!, localization, settings, null!, session,
             null!, windows, null!, new RelaxKonOS.Client.Apps.Explorer.ExplorerClient(http, session, memory),
             new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings), null!, null!, null!,
             null!, null!, memory, null!, null!, null!, null!,
-            settingsWindow: new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services));
+            settingsWindow: workspace);
+        var factory = CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services));
         var settingsManifest = new RelaxKonOS.App.Settings.SettingsPackageApp().Manifest;
         using var packageLifetime = new CancellationTokenSource();
         var official = RelaxKonOS.Client.Services.Developer.PackageOrigin.OfficialDistribution;
@@ -457,6 +459,8 @@ internal static class SettingsWindowChecks
             var closeCaption = managed.View.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "PART_Close");
             Click(window, closeCaption);
             Check(!windows.Windows.Contains(managed), "Host-owned close caption stopped working.");
+            if (packageSource is not null)
+                CheckInstalledPackage(packageSource, windows, apps, CreateFactory(new PackageWorkspace(model)));
             Console.WriteLine("PASS: Full Settings window drawer, Escape/Ctrl+F, search/back/scroll, save failure/retry/durability/source reset, three languages and magnified access.");
         }
         finally
@@ -465,6 +469,61 @@ internal static class SettingsWindowChecks
             typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, previousServices);
             settings.Apply(original); Pump();
         }
+    }
+
+    private static void CheckInstalledPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
+        ApplicationManager applications, ExternalAppContextFactory factory)
+    {
+        var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
+            Path.Combine(Path.GetTempPath(), "rk-settings-package-" + Guid.NewGuid().ToString("N")));
+        var permissions = new RoappCatalogChecks.Permissions();
+        var diagnostics = new RoappCatalogChecks.Diagnostics();
+        var packages = new DeveloperPackageManager(applications, factory, windows, permissions, diagnostics, drive, source);
+        const string id = "relaxkonos.settings";
+        var path = Path.Combine(source, id + ".roapp");
+        var install = InstallAsync();
+        PumpUntil(() => install.IsCompleted);
+        install.GetAwaiter().GetResult();
+        try
+        {
+            var result = applications.Activate(new AppActivationRequest(new Uri("relaxkonos://settings/about")));
+            Check(result.Status == AppActivationStatus.Activated, "Installed Settings rejected its About URI.");
+            PumpUntil(() => windows.Windows.Count > 0);
+            var opened = windows.Windows.Single();
+            Check(opened.View.Content is Control { DataContext: ISettingsWorkspace workspace } content
+                && workspace.SelectedPage?.Route == "about"
+                && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(content.GetType().Assembly)?.IsCollectible == true,
+                "The installed package did not open its own workspace or receive the About route.");
+            var home = applications.Activate(new AppActivationRequest(new Uri("relaxkonos://settings/home")));
+            Pump();
+            Check(home.Status == AppActivationStatus.Activated && windows.Windows.Single() == opened
+                && ((ISettingsWorkspace)((Control)opened.View.Content!).DataContext!).SelectedPage?.Route == "home",
+                "A second deep link did not reuse the installed Settings window.");
+            Console.WriteLine("PASS: installed Settings archive owns its window and dispatches deep links.");
+        }
+        finally
+        {
+            var remove = packages.UninstallAsync(id);
+            PumpUntil(() => remove.IsCompleted);
+            remove.GetAwaiter().GetResult();
+        }
+
+        async Task InstallAsync()
+        {
+            var (_, digest) = await packages.InspectAsync(path, CancellationToken.None);
+            await using var stream = File.OpenRead(path);
+            await packages.InstallOfficialAsync(stream, path, id, digest!, null, CancellationToken.None);
+        }
+    }
+
+    private sealed class PackageWorkspace(SettingsViewModel model) : RelaxKonOS.App.Settings.ISettingsWindow
+    {
+        public void Open(Func<ISettingsWorkspace, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
+            showWorkspace(model);
+
+        public void Navigate(string route) => model.SelectPage(route);
+        public void OpenEnvironment() => throw new NotSupportedException();
+        public void OpenApplicationPermissions(string appId) => throw new NotSupportedException();
     }
     private static void Click(Window window, Control target)
     {

@@ -15,7 +15,7 @@
 |---|---|---|---|---|---|---|
 | appinstaller | AppInstaller | 否 / 否 | 是 | 文件读取与组件源；安装和恢复入口需保留 | 核心入口 | 三档内置恢复入口、隔离 HTTPS 商店及归档恢复已验 |
 | welcome | RelaxKonOS.App.Welcome | 是 / 是 | 否 | 使用 SDK 激活记事本或安装器 | 基础 | Windows 已验 |
-| settings | Settings | 否 / 否 | 是 | 工作区设置与宿主设置 | 基础 | 待验 |
+| settings | Settings | 是 / 是 | 否 | 工作区设置与宿主设置 | 基础 | Windows 隔离安装、同版本修复、包窗口及深链接已验 |
 | explorer | Explorer | 否 / 否 | 是 | 文件 API；调用存储提供者的聚合入口 | 基础 | 待验 |
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
 | server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
@@ -529,3 +529,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 包激活上下文仅向官方来源的 Settings 应用交付工作区能力，包生命周期取消后拒绝调用。Windows Release 设置窗口回归覆盖官方授权、普通上下文与其他 AppId 拒绝及取消，工作区偏好回归通过。官方发行目录和内部路由尚未切换到包入口。
 - Settings 包清单与官方包内部路由授权已实现，路由限定设置 URI 的方案、主机名、应用 ID 和官方来源。Windows Release 设置回归通过。DevCli 成功构建 Settings.roapp，归档 CRC、清单与入口 DLL 路径已核对。发行目录注册、实际安装和启动仍待验收。
 - Settings 切换到桌面官方包目录，移除内置注册。Standard 与 Developer 离线预装，Minimal 保留 App Installer。Windows Release 使用既有 25 个官方归档与新 Settings.roapp 验证全部 26 个清单、摘要及入口文件，并运行三档安装测试。Minimal 离线安装和同版本修复通过，Standard 安装 10 项，Developer 安装 11 项，其余是交互项。完整重发及包窗口启动专项仍待核对。
+- Windows Release Settings 包启动验收通过。测试使用官方归档安装到隔离盘，经真实包加载器和应用管理器打开关于页，确认窗口来自可卸载加载上下文，随后打开首页时复用同一窗体。宿主工作区由测试提供，未执行已登录主机操作。

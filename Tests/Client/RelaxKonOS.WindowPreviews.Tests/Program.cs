@@ -86,6 +86,7 @@ if (args.Contains("--websites-only"))
 // installer wizard failure before reaching them.
 if (args.Contains("--settings-only")) { SettingsInteractionChecks.Run(settings, localization); return; }
 if (args.Contains("--settings-window-only")) { SettingsWindowChecks.Run(settings, localization); return; }
+if (args is ["--settings-package-only", var settingsSource]) { SettingsWindowChecks.Run(settings, localization, settingsSource); return; }
 if (args.Contains("--device-settings-only")) { DesktopDeviceSettingsChecks.Run(settings, appearance); return; }
 if (args.Contains("--component-download-preview"))
 {
