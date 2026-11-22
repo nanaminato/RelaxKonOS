@@ -442,3 +442,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 中英日资源校验通过。检查器纳入宿主已加载的应用资源和链接资源，验证 4,362 个宿主键及 37 组应用资源的键与格式参数。Browser 未登录文案移到宿主资源，数据库恢复文案由组件中心和独立数据库包共享，两者无需增加程序集引用。Windows Release Browser 能力、数据库工作区和账号专项通过，覆盖三语数据库恢复提示。
 - Android 图标同步恢复了十个已迁出桌面宿主的图标来源，保留原 Android 资源名和文件内容。补齐组件中心衍生图标并同步品牌图标。162 项图标检查通过，Android Debug 离线构建及 1,904 项 JVM 单元测试通过。本轮没有可用模拟器，未重跑设备测试。
 - 使用只读 Medium_Phone（API 37）模拟器安装重新构建的 Debug APK 和测试 APK。ADB 确认 MainActivity 冷启动成功。`WorkspaceNavigationTest` 的 7 项和 `InstallationPackagePickerTest` 的 3 项均通过，覆盖宽窄布局、导航恢复、草稿归属及安装包来源选择。本次仅执行这两组设备测试。
+- Windows x64 Release 重新构建 ServerModules 测试，与当前桌面发行归档运行两轮 `--joint-deployment-acceptance` 并通过。两轮均经环回模块管理 HTTP API 验证签名测试模块上传、安装、启用、响应丢失后的对账、重启和桌面登记。真实 Firewall、Databases 和 Git 归档验证仅启用和重启恢复，Certificates 复用现有模块。Proxy Manager、Proxy Server 和 Squid Gateway 同时安装后逐个卸载，仍在使用同一模块的应用保留依赖记录。离线客户端依赖阻止不兼容升级，移除依赖者后同一升级成功。测试使用隔离授权和模块状态，未执行生产业务或跨设备依赖保护验收。
