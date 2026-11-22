@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
   </ItemGroup>
 </Project>

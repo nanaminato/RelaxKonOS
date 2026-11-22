@@ -79,6 +79,9 @@
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Database/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Database.dll" Link="Modules/Database/RelaxKonOS.ServerModule.Database.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Database.Contracts/RelaxKonOS.ServerModule.Database.Contracts.csproj" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Tailscale.Contracts/RelaxKonOS.ServerModule.Tailscale.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Tailscale/RelaxKonOS.ServerModule.Tailscale.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.Tailscale/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Tailscale.dll"
+             Link="Modules/Tailscale/RelaxKonOS.ServerModule.Tailscale.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Git/RelaxKonOS.ServerModule.Git.csproj" ReferenceOutputAssembly="false" />
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Git/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Git.dll" Link="Modules/Git/RelaxKonOS.ServerModule.Git.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

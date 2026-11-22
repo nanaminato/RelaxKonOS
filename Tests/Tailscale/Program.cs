@@ -274,7 +274,8 @@ var loginHost = new HttpLoginHost();
 webBuilder.Services.AddSingleton(new ServerRuntimeSettingsStore(Path.Combine(httpFolder.FullName, "settings.json")));
 webBuilder.Services.AddSingleton<ITailscaleLogin>(services => new TailscaleLoginCoordinator(
     new TailscaleLoginJournal(webBuilder.Environment, new EphemeralDataProtectionProvider()), loginHost,
-    services.GetRequiredService<ITailscaleControlAuthorization>(), services.GetRequiredService<ServerRuntimeSettingsStore>()));
+    services.GetRequiredService<ITailscaleControlAuthorization>(),
+    () => services.GetRequiredService<ServerRuntimeSettingsStore>().Current.InstanceId));
 webBuilder.Services.AddSingleton<ITailscaleManager>(new TailscaleManager(new StubStatusCommand(new("observed", document.RootElement.GetRawText()))));
 await using (var web = webBuilder.Build())
 {

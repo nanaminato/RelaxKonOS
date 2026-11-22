@@ -26,7 +26,7 @@ internal static class TailscaleLoginCoordinatorChecks
             var host = new LoginHost();
             var grants = new Grants { Allowed = true };
             var clock = new Clock();
-            var coordinator = new TailscaleLoginCoordinator(journal, host, grants, settings, clock);
+            var coordinator = new TailscaleLoginCoordinator(journal, host, grants, () => settings.Current.InstanceId, clock);
             var actor = Guid.NewGuid();
             var session = Guid.NewGuid();
             ClaimsPrincipal Principal(Guid? subject = null, Guid? loginSession = null) => new(new ClaimsIdentity(

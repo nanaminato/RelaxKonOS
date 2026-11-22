@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Tailscale;
@@ -22,12 +24,15 @@ internal sealed class TailscaleModuleRuntime : IServerModuleRuntime
     {
         _services = new ModuleServiceContainer(ModuleId, root);
         _services.AddSingleton<ITailscaleControlAuthorization>(services => services.Create<TailscaleControlAuthorization>());
-        _services.AddSingleton<TailscaleOperationJournal>(services => services.Create<TailscaleOperationJournal>());
         _services.AddSingleton<ITailscaleControlHost>(services => services.Create<HelperTailscaleControlHost>());
-        _services.AddSingleton<ITailscaleControl>(services => services.Create<TailscaleOperationCoordinator>());
-        _services.AddSingleton<TailscaleLoginJournal>(services => services.Create<TailscaleLoginJournal>());
+        _services.AddSingleton<ITailscaleControl>(services => BundledTailscaleExecution.Instance.CreateControl(
+            root.GetRequiredService<IHostEnvironment>(), root.GetRequiredService<IDataProtectionProvider>(),
+            services.GetRequired<ITailscaleControlHost>(), services.GetRequired<ITailscaleControlAuthorization>()));
         _services.AddSingleton<ITailscaleLoginHost>(services => services.Create<HelperTailscaleLoginHost>());
-        _services.AddSingleton<ITailscaleLogin>(services => services.Create<TailscaleLoginCoordinator>());
+        _services.AddSingleton<ITailscaleLogin>(services => BundledTailscaleExecution.Instance.CreateLogin(
+            root.GetRequiredService<IHostEnvironment>(), root.GetRequiredService<IDataProtectionProvider>(),
+            services.GetRequired<ITailscaleLoginHost>(), services.GetRequired<ITailscaleControlAuthorization>(),
+            () => root.GetRequiredService<ServerRuntimeSettingsStore>().Current.InstanceId));
         _services.AddSingleton<ITailscaleManager>(_ => new HelperTailscaleManager(root.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>()));
     }
     public object Resolve(Type serviceType) => _services.GetRequired(serviceType);

@@ -12,6 +12,7 @@
     <None Update="Fixtures/ApplicationCatalog/upgrade-fixture.json" TargetPath="Assets/ApplicationCatalog/upgrade-fixture.json" />
     <None Update="Fixtures/ApplicationCatalog/fixture-web-db-plan.json" TargetPath="Assets/ApplicationCatalog/fixture-web-db-plan.json" />
     <ProjectReference Include="../../../ServerModules/RelaxKonOS.ServerModule.Database/RelaxKonOS.ServerModule.Database.csproj" />
+    <ProjectReference Include="../../../ServerModules/RelaxKonOS.ServerModule.Tailscale/RelaxKonOS.ServerModule.Tailscale.csproj" />
     <ProjectReference Include="../../../RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj" />
     <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" Aliases="desktopclient" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/WindowsFirewallOperations.cs" Link="WindowsFirewallOperations.cs" />
@@ -67,6 +68,9 @@
              Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(PrebuiltServerAssemblyPath)' != ''" />
     <Content Include="$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/Modules/Docker/RelaxKonOS.ServerModule.Docker.dll"
              Link="Modules/Docker/RelaxKonOS.ServerModule.Docker.dll" CopyToOutputDirectory="PreserveNewest"
+             Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(PrebuiltServerAssemblyPath)' != ''" />
+    <Content Include="$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/Modules/Tailscale/RelaxKonOS.ServerModule.Tailscale.dll"
+             Link="Modules/Tailscale/RelaxKonOS.ServerModule.Tailscale.dll" CopyToOutputDirectory="PreserveNewest"
              Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(PrebuiltServerAssemblyPath)' != ''" />
     <Reference Include="Microsoft.Data.Sqlite" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../../../RelaxKonOS.Server/bin/Debug/net10.0/Microsoft.Data.Sqlite.dll</HintPath>

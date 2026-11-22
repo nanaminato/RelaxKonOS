@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
-using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Tailscale;
 

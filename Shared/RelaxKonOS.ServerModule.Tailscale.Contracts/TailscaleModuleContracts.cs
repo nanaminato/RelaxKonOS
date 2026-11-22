@@ -1,7 +1,17 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Hosting;
 using RelaxKonOS.Protocol.Tailscale;
 
 namespace RelaxKonOS.Server.Tailscale;
+
+public interface ITailscaleExecution
+{
+    ITailscaleControl CreateControl(IHostEnvironment environment, IDataProtectionProvider protection,
+        ITailscaleControlHost host, ITailscaleControlAuthorization grants);
+    ITailscaleLogin CreateLogin(IHostEnvironment environment, IDataProtectionProvider protection,
+        ITailscaleLoginHost host, ITailscaleControlAuthorization grants, Func<Guid> readHostId);
+}
 
 public interface ITailscaleManager
 {

@@ -23,6 +23,11 @@ internal static class TailscaleBoundaryChecks
         var count = 0;
         void Check(bool value, string text)
         { if (!value) throw new Exception(text); Console.WriteLine($"PASS TAILSCALE BOUNDARY {++count}: {text}"); }
+        var implementation = typeof(TailscaleOperationCoordinator).Assembly;
+        Check(implementation == typeof(TailscaleLoginCoordinator).Assembly
+            && implementation == typeof(TailscaleOperationJournal).Assembly && implementation == typeof(TailscaleLoginJournal).Assembly
+            && !implementation.GetReferencedAssemblies().Any(reference => reference.Name == "RelaxKonOS.Server"),
+            "Tailscale coordinators and journals share an independent execution assembly");
         var root = Directory.CreateTempSubdirectory("tailscale-boundary-").FullName;
         try
         {
@@ -46,7 +51,7 @@ internal static class TailscaleBoundaryChecks
                 Check(co.Describe(ModuleId)!.ActiveLeases == 0, "Status cancellation returns its real lease only after IPC completes");
             }
             await SleepAndCollectAsync(co, graph);
-            Check(graph.All(reference => !reference.IsAlive), "Actual runtime, coordinators, journals and Helper bridges are collectable after release despite retained completed caller Tasks");
+            Check(graph.All(reference => !reference.IsAlive), "Actual runtime, coordinators and Helper bridges are collectable after release despite retained completed caller Tasks");
 
             for (var cycle = 0; cycle < 16; cycle++)
             {
@@ -167,7 +172,7 @@ internal static class TailscaleBoundaryChecks
         using var lease = await coordinator.AcquireAsync(ModuleId);
         var runtime = lease.Runtime;
         return new[] { runtime, runtime.Resolve(typeof(ITailscaleManager)), runtime.Resolve(typeof(ITailscaleControl)),
-            runtime.Resolve(typeof(ITailscaleLogin)), runtime.Resolve(typeof(TailscaleOperationJournal)), runtime.Resolve(typeof(TailscaleLoginJournal)),
+            runtime.Resolve(typeof(ITailscaleLogin)),
             runtime.Resolve(typeof(ITailscaleControlHost)), runtime.Resolve(typeof(ITailscaleLoginHost)), runtime.Resolve(typeof(ITailscaleControlAuthorization)) }
             .Select(instance => new WeakReference(instance)).ToArray();
     }

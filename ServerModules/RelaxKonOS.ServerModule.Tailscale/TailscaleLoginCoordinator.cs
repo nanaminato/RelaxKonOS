@@ -1,7 +1,5 @@
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Tailscale;
-using RelaxKonOS.Server.Privileged;
-using RelaxKonOS.Server.Settings;
 
 namespace RelaxKonOS.Server.Tailscale;
 
@@ -10,7 +8,7 @@ namespace RelaxKonOS.Server.Tailscale;
 /// The challenge URL is returned once and never enters the durable operation record.
 /// </summary>
 public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITailscaleLoginHost host,
-    ITailscaleControlAuthorization grants, ServerRuntimeSettingsStore settings, TimeProvider? timeProvider = null) : ITailscaleLogin
+    ITailscaleControlAuthorization grants, Func<Guid> readHostId, TimeProvider? timeProvider = null) : ITailscaleLogin
 {
     private static readonly TimeSpan PlanLifetime = TimeSpan.FromMinutes(5);
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
@@ -203,7 +201,7 @@ public sealed class TailscaleLoginCoordinator(TailscaleLoginJournal journal, ITa
         new(stored.Operation.OperationId, stored.HostId, Guid.Parse(stored.Actor), stored.SessionId,
             stored.Operation.ExpectedRevision, stored.Operation.ExpiresAt);
 
-    private Guid HostId() => settings.Current.InstanceId is var id && id != Guid.Empty
+    private Guid HostId() => readHostId() is var id && id != Guid.Empty
         ? id : throw new TailscaleControlException(503, "tailscale.login.unavailable");
 
     private void RequireGrant(ClaimsPrincipal principal)

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using RelaxKonOS.Protocol.Common;
