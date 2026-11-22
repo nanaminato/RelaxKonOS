@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.ModuleHost.Protocol;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Components;
 using RelaxKonOS.Server.Installations;
 using RelaxKonOS.ServerModule.Database;
@@ -51,7 +52,7 @@ internal static class DatabaseObservationBroker
         {
             var result = await read(queries, stopping.Token);
             stopping.Token.ThrowIfCancellationRequested();
-            await http.Response.WriteAsJsonAsync(result, stopping.Token);
+            await http.Response.WriteAsJsonAsync(result, RelaxKonOSJsonOptions.Default, stopping.Token);
             return Results.Empty;
         }
         catch (ComponentLifecycleException error)

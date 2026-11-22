@@ -375,3 +375,4 @@
 - 两个完整发行入口统一以 MSBuild 全局属性传递 RuntimeIdentifier。此前 Linux x64 ModuleHost 使用 dotnet publish --runtime 时，Packaging 项目的资产缺少目标 RID；使用全局属性后 ModuleHost 和 Core 自包含发布成功。PowerShell 和 Bash 发行脚本语法已核对。本地 WSL 预览实例未配置 ModuleHost 隔离启动所需的系统文件，暂用于临时目录及进程验收。
 - 当前 PowerShell 发行入口完成完整 Linux x64 服务端 ZIP，包含 Core、Helper、Guardian 和 ModuleHost。归档 SHA-256 与随包摘要一致，解包后通过 server/linux-x64 发行文件清单逐项校验。制品保留在本地验收目录。
 - 使用完整 Linux x64 发行 ZIP 解包后的 Core 和 ModuleHost 完成 WSL 验收。Core 接纳新签名的测试目录并持久记录离线安装回执 AwaitingRestart。ModuleHost 直接启动候选，四条查询携带预期参数和头部到达受控回环代理，健康检查及退出通过。系统隔离激活和真实 Helper 仍待验。
+- Databases 私有查询代理显式使用共享 RelaxKonOS JSON 协议，使独立包转发的响应沿用公开 API 的枚举字符串格式。Windows Release Server 编译与数据库边界专项通过，真实观察者查询仍待验。
