@@ -63,6 +63,7 @@ internal static class OfficialRoappChecks
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
         var isTerminal = applicationId == "relaxkonos.terminal";
+        var isSshFiles = applicationId == "relaxkonos.ssh-files";
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -133,7 +134,7 @@ internal static class OfficialRoappChecks
                 await RejectAsync(() => packages.InstallAsync(unsigned, launch: false), "Reserved ID via the generic install path");
 
             var candidate = await installer.InspectLocalAsync(path);
-            Check((isEventAlerts || candidate.IconData is { Length: > 0 }) && candidate.ExpectedSha256 is not null,
+            Check((isEventAlerts || isSshFiles || candidate.IconData is { Length: > 0 }) && candidate.ExpectedSha256 is not null,
                 "Review should freeze the digest and load any packaged icon.");
             if (isEventAlerts)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerEventAlertsRead],
@@ -310,7 +311,7 @@ internal static class OfficialRoappChecks
                 databaseAuth.DatabaseAvailable = true;
             }
             compatibility.TaskManagerServerAvailable = true;
-            if (interactive || isTaskManager || isRegistry || isBrowser || isTerminal)
+            if (interactive || isTaskManager || isRegistry || isBrowser || isTerminal || isSshFiles)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
                 Check(await packages.LaunchAsync(applicationId), "The application must launch from its installed package.");
@@ -323,6 +324,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.taskmanager" => "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView",
                     "relaxkonos.browser" => typeof(TextBlock).FullName,
                     "relaxkonos.terminal" => "RelaxKonOS.App.Terminal.TerminalWorkspaceView",
+                    "relaxkonos.ssh-files" => "RelaxKonOS.App.SshFiles.Views.SshFileBrowserView",
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
                     "relaxkonos.git" => "RelaxKonOS.App.Git.Views.GitClientWorkspace",
@@ -341,6 +343,9 @@ internal static class OfficialRoappChecks
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
                     "The installed entry point must create its own workspace.");
+                if (isSshFiles)
+                    Check(System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(workspace.View.Content!.GetType().Assembly)?.IsCollectible == true,
+                        "SSH Files must display the view loaded from the installed package.");
                 if (isDatabase)
                 {
                     var model = ((Control)workspace.View.Content!).DataContext!;
@@ -540,7 +545,7 @@ internal static class OfficialRoappChecks
                 databaseAuth = (DatabasePackageAuthFixture)(object)auth;
                 compatibility.DatabaseEvaluator = new ApplicationCompatibilityService(auth, windows, null!, new EmptyModuleCatalog(), null!);
             }
-            if (isTerminal)
+            if (isTerminal || isSshFiles)
                 ((EventAlertsAuthFixture)(object)auth).State = AuthSessionState.Unauthenticated;
             if (isBrowser)
             {
@@ -582,10 +587,15 @@ internal static class OfficialRoappChecks
             var scopedPermissions = isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
                 || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager || isTailscale;
             var postgres = isDatabase ? new OfficialPostgreSqlFixture() : null;
+            var ssh = new SshDesktopSession(null!, settings);
+            if (isSshFiles)
+                typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Endpoint))!
+                    .SetValue(ssh, ServerCenterSshEndpoint.Create("example.test", 22, "preview"));
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
-                windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
-                null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
+                windows, null!, new ExplorerClient(http, auth, memory), ssh,
+                new SshExplorerClient(ssh), DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(),
+                null!, null!, apps, memory, null!, null!, null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
                 fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels, createSquidClient: squid is null ? null : () => squid,
                 createProxyServerClient: proxyServer is null ? null : () => proxyServer,

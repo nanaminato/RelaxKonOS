@@ -45,6 +45,7 @@
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Tunnels" AppId="relaxkonos.tunnels" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Registry" AppId="relaxkonos.registry" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Squid" AppId="relaxkonos.squid" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.SshFiles" AppId="relaxkonos.ssh-files" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.TaskManager" AppId="relaxkonos.taskmanager" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Certificates" AppId="relaxkonos.certificates" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Terminal" AppId="relaxkonos.terminal" />

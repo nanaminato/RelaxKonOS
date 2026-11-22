@@ -1,0 +1,16 @@
+{
+  "id": "relaxkonos.ssh-files",
+  "displayName": "SSH files",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.SshFiles.dll",
+  "entryType": "RelaxKonOS.App.SshFiles.SshFilesApp",
+  "iconGlyph": "📁",
+  "description": "Browse and transfer files over SFTP",
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "SSH 文件浏览器", "description": "通过 SFTP 浏览和传输文件" },
+    "ja-JP": { "displayName": "SSH ファイル", "description": "SFTP でファイルを閲覧および転送します" }
+  },
+  "requestedPermissions": [],
+  "instancePolicy": "MultiWindow"
+}
