@@ -723,7 +723,9 @@ internal static class SettingsWindowChecks
             var wizard = (ServerInstallationWizardViewModel)((ServerInstallationWizardView)wizardWindow.View.Content!).DataContext!;
             model.SelectedHost = target;
             model.SelectedPlatform = model.Platforms.Single(option => option.Platform == RelaxKonOS.Protocol.Common.HostPlatformKind.Linux);
-            model.SshPassword = "fixture-password";
+            model.SshPassword = target == HostAddressSshFixture.Target ? "fixture-password"
+                : Environment.GetEnvironmentVariable("RK_TEST_SSH_ADDRESS_PASSWORD")
+                    ?? throw new InvalidOperationException("The loopback SSH fixture password is required.");
             var showAddresses = wizard.ShowHostAddressesCommand.ExecuteAsync(null);
             PumpUntil(() => showAddresses.IsCompleted || windows.Windows.Count(item => item.IsModalDialog) == 2);
             Check(!showAddresses.IsCompleted, "The host address dialog did not open. " + model.ErrorMessage);
