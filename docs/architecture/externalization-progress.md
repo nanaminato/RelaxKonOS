@@ -589,3 +589,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 联合部署台账写入前校验检查点范围和状态流转，拒绝进度倒退或覆盖已验证、待重新审核记录。Windows Release 部署套件验证重开后保留已验证记录。
 - 检查点状态流转校验提交后，Windows Release Welcome 与 Firewall 联合部署环回复验通过，覆盖中断续跑、重新审核、模块复用及卸载后共享模块保留。
 - Explorer 目录导航 URI 的生成和解析统一由 SDK 提供。地址栏专项验证 Windows 与 POSIX 路径原样往返，并拒绝重复参数、片段和空字符。Explorer 仍由桌面宿主登记。
+- 新建 Explorer 独立项目并迁入未登录启动视图。桌面宿主仍提供文件工作区及内置注册。Windows Release 专项验证实际未登录启动与地址栏交互。

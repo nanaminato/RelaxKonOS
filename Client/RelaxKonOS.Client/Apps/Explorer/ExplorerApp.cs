@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Explorer;
 using RelaxKonOS.UI.FileBrowser;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using System.Text.Json;
@@ -77,12 +78,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
 
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            var stub = new TextBlock
-            {
-                Text = LocalizedText.Get("explorer.login_required"),
-                Margin = new Thickness(24),
-                TextWrapping = TextWrapping.Wrap,
-            };
+            var stub = new ExplorerLoginRequiredView(LocalizedText.Get("explorer.login_required"));
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), stub,
                 bounds: new Rect(200, 160, 460, 180),
                 iconGlyph: Manifest.IconGlyph,
