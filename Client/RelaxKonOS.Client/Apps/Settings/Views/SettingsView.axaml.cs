@@ -8,6 +8,7 @@ using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.App.Settings.Views;
+using RelaxKonOS.App.Settings;
 
 namespace RelaxKonOS.Client.Apps.Settings.Views;
 

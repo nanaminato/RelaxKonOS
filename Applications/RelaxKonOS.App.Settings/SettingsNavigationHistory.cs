@@ -1,4 +1,4 @@
-namespace RelaxKonOS.Client.Services;
+namespace RelaxKonOS.App.Settings;
 
 public sealed record SettingsNavigationLocation(string Route, string SearchQuery);
 

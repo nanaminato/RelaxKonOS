@@ -1,4 +1,5 @@
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.App.Settings;
 using System.Diagnostics;
 using System.Globalization;
 using RelaxKonOS.Protocol.Workspace;

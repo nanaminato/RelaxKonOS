@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.App.Settings;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.HostSettings;
