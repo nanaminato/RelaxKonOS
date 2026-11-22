@@ -808,3 +808,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含签名 Tunnels 双包验收通过重新启用流程。停用后的签名归档可再次启用，重启后原回执成功，生产路由恢复读取 SQLite 档案，包安装回执仍只有一条。同轮真实 FRP 双向转发、停止释放监听端口和 133 项模块 HTTP 检查通过。
 - Windows Release 使用实际发行 Tailscale Manager .roapp 验证随附模块联合部署。模块停用时只生成启用步骤，重启检查生效后登记应用。模块已启用时直接复用，未新增服务端包操作，卸载移除桌面依赖登记。独立签名 Tailscale 双包和真实守护进程联调仍待验。
 - Windows Release 的 --signed-tailscale-joint-acceptance 使用官方 .roapp 测试副本，仅提高最低模块版本至 99.0.0。协调器完成真实签名归档单次安装，Core 重启续跑后登记桌面应用。通过已安装模块的运行时工厂在可回收加载上下文实例化控制服务。卸载桌面应用后服务端包仍保留。真实 tailscaled 联调仍待验。
+- Linux x64 自包含 Tailscale 双包及随附模块联合验收均通过。独立签名包在重启后用可回收上下文实例化控制服务，桌面一次安装并在卸载后保留服务端包。随附模块通过仅启用、重启续跑、复用及释放依赖登记。WSL 未发现 tailscaled，Windows 已有 CLI，真实业务路径仍待验。
