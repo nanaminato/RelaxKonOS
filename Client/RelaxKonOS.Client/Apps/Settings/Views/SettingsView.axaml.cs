@@ -7,6 +7,7 @@ using Avalonia.Input;
 using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.App.Settings.Views;
 
 namespace RelaxKonOS.Client.Apps.Settings.Views;
 

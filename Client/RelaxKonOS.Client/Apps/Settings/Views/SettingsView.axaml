@@ -4,6 +4,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
+             xmlns:settingsApp="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.App.Settings"
              xmlns:pages="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views.Pages"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.SettingsView"
              x:DataType="vm:SettingsViewModel"
@@ -132,7 +133,9 @@
              belong to the host template and follow the active window-chrome recipe. -->
         <Grid x:Name="HeaderHost" ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="12,4">
             <views:SettingsHeaderView x:Name="SettingsHeader" VerticalAlignment="Center" />
-            <views:SettingsSearchBarView x:Name="SettingsSearchBar" Grid.Column="1" />
+            <settingsApp:SettingsSearchBarView x:Name="SettingsSearchBar" Grid.Column="1"
+                                               Query="{Binding SearchQuery, Mode=TwoWay}"
+                                               Prompt="{loc:Loc settings.search.placeholder}" />
         </Grid>
     <Grid Grid.Row="1" x:Name="NavigationLayout" ColumnDefinitions="250,*">
         <Border x:Name="Sidebar" Grid.Column="0" Classes="app-sidebar" Padding="16" BorderThickness="0">

@@ -50,6 +50,7 @@ internal static class SettingsWindowChecks
             .AddSingleton<IOwnerDevicePairingEndpointStore>(DispatchProxy.Create<IOwnerDevicePairingEndpointStore, UnusedPreviewServices>())
             .AddSingleton<IShellCatalog>(new SettingsWindowShellCatalog())
             .AddSingleton<ISystemStyleRegistry>(new SystemStyleRegistry())
+            .AddSingleton<RelaxKonOS.Client.Services.Modules.IServerModuleCatalog>(new EmptyModuleCatalog())
             .AddSingleton<IRemoteDockerClient>(DispatchProxy.Create<IRemoteDockerClient, UnusedPreviewServices>()).BuildServiceProvider();
         typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
         var windows = new RelaxKonOS.WindowManager.WindowManager();

@@ -57,6 +57,7 @@
 
     <ItemGroup>
     <ProjectReference Include="../../Applications/RelaxKonOS.App.SshFiles/RelaxKonOS.App.SshFiles.csproj" />
+    <ProjectReference Include="../../Applications/RelaxKonOS.App.Settings/RelaxKonOS.App.Settings.csproj" />
     <ProjectReference Include="..\..\Framework\RelaxKonOS.Core\RelaxKonOS.Core.csproj" />
       <ProjectReference Include="..\..\Shared\RelaxKonOS.ModuleHost.Protocol\RelaxKonOS.ModuleHost.Protocol.csproj" />
       <ProjectReference Include="..\..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
