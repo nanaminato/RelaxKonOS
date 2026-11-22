@@ -40,8 +40,9 @@ internal static class JointDeploymentAcceptance
     public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
         RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, ServerModules.DatabaseId));
 
-    public static void RunLiveGit(string server, string archive, string state) =>
-        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), "reuse", ServerModules.GitId));
+    public static void RunLiveGit(string server, string archive, string state, string repository) =>
+        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), "reuse",
+            ServerModules.GitId, repository));
 
     private static void RunWithDispatcher(Func<Task> run)
     {
@@ -57,7 +58,8 @@ internal static class JointDeploymentAcceptance
         task.GetAwaiter().GetResult();
     }
 
-    private static async Task RunLiveAsync(Uri server, string archive, string state, string phase, string moduleId)
+    private static async Task RunLiveAsync(Uri server, string archive, string state, string phase, string moduleId,
+        string? repository = null)
     {
         if (server.Scheme != "http" || server.Host != "127.0.0.1" || server.PathAndQuery != "/"
             || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "resume" or "reuse" or "uninstall"))
@@ -98,6 +100,7 @@ internal static class JointDeploymentAcceptance
         Require(candidate.Manifest.Id == moduleId, $"the fixture uses the {moduleId} desktop package");
         if (moduleId == ServerModules.GitId)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(repository);
             var review = await deployment.PrepareAsync(candidate, [], default);
             Require(review.Plan.PreparedSteps.IsEmpty && review.Plan.OrderedReleases.Any(release =>
                     release.Package.Kind == DeploymentPackageKind.ServerModule && release.Package.Id == moduleId
@@ -106,6 +109,22 @@ internal static class JointDeploymentAcceptance
             var installedGit = await deployment.ExecuteAsync(review, default);
             Require(installedGit.Id == moduleId && applications.IsRegistered(new AppId(moduleId)),
                 "the desktop registers Project Editor after checking the live Git module");
+            var git = new RelaxKonOS.Client.Apps.Git.RemoteGitClient(loginHttp, auth);
+            var registered = await git.RegisterRepositoryAsync(new("Joint deployment fixture", repository));
+            var before = await git.GetGraphAsync(registered.Id);
+            var beforeStatus = await git.GetStatusAsync(registered.Id);
+            Require(before is [{ IsHead: true }] && beforeStatus.Staged.Select(item => item.Path).SequenceEqual(["staged.txt"])
+                && beforeStatus.Untracked.Select(item => item.Path).SequenceEqual(["draft.txt"]),
+                "the fixture starts with one Git commit and the isolated staged and untracked files");
+            var commit = await git.CommitAsync(registered.Id, new("Project Editor fixture commit", ["draft.txt"]));
+            Require(commit is { Success: true, Operation: "commit" }, "the desktop Git client commits the selected file");
+            var after = await git.GetGraphAsync(registered.Id);
+            var status = await git.GetStatusAsync(registered.Id);
+            Require(after is [var head, var parent] && head.IsHead && parent.Sha == before[0].Sha
+                && head.Parents.SequenceEqual([parent.Sha])
+                && status.Staged.Select(item => item.Path).SequenceEqual(["staged.txt"])
+                && status.Untracked.All(item => item.Path != "draft.txt"),
+                "the commit advances HEAD and leaves unrelated staged work intact");
             return;
         }
         if (phase == "start")

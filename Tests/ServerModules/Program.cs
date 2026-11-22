@@ -179,9 +179,9 @@ if (args is ["--live-databases-joint-deployment", var liveServer, var liveArchiv
     return;
 }
 
-if (args is ["--live-git-joint-deployment", var gitServer, var gitArchive, var gitState])
+if (args is ["--live-git-joint-deployment", var gitServer, var gitArchive, var gitState, var gitRepository])
 {
-    JointDeploymentAcceptance.RunLiveGit(gitServer, gitArchive, gitState);
+    JointDeploymentAcceptance.RunLiveGit(gitServer, gitArchive, gitState, gitRepository);
     return;
 }
 

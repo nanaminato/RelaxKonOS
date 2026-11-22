@@ -37,7 +37,7 @@
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 隔离模块启用、重启恢复和证书依赖保护已验，Nginx 业务联调待验 |
-| git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态和提交图已验 |
+| git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows Release 包生命周期已验，真实 FRP 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
 | database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
@@ -706,4 +706,5 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 修正内存存储模式的隧道能力声明，使登录描述和 `/server/capabilities` 与实际路由一致。一次性 Ubuntu 容器以当前 Linux 自包含 Core、真实 Helper 和 PAM 账户验证，SQLITE 模式声明隧道且配置列表返回 200，内存模式撤下声明且相同路由返回 404。Windows Release 模块套件的新断言通过，整套随后在 Proxy 的共享运行时注册断言处停止。
 - Windows Release 完整模块套件通过。断言按当前边界核对 Core 保留 Proxy 共享读取和恢复服务，模块独占作用域内配置写入，覆盖启用及停用、SQLite 及内存组合。独立 HTTP 夹具按其测试范围选取模块，数据库端点和调度注册单独通过验收。一次复跑曾在 WebDAV 上传凭据拒绝断言处停止，最终整组通过。
 - Linux x64 自包含完整模块套件在一次性无外网 Ubuntu 容器通过 1,445 项检查，包括真实 Git 仓库、ModuleHost 启动与路由、Proxy 配置写入作用域和隧道存储能力。WSL 首次运行因环境缺少 Git 停止。容器复跑加入 Git，并在临时测试目录补入单独发布 Core 的 deps.json，以执行发行二进制恢复检查。
-- 一次性无外网 Ubuntu 容器运行发行 Core 和真实 PAM 登录，`--live-git-joint-deployment <loopback-url> <roapp> <desktop-state>` 使用未改写的 Linux Project Editor 0.3.1 发行归档复用 Git 1.0 契约并登记桌面应用。实际 Git 仓库通过公开 API 登记、枚举并返回 main 分支和未跟踪文件，提交图 HEAD 的 SHA 与本机 Git 一致。该轮使用 Linux 用户模式和临时仓库，未执行远端推送或设备验收。
+- 一次性无外网 Ubuntu 容器运行发行 Core 和真实 PAM 登录。未改写的 Linux Project Editor 0.3.1 发行归档复用 Git 1.0 契约并登记桌面应用。实际 Git 仓库通过公开 API 登记、枚举并返回 main 分支和未跟踪文件，提交图 HEAD 的 SHA 与本机 Git 一致。该轮使用 Linux 用户模式和临时仓库，未执行远端推送或设备验收。
+- `--live-git-joint-deployment <loopback-url> <roapp> <desktop-state> <临时仓库在服务端的绝对路径>` 现验证真实桌面 Git 客户端写入。夹具仓库须只有一个提交、已暂存 staged.txt 与未跟踪 draft.txt，并配置测试 Git 作者。Ubuntu 中用原版 Project Editor 归档完成联合安装后，客户端只提交 draft.txt。提交图、父提交和暂存区断言通过，本机 Git 独立确认 HEAD 只含指定文件，staged.txt 仍在暂存区。
