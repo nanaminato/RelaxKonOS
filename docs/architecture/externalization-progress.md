@@ -773,3 +773,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 新增离线 modules sign-catalog，将多个 .rkmodule 发布条目汇入同一官方签名目录。写出前通过生产验证器检查目标源策略与签名，并复用内置模块替换契约。Windows Release 模块包专项通过，验证两个不可变版本的聚合目录可验签。生产签名密钥和目录发布仍由发布方负责。
 - pack-package 的 JSON 输出新增完整 release 对象，可直接汇入聚合签名目录。Windows Release 包专项验证该对象经过 sign-catalog 后可用于生产验证器核对实际 .rkmodule 的内容、长度和摘要。
 - 启动恢复仅处理每个模块最新且与当前安装事实精确匹配的待重启回执。旧回执只标记目标不匹配，不再触发隔离或回滚。自动回滚也检查历史版本撤销记录。Windows Release 模块包和 HTTP 专项通过，覆盖过时首次安装回执及 Git 历史归档撤销后的隔离。
+- Core 解析有效模块时排除隔离的已安装包，并按依赖顺序阻止其使用方启动。清单保留期望配置，健康报告明确依赖隔离，有效能力不再包含受阻模块。Windows Release 生命周期与 HTTP 专项通过，覆盖 Certificates 隔离时 Web Server 停止声明可用能力。

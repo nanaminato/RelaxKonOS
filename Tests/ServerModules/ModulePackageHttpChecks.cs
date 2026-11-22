@@ -611,6 +611,14 @@ internal static class ModulePackageHttpChecks
         ports.DirectSuccess = false;
         check(await lease.Executor.ReloadAsync(default) == NginxReloadOutcome.RecoveryRequired && !ports.Confirmed,
             "the signed reload executor requests recovery when completion cannot be verified");
+        var certificate = InstalledModuleStore.Read(root).Single(record => record.ModuleId == ServerModules.CertificatesId);
+        var guarded = ServerModules.CreateManaged(new HashSet<string> { ServerModules.WebServerId, ServerModules.CertificatesId },
+            [.. installed.Where(module => module.Id != certificate.ModuleId), new InstalledCertificateModule(certificate with { Quarantined = true }, root)]);
+        var health = await guarded.CheckHealthAsync(root, default);
+        check(!guarded.IsEnabled(ServerModules.CertificatesId) && !guarded.IsEnabled(ServerModules.WebServerId)
+            && !guarded.Capabilities.Contains(ServerCapabilities.Certificates) && !guarded.Capabilities.Contains(ServerCapabilities.WebServer)
+            && health.Modules.Single(module => module.ModuleId == ServerModules.WebServerId).ProblemCode == "module-package-dependency-quarantined",
+            "a quarantined Certificates package blocks the dependent Web Server without advertising either capability");
     }
 
     private sealed class WebServerReloadProbe : INginxReloadPorts

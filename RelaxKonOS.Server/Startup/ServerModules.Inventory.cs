@@ -29,7 +29,7 @@ internal sealed partial class ServerModules
         var residency = services.GetService(typeof(ModuleResidencyCoordinator)) as ModuleResidencyCoordinator;
         var management = services.GetService<ModuleManagementStore>();
         var managementState = management?.CaptureInventory();
-        var desired = managementState?.EnabledIds ?? EnabledIds;
+        var desired = managementState?.EnabledIds ?? ConfiguredIds;
         var observedAt = DateTimeOffset.UtcNow;
         var version = BundledModuleAssemblyVersion.ToString();
         var inventory = new List<ServerModuleDto>(all.Length);
@@ -66,7 +66,8 @@ internal sealed partial class ServerModules
             var runtime = isEnabled ? DescribeResidency(module.Id, residency) : null;
             var desiredPolicy = managementState?.Policies.GetValueOrDefault(module.Id);
             var effectivePolicy = management?.EffectivePolicies.GetValueOrDefault(module.Id);
-            var recoveryRequired = runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
+            var recoveryRequired = QuarantinedDependencies.Contains(module.Id)
+                || runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
             var installed = module as IInstalledModuleInfo;
             var host = hostStatuses?.GetValueOrDefault(module.Id);
             var fixedExecutionPackage = module.Id is Modules.TailscaleModule.ModuleId or FirewallId or GitId or DockerId or WebServerId or CertificatesId or ProxyId;
@@ -78,7 +79,8 @@ internal sealed partial class ServerModules
             var effectiveVersion = module is InstalledIsolatedModule
                 ? host is { Status: "running" } ? host.Version : null
                 : isEnabled ? installed?.InstalledVersion ?? version : null;
-            inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
+            var capabilities = installed?.TrustState == "quarantined" || QuarantinedDependencies.Contains(module.Id) ? [] : module.Capabilities;
+            inventory.Add(new ServerModuleDto(module.Id, isEnabled, capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
                 runtime,
                 DesiredEnabled: desired.Contains(module.Id), Packaging: installed is null && package is null ? "bundled" : "independent",

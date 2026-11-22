@@ -123,7 +123,8 @@ internal sealed partial class ServerModules
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToHashSet(StringComparer.Ordinal);
 
-    private ServerModules(IReadOnlyList<IServerModule> enabled, IReadOnlyList<IServerModule> disabled)
+    private ServerModules(IReadOnlyList<IServerModule> enabled, IReadOnlyList<IServerModule> disabled,
+        IReadOnlySet<string> quarantinedDependencies, IReadOnlySet<string> configuredIds)
     {
         _enabled = enabled;
         _disabled = disabled;
@@ -133,6 +134,8 @@ internal sealed partial class ServerModules
             .Concat(enabled.OfType<IServerModuleWorkResidency>().Select(module => module.RuntimeFactory)).ToArray();
         ReleasableModuleIds = enabled.OfType<IServerModuleResidency>().Select(module => module.RuntimeFactory.ModuleId).ToHashSet(StringComparer.Ordinal);
         KnownModuleIds = enabled.Concat(disabled).Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
+        QuarantinedDependencies = quarantinedDependencies;
+        ConfiguredIds = configuredIds.ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>Effective module IDs for this process, in dependency order.</summary>
@@ -154,6 +157,8 @@ internal sealed partial class ServerModules
 
     /// <summary>Every module in the compiled catalog, enabled or not. Used to validate configuration.</summary>
     internal IReadOnlySet<string> KnownModuleIds { get; }
+    private IReadOnlySet<string> QuarantinedDependencies { get; }
+    private IReadOnlySet<string> ConfiguredIds { get; }
     internal IReadOnlyDictionary<string, IReadOnlyList<string>> RuntimeDependencies
     {
         get
@@ -195,13 +200,16 @@ internal sealed partial class ServerModules
         foreach (var module in _enabled.Concat(_disabled).OrderBy(module => module.Id, StringComparer.Ordinal))
         {
             if (module is IInstalledModuleInfo && !installedIds.Contains(module.Id)) continue;
-            if (module is IServerModuleHealthProbe probe)
+            if (module is IServerModuleHealthProbe probe && !QuarantinedDependencies.Contains(module.Id))
                 modules.Add(await probe.CheckHealthAsync(enabled.Contains(module.Id), cancellationToken));
             else
             {
                 var installed = module as IInstalledModuleInfo;
+                var quarantined = installed?.TrustState == "quarantined";
+                var blocked = QuarantinedDependencies.Contains(module.Id);
                 modules.Add(new(module.Id, enabled.Contains(module.Id), installed is not null, installed?.InstalledVersion,
-                    installed?.SourceId, "host", null));
+                    installed?.SourceId, quarantined ? "quarantined" : blocked ? "blocked" : "host",
+                    quarantined ? "module-package-quarantined" : blocked ? "module-package-dependency-quarantined" : null));
             }
         }
         return new(modules.All(module => module.Status is "host" or "loaded" or "healthy"), DateTimeOffset.UtcNow, modules);
@@ -260,8 +268,15 @@ internal sealed partial class ServerModules
             ordered.Add(modules[id]);
         }
         foreach (var id in enabledIds.Order(StringComparer.Ordinal)) Visit(id);
-        var disabled = catalog.Where(module => !enabledIds.Contains(module.Id)).ToArray();
-        return new ServerModules(ordered.AsReadOnly(), disabled);
+        var unavailable = catalog.Where(module => module is IInstalledModuleInfo { TrustState: "quarantined" })
+            .Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
+        var quarantinedDependencies = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var module in ordered)
+            if (module.Requires.Any(unavailable.Contains) && unavailable.Add(module.Id))
+                quarantinedDependencies.Add(module.Id);
+        var enabled = ordered.Where(module => !unavailable.Contains(module.Id)).ToArray();
+        var disabled = catalog.Where(module => !enabledIds.Contains(module.Id) || unavailable.Contains(module.Id)).ToArray();
+        return new ServerModules(enabled, disabled, quarantinedDependencies, enabledIds);
     }
 
     internal void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context,
