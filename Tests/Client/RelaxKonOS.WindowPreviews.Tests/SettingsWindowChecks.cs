@@ -567,7 +567,7 @@ internal static class SettingsWindowChecks
                 nameof(ComponentCenterHeaderActions), nameof(ComponentCenterNavigationView), nameof(ComponentCenterLayout),
                 nameof(ComponentIdentityView), nameof(ComponentDesktopPackageView), nameof(ComponentGitInstallationView),
                 nameof(ComponentOfficialDownloadsView), nameof(ComponentPackageCandidateView), nameof(CatalogSourcesView),
-                nameof(ServerModulesHeaderView), nameof(ServerModuleStoreView), nameof(ServerModuleSecurityView),
+                nameof(ServerModulesHeaderView), nameof(ServerModuleStoreView), nameof(ServerModulePackagesView), nameof(ServerModuleSecurityView),
             })
                 Check(controls.Any(control => control.Name == viewName && control.Assembly == packageAssembly),
                     $"The installed Component Center must create {viewName} from the package.");

@@ -66,8 +66,11 @@ public sealed record ServerModuleHealthRow(ServerModuleHealthModuleDto Fact) : I
     public bool ToneBad => HasProblem;
 }
 
-public sealed record ServerPackageOperationRow(ServerPackageOperationDto Fact)
+public sealed record ServerPackageOperationRow(ServerPackageOperationDto Fact) : IServerPackageOperationRow
 {
+    string IServerPackageOperationRow.Title => Title.Resolve();
+    string IServerPackageOperationRow.ProblemText => ProblemText.Resolve();
+    string IServerPackageOperationRow.StateText => StateText.Resolve();
     public LocalizedStatus Title => LocalizedStatus.Format("server_modules.package.operation_row",
         ServerModulesViewModel.PackageActionText(Fact.Action), Fact.ModuleId, Fact.Version);
     public LocalizedStatus StateText => ServerModulesViewModel.StatusLabel(Fact.State);
@@ -99,8 +102,18 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity, IServerModulesHeader, IServerModuleStore
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity, IServerModulesHeader, IServerModuleStore, IServerModulePackages
 {
+    string IServerModulePackages.PackagePlanPendingText => PackagePlanPendingText.Resolve();
+    ICommand IServerModulePackages.ReopenPackagePlanCommand => ReopenPackagePlanCommand;
+    ICommand IServerModulePackages.DiscardPackagePlanCommand => DiscardPackagePlanCommand;
+    ICommand IServerModulePackages.OpenStorePageCommand => OpenStorePageCommand;
+    string IServerModulePackages.PackageStatusText => PackageStatusText.Resolve();
+    string IServerModulePackages.SelectedVersionStateText => SelectedVersionStateText.Resolve();
+    ICommand IServerModulePackages.RollbackPackageCommand => RollbackPackageCommand;
+    IReadOnlyList<IServerPackageOperationRow> IServerModulePackages.PackageOperationRows => PackageOperationRows;
+    void IServerModulePackages.ReportPackageUnavailable() => PackageStatus = "server_modules.packages_unavailable";
+
     ICommand IServerModuleStore.RefreshCatalogsCommand => RefreshCatalogsCommand;
     IReadOnlyList<IServerModuleStoreSourceRow> IServerModuleStore.StoreSourceRows => StoreSourceRows;
     ICommand IServerModuleStore.SearchStoreCommand => SearchStoreCommand;

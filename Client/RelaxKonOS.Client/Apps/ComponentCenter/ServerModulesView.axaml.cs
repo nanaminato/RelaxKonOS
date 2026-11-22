@@ -1,9 +1,6 @@
 using Avalonia;
 using RelaxKonOS.App.ComponentCenter;
 using Avalonia.Controls;
-using Avalonia.Interactivity;
-using Avalonia.Platform.Storage;
-using RelaxKonOS.Client.Localization;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
@@ -12,12 +9,13 @@ public partial class ServerModulesView : UserControl
     private bool _compact;
     private bool _layoutApplied;
 
-    public ServerModulesView() : this(new ServerModulesHeaderView(), new ServerModuleStoreView(), new ServerModuleSecurityView()) { }
+    public ServerModulesView() : this(new ServerModulesHeaderView(), new ServerModuleStoreView(), new ServerModulePackagesView(), new ServerModuleSecurityView()) { }
 
-    internal ServerModulesView(Control headerView, Control storeView, Control securityView)
+    internal ServerModulesView(Control headerView, Control storeView, Control packagesView, Control securityView)
     {
         InitializeComponent();
         PageHeader.Content = headerView;
+        Packages.Content = packagesView;
         Store.Content = storeView;
         Security.Content = securityView;
     }
@@ -65,29 +63,6 @@ public partial class ServerModulesView : UserControl
             Grid.SetColumn(ModuleDetail, 1);
             Grid.SetRow(ModuleDetail, 0);
             ModuleList.MaxHeight = 500;
-        }
-    }
-
-    private async void InstallPackage_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not ServerModulesViewModel model || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
-            return;
-        try
-        {
-            var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = LocalizedText.Get("server_modules.install_package"),
-                AllowMultiple = false,
-                FileTypeFilter = [new FilePickerFileType("RelaxKonOS module") { Patterns = ["*.rkmodule"] }],
-            });
-            if (files.Count != 1) return;
-            await using var stream = await files[0].OpenReadAsync();
-            if (stream is not { CanSeek: true }) return;
-            await model.InstallPackageAsync(stream, stream.Length);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            model.PackageStatus = "server_modules.packages_unavailable";
         }
     }
 }

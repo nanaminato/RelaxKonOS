@@ -21,6 +21,7 @@ public sealed record ComponentCenterViewFactories(
     Func<ComponentCenterPresentation, Control> CreateMain,
     Func<Control> CreateModuleHeader,
     Func<Control> CreateModuleStore,
+    Func<Control> CreateModulePackages,
     Func<Control> CreateModuleSecurity,
     Func<ModalDialog<bool>, Control> CreateModulePlan,
     Func<ModalDialog<bool>, Control> CreateModulePolicy,

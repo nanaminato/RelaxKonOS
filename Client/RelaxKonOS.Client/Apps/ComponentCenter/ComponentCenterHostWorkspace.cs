@@ -108,7 +108,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
             model.CatalogSources = new CatalogSourcesViewModel(componentSources);
         }
         var login = session.CurrentSession;
-        var view = new ComponentCenterWorkspace(model, views.CreateMain, views.CreateModuleHeader, views.CreateModuleStore, views.CreateModuleSecurity);
+        var view = new ComponentCenterWorkspace(model, views.CreateMain, views.CreateModuleHeader, views.CreateModuleStore, views.CreateModulePackages, views.CreateModuleSecurity);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
         RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallationSnapshot? lastObservation = null;
         System.ComponentModel.PropertyChangedEventHandler observed = (sender, args) =>
