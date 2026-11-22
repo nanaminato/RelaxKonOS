@@ -69,6 +69,8 @@ public interface IExternalAppContext
     ITerminalDevicePreferences? TerminalDevicePreferences { get; }
     ITerminalWorkspacePreferences? TerminalWorkspacePreferences { get; }
     IExternalTerminal? Terminal { get; }
+    /// <summary>File operations for the SSH connection captured for the official SSH Files application.</summary>
+    ISshFileSession? SshFiles { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }

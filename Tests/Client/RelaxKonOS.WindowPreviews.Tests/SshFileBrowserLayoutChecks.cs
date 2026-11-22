@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
@@ -21,6 +22,7 @@ internal static class SshFileBrowserLayoutChecks
 {
     public static void Run(ShellSettings settings)
     {
+        CheckExternalSessionBinding();
         var original = settings.ToPreferences();
         // Disconnected session and local fixtures keep layout checks independent of an SSH host.
         var view = CreateView(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
@@ -304,5 +306,32 @@ internal static class SshFileBrowserLayoutChecks
     }
 
     private static void Pump() => Dispatcher.UIThread.RunJobs();
+    private static void CheckExternalSessionBinding()
+    {
+        var host = new SshDesktopSession(null!, null!);
+        var endpointProperty = typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Endpoint))!;
+        var endpoint = ServerCenterSshEndpoint.Create("example.test", 22, "user");
+        endpointProperty.SetValue(host, endpoint);
+        using var lifetime = new CancellationTokenSource();
+        var session = new ExternalSshFileSession(host, endpoint, lifetime.Token);
+        var otherSession = new ExternalSshFileSession(host, endpoint, CancellationToken.None);
+        var connection = session.Connection!;
+        Check(session.IsConnected && connection is not null && !ReferenceEquals(connection, endpoint),
+            "External SSH sessions expose an opaque connection reference.");
+        try
+        {
+            _ = otherSession.ReadDirectoryAsync(connection!, "/");
+            throw new Exception("A connection reference must be scoped to one external SSH session.");
+        }
+        catch (InvalidOperationException) { }
+        endpointProperty.SetValue(host, endpoint with { });
+        Check(!session.IsConnected && session.Connection is null,
+            "Reconnecting to the same endpoint invalidates the previous external SSH session.");
+        endpointProperty.SetValue(host, endpoint);
+        lifetime.Cancel();
+        Check(!session.IsConnected && session.Connection is null,
+            "Cancelling the package lifetime invalidates its SSH session.");
+    }
+
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 }
