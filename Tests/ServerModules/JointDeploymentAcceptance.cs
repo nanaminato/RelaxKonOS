@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Tailscale;
 using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -65,10 +68,15 @@ internal static class JointDeploymentAcceptance
         var installed = InstalledModuleCatalog.Load(Path.Combine(root, "server")).OfType<InstalledTailscaleModule>().Single();
         var context = host.Services.GetRequiredService<ServerModuleContext>();
         await using var runtime = await installed.RuntimeFactory.CreateAsync(host.Services, context, default);
-        var control = runtime.Resolve(typeof(RelaxKonOS.Server.Tailscale.ITailscaleControl));
+        var control = (RelaxKonOS.Server.Tailscale.ITailscaleControl)runtime.Resolve(typeof(RelaxKonOS.Server.Tailscale.ITailscaleControl));
         Require(control.GetType().Assembly.GetName().Name == "RelaxKonOS.ServerModule.Tailscale"
             && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(control.GetType().Assembly)?.IsCollectible == true,
             "the joint-installed signed Tailscale package constructs its control service in a collectible context");
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", ModuleTestAuthentication.Observer)], "fixture"));
+        var snapshot = await control.ReadAsync(principal, default);
+        var helper = (TailscaleReadHelper)host.Services.GetRequiredService<IPrivilegedOperationTransport>();
+        Require(snapshot == TailscaleReadHelper.Snapshot && helper.ReadCount == 1,
+            "the installed signed Tailscale control service reads through the production Helper adapter");
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
@@ -1318,6 +1326,21 @@ internal static class JointDeploymentAcceptance
         Console.WriteLine("PASS: " + message);
     }
 
+    private sealed class TailscaleReadHelper : IPrivilegedOperationTransport
+    {
+        internal static TailscaleControlSnapshot Snapshot { get; } = new(new string('a', 64), false, true, new(true, false), true);
+        internal int ReadCount { get; private set; }
+
+        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (request.Operation != PrivilegedOperationKind.TailscaleControlRead || request.OperationId is not Guid id || id == Guid.Empty)
+                throw new InvalidOperationException("Unexpected Tailscale Helper operation.");
+            ReadCount++;
+            return Task.FromResult(new PrivilegedOperationResult(true, TailscaleControl: Snapshot));
+        }
+    }
+
     private sealed class TestHost(WebApplication app, ModuleManagementStore store) : IAsyncDisposable
     {
         public string Url => app.Urls.Single();
@@ -1383,7 +1406,10 @@ internal static class JointDeploymentAcceptance
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
             builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
-            builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport, IdleDatabaseHelper>();
+            if (online.Any(module => module.Id == "relaxkonos.tailscale"))
+                builder.Services.AddSingleton<IPrivilegedOperationTransport, TailscaleReadHelper>();
+            else
+                builder.Services.AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>();
             builder.Services.AddSingleton(store);
             builder.Services.AddSingleton(modules);
             builder.Services.AddSingleton(context);
