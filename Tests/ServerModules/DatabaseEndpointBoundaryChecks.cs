@@ -153,8 +153,11 @@ internal static class DatabaseEndpointBoundaryChecks
             throw new InvalidOperationException("A damaged installation ledger must block database deactivation.");
 
         var brokerBuilder = WebApplication.CreateBuilder();
+        using var relayManagement = new ModuleManagementStore(brokerBuilder.Configuration, inspectionRoot);
         brokerBuilder.Services.AddSingleton(new ModuleHostSupervisor(brokerBuilder.Environment, brokerBuilder.Configuration,
             NullLogger<ModuleHostSupervisor>.Instance, null!));
+        brokerBuilder.Services.AddSingleton(services => new CoreModulePrivilegeBroker(brokerBuilder.Environment,
+            brokerBuilder.Configuration, packagedEnabled, relayManagement, services));
         await using var broker = brokerBuilder.Build();
         DatabaseObservationBroker.Map(broker, broker.Services, (_, _) =>
             throw new InvalidOperationException("An unauthenticated request cannot resolve an observation user."));
@@ -173,6 +176,21 @@ internal static class DatabaseEndpointBoundaryChecks
             await route.RequestDelegate!(request);
             if (request.Response.StatusCode != StatusCodes.Status403Forbidden)
                 throw new InvalidOperationException("A request without a trusted module generation reached the observation broker.");
+        }
+
+        broker.MapDatabaseObservationRelay();
+        var publicReads = ((IEndpointRouteBuilder)broker).DataSources.SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>().Where(route => route.Metadata.GetMetadata<IAuthorizeData>()?.Policy
+                == RuntimeCatalogEndpoints.ReadPolicy).ToArray();
+        if (publicReads.Length != 4)
+            throw new InvalidOperationException("The public database relay did not register all four reads.");
+        foreach (var route in publicReads)
+        {
+            var request = new DefaultHttpContext { RequestServices = broker.Services };
+            request.Request.Method = "GET";
+            await route.RequestDelegate!(request);
+            if (request.Response.StatusCode != StatusCodes.Status503ServiceUnavailable)
+                throw new InvalidOperationException("A database relay without a running ModuleHost must return 503.");
         }
 
         await CheckObservationClientAsync();
