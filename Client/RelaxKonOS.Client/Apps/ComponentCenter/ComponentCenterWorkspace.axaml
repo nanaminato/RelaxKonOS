@@ -24,15 +24,7 @@
       <StackPanel Spacing="16" IsVisible="{Binding ShowComponentBrowser}">
        <component:ComponentIdentityView IsVisible="{Binding HasComponentDetails}" OpenApplicationRequested="OpenApplication_Click" />
 
-       <Border Classes="panel-card" IsVisible="{Binding ShowDesktopPackage}">
-        <StackPanel Spacing="12">
-         <TextBlock Classes="section-title" Text="{loc:Loc component_center.source_kind.DesktopApp}" />
-         <TextBlock Classes="section-hint" Text="{loc:Loc component_center.desktop.hint}" TextWrapping="Wrap" />
-         <TextBlock Classes="section-hint" Text="{Binding DesktopCompatibilityText}" TextWrapping="Wrap" />
-         <Button Classes="primary" Content="{loc:Loc component_center.desktop.review}"
-                 Command="{Binding ReviewDesktopCatalogPackageCommand}" HorizontalAlignment="Left" />
-        </StackPanel>
-       </Border>
+       <component:ComponentDesktopPackageView IsVisible="{Binding ShowDesktopPackage}" />
 
        <Border Classes="panel-card" IsVisible="{Binding ShowNginxSelection}">
         <ContentControl Content="{Binding NginxSelection}">
@@ -77,80 +69,7 @@
        <component:ComponentApplicationNoticeView IsVisible="{Binding ShowNotIntegrated}" OpenApplicationRequested="OpenApplication_Click" />
 
        <component:ComponentHostObservationView IsVisible="{Binding ShowHostObservation}" />
-       <Border Classes="panel-card" IsVisible="{Binding ShowOfficialDownloads}">
-        <StackPanel Spacing="14">
-         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-          <StackPanel Spacing="3">
-           <TextBlock Classes="section-title" Text="{loc:Loc component_center.download.title}" />
-           <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.intro}" />
-          </StackPanel>
-          <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc common.refresh}"
-                  Command="{Binding RefreshOfficialReleasesCommand}" IsEnabled="{Binding CanRefreshOfficial}" VerticalAlignment="Center" />
-         </Grid>
-         <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoadingOfficialReleases}" />
-         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
-          <StackPanel Spacing="6">
-           <TextBlock Classes="field-label" Text="{loc:Loc component_center.download.method}" />
-           <ComboBox ItemsSource="{Binding DownloadMethods}" SelectedItem="{Binding SelectedDownloadMethod, Mode=TwoWay}"
-                     HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
-            <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ComponentDownloadMethodChoice"><TextBlock Text="{Binding Text}" /></DataTemplate></ComboBox.ItemTemplate>
-           </ComboBox>
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowOnlineVersions}">
-           <TextBlock Classes="field-label" Text="{loc:Loc component_center.download.version}" />
-           <ComboBox MinWidth="180" ItemsSource="{Binding OfficialReleases}" SelectedItem="{Binding SelectedOfficialRelease, Mode=TwoWay}"
-                     IsEnabled="{Binding !IsInstallingOfficial}">
-            <ComboBox.ItemTemplate><DataTemplate x:DataType="mr:ComponentDownloadRelease"><TextBlock Text="{Binding Version}" /></DataTemplate></ComboBox.ItemTemplate>
-           </ComboBox>
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowManualVersion}">
-           <TextBlock Classes="field-label" Text="{loc:Loc component_center.download.version}" />
-           <TextBox MinWidth="180" Text="{Binding OfficialVersion, Mode=TwoWay}"
-                    PlaceholderText="{loc:Loc component_center.download.version}" IsEnabled="{Binding !IsInstallingOfficial}" />
-          </StackPanel>
-         </Grid>
-         <Border Classes="inset-block" IsVisible="{Binding IsFileSource}">
-          <StackPanel Spacing="8">
-           <TextBlock Classes="field-label" Text="{loc:Loc component_center.download.file}" />
-           <TextBlock Text="{Binding SelectedPackageFileText}" TextWrapping="Wrap" FontSize="13" />
-           <Button Classes="ghost-action" Content="{loc:Loc component_center.download.choose_file}"
-                   Command="{Binding SelectPackageFileCommand}" HorizontalAlignment="Left" />
-           <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsSelectingPackageFile}" />
-           <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.file_hint}" />
-          </StackPanel>
-         </Border>
-         <TextBlock Text="{Binding OfficialDownloadNotice}" IsVisible="{Binding !OfficialDownloadNotice.IsEmpty}"
-                    TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-         <Expander>
-          <Expander.Header><TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc component_center.download.manual}" /></Expander.Header>
-          <StackPanel Spacing="8">
-           <TextBlock Classes="section-hint" Text="{loc:Loc component_center.download.manual_hint}" />
-           <TextBlock Text="{Binding OfficialDownloadUrl}" TextWrapping="Wrap" FontSize="11" FontFamily="Consolas"
-                      Foreground="{DynamicResource TextTertiaryBrush}" />
-           <Button Classes="ghost-action" Content="{loc:Loc component_center.download.open}"
-                   Command="{Binding OpenOfficialDownloadCommand}" HorizontalAlignment="Left" />
-          </StackPanel>
-         </Expander>
-         <Border Classes="rule" />
-         <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsInstallingOfficial}" />
-         <WrapPanel ItemSpacing="8" LineSpacing="8">
-          <Button Classes="primary" Content="{loc:Loc component_center.native.action.Install}"
-                  Command="{Binding InstallOfficialCommand}" IsEnabled="{Binding CanInstallOfficial}" />
-         </WrapPanel>
-         <StackPanel Spacing="10" IsVisible="{Binding PackageInstallation.HasMessage}">
-          <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" FontSize="12" />
-          <Button Classes="ghost-action" Content="{loc:Loc webservers.service_stop.review}"
-                  Command="{Binding ReviewServiceStopActionCommand}" IsVisible="{Binding CanReviewServiceStop}" HorizontalAlignment="Left" />
-          <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
-          <Button Classes="ghost-action" Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}"
-                  IsVisible="{Binding PackageInstallation.IsActive}" HorizontalAlignment="Left" />
-          <Expander>
-           <Expander.Header><TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc common.operation_log}" /></Expander.Header>
-           <TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" FontSize="11" Classes="mono" />
-          </Expander>
-         </StackPanel>
-        </StackPanel>
-       </Border>
+       <component:ComponentOfficialDownloadsView IsVisible="{Binding ShowOfficialDownloads}" />
 
        <!-- Platform install mode and the frozen candidate the host's own package manager resolves. -->
        <Border Classes="panel-card" IsVisible="{Binding ShowPackageFreeze}">

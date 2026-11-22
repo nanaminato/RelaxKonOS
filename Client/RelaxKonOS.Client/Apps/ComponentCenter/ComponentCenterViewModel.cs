@@ -20,8 +20,28 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 }
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
-public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice
+public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage, IComponentOfficialDownloads
 {
+    string IComponentDesktopPackage.DesktopCompatibilityText => DesktopCompatibilityText.Resolve();
+    ICommand IComponentDesktopPackage.ReviewDesktopCatalogPackageCommand => ReviewDesktopCatalogPackageCommand;
+    IReadOnlyList<IComponentDownloadMethodChoice> IComponentOfficialDownloads.DownloadMethods => DownloadMethods;
+    IComponentDownloadMethodChoice IComponentOfficialDownloads.SelectedDownloadMethod
+    {
+        get => SelectedDownloadMethod;
+        set
+        {
+            if (value is ComponentDownloadMethodChoice choice)
+                SelectedDownloadMethod = choice;
+        }
+    }
+    string IComponentOfficialDownloads.OfficialDownloadNotice => OfficialDownloadNotice.Resolve();
+    string IComponentOfficialDownloads.SelectedPackageFileText => SelectedPackageFileText.Resolve();
+    ICommand IComponentOfficialDownloads.RefreshOfficialReleasesCommand => RefreshOfficialReleasesCommand;
+    ICommand IComponentOfficialDownloads.SelectPackageFileCommand => SelectPackageFileCommand;
+    ICommand IComponentOfficialDownloads.OpenOfficialDownloadCommand => OpenOfficialDownloadCommand;
+    ICommand IComponentOfficialDownloads.InstallOfficialCommand => InstallOfficialCommand;
+    ICommand IComponentOfficialDownloads.ReviewServiceStopActionCommand => ReviewServiceStopActionCommand;
+
     IReadOnlyList<IComponentSourceChip> IComponentIdentity.SelectedHostSources => SelectedHostSources;
     IReadOnlyList<IComponentSourceChip> IComponentIdentity.SelectedOtherSources => SelectedOtherSources;
     string IComponentApplicationNotice.NotIntegratedMessage => NotIntegratedMessage.Resolve();

@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,8 +15,9 @@ public interface IComponentReleaseClient
 }
 public sealed record ComponentPackageSelection(string ReferenceId, string Name);
 public enum ComponentDownloadMethod { ServerDownload, ClientDownload, LocalFile, ServerFile }
-public sealed record ComponentDownloadMethodChoice(ComponentDownloadMethod Method)
+public sealed record ComponentDownloadMethodChoice(ComponentDownloadMethod Method) : IComponentDownloadMethodChoice
 {
+    string IComponentDownloadMethodChoice.Text => Text.Resolve();
     public LocalizedStatus Text => LocalizedStatus.Key("component_center.download.method." + Method);
 }
 

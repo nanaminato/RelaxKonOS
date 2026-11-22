@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentDesktopPackageView" x:DataType="local:IComponentDesktopPackage">
+ <Border Classes="panel-card">
+  <StackPanel Spacing="12">
+   <TextBlock Classes="section-title" Text="{local:Loc component_center.source_kind.DesktopApp}" />
+   <TextBlock Classes="section-hint" Text="{local:Loc component_center.desktop.hint}" TextWrapping="Wrap" />
+   <TextBlock Classes="section-hint" Text="{Binding DesktopCompatibilityText}" TextWrapping="Wrap" />
+   <Button Classes="primary" Content="{local:Loc component_center.desktop.review}"
+           Command="{Binding ReviewDesktopCatalogPackageCommand}" HorizontalAlignment="Left" />
+  </StackPanel>
+ </Border>
+</UserControl>
