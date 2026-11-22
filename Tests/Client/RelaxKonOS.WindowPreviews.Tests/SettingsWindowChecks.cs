@@ -481,7 +481,9 @@ internal static class SettingsWindowChecks
                 auth.State = AuthSessionState.Authenticated;
                 auth.User = new(Guid.NewGuid(), "fixture", RelaxKonOS.Protocol.Common.HostPlatformKind.Linux,
                     "fixture", DateTimeOffset.UtcNow, null);
+                using var moduleHttp = new HttpClient(new OfflineModuleHandler());
                 using var centerServices = new ServiceCollection()
+                    .AddSingleton<IHttpClientFactory>(new FixtureModuleHttpFactory(moduleHttp))
                     .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
                     .AddSingleton(session)
                     .AddSingleton(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>())
@@ -576,6 +578,25 @@ internal static class SettingsWindowChecks
             var rejected = applications.Activate(new AppActivationRequest(new Uri(firstUri + "&action=install")));
             Check(rejected.Status == AppActivationStatus.RouteNotFound && model?.SelectedPage == ComponentCenterPage.Installed,
                 "A route with an action parameter reached the Component Center workspace.");
+            var modules = model?.ServerModules ?? throw new InvalidOperationException("Module review fixture was not registered.");
+            foreach (var (open, expected) in new[]
+            {
+                (modules.PlanReviewRequested!, nameof(ServerModulePlanReviewView)),
+                (modules.PolicyEditorRequested!, nameof(ServerModulePolicyEditorView)),
+                (modules.PrivilegeReviewRequested!, nameof(ServerModulePrivilegeView)),
+            })
+            {
+                var review = open();
+                PumpUntil(() => windows.Windows.Count == 2);
+                var dialog = windows.Windows.Last();
+                var reviewControl = dialog.View.Content as Control;
+                Check(reviewControl?.GetType().Name == expected && reviewControl.GetType().Assembly == packageAssembly
+                    && ReferenceEquals(reviewControl.DataContext, modules),
+                    $"The installed package must create and bind {expected}.");
+                windows.Close(dialog);
+                PumpUntil(() => review.IsCompleted && windows.Windows.Count == 1);
+                review.GetAwaiter().GetResult();
+            }
             Console.WriteLine("PASS: installed Component Center opens its production workspace and dispatches validated deep links.");
         }
         finally
@@ -591,6 +612,17 @@ internal static class SettingsWindowChecks
             await using var stream = File.OpenRead(path);
             await packages.InstallOfficialAsync(stream, path, id, digest!, null, CancellationToken.None);
         }
+    }
+
+    private sealed class FixtureModuleHttpFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
+    }
+
+    private sealed class OfflineModuleHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
     }
 
     private static void CheckInstalledPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,

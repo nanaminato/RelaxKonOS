@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
+using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.App.ComponentCenter;
 
@@ -21,14 +22,14 @@ public partial class ServerModulePlanReviewView : UserControl
     private async void ApplyPlan_Click(object? sender, RoutedEventArgs e)
     {
         if (Model is not { } model) return;
-        await model.ApplyCommand.ExecuteAsync(null);
+        await model.ApplyPlanAsync();
         if (!model.HasPlan) _dialog?.Close(true);
     }
 
     private async void ApplyPackage_Click(object? sender, RoutedEventArgs e)
     {
         if (Model is not { } model) return;
-        await model.ApplyPackagePlanCommand.ExecuteAsync(null);
+        await model.ApplyPackagePlanAsync();
         if (!model.HasPackagePlan) _dialog?.Close(true);
     }
 

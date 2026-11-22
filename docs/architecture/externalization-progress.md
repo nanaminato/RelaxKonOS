@@ -565,3 +565,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 应用直接创建主窗口详情区并加载样式。宿主 XAML 只接入模块、Nginx 和运行时视图及打开应用回调。Windows Release 三语双主题通过，重建 .roapp 的隔离安装与深链接验收通过。
 - Component Center .roapp 通过 SDK 共享数据契约创建自身主窗口视图。桌面宿主只注入状态、领域视图和回调。Windows Release 三语双主题通过，新归档隔离安装验证主布局、目录来源和组件详情控件来自包的独立程序集加载上下文，深链接继续复用窗口。
 - Component Center 模块安全与诊断视图由已安装 .roapp 创建，通过 SDK 契约绑定宿主状态和命令。Windows Release 模块管理专项及新归档隔离安装通过，后者验证诊断控件来自包加载上下文。
+- Component Center 模块计划审核、运行策略和权限审核对话框由已安装 .roapp 创建。通过 SDK 共享界面契约绑定宿主模型及审批动作。Windows Release 模块管理专项通过，隔离安装验证三类对话框的程序集来源及模型绑定。

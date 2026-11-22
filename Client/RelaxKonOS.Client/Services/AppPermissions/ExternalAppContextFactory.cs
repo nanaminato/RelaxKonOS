@@ -330,10 +330,10 @@ public sealed class ExternalAppContextFactory
     private sealed class ComponentCenterPackageWorkspace(IComponentCenterWorkspace workspace, CancellationToken lifetime)
         : IComponentCenterWorkspace
     {
-        public void Open(Func<ComponentCenterPresentation, Control> createView, Func<Control> createModuleSecurityView, Func<string, Control, ManagedWindow> showWorkspace)
+        public void Open(ComponentCenterViewFactories views, Func<string, Control, ManagedWindow> showWorkspace)
         {
             lifetime.ThrowIfCancellationRequested();
-            workspace.Open(createView, createModuleSecurityView, showWorkspace);
+            workspace.Open(views, showWorkspace);
         }
 
         public bool CanNavigate(Uri uri) => !lifetime.IsCancellationRequested && workspace.CanNavigate(uri);

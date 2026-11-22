@@ -1,9 +1,7 @@
 using System.ComponentModel;
 using System.Windows.Input;
-using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.AppSDK;
 
-namespace RelaxKonOS.App.ComponentCenter;
+namespace RelaxKonOS.AppSDK;
 
 public interface IServerModuleReview : INotifyPropertyChanged
 {
@@ -41,8 +39,8 @@ public interface IServerModulePlanReview : IServerModuleReview
     string PlanRestartText { get; }
     string PlanServiceText { get; }
     string PlanTargetText { get; }
-    IAsyncRelayCommand ApplyCommand { get; }
-    IAsyncRelayCommand ApplyPackagePlanCommand { get; }
+    Task ApplyPlanAsync();
+    Task ApplyPackagePlanAsync();
     ICommand DiscardPlanCommand { get; }
     ICommand DiscardPackagePlanCommand { get; }
 }

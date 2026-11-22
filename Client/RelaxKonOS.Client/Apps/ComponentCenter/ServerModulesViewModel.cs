@@ -106,8 +106,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
     public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
-    IAsyncRelayCommand IServerModulePlanReview.ApplyCommand => ApplyCommand;
-    IAsyncRelayCommand IServerModulePlanReview.ApplyPackagePlanCommand => ApplyPackagePlanCommand;
+    Task IServerModulePlanReview.ApplyPlanAsync() => ApplyCommand.ExecuteAsync(null);
+    Task IServerModulePlanReview.ApplyPackagePlanAsync() => ApplyPackagePlanCommand.ExecuteAsync(null);
     ICommand IServerModulePlanReview.DiscardPlanCommand => DiscardPlanCommand;
     ICommand IServerModulePlanReview.DiscardPackagePlanCommand => DiscardPackagePlanCommand;
     string IServerModulePlanReview.PlanActionText => PlanActionText.Resolve();

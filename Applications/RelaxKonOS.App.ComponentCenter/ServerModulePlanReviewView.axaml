@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:vm="using:RelaxKonOS.App.ComponentCenter" xmlns:loc="using:RelaxKonOS.App.ComponentCenter"
+ xmlns:vm="using:RelaxKonOS.AppSDK" xmlns:loc="using:RelaxKonOS.App.ComponentCenter"
  x:Class="RelaxKonOS.App.ComponentCenter.ServerModulePlanReviewView" x:DataType="vm:IServerModulePlanReview"
  Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
  <!-- The frozen plan is a decision, so it is its own surface with the decision pinned to the

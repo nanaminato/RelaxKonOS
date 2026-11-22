@@ -1,4 +1,4 @@
-namespace RelaxKonOS.App.ComponentCenter;
+namespace RelaxKonOS.AppSDK;
 
 public interface IServerModulePolicyEditor : IServerModuleReview
 {

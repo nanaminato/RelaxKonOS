@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
+using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.App.ComponentCenter;
 

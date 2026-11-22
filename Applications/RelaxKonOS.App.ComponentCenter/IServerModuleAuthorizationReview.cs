@@ -1,19 +1,8 @@
 using System.Windows.Input;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.ModuleHost.Protocol;
 
 namespace RelaxKonOS.App.ComponentCenter;
-
-public interface IServerModulePrivilegeReview : IServerModuleReview
-{
-    bool HasPrivilegePlan { get; }
-    string PrivilegePlanId { get; set; }
-    string PrivilegeText { get; }
-    string PrivilegeAdministrator { get; set; }
-    string PrivilegePassword { get; set; }
-    ICommand LoadPrivilegeCommand { get; }
-    ICommand ApprovePrivilegeCommand { get; }
-    ICommand CancelPrivilegeCommand { get; }
-}
 
 public interface IServerModuleConsentReview : IServerModuleReview
 {

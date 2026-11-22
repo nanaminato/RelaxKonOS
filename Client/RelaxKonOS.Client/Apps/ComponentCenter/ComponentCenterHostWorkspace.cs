@@ -48,7 +48,13 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
         // Navigation only changes context, never a draft or approval.
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
-    public void Open(Func<ComponentCenterPresentation, Control> createView, Func<Control> createModuleSecurityView, Func<string, Control, ManagedWindow> showWorkspace)
+    private static Control BindModuleReview(Control view, ServerModulesViewModel model)
+    {
+        view.DataContext = model;
+        return view;
+    }
+
+    public void Open(ComponentCenterViewFactories views, Func<string, Control, ManagedWindow> showWorkspace)
     {
         var context = new AppContext(ComponentCenterPackageApp.Id, services.GetRequiredService<IWindowManager>(), services);
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
@@ -102,7 +108,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
             model.CatalogSources = new CatalogSourcesViewModel(componentSources);
         }
         var login = session.CurrentSession;
-        var view = new ComponentCenterWorkspace(model, createView, createModuleSecurityView);
+        var view = new ComponentCenterWorkspace(model, views.CreateMain, views.CreateModuleSecurity);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
         RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallationSnapshot? lastObservation = null;
         System.ComponentModel.PropertyChangedEventHandler observed = (sender, args) =>
@@ -210,19 +216,19 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
             var planSize = new Size(620, 460);
             modules.PlanReviewRequested = async () => await ShowOwnedAsync<bool>(
                 LocalizedText.Get("server_modules.plan.title"),
-                dialog => new ServerModulePlanReviewView(dialog) { DataContext = modules }, planSize);
+                dialog => BindModuleReview(views.CreateModulePlan(dialog), modules), planSize);
             modules.PackagePlanReviewRequested = async () => await ShowOwnedAsync<bool>(
                 LocalizedText.Get("server_modules.package_plan.title"),
-                dialog => new ServerModulePlanReviewView(dialog) { DataContext = modules }, planSize);
+                dialog => BindModuleReview(views.CreateModulePlan(dialog), modules), planSize);
             modules.PolicyEditorRequested = async () =>
             {
                 var requested = await ShowOwnedAsync<bool>(LocalizedText.Get("server_modules.policy"),
-                    dialog => new ServerModulePolicyEditorView(dialog) { DataContext = modules }, new Size(560, 470));
+                    dialog => BindModuleReview(views.CreateModulePolicy(dialog), modules), new Size(560, 470));
                 if (requested == true) await modules.SetPolicyCommand.ExecuteAsync(null);
             };
             modules.PrivilegeReviewRequested = async () => await ShowOwnedAsync<bool>(
                 LocalizedText.Get("server_modules.privilege_title"),
-                dialog => new ServerModulePrivilegeView(dialog) { DataContext = modules }, new Size(600, 560));
+                dialog => BindModuleReview(views.CreateModulePrivilege(dialog), modules), new Size(600, 560));
             modules.ConsentEditorRequested = async () => await ShowOwnedAsync<bool>(
                 LocalizedText.Get("server_modules.consent_title"),
                 dialog => new ServerModuleConsentView(dialog) { DataContext = modules }, new Size(700, 660));
