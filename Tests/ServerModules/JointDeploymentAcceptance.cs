@@ -647,6 +647,11 @@ internal static class JointDeploymentAcceptance
                 host = await TestHost.StartAsync(serverRoot, config);
                 session.Url = host.Url;
                 joint = Service();
+                var activeClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                var effective = (await activeClient.ReadAsync()).Single(module => module.Id == dependencyId);
+                Require(effective.DesiredEnabled && effective.EffectiveEnabled && !effective.RestartRequired
+                    && effective.RecoveryState == "none" && !applications.IsRegistered(new AppId(activationAppId)),
+                    $"restart makes {dependencyId} effective before the desktop application is registered");
                 var activationPending = await joint.FindPendingAsync(activationCandidate, default)
                     ?? throw new InvalidOperationException("Missing activation-only deployment after restart.");
                 var activationInstalled = await joint.ExecuteAsync(activationPending, default);
