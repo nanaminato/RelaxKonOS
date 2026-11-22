@@ -1,23 +1,20 @@
 using Avalonia;
-using RelaxKonOS.App.ComponentCenter;
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.ComponentCenter;
+namespace RelaxKonOS.App.ComponentCenter;
 
 public partial class ServerModulesView : UserControl
 {
     private bool _compact;
     private bool _layoutApplied;
 
-    public ServerModulesView() : this(new ServerModulesHeaderView(), new ServerModuleStoreView(), new ServerModulePackagesView(), new ServerModuleSecurityView()) { }
-
-    internal ServerModulesView(Control headerView, Control storeView, Control packagesView, Control securityView)
+    public ServerModulesView()
     {
         InitializeComponent();
-        PageHeader.Content = headerView;
-        Packages.Content = packagesView;
-        Store.Content = storeView;
-        Security.Content = securityView;
+        PageHeader.Content = new ServerModulesHeaderView();
+        Packages.Content = new ServerModulePackagesView();
+        Store.Content = new ServerModuleStoreView();
+        Security.Content = new ServerModuleSecurityView();
     }
 
     /// <summary>

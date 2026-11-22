@@ -14,8 +14,11 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
 /// <summary>One selectable catalog row. Presentation lives here so the list template
 /// stays a statement of facts instead of repeating server-side enum names.</summary>
-public sealed partial class ServerModuleSelection(ServerModuleDto fact, Action changed) : ObservableObject
+public sealed partial class ServerModuleSelection(ServerModuleDto fact, Action changed) : ObservableObject, IServerModuleSelection
 {
+    string IServerModuleSelection.Title => Title.Resolve();
+    string IServerModuleSelection.StateText => StateText.Resolve();
+
     public ServerModuleDto Fact { get; } = fact;
     [ObservableProperty] private bool isSelected;
     partial void OnIsSelectedChanged(bool value) => changed();
@@ -33,7 +36,10 @@ public sealed partial class ServerModuleSelection(ServerModuleDto fact, Action c
 
 public enum ServerModuleFilter { All, Enabled, Disabled, PendingRestart }
 
-public sealed record ServerModuleFilterChoice(ServerModuleFilter Filter, LocalizedStatus Label);
+public sealed record ServerModuleFilterChoice(ServerModuleFilter Filter, LocalizedStatus Label) : IServerModuleFilterChoice
+{
+    string IServerModuleFilterChoice.Label => Label.Resolve();
+}
 
 public enum ServerModulesTab { Modules, Packages, Store, Security }
 
@@ -45,8 +51,10 @@ public sealed record ServerModulesTabItem(ServerModulesTab Tab, LocalizedStatus 
 /// <summary>A single action the interface may preview. <see cref="Allowed"/> mirrors the
 /// command's own CanExecute so a blocked action keeps its reason instead of disappearing.</summary>
 public sealed record ServerModuleActionRow(
-    ServerModuleAction Action, LocalizedStatus Label, LocalizedStatus Hint, bool Allowed, ICommand Command)
+    ServerModuleAction Action, LocalizedStatus Label, LocalizedStatus Hint, bool Allowed, ICommand Command) : IServerModuleActionRow
 {
+    string IServerModuleActionRow.Label => Label.Resolve();
+    string IServerModuleActionRow.Hint => Hint.Resolve();
     public bool HasHint => !Hint.IsEmpty;
 }
 
@@ -102,8 +110,47 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity, IServerModulesHeader, IServerModuleStore, IServerModulePackages
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity, IServerModulesHeader, IServerModuleStore, IServerModulePackages, IServerModuleCatalogViewModel
 {
+    IReadOnlyList<IServerModuleFilterChoice> IServerModuleCatalogViewModel.Filters => Filters;
+    IEnumerable<IServerModuleSelection> IServerModuleCatalogViewModel.VisibleModules => VisibleModules;
+    string IServerModuleCatalogViewModel.ListEmptyText => ListEmptyText.Resolve();
+    string IServerModuleCatalogViewModel.SelectionText => SelectionText.Resolve();
+    ICommand IServerModuleCatalogViewModel.ClearSelectionCommand => ClearSelectionCommand;
+    string IServerModuleCatalogViewModel.PlanPendingText => PlanPendingText.Resolve();
+    ICommand IServerModuleCatalogViewModel.ReviewPlanCommand => ReviewPlanCommand;
+    ICommand IServerModuleCatalogViewModel.DiscardPlanCommand => DiscardPlanCommand;
+    string IServerModuleCatalogViewModel.SelectedTitle => SelectedTitle.Resolve();
+    string IServerModuleCatalogViewModel.SelectedStatusText => SelectedStatusText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedPackagingText => SelectedPackagingText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedTrustText => SelectedTrustText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedOwnerText => SelectedOwnerText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedReleaseLevelText => SelectedReleaseLevelText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedResidencyStateText => SelectedResidencyStateText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedReleasableText => SelectedReleasableText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedBlockedText => SelectedBlockedText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedFailureText => SelectedFailureText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedDesiredPolicyText => SelectedDesiredPolicyText.Resolve();
+    string IServerModuleCatalogViewModel.SelectedEffectivePolicyText => SelectedEffectivePolicyText.Resolve();
+    ICommand IServerModuleCatalogViewModel.OpenPolicyCommand => OpenPolicyCommand;
+    string IServerModuleCatalogViewModel.PolicyHint => PolicyHint.Resolve();
+    string IServerModuleCatalogViewModel.ActionTargetText => ActionTargetText.Resolve();
+    IReadOnlyList<IServerModuleActionRow> IServerModuleCatalogViewModel.ActionRows => ActionRows;
+    IServerModuleFilterChoice IServerModuleCatalogViewModel.SelectedFilter
+    {
+        get => SelectedFilter;
+        set
+        {
+            if (value is ServerModuleFilterChoice filter)
+                SelectedFilter = filter;
+        }
+    }
+    IServerModuleSelection? IServerModuleCatalogViewModel.SelectedRow
+    {
+        get => SelectedRow;
+        set => SelectedRow = (ServerModuleSelection?)value;
+    }
+
     string IServerModulePackages.PackagePlanPendingText => PackagePlanPendingText.Resolve();
     ICommand IServerModulePackages.ReopenPackagePlanCommand => ReopenPackagePlanCommand;
     ICommand IServerModulePackages.DiscardPackagePlanCommand => DiscardPackagePlanCommand;

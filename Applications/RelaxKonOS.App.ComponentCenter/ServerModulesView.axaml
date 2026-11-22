@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter"
- xmlns:loc="using:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulesView"
- x:DataType="vm:ServerModulesViewModel">
+ xmlns:vm="using:RelaxKonOS.AppSDK"
+ xmlns:loc="using:RelaxKonOS.App.ComponentCenter" x:Class="RelaxKonOS.App.ComponentCenter.ServerModulesView"
+ x:DataType="vm:IServerModuleCatalogViewModel">
  <!-- One page, three jobs: inspect the module catalog, manage module packages, and review the
       security surfaces. The catalog is a master-detail view, each management action is a named row
       with the reason it is unavailable, and every frozen decision is confirmed in its own dialog
@@ -37,7 +37,7 @@
               HorizontalAlignment="Left">
       <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
       <ListBox.ItemTemplate>
-       <DataTemplate x:DataType="vm:ServerModuleFilterChoice"><TextBlock Text="{Binding Label}" FontSize="11" /></DataTemplate>
+       <DataTemplate x:DataType="vm:IServerModuleFilterChoice"><TextBlock Text="{Binding Label}" FontSize="11" /></DataTemplate>
       </ListBox.ItemTemplate>
      </ListBox>
 
@@ -46,7 +46,7 @@
                SelectedItem="{Binding SelectedRow, Mode=TwoWay}" MinHeight="140" MaxHeight="500"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
        <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="vm:ServerModuleSelection">
+        <DataTemplate x:DataType="vm:IServerModuleSelection">
          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
           <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
                     ToolTip.Tip="{loc:Loc server_modules.list.check_hint}" />
@@ -357,7 +357,7 @@
       </Grid>
       <ItemsControl ItemsSource="{Binding ActionRows}">
        <ItemsControl.ItemTemplate>
-        <DataTemplate x:DataType="vm:ServerModuleActionRow">
+        <DataTemplate x:DataType="vm:IServerModuleActionRow">
          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,7">
           <StackPanel Spacing="2">
            <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" />
