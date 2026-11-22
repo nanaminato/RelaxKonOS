@@ -18,6 +18,24 @@ internal static class ModulePackageBuilderChecks
             File.Copy(fixture, Path.Combine(publish, "FixtureModule.dll"));
             await File.WriteAllTextAsync(Path.Combine(publish, "asset.txt"), "module asset");
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            const string source = "ModulePackages:Sources:official-modules";
+            var defaultConfiguration = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: false).Build();
+            check(defaultConfiguration.GetValue<bool?>(source + ":Enabled") == false
+                && !defaultConfiguration.GetSection(source + ":PublicKeysSpki").Exists(),
+                "the published official module source requires explicit enablement and an operator-provisioned key");
+            var provisioned = new ConfigurationBuilder().AddConfiguration(defaultConfiguration)
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    [source + ":Enabled"] = "true",
+                    [source + ":PublicKeysSpki:fixture"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()),
+                }).Build();
+            var official = ModulePackageHostConfiguration.Source(provisioned, "official-modules");
+            check(official.Enabled && official.Revision == 6 && official.AuthorizedModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(
+                ["cloud-storage", "cloud-webdav", "cloud-s3", "cloud-baidu", ServerModules.DatabaseId,
+                    "relaxkonos.tailscale", ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId,
+                    ServerModules.WebServerId, ServerModules.CertificatesId, ServerModules.ProxyId]),
+                "the provisioned official source authorizes every supported signed execution package and the existing modules");
             var keyPath = Path.Combine(root, "signing-key.pem");
             await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
             var rid = RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid;

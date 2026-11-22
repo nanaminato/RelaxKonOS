@@ -28,7 +28,7 @@ payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 
 
 ### 启用官方来源
 
-Server 的默认配置声明了 `official-modules`，目录地址为 `https://modules.relaxkon.com/stable/catalog.json`。默认策略修订 5 授权 `cloud-storage`、`cloud-webdav`、`cloud-s3`、`cloud-baidu` 和 `relaxkonos.database`。拿到发布方通过独立可信渠道交付的 ECDSA P-256 公钥后，在服务内容根目录的 `appsettings.host.json` 合并以下配置。键名须与发布工具的签名 KeyId 一致。
+Server 的默认配置声明了 `official-modules`，目录地址为 `https://modules.relaxkon.com/stable/catalog.json`。默认策略修订 6 授权四个云存储模块、`relaxkonos.database` 和下文列出的七个官方执行包。来源默认停用。拿到发布方通过独立可信渠道交付的 ECDSA P-256 公钥后，在服务内容根目录的 `appsettings.host.json` 合并以下配置。键名须与发布工具的签名 KeyId 一致。已有自定义来源策略的部署需自行更新授权模块和策略修订。
 
 ```json
 {
