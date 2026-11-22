@@ -189,7 +189,8 @@ internal static class JointDeploymentAcceptance
             var applications = new ApplicationManager(windows, services);
             var drive = new VirtualSystemDrive(Path.Combine(root, "desktop-drive"));
             var permissions = DispatchProxy.Create<IAppPermissionManager, PermissionProxy>();
-            var packages = new DeveloperPackageManager(applications, null!, windows, permissions, new Diagnostics(), drive, official);
+            var packages = new DeveloperPackageManager(applications, null!, windows, permissions, new Diagnostics(), drive, official,
+                moduleHttp: factory, moduleSession: auth);
             await packages.LoadInstalledAsync();
             using var trust = new ComponentCatalogSourceStore(Path.Combine(root, "component-trust"), "joint-fixture");
             var installer = new AppPackageInstallerService(packages, null!, trust);
@@ -459,7 +460,15 @@ internal static class JointDeploymentAcceptance
                 protectedInventory[0].DesiredRevision!, "verify-registered-dependency"));
             Require(disableProtected.BlockedBy.Any(blocker => blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
                 "committing the application registers a server-side blocker for its required module");
-            await RemoveWithDependencyAsync(AppIdText, review.Plan.Id);
+            session.Online = false;
+            await packages.UninstallAsync(AppIdText);
+            var releaseDirectory = drive.ResolveRootChild("System/desktop-module-releases");
+            Require(Directory.EnumerateFiles(releaseDirectory, "*.json").Any(),
+                "offline desktop uninstall queues its server dependency release");
+            session.Online = true;
+            await packages.LoadInstalledAsync();
+            Require(!Directory.EnumerateFiles(releaseDirectory, "*.json").Any(),
+                "startup releases an offline uninstall record on the original server and account");
 
             await installer.InstallAsync(await installer.InspectLocalAsync(prerequisitePath));
             var replacementMixed = await joint.PrepareAsync(mixedCandidate, [], default);
@@ -473,7 +482,7 @@ internal static class JointDeploymentAcceptance
                 && !(await reopenedMixedJournal.ReadPendingRecoveriesAsync(auth.CurrentUser!.Id, auth.ServiceId!))
                     .Any(recovery => recovery.Plan.OrderedReleases[^1].Package.Id == mixedInstalled.Id),
                 "completing the replacement plan retires the old recovery entry without installing the module again");
-            await RemoveWithDependencyAsync(mixedInstalled.Id, replacementMixed.Plan.Id);
+            await packages.UninstallAsync(mixedInstalled.Id);
             await packages.UninstallAsync(prerequisiteId);
 
             var activationArchives = bundledModuleArchives.Where(path =>
@@ -540,11 +549,10 @@ internal static class JointDeploymentAcceptance
                 var activationInstalled = await joint.ExecuteAsync(activationPending, default);
                 Require(activationInstalled.Id == activationAppId && applications.IsRegistered(new AppId(activationAppId)),
                     $"restart activates {dependencyId} and permits desktop application registration");
-                await RemoveWithDependencyAsync(activationAppId, activationPending.Plan.Id);
+                await packages.UninstallAsync(activationAppId);
             }
 
             var proxyDependents = new List<string>();
-            var proxyClaims = new Dictionary<string, Guid>(StringComparer.Ordinal);
             foreach (var bundledArchive in bundledModuleArchives)
             {
                 var appId = Path.GetFileNameWithoutExtension(bundledArchive);
@@ -587,7 +595,6 @@ internal static class JointDeploymentAcceptance
                 if (expectedModules.Contains(ServerModules.ProxyId))
                 {
                     proxyDependents.Add(appId);
-                    proxyClaims.Add(appId, bundledReview.Plan.Id);
                 }
                 else
                 {
@@ -607,7 +614,7 @@ internal static class JointDeploymentAcceptance
                             && blocker.ModuleId == ServerModules.CertificatesId),
                             "the server protects Certificates while Web Servers requires it");
                     }
-                    await RemoveWithDependencyAsync(appId, bundledReview.Plan.Id);
+                    await packages.UninstallAsync(appId);
                     Require(dependencies.All(key => !packages.RequiredBy(key).Contains(appId))
                         && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
                         $"uninstalling {appId} removes its dependency without changing the reused modules");
@@ -621,7 +628,7 @@ internal static class JointDeploymentAcceptance
                     "every installed Proxy application protects the shared server module");
                 foreach (var appId in proxyDependents)
                 {
-                    await RemoveWithDependencyAsync(appId, proxyClaims[appId]);
+                    await packages.UninstallAsync(appId);
                     var remaining = proxyDependents.SkipWhile(item => item != appId).Skip(1).Order(StringComparer.Ordinal);
                     Require(packages.RequiredBy(proxyModule).SequenceEqual(remaining),
                         $"uninstalling {appId} preserves the shared dependency of the remaining applications");
@@ -665,13 +672,6 @@ internal static class JointDeploymentAcceptance
             Require(upgraded.Version == "2.0.0", "removing the consuming app lets the same replacement proceed");
             await packages.UninstallAsync(AppIdText);
 
-            async Task RemoveWithDependencyAsync(string appId, Guid planId)
-            {
-                await packages.UninstallAsync(appId);
-                var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
-                await moduleClient.ReadAsync();
-                await moduleClient.ReleaseDesktopDependencyAsync(planId, serviceId);
-            }
         }
         finally
         {

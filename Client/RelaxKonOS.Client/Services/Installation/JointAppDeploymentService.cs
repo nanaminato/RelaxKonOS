@@ -350,9 +350,13 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 if (!(plan.Target == LocalTarget && AllowsBundledLaunchRequirements(candidate, packages))
                     && !applications.EvaluateCompatibility(RuntimeManifest(manifest)).IsCompatible)
                     throw new InvalidOperationException("deployment-application-incompatible");
-                if (modules is not null)
-                    await modules.RegisterDesktopDependenciesAsync(plan, ct);
-                return plan.Id;
+                DesktopDependencyBinding? dependency = null;
+                if (modules is not null && await modules.RegisterDesktopDependenciesAsync(plan, ct))
+                {
+                    var binding = plan.ClientBinding!;
+                    dependency = new(binding.AccountId, binding.ConnectionIdentity, plan.Target.ServerIdentity);
+                }
+                return new AppDeploymentReceipt(plan.Id, dependency);
             });
         }
 

@@ -6,6 +6,7 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using VirtualSystemDriveService = RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 using RelaxKonOS.AppSDK;
@@ -45,9 +46,9 @@ public sealed partial class DeveloperPackageManager
         IWindowManager windowManager,
         IAppPermissionManager permissions,
         IAppActivationDiagnostics activationDiagnostics,
-        VirtualSystemDriveService drive)
+        VirtualSystemDriveService drive, IHttpClientFactory? moduleHttp = null, IAuthSession? moduleSession = null)
         : this(applications, contextFactory, windowManager, permissions, activationDiagnostics, drive,
-            Path.Combine(System.AppContext.BaseDirectory, "OfficialApps"))
+            Path.Combine(System.AppContext.BaseDirectory, "OfficialApps"), moduleHttp: moduleHttp, moduleSession: moduleSession)
     {
     }
 
@@ -58,7 +59,8 @@ public sealed partial class DeveloperPackageManager
         IAppPermissionManager permissions,
         IAppActivationDiagnostics activationDiagnostics,
         VirtualSystemDriveService drive,
-        string officialDirectory, HttpClient? officialHttpClient = null)
+        string officialDirectory, HttpClient? officialHttpClient = null,
+        IHttpClientFactory? moduleHttp = null, IAuthSession? moduleSession = null)
     {
         _applications = applications;
         _contextFactory = contextFactory;
@@ -66,6 +68,14 @@ public sealed partial class DeveloperPackageManager
         _permissions = permissions;
         _activationDiagnostics = activationDiagnostics;
         _drive = drive;
+        _moduleHttp = moduleHttp;
+        _moduleSession = moduleSession;
+        if (moduleSession is not null && moduleHttp is not null)
+            moduleSession.StateChanged += (_, _) =>
+            {
+                if (moduleSession.State == AuthSessionState.Authenticated)
+                    _ = RetryDesktopDependencyReleasesAsync();
+            };
         _official = new OfficialDesktopPackages(Path.GetFullPath(officialDirectory), officialHttpClient);
         _drive.EnsureCreated();
         _root = _drive.ExternalProgramsDirectory;
@@ -212,13 +222,14 @@ public sealed partial class DeveloperPackageManager
         }
         SaveCatalog(_catalogPath, _catalog);
         NotifyPackagesChanged();
+        await RetryDesktopDependencyReleasesAsync();
     }
 
     public Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken = default) =>
         InstallAsync(package, launch, cancellationToken, null);
 
     internal async Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken,
-        Func<DeveloperPackageManifest, CancellationToken, Task<Guid>>? verifyDeployment)
+        Func<DeveloperPackageManifest, CancellationToken, Task<AppDeploymentReceipt>>? verifyDeployment)
     {
         await _mutations.WaitAsync(cancellationToken);
         try
@@ -248,7 +259,7 @@ public sealed partial class DeveloperPackageManager
 
     internal async Task<DeveloperAppInfo> InstallOfficialAsync(Stream package, string path, string appId, string expectedSha256,
         string? installedVersion, CancellationToken cancellationToken, OfficialDesktopRelease? release = null,
-        string? installedPath = null, Func<DeveloperPackageManifest, CancellationToken, Task<Guid>>? verifyDeployment = null)
+        string? installedPath = null, Func<DeveloperPackageManifest, CancellationToken, Task<AppDeploymentReceipt>>? verifyDeployment = null)
     {
         await _mutations.WaitAsync(cancellationToken);
         try
@@ -288,7 +299,7 @@ public sealed partial class DeveloperPackageManager
 
     private async Task<DeveloperAppRecord> StageAsync(
         Func<string, CancellationToken, Task<DeveloperPackageManifest>> extract, PackageOrigin origin, CancellationToken cancellationToken,
-        Func<DeveloperPackageManifest, CancellationToken, Task<Guid>>? verifyDeployment = null)
+        Func<DeveloperPackageManifest, CancellationToken, Task<AppDeploymentReceipt>>? verifyDeployment = null)
     {
         var staging = _drive.ResolveUnder(_root, $".staging/{Guid.NewGuid():N}");
         string? destination = null;
@@ -299,12 +310,16 @@ public sealed partial class DeveloperPackageManager
             ValidateManifest(manifest, origin);
             EnsureReplacementVersionIsCompatible(manifest.Id, manifest.Version.Trim());
             var deploymentReceipt = _drive.ResolveUnder(staging, "deployment-receipt.json");
-            if (File.Exists(deploymentReceipt) || Directory.Exists(deploymentReceipt))
+            var desktopDependency = _drive.ResolveUnder(staging, DesktopDependencyFileName);
+            if (File.Exists(deploymentReceipt) || Directory.Exists(deploymentReceipt)
+                || File.Exists(desktopDependency) || Directory.Exists(desktopDependency))
                 throw new InvalidDataException("The application package uses a reserved deployment receipt path.");
             if (verifyDeployment is not null)
             {
-                var planId = await verifyDeployment(manifest, cancellationToken);
-                await _drive.WriteJsonAtomicallyAsync(deploymentReceipt, planId, cancellationToken);
+                var receipt = await verifyDeployment(manifest, cancellationToken);
+                await _drive.WriteJsonAtomicallyAsync(deploymentReceipt, receipt.PlanId, cancellationToken);
+                if (receipt.Dependency is not null)
+                    await _drive.WriteJsonAtomicallyAsync(desktopDependency, receipt, cancellationToken);
             }
             else if (manifest.Dependencies?.Required is { Count: > 0 }
                      && !(origin == PackageOrigin.DirectDeploy && DeveloperProfile.IsDebug))
@@ -384,6 +399,7 @@ public sealed partial class DeveloperPackageManager
                 throw new InvalidOperationException($"The package is required by {string.Join(", ", requiredBy)}.");
             if (!await CanRetireWindowsAsync(new AppId(appId)))
                 throw new InvalidOperationException("Application windows are busy or have unsaved changes.");
+            await QueueDesktopDependencyReleaseAsync(installed);
             try { File.Delete(CurrentPath(appId)); }
             catch (DirectoryNotFoundException)
             {
@@ -398,6 +414,7 @@ public sealed partial class DeveloperPackageManager
             // The retired version may still be locked. Startup retries physical cleanup.
             TryDeleteDirectory(AppDirectory(appId));
             NotifyPackagesChanged();
+            await DrainDesktopDependencyReleasesAsync();
             return true;
         }
         finally { _mutations.Release(); }
