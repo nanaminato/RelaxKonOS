@@ -109,8 +109,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         await backend.VerifyBeforeExecutionAsync(review.Plan, cancellationToken);
         var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
         await coordinator.ExecuteAsync(review.Plan, cancellationToken);
-        return backend.InstalledApplication()
+        var installed = backend.InstalledApplication()
             ?? throw new InvalidOperationException("deployment-application-not-registered");
+        installer.Discard(review.Candidate);
+        return installed;
     }
 
     private ServerModuleManagementClient NewModuleClient(DeploymentClientBinding? binding)
@@ -227,7 +229,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             }
 
             if (installed is not null) return;
-            installed = await installer.InstallAsync(candidate, cancellationToken, async (manifest, ct) =>
+            // Keep staged bytes available until the coordinator has verified and journaled every step.
+            installed = await installer.InstallAsync(candidate with { DeleteWhenFinished = false }, cancellationToken, async (manifest, ct) =>
             {
                 if (manifest.Id != release.Package.Id || manifest.Version != release.Version
                     || candidate.ExpectedSha256 != release.ArtifactIdentity

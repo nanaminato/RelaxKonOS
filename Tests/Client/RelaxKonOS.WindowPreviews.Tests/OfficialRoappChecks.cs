@@ -612,7 +612,19 @@ internal static class OfficialRoappChecks
                     "Update and uninstall vetoes must preserve the active version and draft window.");
                 guarded.CanCloseAsync = () => Task.FromResult(true);
             }
-            var upgraded = await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path));
+            var verifiedCandidate = await installer.InspectLocalAsync(path);
+            DeveloperAppInfo upgraded;
+            if (isSshFiles)
+            {
+                var deployment = new JointAppDeploymentService(null!, null!, installer, packages, applications, journal);
+                var review = await deployment.PrepareAsync(verifiedCandidate with { DeleteWhenFinished = true }, [], CancellationToken.None);
+                upgraded = await deployment.ExecuteAsync(review, CancellationToken.None);
+                await using var lease = await journal.OpenAsync(review.Plan, CancellationToken.None);
+                Check(lease.Checkpoint?.Verified == true && !File.Exists(path),
+                    "The staged archive must be cleaned up after the verified deployment checkpoint.");
+            }
+            else
+                upgraded = await InstallForLifecycleCheckAsync(installer, verifiedCandidate);
             if (guarded is not null)
                 Check(!windows.Windows.Contains(guarded), "The accepted update should retire the old window.");
             Check(upgraded.Version == updateVersion && upgraded.InstallationPath != first.InstallationPath && Directory.Exists(first.InstallationPath),
