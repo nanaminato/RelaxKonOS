@@ -102,6 +102,20 @@ RelaxKonOS.Server modules pack-package \
 
 离线打包读取入口程序集的 CLR 元数据，核对清单中的完整入口类型名。程序集缺少该类型时，打包会在生成归档和签名前失败。
 
+使用 `pack-package` 打包以下随 Core 发行的执行代码时，从该发行的 `Modules/<目录>` 取指定 RID 的文件，使用 `--purpose official --runtime in-process`。打包、商店和安装共用内置模块替换检查。部署方需在已信任来源策略中显式授权相应模块 ID。
+
+| 模块 ID | 目录 | 入口类型 | 能力 |
+| --- | --- | --- | --- |
+| `relaxkonos.tailscale` | `Tailscale` | `RelaxKonOS.ServerModule.Tailscale.TailscaleExecution` | `server.tailscale` |
+| `relaxkonos.firewall` | `Firewall` | `RelaxKonOS.Server.Firewall.FirewallExecutionModule` | `server.firewall` |
+| `relaxkonos.git` | `Git` | `RelaxKonOS.Server.Git.GitExecutionModule` | `server.git` |
+| `relaxkonos.docker` | `Docker` | `RelaxKonOS.Server.Docker.DockerComposeExecutor` | `server.docker` |
+| `relaxkonos.webserver` | `WebServer` | `RelaxKonOS.Server.WebsitePublishing.WebsitePublicationExecutor` | `server.web-server` |
+| `relaxkonos.certificates` | `Certificates` | `RelaxKonOS.Server.Certificate.AnvilAcmeExecutor` | `server.certificates` |
+| `relaxkonos.proxy` | `Proxy` | `RelaxKonOS.Server.Proxy.ProxyOverviewExecutor` | `server.proxy,server.gateway-proxy,server.proxy-server` |
+
+入口程序集文件名为 `RelaxKonOS.ServerModule.<目录>.dll`。Git 的 `capabilityContractVersions` 必须声明当前 `GitApiRoutes.CapabilityContractVersion`。Web Server 的依赖声明必须包含 `relaxkonos.certificates` 的受支持版本区间。Certificates 的发布目录须包含 `Certify.ACME.Anvil.dll`、`BouncyCastle.Cryptography.dll` 和 `Newtonsoft.Json.dll`。这些执行包的版本切换在 Core 重启时生效。
+
 ## 在线上传与安装 API
 
 ```text

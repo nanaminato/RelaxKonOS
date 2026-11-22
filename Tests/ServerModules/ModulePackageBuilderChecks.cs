@@ -63,23 +63,38 @@ internal static class ModulePackageBuilderChecks
             var cliOutput = new StringWriter();
             var original = Console.Out;
             int exit;
+            string[] arguments = ["modules", "pack-package",
+                "--publish-dir", publish, "--output-dir", Path.Combine(root, "cli-output"),
+                "--module-id", "fixture-cli", "--version", "1.0.0", "--release-id", "fixture-cli-1.0.0-" + rid,
+                "--publisher-id", "fixture", "--purpose", "official", "--rid", rid,
+                "--entry-assembly", "FixtureModule.dll", "--entry-type", "FixtureModule.FixtureInstalledModule",
+                "--build-id", "fixture-build", "--source-commit", new string('a', 40), "--source-id", "official",
+                "--sequence", "1", "--artifact-origin", "https://modules.example/", "--private-key", keyPath,
+                "--key-id", "builder-key", "--validity-seconds", "3600"];
             try
             {
                 Console.SetOut(cliOutput);
-                exit = await ModulePackageBuildCommand.RunAsync(["modules", "pack-package",
-                    "--publish-dir", publish, "--output-dir", Path.Combine(root, "cli-output"),
-                    "--module-id", "fixture-cli", "--version", "1.0.0", "--release-id", "fixture-cli-1.0.0-" + rid,
-                    "--publisher-id", "fixture", "--purpose", "official", "--rid", rid,
-                    "--entry-assembly", "FixtureModule.dll", "--entry-type", "FixtureModule.FixtureInstalledModule",
-                    "--build-id", "fixture-build", "--source-commit", new string('a', 40), "--source-id", "official",
-                    "--sequence", "1", "--artifact-origin", "https://modules.example/", "--private-key", keyPath,
-                    "--key-id", "builder-key", "--validity-seconds", "3600"]);
+                exit = await ModulePackageBuildCommand.RunAsync(arguments);
             }
             finally { Console.SetOut(original); }
             using var cli = System.Text.Json.JsonDocument.Parse(cliOutput.ToString());
             check(exit == 0 && File.Exists(cli.RootElement.GetProperty("archivePath").GetString()!)
                 && File.Exists(cli.RootElement.GetProperty("catalogPath").GetString()!),
                 "pack-package CLI creates a verifiable archive and catalog without host state");
+            var blockedOutput = Path.Combine(root, "cli-blocked");
+            arguments[Array.IndexOf(arguments, "--output-dir") + 1] = blockedOutput;
+            arguments[Array.IndexOf(arguments, "--module-id") + 1] = ServerModules.GitId;
+            var originalError = Console.Error;
+            using var blockedError = new StringWriter();
+            try
+            {
+                Console.SetError(blockedError);
+                exit = await ModulePackageBuildCommand.RunAsync(arguments);
+            }
+            finally { Console.SetError(originalError); }
+            check(exit == 1 && blockedError.ToString().Trim() == ServerModules.PackageModuleIdConflict
+                && !Directory.EnumerateFiles(blockedOutput).Any(),
+                "pack-package rejects an incompatible bundled module replacement before writing signed artifacts");
 
             var catalogBytes = System.Text.Encoding.UTF8.GetBytes("{\"schemaVersion\":1}");
             using var catalogHandler = new FixedHandler(catalogBytes);

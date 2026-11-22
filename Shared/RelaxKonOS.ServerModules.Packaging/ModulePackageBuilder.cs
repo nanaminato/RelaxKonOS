@@ -44,12 +44,12 @@ public sealed record ModulePackageBuildResult(ModulePackageManifest Manifest, st
 public static class ModulePackageBuilder
 {
     public static async Task<ModulePackageBuildResult> BuildAsync(ModulePackageBuildOptions options,
-        DateTimeOffset now, CancellationToken cancellationToken = default)
+        DateTimeOffset now, CancellationToken cancellationToken = default, Action<ModulePackageManifest>? validateManifest = null)
     {
         if (!ModulePackageRules.Id(options.SourceId) || !ModulePackageRules.Id(options.KeyId)
             || options.ValiditySeconds is <= 0 or > 2678400 || options.Sequence <= 0)
             throw new ModulePackageException("module-package-build-options-invalid");
-        var release = await BuildArchiveAsync(options, cancellationToken);
+        var release = await BuildArchiveAsync(options, cancellationToken, validateManifest);
         var catalog = new ModulePackageCatalog(1, options.SourceId, options.Sequence, now, now.AddSeconds(options.ValiditySeconds),
             [release], [], []);
         var (envelope, spki) = await SignCatalogAsync(catalog, options.KeyId, options.PrivateKeyPemPath, cancellationToken);
@@ -64,7 +64,7 @@ public static class ModulePackageBuilder
     }
 
     public static async Task<ModulePackageRelease> BuildArchiveAsync(ModulePackageBuildOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Action<ModulePackageManifest>? validateManifest = null)
     {
         var publish = Path.GetFullPath(options.PublishDirectory);
         var output = Path.GetFullPath(options.OutputDirectory);
@@ -112,6 +112,7 @@ public static class ModulePackageBuilder
             options.CapabilityContractVersions?.OrderBy(item => item.Key, StringComparer.Ordinal)
                 .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal));
         ModulePackageRules.Manifest(manifest);
+        validateManifest?.Invoke(manifest);
         ValidateEntryType(entryFile, options.EntryType);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
         var archivePath = Path.Combine(output, options.ModuleId + "-" + options.Version + "-" + options.Rid + ".rkmodule");

@@ -57,7 +57,11 @@ internal static class ModulePackageBuildCommand
                 values.GetValueOrDefault("--host-api-min", runtime == "module-host" ? "2.0.0" : "1.0.0"),
                 values.GetValueOrDefault("--host-api-max", runtime == "module-host" ? "3.0.0" : "2.0.0"),
                 capabilities, dependencies, runtime, metadata?.Privileges, metadata?.Ui, metadata?.CapabilityContractVersions);
-            var result = await ModulePackageBuilder.BuildAsync(options, DateTimeOffset.UtcNow);
+            var result = await ModulePackageBuilder.BuildAsync(options, DateTimeOffset.UtcNow, validateManifest: manifest =>
+            {
+                if (ServerModules.ConflictsWithBundledModule(manifest))
+                    throw new ModulePackageException(ServerModules.PackageModuleIdConflict);
+            });
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 archivePath = result.ArchivePath,
