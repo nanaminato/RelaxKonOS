@@ -803,3 +803,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 签名 Tunnels 双包验收在桌面卸载后验证服务端依赖登记已释放。停用计划进入 AwaitingRestart，重启重新绑定模块管理客户端后，原回执完成且生效状态为停用。隧道档案 HTTP 路由返回 404，Core 就绪路由仍可用，签名包摘要不变。真实受管 Helper 未覆盖。
 - Linux x64 自包含宿主使用真实外部 FRP 复验签名 Tunnels 的双向转发、停止释放端口、桌面卸载和依赖释放。服务端停用重启后原回执完成，隧道档案路由返回 404，Core 就绪且签名包摘要保持一致。同轮模块 HTTP 专项 133 条 PASS。
 - Windows Release 通过同一签名双包验证桌面依赖保护。Tunnel Manager 在安装时登记服务端依赖，停用预览返回 module-desktop-dependency-blocked。卸载后停用获得批准，重启后撤回隧道路由且 Core 仍就绪。
+- Linux x64 使用实际 FRP 复验桌面依赖保护。安装期间服务端拒绝停用签名 Tunnels，卸载释放登记后可停用。原停用回执在重启后完成，隧道路由撤回，Core 就绪且签名归档保持原摘要。真实环回双向转发及端口释放通过，模块 HTTP 专项 133 条 PASS。
