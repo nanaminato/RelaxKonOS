@@ -19,7 +19,17 @@ public static class DeveloperProfile
     internal static string DataDirectory => Path.Combine(LocalData, "RelaxKonOS");
 #endif
 
-    private static string LocalData => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    private static string LocalData
+    {
+        get
+        {
+            var path = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
+                Environment.SpecialFolderOption.Create);
+            if (!Path.IsPathFullyQualified(path))
+                throw new InvalidOperationException("Cannot resolve the local application data directory.");
+            return path;
+        }
+    }
 
     public static IDisposable? Acquire()
     {
@@ -34,6 +44,7 @@ public static class DeveloperProfile
             throw new InvalidOperationException($"Cannot open Debug profile '{Name}'. Choose a different RELAXKONOS_DEV_PROFILE for another instance.", exception);
         }
 #else
+        _ = LocalData;
         return null;
 #endif
     }

@@ -72,19 +72,27 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("publish_directory", type=Path)
     parser.add_argument("--dotnet", default="dotnet")
+    parser.add_argument("--apphost", action="store_true", help="Run the published RelaxKonOS executable directly.")
     args = parser.parse_args()
     publish = args.publish_directory.resolve(strict=True)
-    entry = (publish / "RelaxKonOS.dll").resolve(strict=True)
+    entry = publish / ("RelaxKonOS" if args.apphost else "RelaxKonOS.dll")
+    command = [str(entry.resolve(strict=True))]
+    if not args.apphost:
+        command.insert(0, args.dotnet)
+    command.append("--installation-profile=minimal")
     with tempfile.TemporaryDirectory(prefix="relaxkonos-desktop-") as temporary:
         home = Path(temporary)
         env = {**os.environ, "HOME": temporary}
         for key, name in {"CONFIG": "config", "DATA": "data", "CACHE": "cache", "STATE": "state"}.items():
             env[f"XDG_{key}_HOME"] = str(home / name)
         with (home / "desktop.log").open("w+", encoding="utf-8") as log:
-            process = subprocess.Popen([args.dotnet, str(entry), "--installation-profile=minimal"],
+            process = subprocess.Popen(command,
                                        cwd=publish, env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
-                request_close(find_window(process))
+                window = find_window(process)
+                if not (home / "data" / "RelaxKonOS" / "SystemDrive" / "System").is_dir():
+                    raise RuntimeError("Desktop did not initialize the system drive under the isolated data directory.")
+                request_close(window)
                 if process.wait(timeout=12) != 0:
                     raise RuntimeError(f"Desktop closed with status {process.returncode}.")
             except (RuntimeError, subprocess.SubprocessError) as error:
