@@ -341,6 +341,20 @@ internal static class JointDeploymentAcceptance
             session.Url = host.Url;
             joint = Service();
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing deployment after enable.");
+            factory.DropDependencyReply = true;
+            factory.BlockDependencyRelease = true;
+            try
+            {
+                await joint.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected the dependency registration reply to be lost.");
+            }
+            catch (HttpRequestException error) when (error.Message == "fixture-dependency-reply-lost") { }
+            var abandonedRelease = drive.ResolveRootChild($"System/desktop-module-releases/{review.Plan.Id:N}.json");
+            Require(!applications.IsRegistered(new AppId(AppIdText)) && File.Exists(abandonedRelease),
+                "a lost dependency reply leaves an uncommitted application and a durable release record");
+            factory.BlockDependencyRelease = false;
+            await packages.LoadInstalledAsync();
+            Require(!File.Exists(abandonedRelease), "startup reconciles the uncommitted dependency before retry");
             var installed = await joint.ExecuteAsync(review, default);
             var executor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
             var moduleRelease = review.Plan.OrderedReleases.Single(item => item.Package.Id == ModuleId);
@@ -846,6 +860,8 @@ internal static class JointDeploymentAcceptance
             return handler.EnableEntered.Task;
         }
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
+        public bool DropDependencyReply { set => handler.DropDependencyReply = value; }
+        public bool BlockDependencyRelease { set => handler.BlockDependencyRelease = value; }
         public HttpClient CreateClient(string name)
         {
             var before = BeforeNextClient;
@@ -862,6 +878,8 @@ internal static class JointDeploymentAcceptance
         public List<string> EnablePreviewKeys { get; } = [];
         public TaskCompletionSource? EnableEntered { get; set; }
         public bool DropEnableResponse { get; set; }
+        public bool DropDependencyReply { get; set; }
+        public bool BlockDependencyRelease { get; set; }
         public bool SubstituteReceiptRelease { get; set; }
         public bool SubstituteHealthVersion { get; set; }
         public bool SubstituteBlockedHealth { get; set; }
@@ -884,6 +902,18 @@ internal static class JointDeploymentAcceptance
             if (before is not null) await before();
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (path?.StartsWith(ServerModuleManagementRoutes.DesktopDependencies + "/", StringComparison.Ordinal) == true)
+            {
+                if (request.Method == HttpMethod.Delete && BlockDependencyRelease)
+                    throw new HttpRequestException("fixture-dependency-release-unreachable");
+                if (request.Method == HttpMethod.Put && DropDependencyReply)
+                {
+                    DropDependencyReply = false;
+                    using var applied = await base.SendAsync(request, cancellationToken);
+                    applied.EnsureSuccessStatusCode();
+                    throw new HttpRequestException("fixture-dependency-reply-lost");
+                }
+            }
             if (SubstituteInstalledDigest && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.InstalledPackages)
             {
                 using var response = await base.SendAsync(request, cancellationToken);

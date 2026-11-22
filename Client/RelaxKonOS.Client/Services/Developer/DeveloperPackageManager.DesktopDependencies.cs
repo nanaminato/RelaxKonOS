@@ -10,7 +10,7 @@ internal sealed record AppDeploymentReceipt(Guid PlanId, DesktopDependencyBindin
 public sealed partial class DeveloperPackageManager
 {
     private const string DesktopDependencyFileName = "desktop-module-dependency.json";
-    private sealed record PendingDesktopRelease(string AppId, string VersionId, AppDeploymentReceipt Receipt);
+    private sealed record PendingDesktopRelease(string AppId, string? VersionId, AppDeploymentReceipt Receipt);
     private readonly IHttpClientFactory? _moduleHttp;
     private readonly IAuthSession? _moduleSession;
 
@@ -23,9 +23,16 @@ public sealed partial class DeveloperPackageManager
         var receipt = await _drive.ReadJsonAsync<AppDeploymentReceipt>(path);
         if (receipt.Dependency is null) return;
         var pending = new PendingDesktopRelease(installed.Id, Path.GetFileName(installed.InstallationPath), receipt);
-        await _drive.WriteJsonAtomicallyAsync(
-            _drive.ResolveUnder(DesktopReleaseDirectory, receipt.PlanId.ToString("N") + ".json"), pending);
+        await WritePendingDesktopReleaseAsync(pending, default);
     }
+
+    // Called by the joint installer while the package mutation lock is held, before sending PUT.
+    internal Task QueueUncommittedDesktopDependencyAsync(string appId, AppDeploymentReceipt receipt, CancellationToken ct) =>
+        WritePendingDesktopReleaseAsync(new(appId, null, receipt), ct);
+
+    private Task WritePendingDesktopReleaseAsync(PendingDesktopRelease pending, CancellationToken ct) =>
+        _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(DesktopReleaseDirectory, pending.Receipt.PlanId.ToString("N") + ".json"),
+            pending, ct);
 
     private async Task RestoreDesktopDependencyAsync(DeveloperAppRecord record, CancellationToken cancellationToken)
     {
@@ -73,9 +80,21 @@ public sealed partial class DeveloperPackageManager
                         || session.CurrentUser?.Id != dependency.AccountId || session.ServiceId != dependency.ConnectionIdentity)
                         continue;
                     var pointer = CurrentPath(pending.AppId);
-                    if (File.Exists(pointer)
-                        && (await _drive.ReadJsonAsync<ExternalCurrentVersion>(pointer, timeout.Token)).VersionId == pending.VersionId)
-                        continue;
+                    if (File.Exists(pointer))
+                    {
+                        var current = await ReadPointerAsync(pending.AppId, timeout.Token);
+                        if (current.VersionId == pending.VersionId) continue;
+                        if (pending.VersionId is null)
+                        {
+                            var receipt = _drive.ResolveUnder(VersionPath(pending.AppId, current.VersionId), "deployment-receipt.json");
+                            if (File.Exists(receipt)
+                                && await _drive.ReadJsonAsync<Guid>(receipt, timeout.Token) == pending.Receipt.PlanId)
+                            {
+                                File.Delete(path);
+                                continue;
+                            }
+                        }
+                    }
 
                     var login = session.CurrentSession;
                     var http = _moduleHttp.CreateClient(ServerModuleCatalog.HttpClientName);

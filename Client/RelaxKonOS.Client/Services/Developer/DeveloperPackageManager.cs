@@ -254,7 +254,11 @@ public sealed partial class DeveloperPackageManager
             if (launch && !IsDesktopShellPackage(record.Path)) await LaunchAsync(record.Id);
             return ToInfo(record);
         }
-        finally { _mutations.Release(); }
+        finally
+        {
+            try { if (verifyDeployment is not null) await DrainDesktopDependencyReleasesAsync(); }
+            finally { _mutations.Release(); }
+        }
     }
 
     internal async Task<DeveloperAppInfo> InstallOfficialAsync(Stream package, string path, string appId, string expectedSha256,
@@ -294,7 +298,11 @@ public sealed partial class DeveloperPackageManager
                     TryDeleteDirectory(record.Path);
             }
         }
-        finally { _mutations.Release(); }
+        finally
+        {
+            try { if (verifyDeployment is not null) await DrainDesktopDependencyReleasesAsync(); }
+            finally { _mutations.Release(); }
+        }
     }
 
     private async Task<DeveloperAppRecord> StageAsync(
