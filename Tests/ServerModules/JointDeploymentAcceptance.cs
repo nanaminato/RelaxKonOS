@@ -190,6 +190,17 @@ internal static class JointDeploymentAcceptance
             joint = Service();
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing deployment after enable.");
             var installed = await joint.ExecuteAsync(review, default);
+            var executor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
+            var moduleRelease = review.Plan.OrderedReleases.Single(item => item.Package.Id == ModuleId);
+            factory.SubstituteHealthVersion = true;
+            try
+            {
+                await executor.VerifyAsync(review.Plan, moduleRelease, default);
+                throw new InvalidOperationException("Expected mismatched running version to be rejected.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-module-unhealthy") { }
+            finally { factory.SubstituteHealthVersion = false; }
+            await executor.VerifyAsync(review.Plan, moduleRelease, default);
             try
             {
                 await joint.ExecuteAsync(review with
@@ -515,6 +526,7 @@ internal static class JointDeploymentAcceptance
         public int SubmittedEnableApplies => handler.SubmittedEnableApplies;
         public int Requests => handler.Requests;
         public bool SubstituteReceiptRelease { get => handler.SubstituteReceiptRelease; set => handler.SubstituteReceiptRelease = value; }
+        public bool SubstituteHealthVersion { get => handler.SubstituteHealthVersion; set => handler.SubstituteHealthVersion = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
         public Task HoldNextEnableApply()
@@ -540,6 +552,7 @@ internal static class JointDeploymentAcceptance
         public TaskCompletionSource? EnableEntered { get; set; }
         public bool DropEnableResponse { get; set; }
         public bool SubstituteReceiptRelease { get; set; }
+        public bool SubstituteHealthVersion { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
@@ -549,6 +562,21 @@ internal static class JointDeploymentAcceptance
             Requests++;
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (SubstituteHealthVersion && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleHealth)
+            {
+                using var response = await base.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var report = (await response.Content.ReadFromJsonAsync<ServerModuleHealthPageDto>(
+                    RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(report with
+                    {
+                        Modules = report.Modules.Select(item => item.ModuleId == ModuleId
+                            ? item with { Version = "9.0.0" } : item).ToArray(),
+                    }, options: RelaxKonOSJsonOptions.Default),
+                };
+            }
             if (SubstituteReceiptRelease && request.Method == HttpMethod.Get
                 && path?.StartsWith(ServerModuleManagementRoutes.PackageOperations + "/", StringComparison.Ordinal) == true)
             {

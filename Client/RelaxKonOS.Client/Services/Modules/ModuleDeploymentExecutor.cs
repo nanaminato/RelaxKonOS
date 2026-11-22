@@ -125,7 +125,8 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
 
         var health = await client.CheckHealthAsync(cancellationToken);
         if (!health.Modules.Any(item => item.ModuleId == release.Package.Id && item.Enabled
-            && item.Status is "host" or "loaded" or "healthy"))
+            && item.Status is "host" or "loaded" or "healthy"
+            && (module.Packaging != "independent" || item.Version == module.EffectiveVersion)))
             throw new InvalidOperationException("deployment-module-unhealthy");
     }
 
