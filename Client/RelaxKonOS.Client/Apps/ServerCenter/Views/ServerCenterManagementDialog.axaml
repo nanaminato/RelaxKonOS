@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.ServerCenter.Views" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:RelaxKonOS.UI;assembly=RelaxKonOS.UI" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
     <UserControl.Styles>
         <Style Selector="Border.management-section">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
@@ -18,7 +18,7 @@
         <Border Classes="management-section"><StackPanel Spacing="6">
             <WrapPanel ItemSpacing="14" LineSpacing="8">
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="340" VerticalAlignment="Center"/>
-                <views:ServerStatusBadge DataContext="{Binding HostStatus}" VerticalAlignment="Center"/>
+                <ui:ServerStatusBadge DataContext="{Binding HostStatus}" VerticalAlignment="Center"/>
             </WrapPanel>
             <TextBlock Text="{Binding VerifiedStateText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
         </StackPanel></Border>
@@ -33,7 +33,7 @@
                                     <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                     <StackPanel Grid.Column="1">
                                         <SelectableTextBlock Text="{Binding Value}" TextWrapping="Wrap" IsVisible="{Binding !HasStatus}"/>
-                                        <views:ServerStatusBadge IsVisible="{Binding HasStatus}"/>
+                                        <ui:ServerStatusBadge IsVisible="{Binding HasStatus}"/>
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>
@@ -49,7 +49,7 @@
                                     <TextBlock Text="{Binding Label}" Classes="action-description"/>
                                     <StackPanel Grid.Column="1">
                                         <SelectableTextBlock Text="{Binding Value}" TextWrapping="Wrap" IsVisible="{Binding !HasStatus}"/>
-                                        <views:ServerStatusBadge IsVisible="{Binding HasStatus}"/>
+                                        <ui:ServerStatusBadge IsVisible="{Binding HasStatus}"/>
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>

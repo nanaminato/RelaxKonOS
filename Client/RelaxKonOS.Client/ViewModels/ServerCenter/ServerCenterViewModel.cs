@@ -17,7 +17,7 @@ namespace RelaxKonOS.Client.ViewModels.ServerCenter;
 /// Login-independent desktop host inventory. It keeps selectable SSH server-and-user targets;
 /// credentials remain in platform secure storage and deployment remains a separate remote action.
 /// </summary>
-public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation, IServerCenterHostsPresentation
+public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation, IServerCenterHostsPresentation, IServerCenterDeploymentPresentation
 {
     private readonly IHostTargetStore _targets;
     private readonly IServerCenterConnectionResolver _connections;
@@ -166,6 +166,28 @@ public partial class ServerCenterViewModel : ObservableObject, IServerCenterWork
     public string NavigationMenuTitle => T("common.view", "View");
     public string HostsPageTitle => T("server_center.page.hosts", "Hosts");
     public string DeploymentPageTitle => T("server_center.page.deployment", "Installation and maintenance");
+    IServerCenterDeploymentPresentation IServerCenterWorkspacePresentation.Deployment => this;
+    IEnumerable<ServerHostTarget> IServerCenterDeploymentPresentation.Hosts => Hosts;
+    RelaxKonOS.UI.IServerStatusBadgePresentation IServerCenterDeploymentPresentation.HostStatus => HostStatus;
+    ICommand IServerCenterDeploymentPresentation.RecoverCommand => RecoverCommand;
+    ICommand IServerCenterDeploymentPresentation.ProbeHostCommand => ProbeHostCommand;
+    ICommand IServerCenterDeploymentPresentation.OpenInstallationWizardCommand => OpenInstallationWizardCommand;
+    ICommand IServerCenterDeploymentPresentation.UpdateCommand => UpdateCommand;
+    ICommand IServerCenterDeploymentPresentation.RollbackCommand => RollbackCommand;
+
+    async Task IServerCenterDeploymentPresentation.ShowManagementSectionAsync(string section)
+    {
+        if (IsBusy || ShowManagementDialogAsync is not { } show) return;
+        if (section is not ("settings" or "components" or "repair" or "details" or "uninstall")) return;
+
+        if (section is "settings" or "components" or "repair")
+        {
+            await ProbeHostCommand.ExecuteAsync(null);
+            if (section is "settings" or "components" && !PrepareConfiguration()) return;
+        }
+        await show(section);
+    }
+
     IServerCenterHostsPresentation IServerCenterWorkspacePresentation.Hosts => this;
     IEnumerable<ServerHostTarget> IServerCenterHostsPresentation.Hosts => Hosts;
     ICommand IServerCenterHostsPresentation.ConfirmHostKeyCommand => ConfirmHostKeyCommand;

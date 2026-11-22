@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
+namespace RelaxKonOS.App.ServerCenter.Views;
 
 /// <summary>Compacts visible actions into equal-size rows as the viewport changes.</summary>
 public sealed class ServerCenterActionPanel : Panel

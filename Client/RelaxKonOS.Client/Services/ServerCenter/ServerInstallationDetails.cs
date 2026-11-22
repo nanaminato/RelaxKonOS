@@ -5,6 +5,7 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 public enum ServerInstallationStatus { None, Positive, Warning, Negative, Unknown }
 
 public sealed record ServerInstallationDetail(string Label, string Value, ServerInstallationStatus Status = ServerInstallationStatus.None)
+    : RelaxKonOS.UI.IServerStatusBadgePresentation
 {
     public bool HasStatus => Status != ServerInstallationStatus.None;
     public bool IsPositive => Status == ServerInstallationStatus.Positive;

@@ -16,13 +16,13 @@ namespace RelaxKonOS.Client.Apps.ServerCenter;
 internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWindowManager windowManager)
     : IServerCenterPackageWorkspace
 {
-    public void Open(Func<IServerCenterWorkspacePresentation, Func<Control>, ManagedWindow> showWindow)
+    public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow)
     {
         var sshSession = services.GetRequiredService<SshDesktopSession>();
         var language = services.GetRequiredService<ISystemLanguage>();
         UsageMemoryScope CapturePickerMemory() => UsageMemoryStore.CaptureServices(services);
         var viewModel = services.GetRequiredService<ServerCenterViewModel>();
-        var window = showWindow(viewModel, CreateDeploymentPage);
+        var window = showWindow(viewModel);
         viewModel.ConfirmRollbackAsync = review => windowManager.ShowDialogAsync<bool>(window, viewModel.RollbackText,
             dialog => new ServerRollbackConfirmationView(review, dialog), new Size(560, 420));
         viewModel.ShowManagementDialogAsync = async section =>
@@ -75,5 +75,4 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
         _ = viewModel.LoadAsync();
     }
 
-    internal static Control CreateDeploymentPage() => new ServerCenterDeploymentPage();
 }

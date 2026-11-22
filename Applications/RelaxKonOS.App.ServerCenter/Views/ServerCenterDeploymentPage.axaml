@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.ServerCenter.Views" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterDeploymentPage" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:RelaxKonOS.App.ServerCenter.Views" xmlns:ui="clr-namespace:RelaxKonOS.UI;assembly=RelaxKonOS.UI" xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.ServerCenter;assembly=RelaxKonOS.Protocol" xmlns:vm="clr-namespace:RelaxKonOS.AppSDK;assembly=RelaxKonOS.App.SDK" x:Class="RelaxKonOS.App.ServerCenter.Views.ServerCenterDeploymentPage" x:DataType="vm:IServerCenterDeploymentPresentation" Classes="builtin-app">
     <UserControl.Styles>
         <Style Selector="Border.management-card">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
@@ -34,9 +34,9 @@
             <Border Classes="management-card">
                 <StackPanel Spacing="10">
                     <TextBlock Text="{Binding SelectedTargetLabel}" FontWeight="SemiBold"/>
-                    <ComboBox IsEnabled="{Binding !IsBusy}" ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" SelectionChanged="SelectedHost_SelectionChanged" HorizontalAlignment="Stretch">
+                    <ComboBox x:Name="DeploymentHosts" IsEnabled="{Binding !IsBusy}" ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" SelectionChanged="SelectedHost_SelectionChanged" HorizontalAlignment="Stretch">
                         <ComboBox.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="protocol:ServerHostTarget">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                                     <StackPanel Spacing="2">
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
@@ -51,10 +51,10 @@
                     <StackPanel Spacing="12" IsVisible="{Binding HasSelectedHost}">
                         <Separator/>
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                            <Image Width="36" Height="36" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host.png"/>
+                            <Image Width="36" Height="36" Source="avares://RelaxKonOS.App.ServerCenter/Assets/host.png"/>
                             <StackPanel Grid.Column="1" Spacing="4">
                                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                <views:ServerStatusBadge DataContext="{Binding HostStatus}"/>
+                                <ui:ServerStatusBadge DataContext="{Binding HostStatus}"/>
                                 <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding CachedStateText}" Classes="action-description" IsVisible="{Binding HasVerifiedState}"/>
                             </StackPanel>
@@ -74,7 +74,7 @@
             <views:ServerCenterActionPanel IsVisible="{Binding HasSelectedHost}">
                 <Button Classes="management-action" Click="Management_Click" Tag="components" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding ComponentsText}">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/deployments.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/deployments.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding ComponentsText}" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding VerifiedStateText}" Classes="action-description"/>
@@ -84,7 +84,7 @@
                 </Button>
                 <Button Classes="management-action" Click="Management_Click" Tag="settings" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding SettingsText}">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host_settings.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/host_settings.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding SettingsText}" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding SelectedPlatformText}" Classes="action-description"/>
@@ -94,7 +94,7 @@
                 </Button>
                 <Button Classes="management-action" Command="{Binding ProbeHostCommand}" AutomationProperties.Name="{Binding ProbeText}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/monitor.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/monitor.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding ProbeText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding RefreshActionDescription}" Classes="action-description"/>
@@ -103,7 +103,7 @@
                 </Button>
                 <Button Classes="management-action" Command="{Binding OpenInstallationWizardCommand}" AutomationProperties.Name="{Binding DeployText}" IsVisible="{Binding !HasManagedInstallation}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/deployments.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/deployments.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding DeployText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding InstallActionDescription}" Classes="action-description"/>
@@ -112,7 +112,7 @@
                 </Button>
                 <Button Classes="management-action" Command="{Binding UpdateCommand}" AutomationProperties.Name="{Binding UpdateText}" IsVisible="{Binding HasManagedInstallation}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/deployments.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/deployments.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding UpdateText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding InstallActionDescription}" Classes="action-description"/>
@@ -121,7 +121,7 @@
                 </Button>
                 <Button Classes="management-action" Click="Management_Click" Tag="details" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding InstallationInfoTitle}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/host.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding InstallationInfoTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding CachedStateText}" Classes="action-description"/>
@@ -130,7 +130,7 @@
                 </Button>
                 <Button Classes="management-action" Click="Management_Click" Tag="repair" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding RepairText}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/diagnostics.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/diagnostics.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding RepairText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding RepairActionDescription}" Classes="action-description"/>
@@ -139,7 +139,7 @@
                 </Button>
                 <Button Classes="management-action" Command="{Binding RollbackCommand}" AutomationProperties.Name="{Binding RollbackText}" IsVisible="{Binding HasPreviousVersion}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/operations.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/operations.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding RollbackText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding RollbackActionDescription}" Classes="action-description"/>
@@ -148,7 +148,7 @@
                 </Button>
                 <Button Classes="management-action" Click="Management_Click" Tag="uninstall" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding UninstallText}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host_settings.png"/>
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.App.ServerCenter/Assets/host_settings.png"/>
                         <StackPanel Grid.Column="1" Spacing="5">
                             <TextBlock Text="{Binding UninstallText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding UninstallActionDescription}" Classes="action-description"/>

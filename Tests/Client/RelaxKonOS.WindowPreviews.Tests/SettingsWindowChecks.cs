@@ -107,7 +107,7 @@ internal static class SettingsWindowChecks
         serverCenterLifetime.Cancel();
         try
         {
-            serverCenter!.Open((_, _) => throw new Exception("A retired Server Center package opened a window."));
+            serverCenter!.Open(_ => throw new Exception("A retired Server Center package opened a window."));
             throw new Exception("A retired Server Center package retained its workspace.");
         }
         catch (OperationCanceledException) { }
@@ -645,6 +645,13 @@ internal static class SettingsWindowChecks
             Check(history.GetType().Assembly == workspace.GetType().Assembly
                 && Equals(historyGrid.Columns[0].Header, model.HistoryTimeHeader),
                 "The package must own the history page and bind its localized columns.");
+            var deploymentButton = workspace.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "deployment"));
+            deploymentButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Pump();
+            var deployment = (UserControl)workspace.FindControl<ContentControl>("ContentHost")!.Content!;
+            Check(deployment.GetType().Name == "ServerCenterDeploymentPage" && deployment.GetType().Assembly == workspace.GetType().Assembly
+                && ReferenceEquals(deployment.FindControl<ComboBox>("DeploymentHosts")!.ItemsSource, model.Hosts),
+                "The package must own the deployment page and use the host inventory.");
             var wizardResult = model.ShowInstallationWizardAsync!();
             PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
             var wizardWindow = windows.Windows.Single(item => item.IsModalDialog);
@@ -652,7 +659,7 @@ internal static class SettingsWindowChecks
                 "Server Center did not open its installation wizard as a package-owned modal.");
             var wizard = (ServerInstallationWizardViewModel)((ServerInstallationWizardView)wizardWindow.View.Content!).DataContext!;
             var cancel = wizard.CancelCommand.ExecuteAsync(null);
-            PumpUntil(() => cancel.IsCompleted && wizardResult.IsCompleted);
+            PumpUntil(() => cancel.IsCompleted && wizardResult.IsCompleted && !windows.Windows.Contains(wizardWindow));
             cancel.GetAwaiter().GetResult();
             wizardResult.GetAwaiter().GetResult();
             Check(!windows.Windows.Any(item => item.IsModalDialog), "Canceling the installation wizard left its modal open.");

@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
-             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerStatusBadge"
-             x:DataType="services:ServerInstallationDetail">
+             xmlns:services="clr-namespace:RelaxKonOS.UI"
+             x:Class="RelaxKonOS.UI.ServerStatusBadge"
+             x:DataType="services:IServerStatusBadgePresentation">
     <UserControl.Styles>
         <Style Selector="Border.status-badge">
             <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}"/>
