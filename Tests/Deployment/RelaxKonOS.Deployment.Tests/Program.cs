@@ -295,6 +295,34 @@ await using (var lease = await reopenedJournal.OpenAsync(retryVerification, Canc
 }
 await using (var lease = await reopenedJournal.OpenAsync(retryVerification, CancellationToken.None))
     Check(lease.Checkpoint is { Verified: true });
+if (OperatingSystem.IsWindows())
+{
+    var lockedPlan = plan with { Id = Guid.NewGuid() };
+    var lockedPath = Path.Combine(journalDirectory, lockedPlan.Id.ToString("N"));
+    await using (var lease = await reopenedJournal.OpenAsync(lockedPlan, CancellationToken.None))
+    {
+        var previous = new DeploymentCheckpoint(0, false);
+        var next = new DeploymentCheckpoint(1, false);
+        await lease.SaveAsync(previous, CancellationToken.None);
+        var originalBytes = await File.ReadAllBytesAsync(lockedPath);
+        using (File.Open(lockedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            try
+            {
+                await lease.SaveAsync(next, CancellationToken.None);
+                throw new InvalidOperationException("Expected the reader to prevent checkpoint replacement.");
+            }
+            catch (Exception error) when (error is UnauthorizedAccessException
+                || error is IOException { HResult: unchecked((int)0x80070020) }) { }
+            var currentBytes = await File.ReadAllBytesAsync(lockedPath);
+            Check(lease.Checkpoint == previous && !File.Exists(lockedPath + ".tmp")
+                && originalBytes.SequenceEqual(currentBytes));
+        }
+        await lease.SaveAsync(next, CancellationToken.None);
+    }
+    await using (var lease = await reopenedJournal.OpenAsync(lockedPlan, CancellationToken.None))
+        Check(lease.Checkpoint is { CompletedSteps: 1, Verified: false });
+}
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
