@@ -93,14 +93,35 @@ internal static class JointDeploymentAcceptance
     {
         var serverRoot = Path.Combine(root, "server");
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
-        builder.Services.AddSingleton(new CertificateOptions { DirectoryUrl = "invalid-directory" });
+        builder.Configuration["Storage:Provider"] = "memory";
+        var fixture = Environment.GetEnvironmentVariable("RK_TEST_ACME_FIXTURE");
+        builder.Services.AddSingleton(new CertificateOptions
+        {
+            DirectoryUrl = fixture is null ? "invalid-directory" : "https://localhost:14000/dir",
+            StorageRoot = Path.Combine(serverRoot, "certificates"),
+            ChallengeRoot = Path.Combine(serverRoot, "challenges"),
+        });
         builder.Services.AddSingleton<FileHttp01ChallengeStore>();
         builder.Services.AddSingleton<CertificateMetadataRepository>();
         var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.CertificatesId }, InstalledModuleCatalog.Load(serverRoot));
         modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+        if (fixture is not null)
+            builder.Services.AddSingleton(_ => new DirectHttp01ChallengeStore("http://+:5002/.well-known/acme-challenge/"));
         await using var host = builder.Build();
         var execution = host.Services.GetRequiredService<AcmeExecution>();
         var acme = host.Services.GetRequiredService<IAcmeService>();
+        if (fixture is not null)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            const string domain = "signed-joint.mb05.test";
+            var material = await acme.IssueAsync(Guid.NewGuid(), [domain],
+                RelaxKonOS.Protocol.Certificates.CertificateChallengeType.DirectHttp01,
+                RelaxKonOS.Protocol.Certificates.CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", timeout.Token);
+            using var leaf = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(material.CertificatePem, material.PrivateKeyPem);
+            Require(!ReferenceEquals(execution, AcmeExecution.Shared) && leaf.HasPrivateKey && leaf.MatchesHostname(domain),
+                "the joint-installed signed Certificates package issues a real Pebble certificate with the requested identity");
+            return;
+        }
         var directory = new Uri("https://fixture.invalid/dir");
         var identity = new AcmeOrderIdentity(directory, new(directory, "/account"), "fixture", new(directory, "/order"));
         Require(!ReferenceEquals(execution, AcmeExecution.Shared)
