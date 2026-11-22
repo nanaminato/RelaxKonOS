@@ -33,7 +33,7 @@ internal static class DatabaseObservationBroker
         using var caller = hosts.AcquireAuthenticated(http.Request.Headers[ModuleHostProtocol.ServiceTokenHeader].ToString(),
                 DatabaseObservationProtocol.ModuleId);
         if (caller is null || resolveUser(caller, http.Request.Headers[ModulePrivilegeProtocol.RequestContextHeader].ToString()) is not { } user
-            || !hosts.CanAccess(caller.ModuleId, user))
+            || !hosts.CanAccessDatabaseObservation(user))
             return Results.StatusCode(StatusCodes.Status403Forbidden);
 
         using var scope = services.CreateScope();

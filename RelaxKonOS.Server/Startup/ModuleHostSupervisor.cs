@@ -72,7 +72,15 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         lock (_gate) return _entries.Any(entry => entry.ModuleId == moduleId);
     }
 
-    internal bool CanAccess(string moduleId, ClaimsPrincipal user)
+    internal bool CanAccess(string moduleId, ClaimsPrincipal user) =>
+        CanAccess(moduleId, user, requireManagementByDefault: true);
+
+    // Canonical database routes enforce the database read policy separately.
+    internal bool CanAccessDatabaseObservation(ClaimsPrincipal user) =>
+        CanAccess(RelaxKonOS.ModuleHost.Protocol.DatabaseObservationProtocol.ModuleId, user,
+            requireManagementByDefault: false);
+
+    private bool CanAccess(string moduleId, ClaimsPrincipal user, bool requireManagementByDefault)
     {
         Entry? entry;
         lock (_gate) entry = _entries.FirstOrDefault(item => item.ModuleId == moduleId);
@@ -82,7 +90,9 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
             var subject = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
             return subject is not null && entry.AllowedUsers.Contains(subject);
         }
-        return ServerModuleManagementEndpoints.CanManage(user);
+        return requireManagementByDefault
+            ? ServerModuleManagementEndpoints.CanManage(user)
+            : user.Identity?.IsAuthenticated == true;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

@@ -358,3 +358,4 @@
 - Databases Linux x64 framework-dependent Release 发布已通过。使用该发布目录和一次性 P-256 密钥生成 0.1.0 本地候选，独立核对目录签名与归档 SHA-256。尚未接纳该目录或部署候选包。
 - Core 已将 Databases 的四条查询和两条凭据暂存拆为独立路由注册入口，为后续将查询映射到 ModuleHost 提供切换点。当前内置模块调用两个入口，公开路径及授权策略保持原样。安装器仍以 module-package-module-id-conflict 拒绝与内置 ID 冲突的候选。
 - Databases 路由拆分通过 Windows 专项，使用新编译的 Server 程序集和既有测试程序集，核对六条公开路由及授权、停用保护和私有代理拒绝路径。
+- Databases 私有只读代理沿用 RuntimeRead 对控制端和观察者的授权，并继续核对有效会话、可信进程代次及显式配置的用户名单。通用模块管理代理继续使用其管理授权。生产路由切换与实机观察者请求仍待验。
