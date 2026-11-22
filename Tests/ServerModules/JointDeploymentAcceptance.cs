@@ -670,16 +670,49 @@ internal static class JointDeploymentAcceptance
             var session = (SessionProxy)(object)auth;
             session.Url = host.Url;
             using var factory = new FixtureHttpFactory(await File.ReadAllBytesAsync(package.ArchivePath));
-            using var services = new ServiceCollection().BuildServiceProvider();
+            var settings = new ShellSettings(null!);
+            var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
+            using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
             var windows = new RelaxKonOS.WindowManager.WindowManager();
             var apps = new ApplicationManager(windows, services);
+            var drive = new VirtualSystemDrive(Path.Combine(root, "desktop"));
             var packages = new DeveloperPackageManager(apps, null!, windows, DispatchProxy.Create<IAppPermissionManager, PermissionProxy>(),
-                new Diagnostics(), new VirtualSystemDrive(Path.Combine(root, "desktop")), official, moduleHttp: factory, moduleSession: auth);
+                new Diagnostics(), drive, official, moduleHttp: factory, moduleSession: auth);
             await packages.LoadInstalledAsync();
             using var trust = new ComponentCatalogSourceStore(Path.Combine(root, "sources"), "joint-execution");
             var installer = new AppPackageInstallerService(packages, null!, trust);
             var joint = new JointAppDeploymentService(factory, auth, installer, packages, apps, new(Path.Combine(root, "journal")));
             var candidate = await installer.InspectLocalAsync(appArchive);
+            if (moduleId == ServerModules.ProxyId && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SHARED_APPS") == "1")
+            {
+                var profilePath = Path.Combine(Path.GetDirectoryName(archive)!, "installation-profiles.json");
+                File.Copy(profilePath, packages.OfficialSource.BundledProfilesPath);
+                var profiles = JsonNode.Parse(await File.ReadAllTextAsync(profilePath))!;
+                var exclusions = profiles["profiles"]!["developer"]!.AsArray()
+                    .Where(entry => (string?)entry!["installPolicy"] == "offline")
+                    .Select(entry => "--exclude-bundled-app=" + (string)entry!["appId"]!);
+                var provisioner = new BundledApplicationProvisioner(packages, installer, joint, drive);
+                await provisioner.RunAsync(["--installation-profile=developer", .. exclusions]);
+                typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+                using var store = new AppInstallerViewModel(installer) { JointDeployment = joint, ProfileChoices = provisioner };
+                await store.RefreshOfficialCommand.ExecuteAsync(null);
+                Require(store.SelectedOfficialApp is { SelectedByProfile: true } selected && selected.Id == candidate.Manifest.Id,
+                    "the official store selects the Developer-profile Proxy archive for review");
+                await store.DownloadOfficialCommand.ExecuteAsync(null);
+                DeploymentPlan? declined = null;
+                store.SelectOptionalAsync = requirements => Task.FromResult<IReadOnlyList<DeploymentRequirement>?>(requirements);
+                store.ConfirmDeploymentAsync = plan =>
+                {
+                    declined = plan;
+                    return Task.FromResult(false);
+                };
+                await store.InstallCommand.ExecuteAsync(null);
+                Require(declined is { PreparedSteps.Length: 1 }
+                    && declined.OrderedReleases.Any(release => release.Package.Kind == DeploymentPackageKind.ServerModule
+                        && release.Package.Id == moduleId && release.Version == version && !release.Satisfied)
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 0 && !apps.IsRegistered(new AppId(candidate.Manifest.Id)),
+                    "declining the Developer-profile plan leaves the signed Proxy module and desktop app uninstalled");
+            }
             var review = await joint.PrepareAsync(candidate, [], default);
             Require(review.Plan.PreparedSteps.Length == 1, $"the {moduleId} desktop package selects the independent signed server release");
             if (dependencies is { Count: > 0 })

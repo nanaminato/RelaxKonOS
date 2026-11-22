@@ -865,3 +865,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 首次启动配置选择已接入桌面预装入口。三语窗口默认 Standard，可切换配置和取消离线预装项，跳过时选用 Minimal。Windows Release 无头发行归档测试取消 Welcome 后预装 12 项，重启保留选择且不重开窗口。Minimal 恢复及 Developer 的 14 项预装也通过，三语资源核对通过。原生首次启动窗口与 Linux 交互复验仍待完成。
 - Windows x64 发布当前桌面宿主并复用已构建官方归档，使用 verify-windows-desktop-startup.ps1 的 FirstRun 模式在隔离应用数据下通过原生首次启动。选择窗口响应，关闭后进入登录并正常退出。原有显式 Minimal 冒烟也通过。Linux x64 WSL 无头发行回归验证选择窗口取消 Welcome 后安装其余 12 项，重启不再弹出，Minimal 恢复和 Developer 14 项预装通过。Linux 原生图形窗口仍待验。
 - Developer 的交互式应用可在首次启动窗口取消。应用安装器将仍需要安装或升级且达到配置集最低版本的已选官方应用置顶并标注。Windows Release 发行验收使用实际归档，排除 Squid 后只在普通商店清单显示它，选中的 Proxy 可进入保留所需服务端依赖的归档审阅。此项验收停在确认前，未连接服务器。中英日资源校验通过。
+- Linux x64 签名 Proxy 联合验收使用发行 Developer 配置与官方 Proxy 归档的测试副本，排除离线项以隔离场景。官方商店自动选中该归档，生产审阅生成包含一个缺失签名 Proxy 版本的计划。拒绝计划后，服务端没有安装回执，桌面应用未登记。随后原签名安装、重启恢复和共享依赖验收同轮通过。
