@@ -74,7 +74,11 @@ internal static class DatabaseEndpointBoundaryChecks
         var packagedDatabase = new InstalledIsolatedModule(
             new InstalledModuleRecord(ServerModules.DatabaseId, "0.1.0", "database-fixture", "test", "test",
                 "", "", "", "", "", [], [], "module-host", DateTimeOffset.UtcNow),
-            builder.Environment.ContentRootPath);
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        if (await packagedDatabase.CheckHealthAsync(true, default) is not
+                { Status: "blocked", ProblemCode: "module-host-code-trust-required" }
+            || await packagedDatabase.CheckHealthAsync(false, default) is not { Status: "disabled", ProblemCode: null })
+            throw new InvalidOperationException("The database package must distinguish missing code trust from module disablement.");
         var packagedEnabled = ServerModules.Create(new ConfigurationBuilder().Build(), [packagedDatabase]);
         var packagedDisabled = ServerModules.Create(config, [packagedDatabase]);
         if (!packagedEnabled.IsEnabled(ServerModules.DatabaseId)

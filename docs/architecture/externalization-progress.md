@@ -364,3 +364,4 @@
 - 官方模块来源策略修订升至 5，并授权 relaxkonos.database。默认仍需部署方显式启用来源并配置可信公钥。WSL x86_64 使用自包含 ModuleHost 加载签名候选，核对无令牌请求返回 401、PostgreSQL 实例参数与两种上下文头送达受控回环代理，并通过 ready、health 与 shutdown。真实 Core、目录接纳、在线安装和 Helper 验收待完成。
 - WSL x86_64 运行当前 Linux x64 自包含 Core，在临时服务根以本地测试公钥接纳 Databases 签名目录，并通过离线安装写入 0.1.0 ModuleHost 安装事实。同一操作 ID 的持久回执为 AwaitingRestart，effective=false。在线计划、运行信任确认、监督器激活及真实 Helper 查询待验。
 - 冻结计划可为离线安装且没有代码信任记录的同一 ModuleHost 归档首次确认信任；保留 AwaitingRestart。Windows Release 的模块包 HTTP 专项验证离线包初始无信任、直接安装无法确认信任、冻结计划写入精确信任，并核对回执与幂等重试。Linux 上的运行激活和观察者查询待验。
+- 已安装且启用的 ModuleHost 在缺少精确代码信任时，健康报告为 blocked 与 module-host-code-trust-required。禁用和隔离状态继续独立显示，无法读取信任台账时报告 module-package-trust-invalid。

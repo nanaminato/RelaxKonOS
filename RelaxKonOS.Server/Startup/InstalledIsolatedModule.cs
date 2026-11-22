@@ -42,8 +42,25 @@ internal sealed class InstalledIsolatedModule(InstalledModuleRecord record, stri
 
     public ValueTask<ServerModuleHealthModuleDto> CheckHealthAsync(bool enabled, CancellationToken cancellationToken)
     {
+        if (_supervisor?.SnapshotInstalledHealth(Id, enabled) is { } supervised)
+            return ValueTask.FromResult(supervised);
+
         var status = record.Quarantined ? "quarantined" : !enabled ? "disabled" : "starting";
-        return ValueTask.FromResult(_supervisor?.SnapshotInstalledHealth(Id, enabled)
-            ?? new ServerModuleHealthModuleDto(Id, enabled, true, null, record.SourceId, status, null));
+        string? problem = null;
+        if (status == "starting")
+        {
+            try
+            {
+                if (ModuleTrustStore.Read(contentRoot, record)?.Trusted != true)
+                    problem = "module-host-code-trust-required";
+            }
+            catch (Exception error) when (error is RelaxKonOS.ModulePackaging.ModulePackageException
+                or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                problem = "module-package-trust-invalid";
+            }
+            if (problem is not null) status = "blocked";
+        }
+        return ValueTask.FromResult(new ServerModuleHealthModuleDto(Id, enabled, true, null, record.SourceId, status, problem));
     }
 }
