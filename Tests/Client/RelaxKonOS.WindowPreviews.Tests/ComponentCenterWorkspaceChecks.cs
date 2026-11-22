@@ -26,6 +26,13 @@ internal static class ComponentCenterWorkspaceChecks
         manager.Attach(new Canvas { Width = 1280, Height = 900 });
         var workspace = new LaunchWorkspace();
         var application = new ComponentCenterApp(workspace);
+        var packaged = new ComponentCenterPackageApp();
+        Check(packaged.Manifest.Id == application.Manifest.Id
+            && packaged.Manifest.Permissions.SequenceEqual(application.Manifest.Permissions)
+            && packaged.CanHandleActivation(new Uri("relaxkonos://components/server-modules?hostId=fixture"))
+            && !packaged.CanHandleActivation(new Uri("relaxkonos://settings/home"))
+            && !packaged.CanHandleActivation(new Uri("relaxkonos://components/server-modules#approve")),
+            "The Component Center package preserves application identity and only claims its Shell route namespace.");
         application.Activate(new RelaxKonOS.AppSDK.AppContext(application.Manifest.Id, manager,
             RelaxKonOS.Client.App.Services, application.Manifest));
         var launched = manager.Windows.Single();
@@ -575,7 +582,7 @@ internal static class ComponentCenterWorkspaceChecks
         finally { settings.Language = languageBefore; settings.Appearance = appearanceBefore; }
         Console.WriteLine("Component Center layout checks passed (3 languages × 2 themes). Previews: " + output);
     }
-    private sealed class LaunchWorkspace : IComponentCenterWorkspace
+    private sealed class LaunchWorkspace : RelaxKonOS.AppSDK.IComponentCenterWorkspace
     {
         public Control Content { get; } = new TextBlock();
 

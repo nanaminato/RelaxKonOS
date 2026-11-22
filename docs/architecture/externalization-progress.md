@@ -543,3 +543,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 模块驻留策略编辑视图迁入独立程序集。宿主继续处理草稿恢复和计划预览。Windows Release 模块专项验证宽限期双向绑定、取消恢复已测量值以及取消不提交。
 - Component Center 应用入口及清单迁入应用程序集，宿主适配器继续组装工作区、校验当前宿主并处理导航。Windows Release 组件中心目录与三语双主题回归、桌面三档预装回归通过。仍走内置注册，官方包入口和安装验收待完成。
 - Component Center 应用入口负责创建并拥有主窗口，宿主经窄回调提供标题和工作区内容。开窗失败时释放当次模型。Windows Release 组件中心专项验证窗口归属、本地与远程包流程及三语双主题布局。
+- Component Center 增加包入口、SDK 工作区契约和本地化清单，DevCli 成功构建归档并核对 CRC 与入口路径。Windows Release 组件中心回归验证包身份、权限请求和 URI 范围。官方来源向包提供工作区、发行注册与从归档启动待完成。

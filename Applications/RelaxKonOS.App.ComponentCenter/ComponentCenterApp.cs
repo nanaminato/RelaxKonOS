@@ -1,30 +1,19 @@
-using Avalonia.Controls;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
-using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.App.ComponentCenter;
 
-public interface IComponentCenterWorkspace
-{
-    void Open(Func<string, Control, ManagedWindow> showWorkspace);
-    bool CanNavigate(Uri uri);
-    void Navigate(Uri uri);
-}
-
 public sealed class ComponentCenterApp(IComponentCenterWorkspace workspace) : RemoteApplicationBase, IAppActivationHandler
 {
-    public static AppId Id { get; } = new("relaxkonos.component-center");
+    public static AppId Id => ComponentCenterPackageApp.Id;
 
-    public override ApplicationManifest Manifest { get; } = new(Id, "Component Center", "1.0.0", "⇄", "Managed host components",
-        [AppPermissions.ServerComponentsRead, AppPermissions.ServerComponentsManage, AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage, AppPermissions.ServerGitRead, AppPermissions.ServerGitManage],
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow,
-        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
+    public override ApplicationManifest Manifest { get; } =
+        ComponentCenterPackageApp.PackageManifest with { IconPath = "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png" };
 
     public override void Activate(AppContext context) =>
-        workspace.Open((title, content) => context.ShowWindow(title, content, new Rect(80, 45, 1060, 800)));
+        workspace.Open((title, content) => context.ShowWindow(title, content, ComponentCenterPackageApp.InitialBounds));
 
     public bool CanHandleActivation(Uri uri) => workspace.CanNavigate(uri);
 

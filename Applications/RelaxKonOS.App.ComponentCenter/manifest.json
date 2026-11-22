@@ -1,0 +1,26 @@
+{
+  "id": "relaxkonos.component-center",
+  "displayName": "Component Center",
+  "description": "Managed host components",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.ComponentCenter.dll",
+  "entryType": "RelaxKonOS.App.ComponentCenter.ComponentCenterPackageApp",
+  "iconGlyph": "⇄",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [
+    "server.components.read", "server.components.manage",
+    "server.webservers.read", "server.webservers.manage",
+    "server.git.read", "server.git.manage"
+  ],
+  "localizedMetadata": {
+    "zh-CN": {
+      "displayName": "组件中心",
+      "description": "管理宿主组件"
+    },
+    "ja-JP": {
+      "displayName": "コンポーネントセンター",
+      "description": "ホストのコンポーネントを管理します"
+    }
+  }
+}
