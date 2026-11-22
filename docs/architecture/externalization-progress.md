@@ -859,3 +859,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Ubuntu Noble Squid 6.14 守护进程在独立 WSL 网络命名空间启动并降权到 nobody，使用临时目录和与生成配置相同的环回目标拒绝规则。绕过客户端的 NO_PROXY 后，经 Squid 请求环回 HTTP 目标返回 403 和 ERR_ACCESS_DENIED 测试响应，随后停止进程。本次为独立守护进程验收，签名包通过生产 Helper 发布到真实 Squid 仍待验。
 - 修复生产 Helper 的 Squid 候选解析判定。验证和发布均拒绝原生 FATAL: 诊断，即使退出码为零。检查扫描完整输出，返回诊断仍有长度上限。Linux x64 签名双包验证超出上限的致命诊断仍可识别，并复验解包 Squid 6.14 可解析有效候选。当前 WSL 无 systemctl 与系统 Squid 安装，生产 Helper 的系统服务重载待具备这些条件的宿主。
 - Server Center 安装向导的主机 IP 地址弹窗迁入官方应用程序集。宿主通过 SDK 提供查询结果和关闭回调，SSH 查询继续走原有宿主连接。Windows Release 重建归档后通过生产安装、窗口、向导打开和取消、卸载回归。真实 SSH 地址查询与弹窗联调仍待验。
+- Windows Release 的已安装 Server Center 包验收从安装向导打开主机地址弹窗。受控 SSH 会话返回混合地址文本，生产宿主过滤无效和重复地址，显示 IPv4 与 IPv6。测试核对弹窗来自官方包程序集，并使用关闭按钮返回向导。真实 SSH 宿主查询仍待验。

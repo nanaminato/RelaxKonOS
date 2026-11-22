@@ -35,6 +35,7 @@ using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.Settings;
+using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Protocol.Workspace.SystemStyles;
 using RelaxKonOS.Runtime;
@@ -555,7 +556,8 @@ internal static class SettingsWindowChecks
                 using var hostServices = new ServiceCollection()
                     .AddSingleton(ssh)
                     .AddSingleton<ISystemLanguage>(localization)
-                    .AddTransient(_ => new ServerCenterViewModel(targets, null!, null!, null!, ssh, null!, null!,
+                    .AddTransient(_ => new ServerCenterViewModel(targets,
+                        DispatchProxy.Create<IServerCenterConnectionResolver, HostAddressSshFixture>(), null!, null!, ssh, null!, null!,
                         new LoginLocalizationService(new LocalLanguageStore())))
                     .BuildServiceProvider();
                 var hostWorkspace = new ServerCenterHostWorkspace(hostServices, windows);
@@ -604,6 +606,22 @@ internal static class SettingsWindowChecks
             typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, previousServices);
             settings.Apply(original); Pump();
         }
+    }
+
+    public class HostAddressSshFixture : DispatchProxy
+    {
+        internal static ServerHostTarget Target { get; } = ServerHostTargetRules.Create(
+            "fixture.example", 22, "fixture-user", null, DateTimeOffset.UnixEpoch);
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) => targetMethod?.Name switch
+        {
+            nameof(IServerCenterConnectionResolver.ConnectAsync) when Equals(args?[0], Target.HostId) =>
+                Task.FromResult(new ServerCenterHostSession(Target, Create<IServerCenterSshTransport, HostAddressSshFixture>())),
+            nameof(IServerCenterSshTransport.RunAsync) when Equals(args?[0], "hostname -I") =>
+                Task.FromResult(new ServerCenterSshCommandResult(0, "2001:db8::2 invalid 192.0.2.8 192.0.2.8\n", "")),
+            nameof(IAsyncDisposable.DisposeAsync) => ValueTask.CompletedTask,
+            _ => throw new NotSupportedException(targetMethod?.Name),
+        };
     }
 
     private static void CheckServerCenterPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
@@ -684,6 +702,22 @@ internal static class SettingsWindowChecks
             Check(wizardWindow.Info.OwnerAppId == appId && wizardWindow.View.Content is ServerInstallationWizardView,
                 "Server Center did not open its installation wizard as a package-owned modal.");
             var wizard = (ServerInstallationWizardViewModel)((ServerInstallationWizardView)wizardWindow.View.Content!).DataContext!;
+            model.SelectedHost = HostAddressSshFixture.Target;
+            model.SelectedPlatform = model.Platforms.Single(option => option.Platform == RelaxKonOS.Protocol.Common.HostPlatformKind.Linux);
+            model.SshPassword = "fixture-password";
+            var showAddresses = wizard.ShowHostAddressesCommand.ExecuteAsync(null);
+            PumpUntil(() => showAddresses.IsCompleted || windows.Windows.Count(item => item.IsModalDialog) == 2);
+            Check(!showAddresses.IsCompleted, "The host address dialog did not open.");
+            var addressWindow = windows.Windows.Single(item => item.IsModalDialog && item != wizardWindow);
+            var addressView = (Border)addressWindow.View.Content!;
+            var addressPanel = (StackPanel)addressView.Child!;
+            Check(addressView.GetType().Assembly == workspace.GetType().Assembly
+                && addressPanel.Children.OfType<TextBlock>().Single().Text == string.Join(Environment.NewLine, "192.0.2.8", "2001:db8::2"),
+                "The package must own the address dialog and show only the validated, distinct addresses.");
+            addressPanel.Children.OfType<Button>().Single()
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            PumpUntil(() => showAddresses.IsCompleted && !windows.Windows.Contains(addressWindow));
+            showAddresses.GetAwaiter().GetResult();
             var cancel = wizard.CancelCommand.ExecuteAsync(null);
             PumpUntil(() => cancel.IsCompleted && wizardResult.IsCompleted && !windows.Windows.Contains(wizardWindow));
             cancel.GetAwaiter().GetResult();
