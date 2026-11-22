@@ -18,7 +18,7 @@
 | settings | Settings | 是 / 是 | 否 | 工作区设置与宿主设置 | 基础 | Windows 隔离安装、同版本修复、包窗口及深链接已验 |
 | explorer | Explorer | 是 / 是 | 否 | 文件 API；调用存储提供者的聚合入口 | 基础 | Windows 隔离发行安装、修复、未登录深链接通过 |
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
-| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 隔离发行安装和修复通过，真实 SSH 待验 |
+| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 安装、修复、包窗口、向导和卸载通过，真实 SSH 待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
@@ -595,4 +595,5 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Explorer 包的宿主工作区能力接入桌面容器，只发放给官方来源的 Explorer，并受包生命周期约束。包开窗经过外部窗口服务登记。Windows Release Explorer 与 Settings 窗口专项通过，验证非官方来源和已撤销上下文无法使用能力。
 - Explorer 切换到官方发行包，桌面宿主移除编译引用与内置注册。Windows Release 使用新 Explorer 归档及既有 27 个归档验证摘要、清单和入口程序集。隔离发行预装分别登记 Minimal 0、Standard 12、Developer 13 项，Minimal 可从离线发行归档安装并修复 Explorer。实际安装的包接受有效目录深链接，在未登录时复用由包程序集创建的登录提示窗口，并拒绝无效路由。登录后的真实目录导航待验。
 
-- Server Center 的应用入口及窗口登记切换至官方 .roapp。SSH 会话、部署和对话框仍通过受包生命周期约束的桌面工作区提供。Windows Release 隔离发行目录校验 29 个归档，三档预装数量为 0、13、14，Minimal 离线安装和修复 Server Center 通过。Server Center 工作区视图迁移、真实 SSH 和完整发布待验。
+- Server Center 的应用入口及窗口登记切换至官方 .roapp。SSH 会话、部署和对话框仍通过受包生命周期约束的桌面工作区提供。Windows Release 隔离发行目录校验 29 个归档，三档预装数量为 0、13、14，Minimal 离线安装和修复 Server Center 通过。
+- 完整 Windows Release 桌面发布重新生成并核对 29 个官方归档的摘要、清单和入口程序集。用该发行验证三档预装数量 0、13、14，配置切换保留已安装和用户主动移除的状态。实际发行包验收使用生产 Server Center 工作区和空的本地主机清单，验证首次启动、重复启动复用窗口、打开并取消安装向导及卸载关闭窗口。Explorer 实际发行包的未登录深链接回归通过。Server Center 工作区视图迁移、真实 SSH 和 Explorer 登录后目录导航待验。

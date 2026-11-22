@@ -23,6 +23,10 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Diagnostics;
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Apps.ServerCenter;
+using RelaxKonOS.Client.Apps.ServerCenter.Views;
+using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.Services.HostSettings;
 using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
@@ -39,7 +43,7 @@ using RelaxKonOS.Shell;
 
 internal static class SettingsWindowChecks
 {
-    public static void Run(ShellSettings settings, LocalizationService localization, string? packageSource = null, bool componentCenter = false, bool explorerPackage = false)
+    public static void Run(ShellSettings settings, LocalizationService localization, string? packageSource = null, bool componentCenter = false, bool explorerPackage = false, bool serverCenterPackage = false)
     {
         const string pathValue = "/usr/bin::/bin";
         EnvironmentMutation? mutation = null;
@@ -75,7 +79,8 @@ internal static class SettingsWindowChecks
             .AddSingleton<IRemoteDockerClient>(DispatchProxy.Create<IRemoteDockerClient, UnusedPreviewServices>()).BuildServiceProvider();
         typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
         var memory = new UsageMemoryStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "usage.json"));
-        ExternalAppContextFactory CreateFactory(RelaxKonOS.App.Settings.ISettingsWindow workspace, IComponentCenterWorkspace? centerWorkspace) =>
+        ExternalAppContextFactory CreateFactory(RelaxKonOS.App.Settings.ISettingsWindow workspace, IComponentCenterWorkspace? centerWorkspace,
+            IServerCenterPackageWorkspace? serverCenterHost = null) =>
             new(null!, null!, localization, settings, null!, session,
             null!, windows, null!, new RelaxKonOS.Client.Apps.Explorer.ExplorerClient(http, session, memory),
             new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings), null!, null!, null!,
@@ -83,7 +88,7 @@ internal static class SettingsWindowChecks
             settingsWindow: workspace,
             componentCenterWorkspace: centerWorkspace ?? new RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace(services),
             explorerWorkspace: new RelaxKonOS.Client.Apps.Explorer.ExplorerPackageHostWorkspace(services),
-            serverCenterWorkspace: new RelaxKonOS.Client.Apps.ServerCenter.ServerCenterHostWorkspace(services, windows));
+            serverCenterWorkspace: serverCenterHost ?? new ServerCenterHostWorkspace(services, windows));
         var factory = CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null);
         var settingsManifest = new RelaxKonOS.App.Settings.SettingsPackageApp().Manifest;
         using var packageLifetime = new CancellationTokenSource();
@@ -535,6 +540,20 @@ internal static class SettingsWindowChecks
                 CheckCenterPackage(packageSource, windows, apps,
                     CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), centerWorkspace));
             }
+            else if (packageSource is not null && serverCenterPackage)
+            {
+                var ssh = new SshDesktopSession(null!, settings);
+                var targets = new HostTargetStore(Path.Combine(Path.GetTempPath(), "rk-server-center-" + Guid.NewGuid().ToString("N")));
+                using var hostServices = new ServiceCollection()
+                    .AddSingleton(ssh)
+                    .AddSingleton<ISystemLanguage>(localization)
+                    .AddTransient(_ => new ServerCenterViewModel(targets, null!, null!, null!, ssh, null!, null!,
+                        new LoginLocalizationService(new LocalLanguageStore())))
+                    .BuildServiceProvider();
+                var hostWorkspace = new ServerCenterHostWorkspace(hostServices, windows);
+                CheckServerCenterPackage(packageSource, windows, apps,
+                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null, hostWorkspace));
+            }
             else if (packageSource is not null && explorerPackage)
             {
                 auth.Logout();
@@ -576,6 +595,64 @@ internal static class SettingsWindowChecks
             window.Close();
             typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, previousServices);
             settings.Apply(original); Pump();
+        }
+    }
+
+    private static void CheckServerCenterPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
+        ApplicationManager applications, ExternalAppContextFactory factory)
+    {
+        var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
+            Path.Combine(Path.GetTempPath(), "rk-server-center-package-" + Guid.NewGuid().ToString("N")));
+        var packages = new DeveloperPackageManager(applications, factory, windows, new RoappCatalogChecks.Permissions(),
+            new RoappCatalogChecks.Diagnostics(), drive, source);
+        const string id = "relaxkonos.server-center";
+        var appId = new AppId(id);
+        var archive = Path.Combine(source, id + ".roapp");
+        var install = InstallAsync();
+        PumpUntil(() => install.IsCompleted);
+        install.GetAwaiter().GetResult();
+        try
+        {
+            Check(!applications.IsBuiltIn(appId) && applications.Launch(appId), "Installed Server Center did not launch.");
+            PumpUntil(() => windows.Windows.Any(window => window.Info.OwnerAppId == appId));
+            var window = windows.Windows.Single(item => item.Info.OwnerAppId == appId);
+            Check(window.View.Content is ServerCenterWorkspace { DataContext: ServerCenterViewModel },
+                "The installed Server Center did not present the production host workspace.");
+            var model = (ServerCenterViewModel)((ServerCenterWorkspace)window.View.Content!).DataContext!;
+            PumpUntil(() => !model.IsBusy);
+            Check(string.IsNullOrEmpty(model.ErrorMessage) && !model.HasHosts && model.ShowInstallationWizardAsync is not null,
+                "Server Center failed to load the empty local inventory or wire its deployment wizard.");
+            Check(applications.Launch(appId), "Installed Server Center did not accept repeat launch.");
+            Pump();
+            Check(ReferenceEquals(window, windows.Windows.Single(item => item.Info.OwnerAppId == appId)),
+                "Server Center opened a second workspace instead of reusing the existing window.");
+            var wizardResult = model.ShowInstallationWizardAsync!();
+            PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
+            var wizardWindow = windows.Windows.Single(item => item.IsModalDialog);
+            Check(wizardWindow.Info.OwnerAppId == appId && wizardWindow.View.Content is ServerInstallationWizardView,
+                "Server Center did not open its installation wizard as a package-owned modal.");
+            var wizard = (ServerInstallationWizardViewModel)((ServerInstallationWizardView)wizardWindow.View.Content!).DataContext!;
+            var cancel = wizard.CancelCommand.ExecuteAsync(null);
+            PumpUntil(() => cancel.IsCompleted && wizardResult.IsCompleted);
+            cancel.GetAwaiter().GetResult();
+            wizardResult.GetAwaiter().GetResult();
+            Check(!windows.Windows.Any(item => item.IsModalDialog), "Canceling the installation wizard left its modal open.");
+        }
+        finally
+        {
+            var remove = packages.UninstallAsync(id);
+            PumpUntil(() => remove.IsCompleted);
+            remove.GetAwaiter().GetResult();
+        }
+        Check(!applications.IsRegistered(appId) && windows.Windows.All(window => window.Info.OwnerAppId != appId),
+            "Uninstalling Server Center did not remove its registration and close its window.");
+        Console.WriteLine("PASS: installed Server Center reuses its production workspace, opens and cancels its wizard, and closes on uninstall.");
+
+        async Task InstallAsync()
+        {
+            var (_, digest) = await packages.InspectAsync(archive, CancellationToken.None);
+            await using var stream = File.OpenRead(archive);
+            await packages.InstallOfficialAsync(stream, archive, id, digest!, null, CancellationToken.None);
         }
     }
 

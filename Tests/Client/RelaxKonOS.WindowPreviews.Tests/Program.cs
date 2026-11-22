@@ -88,6 +88,7 @@ if (args.Contains("--settings-only")) { SettingsInteractionChecks.Run(settings, 
 if (args.Contains("--settings-window-only")) { SettingsWindowChecks.Run(settings, localization); return; }
 if (args is ["--settings-package-only", var settingsSource]) { SettingsWindowChecks.Run(settings, localization, settingsSource); return; }
 if (args is ["--explorer-package-only", var explorerSource]) { SettingsWindowChecks.Run(settings, localization, explorerSource, explorerPackage: true); return; }
+if (args is ["--server-center-package-only", var serverCenterSource]) { SettingsWindowChecks.Run(settings, localization, serverCenterSource, serverCenterPackage: true); return; }
 if (args is ["--component-center-package-only", var centerSource]) { SettingsWindowChecks.Run(settings, localization, centerSource, componentCenter: true); return; }
 if (args.Contains("--device-settings-only")) { DesktopDeviceSettingsChecks.Run(settings, appearance); return; }
 if (args.Contains("--component-download-preview"))
