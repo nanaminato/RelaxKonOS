@@ -1,12 +1,14 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 using RelaxKonOS.Server.Privileged;
@@ -32,6 +34,8 @@ internal static class TailscaleBoundaryChecks
         var root = Directory.CreateTempSubdirectory("tailscale-boundary-").FullName;
         try
         {
+            Check(await VerifySignedExecutionPackageAsync(root),
+                "The real bundled Tailscale execution assembly builds and verifies as a signed RID-specific package");
             await using var f = new Fixture(root);
             var co = f.Coordinator;
             var kept = new List<Task>();
@@ -165,6 +169,38 @@ internal static class TailscaleBoundaryChecks
             Console.WriteLine($"Tailscale boundary checks passed: {count}");
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    private static async Task<bool> VerifySignedExecutionPackageAsync(string root)
+    {
+        const string assemblyName = "RelaxKonOS.ServerModule.Tailscale.dll";
+        const string entryType = "RelaxKonOS.ServerModule.Tailscale.TailscaleExecution";
+        var publish = Path.Combine(root, "package-publish");
+        Directory.CreateDirectory(publish);
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Modules", "Tailscale", assemblyName),
+            Path.Combine(publish, assemblyName));
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var keyPath = Path.Combine(root, "package-key.pem");
+        await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
+        var rid = ModulePackagePlatform.CurrentRid;
+        var now = DateTimeOffset.UtcNow;
+        var options = new ModulePackageBuildOptions(publish, Path.Combine(root, "package-output"), ModuleId,
+            "1.0.0", "tailscale-boundary-" + rid, "boundary-fixture", "official", rid, assemblyName, entryType,
+            "tailscale-boundary", new string('a', 40), "boundary-source", 1,
+            "https://modules.example/", keyPath, "boundary-key", 3600);
+        var result = await ModulePackageBuilder.BuildAsync(options, now);
+        var policy = new ModulePackageTrustPolicy(1, options.SourceId, 1, true, options.PublisherId, options.Purpose,
+            options.ArtifactOrigin, [ModuleId], new Dictionary<string, string>
+            {
+                [options.KeyId] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()),
+            }, 3600);
+        var context = new ModulePackageContext("tailscale-boundary", rid, "1.0.0", false);
+        await using var archive = File.OpenRead(result.ArchivePath);
+        var candidate = await ModulePackageVerifier.VerifyCandidateAsync(archive, await File.ReadAllBytesAsync(result.CatalogPath),
+            policy, context, ModulePackageTrustHistory.Empty(policy, context), options.ReleaseId, now);
+        return candidate.Manifest.ModuleId == ModuleId && candidate.Manifest.Runtime == "in-process"
+            && candidate.Manifest.EntryType == entryType && candidate.ArchiveSha256 == result.ArchiveSha256
+            && candidate.Manifest.Files.Single().Path == $"server/{rid}/{assemblyName}";
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

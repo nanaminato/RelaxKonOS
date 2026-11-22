@@ -735,3 +735,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Tailscale 拆分第一步将状态、控制、登录、Helper 端口、授权接口及域错误迁入仅依赖共享 Protocol 的 `RelaxKonOS.ServerModule.Tailscale.Contracts`。Core 路由与驻留工厂使用同一契约，协调器和台账实现仍在 Core。Windows Release Tailscale 专项通过，覆盖驻留、登录、回执、恢复和 HTTP 授权。
 - Tailscale 控制与登录协调器及两份 SQLite 台账移入 `RelaxKonOS.ServerModule.Tailscale`。Core 在请求驻留图中经共享契约加载随附执行程序集，保留原 Helper 授权、宿主身份来源、台账路径与回执格式。Windows Release Tailscale 专项和 28 项模块边界检查通过。Linux x64 自包含发布确认执行程序集仅位于 Modules/Tailscale，Core 发布依赖清单无执行项目引用。程序集使用默认加载上下文，签名独立分发尚未接入。
 - Tailscale 执行程序集改为每个驻留代次按需加载到可卸载上下文。模块休眠时先释放服务图，再卸载代码，唤醒后读取原台账。两份台账使用程序集内生成的 JSON 元数据，测试确认典型持久记录序列化字节与旧格式一致。Windows Release 28 项边界断言覆盖保留已完成调用任务时回收加载上下文，以及多次休眠后继续原回执。Windows 和 Linux x64 自包含 Tailscale 专项通过，签名独立包仍待接入。
+- Windows Release 的 29 项 Tailscale 边界检查通过。新增检查使用实际随附执行 DLL 生成当前 RID 的 .rkmodule 和签名目录，由生产验证器核对来源、签名、入口和归档摘要。测试使用临时签名密钥，尚未接入 Core 的安装计划、激活和回滚。
