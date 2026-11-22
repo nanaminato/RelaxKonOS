@@ -1,81 +1,35 @@
-using System.Security.Cryptography;
-using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Server.Installations;
+using RelaxKonOS.ServerModule.Database;
 
 namespace RelaxKonOS.Server.Databases;
 
-/// <summary>Immutable database credential references using the host's existing Data Protection key authority.
-/// Neither ordinary state nor operation/audit ledgers contain passwords. There is no reveal HTTP endpoint.</summary>
+/// <summary>Supplies the host key authority and binds stored references to the installation actor.</summary>
 public sealed class PostgreSqlCredentialStore(IHostEnvironment environment, IDataProtectionProvider protection)
 {
-    private readonly IDataProtector protector = protection.CreateProtector("RelaxKonOS.Database.Credentials.v1");
-    private readonly string root = Path.Combine(environment.ContentRootPath, "data", "database-secrets");
-    private readonly object gate = new();
-    private sealed record Entry(Guid Reference, Guid Instance, string Actor, string ProtectedValue);
+    private readonly DatabaseCredentialStore _store = new(
+        Path.Combine(environment.ContentRootPath, "data", "database-secrets"),
+        protection.CreateProtector("RelaxKonOS.Database.Credentials.v1"));
+
     public PostgreSqlCredentialReference Stage(PostgreSqlCredentialRequest request, string actor)
     {
-        if (request.Reference == Guid.Empty || request.InstanceId == Guid.Empty || !PostgreSqlAccountValidation.Password(request.Password))
-            throw new InstallationException("database.credential_invalid", 400);
-        lock (gate)
-        {
-            var path = PathFor(request.Reference);
-            Directory.CreateDirectory(root);
-            if (OperatingSystem.IsLinux()) File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            if (File.Exists(path))
-            {
-                var old = ReadEntry(request.Reference);
-                if (old.Instance != request.InstanceId || old.Actor != InstallationOperationStore.Reference(actor)
-                    || !CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(protector.Unprotect(old.ProtectedValue)), System.Text.Encoding.UTF8.GetBytes(request.Password)))
-                    throw new InstallationException("database.credential_conflict");
-                return new(request.Reference);
-            }
-            var entry = new Entry(request.Reference, request.InstanceId, InstallationOperationStore.Reference(actor), protector.Protect(request.Password));
-            var temp = path + "." + Guid.NewGuid().ToString("N");
-            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                if (OperatingSystem.IsLinux()) File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                JsonSerializer.Serialize(stream, entry); stream.Flush(true);
-            }
-            File.Move(temp, path);
-            return new(request.Reference);
-        }
+        try { return _store.Stage(request, InstallationOperationStore.Reference(actor)); }
+        catch (DatabaseCredentialException error) { throw Translate(error); }
     }
+
     public string Read(Guid reference, Guid instance, string? actor = null)
     {
-        lock (gate)
-        {
-            try
-            {
-                var entry = ReadEntry(reference);
-                if (entry.Instance != instance || actor is not null && entry.Actor != InstallationOperationStore.Reference(actor))
-                    throw new InstallationException("database.credential_unavailable");
-                return protector.Unprotect(entry.ProtectedValue);
-            }
-            catch (Exception ex) when (ex is IOException or CryptographicException or JsonException)
-            { throw new InstallationException("database.credential_unavailable"); }
-        }
+        try { return _store.Read(reference, instance, actor is null ? null : InstallationOperationStore.Reference(actor)); }
+        catch (DatabaseCredentialException error) { throw Translate(error); }
     }
+
     public void DeleteInstance(Guid instance)
     {
-        lock(gate)
-        {
-            if(!Directory.Exists(root))return;
-            foreach(var file in Directory.EnumerateFiles(root,"*.json"))
-            {
-                if(!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file),"N",out var reference))throw new InstallationException("database.credential_unavailable");
-                if(ReadEntry(reference).Instance==instance)File.Delete(PathFor(reference));
-            }
-        }
+        try { _store.DeleteInstance(instance); }
+        catch (DatabaseCredentialException error) { throw Translate(error); }
     }
-    private string PathFor(Guid reference)
-    {
-        var path = Path.Combine(root, reference.ToString("N") + ".json");
-        for (string? p = Path.GetFullPath(path); p is not null; p = Path.GetDirectoryName(p))
-            if (new FileInfo(p).LinkTarget is not null || new DirectoryInfo(p).LinkTarget is not null) throw new InstallationException("database.path_untrusted");
-        return path;
-    }
-    private Entry ReadEntry(Guid reference) => JsonSerializer.Deserialize<Entry>(File.ReadAllBytes(PathFor(reference))) is { } e && e.Reference == reference
-        ? e : throw new InstallationException("database.credential_unavailable");
+
+    private static InstallationException Translate(DatabaseCredentialException error) =>
+        new(error.ProblemCode, error.StatusCode);
 }

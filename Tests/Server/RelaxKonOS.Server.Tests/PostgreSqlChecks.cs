@@ -78,6 +78,20 @@ internal static class PostgreSqlChecks
             var protection = new EphemeralDataProtectionProvider();
             var credentials = new PostgreSqlCredentialStore(environment, protection);
             var secretRequest = new PostgreSqlCredentialRequest(Guid.NewGuid(), state.InstanceId!.Value, "Fixture-Only-Secret-29!");
+            var oldReference = Guid.NewGuid();
+            var secretDirectory = Directory.CreateDirectory(Path.Combine(root, "data", "database-secrets")).FullName;
+            File.WriteAllBytes(Path.Combine(secretDirectory, oldReference.ToString("N") + ".json"),
+                JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    Reference = oldReference,
+                    Instance = secretRequest.InstanceId,
+                    Actor = InstallationOperationStore.Reference("actor"),
+                    ProtectedValue = protection.CreateProtector("RelaxKonOS.Database.Credentials.v1").Protect(secretRequest.Password)
+                }));
+            Check(credentials.Read(oldReference, secretRequest.InstanceId, "actor") == secretRequest.Password,
+                "execution assembly opens credential files written in the previous format with the same host keys");
+            Check(typeof(RelaxKonOS.ServerModule.Database.DatabaseCredentialStore).Assembly.GetName().Name == "RelaxKonOS.ServerModule.Database",
+                "encrypted credential storage runs in the database execution assembly");
             Check(credentials.Stage(secretRequest, "actor").Reference == secretRequest.Reference, "credential staging returns only an opaque reference");
             Check(credentials.Stage(secretRequest, "actor").Reference == secretRequest.Reference, "credential staging is immutable and idempotent");
             Check(new PostgreSqlCredentialStore(environment, protection).Read(secretRequest.Reference, secretRequest.InstanceId, "actor") == secretRequest.Password,
