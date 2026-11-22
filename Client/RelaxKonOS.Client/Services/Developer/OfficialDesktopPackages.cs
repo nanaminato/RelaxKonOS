@@ -31,7 +31,8 @@ internal sealed partial class OfficialDesktopPackages(string directory, HttpClie
         uri.IsAbsoluteUri && uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
         && (OwnsSettingsWorkspace(appId, origin) && uri.Host.Equals("settings", StringComparison.OrdinalIgnoreCase)
             || OwnsComponentCenterWorkspace(appId, origin)
-                && Apps.ComponentCenter.ComponentCenterNavigation.TryParse(uri, out _));
+                && Apps.ComponentCenter.ComponentCenterNavigation.TryParse(uri, out _)
+            || OwnsExplorerWorkspace(appId, origin) && RelaxKonOS.AppSDK.RelaxKonOSActivationUris.TryReadExplorerPath(uri, out _));
 
     public async Task<string> VerifyAsync(string path, string appId, Stream package, CancellationToken cancellationToken)
     {

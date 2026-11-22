@@ -111,16 +111,6 @@ if (args.Contains("--explorer-address-only"))
         && packagedExplorer.CanHandleActivation(RelaxKonOS.AppSDK.RelaxKonOSActivationUris.ExplorerPath("/data"))
         && !packagedExplorer.CanHandleActivation(new Uri("relaxkonos://explorer/open?path=%2Fa&path=%2Fb")),
         "The Explorer package uses the shared directory activation contract.");
-    var explorer = new RelaxKonOS.Client.Apps.Explorer.ExplorerApp();
-    var explorerWindows = new RelaxKonOS.WindowManager.WindowManager();
-    explorerWindows.Attach(new Canvas());
-    explorerWindows.SetHostBounds(new RelaxKonOS.Core.Primitives.Rect(0, 0, 1100, 800));
-    explorer.Activate(new RelaxKonOS.AppSDK.AppContext(explorer.Manifest.Id, explorerWindows, services));
-    var signInWindow = explorerWindows.Windows.Single();
-    Check(signInWindow.View.Content is RelaxKonOS.App.Explorer.ExplorerLoginRequiredView { Content: TextBlock signIn }
-        && signIn.Text == LocalizedText.Get("explorer.login_required"),
-        "Unauthenticated Explorer uses the application project's localized sign-in view.");
-    explorerWindows.Close(signInWindow);
     ExplorerAddressChecks.Run(host);
     host.Close();
     return;

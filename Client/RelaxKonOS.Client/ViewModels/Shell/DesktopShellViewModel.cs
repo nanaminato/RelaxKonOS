@@ -1020,7 +1020,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     {
         if (_sshDesktop.IsConnected && !IsSshDesktopApplication(id)) return;
         var appId = new AppId(id);
-        if (id is "relaxkonos.terminal" or "relaxkonos.taskmanager" or "relaxkonos.ssh-files" or "relaxkonos.settings"
+        if (id is "relaxkonos.terminal" or "relaxkonos.taskmanager" or "relaxkonos.ssh-files" or "relaxkonos.settings" or "relaxkonos.explorer"
             && !_applications.IsRegistered(appId))
             appId = new AppId("relaxkonos.appinstaller");
         _applications.Launch(appId);

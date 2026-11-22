@@ -16,7 +16,7 @@
 | appinstaller | AppInstaller | 否 / 否 | 是 | 文件读取与组件源；安装和恢复入口需保留 | 核心入口 | 三档内置恢复入口、隔离 HTTPS 商店及归档恢复已验 |
 | welcome | RelaxKonOS.App.Welcome | 是 / 是 | 否 | 使用 SDK 激活记事本或安装器 | 基础 | Windows 已验 |
 | settings | Settings | 是 / 是 | 否 | 工作区设置与宿主设置 | 基础 | Windows 隔离安装、同版本修复、包窗口及深链接已验 |
-| explorer | Explorer | 否 / 否 | 是 | 文件 API；调用存储提供者的聚合入口 | 基础 | 待验 |
+| explorer | Explorer | 是 / 是 | 否 | 文件 API；调用存储提供者的聚合入口 | 基础 | Windows 隔离发行安装、修复、未登录深链接通过 |
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
 | server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
@@ -593,3 +593,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Explorer 登录门禁和应用激活与宿主文件工作区分开。宿主工作区保留认证、目录初始化与文件操作，现有启动入口委托该工作区。Windows Release 未登录启动及地址栏专项通过。
 - Explorer 独立 .roapp 入口与 SDK 工作区契约已建立，Windows Release DevCli 可生成归档，地址栏专项验证应用入口使用统一目录路由。官方安装注册和宿主能力分发尚待接入。
 - Explorer 包的宿主工作区能力接入桌面容器，只发放给官方来源的 Explorer，并受包生命周期约束。包开窗经过外部窗口服务登记。Windows Release Explorer 与 Settings 窗口专项通过，验证非官方来源和已撤销上下文无法使用能力。
+- Explorer 切换到官方发行包，桌面宿主移除编译引用与内置注册。Windows Release 使用新 Explorer 归档及既有 27 个归档验证摘要、清单和入口程序集。隔离发行预装分别登记 Minimal 0、Standard 12、Developer 13 项，Minimal 可从离线发行归档安装并修复 Explorer。实际安装的包接受有效目录深链接，在未登录时复用由包程序集创建的登录提示窗口，并拒绝无效路由。登录后的真实目录导航待验。

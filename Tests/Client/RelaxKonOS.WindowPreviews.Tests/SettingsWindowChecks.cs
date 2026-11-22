@@ -39,7 +39,7 @@ using RelaxKonOS.Shell;
 
 internal static class SettingsWindowChecks
 {
-    public static void Run(ShellSettings settings, LocalizationService localization, string? packageSource = null, bool componentCenter = false)
+    public static void Run(ShellSettings settings, LocalizationService localization, string? packageSource = null, bool componentCenter = false, bool explorerPackage = false)
     {
         const string pathValue = "/usr/bin::/bin";
         EnvironmentMutation? mutation = null;
@@ -58,7 +58,10 @@ internal static class SettingsWindowChecks
         var session = DispatchProxy.Create<IAuthSession, SettingsWindowSession>();
         var auth = (SettingsWindowSession)session;
         using var http = new HttpClient(new NoSettingsNetwork());
-        using var services = new ServiceCollection().AddSingleton(new DesktopDevicePreferences(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "desktop-device.json")))
+        var windows = new RelaxKonOS.WindowManager.WindowManager();
+        using var services = new ServiceCollection()
+            .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
+            .AddSingleton(new DesktopDevicePreferences(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "desktop-device.json")))
             .AddSingleton(localization)
             .AddSingleton<IHostTimeService>(DispatchProxy.Create<IHostTimeService, SettingsWindowHostService>())
             .AddSingleton<IHostIdentityService>(DispatchProxy.Create<IHostIdentityService, UnusedPreviewServices>())
@@ -71,7 +74,6 @@ internal static class SettingsWindowChecks
             .AddSingleton<RelaxKonOS.Client.Services.Modules.IServerModuleCatalog>(new EmptyModuleCatalog())
             .AddSingleton<IRemoteDockerClient>(DispatchProxy.Create<IRemoteDockerClient, UnusedPreviewServices>()).BuildServiceProvider();
         typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
-        var windows = new RelaxKonOS.WindowManager.WindowManager();
         var memory = new UsageMemoryStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "usage.json"));
         ExternalAppContextFactory CreateFactory(RelaxKonOS.App.Settings.ISettingsWindow workspace, IComponentCenterWorkspace? centerWorkspace) =>
             new(null!, null!, localization, settings, null!, session,
@@ -515,6 +517,12 @@ internal static class SettingsWindowChecks
                 CheckCenterPackage(packageSource, windows, apps,
                     CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), centerWorkspace));
             }
+            else if (packageSource is not null && explorerPackage)
+            {
+                auth.Logout();
+                Pump();
+                CheckExplorerPackage(packageSource, windows, apps, factory);
+            }
             else if (packageSource is not null)
             {
                 auth.Logout();
@@ -550,6 +558,48 @@ internal static class SettingsWindowChecks
             window.Close();
             typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, previousServices);
             settings.Apply(original); Pump();
+        }
+    }
+
+    private static void CheckExplorerPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
+        ApplicationManager applications, ExternalAppContextFactory factory)
+    {
+        var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
+            Path.Combine(Path.GetTempPath(), "rk-explorer-package-" + Guid.NewGuid().ToString("N")));
+        var packages = new DeveloperPackageManager(applications, factory, windows, new RoappCatalogChecks.Permissions(),
+            new RoappCatalogChecks.Diagnostics(), drive, source);
+        const string id = "relaxkonos.explorer";
+        var path = Path.Combine(source, id + ".roapp");
+        var install = InstallAsync();
+        PumpUntil(() => install.IsCompleted);
+        install.GetAwaiter().GetResult();
+        try
+        {
+            var result = applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.ExplorerPath("/documents")));
+            Check(result.Status == AppActivationStatus.Activated, "Installed Explorer did not claim its directory route.");
+            PumpUntil(() => windows.Windows.Count > 0);
+            Pump();
+            var window = windows.Windows.Single();
+            Check(window.Info.OwnerAppId.Value == id && window.View.Content is Control content
+                && content.GetType().Name == "ExplorerLoginRequiredView"
+                && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(content.GetType().Assembly)?.IsCollectible == true,
+                "The installed Explorer must open one package-owned sign-in window.");
+            Check(applications.Activate(new AppActivationRequest(new Uri("relaxkonos://explorer/open?path=%2Fa&path=%2Fb"))).Status
+                == AppActivationStatus.RouteNotFound, "Explorer accepted an ambiguous directory route.");
+            Console.WriteLine("PASS: installed Explorer owns its validated directory route and sign-in window.");
+        }
+        finally
+        {
+            var remove = packages.UninstallAsync(id);
+            PumpUntil(() => remove.IsCompleted);
+            remove.GetAwaiter().GetResult();
+        }
+
+        async Task InstallAsync()
+        {
+            var (_, digest) = await packages.InspectAsync(path, CancellationToken.None);
+            await using var stream = File.OpenRead(path);
+            await packages.InstallOfficialAsync(stream, path, id, digest!, null, CancellationToken.None);
         }
     }
 
