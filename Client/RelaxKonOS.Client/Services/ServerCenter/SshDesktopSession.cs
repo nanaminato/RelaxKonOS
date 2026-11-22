@@ -111,6 +111,37 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
         return (path, items);
     });
 
+    internal Task<bool> CreateDirectoryAsync(ServerCenterSshEndpoint endpoint, string path) => Task.Run(() =>
+    {
+        using var client = OpenFileClient(endpoint);
+        if (client.Exists(path)) return false;
+        client.CreateDirectory(path);
+        return true;
+    });
+
+    internal Task<bool> RenamePathAsync(ServerCenterSshEndpoint endpoint, string path, string target) => Task.Run(() =>
+    {
+        using var client = OpenFileClient(endpoint);
+        if (client.Exists(target)) return false;
+        client.RenameFile(path, target);
+        return true;
+    });
+
+    internal Task DeletePathsAsync(ServerCenterSshEndpoint endpoint, IReadOnlyList<(string Path, bool Directory)> paths) => Task.Run(() =>
+    {
+        using var client = OpenFileClient(endpoint);
+        foreach (var (path, directory) in paths)
+            Delete(path, directory);
+
+        void Delete(string path, bool directory)
+        {
+            if (!directory) { client.DeleteFile(path); return; }
+            foreach (var child in client.ListDirectory(path).Where(file => file.Name is not ("." or "..")))
+                Delete(child.FullName, child.IsDirectory && !child.IsSymbolicLink);
+            client.DeleteDirectory(path);
+        }
+    });
+
     public async Task ConnectAsync(ServerHostTarget target, string password, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

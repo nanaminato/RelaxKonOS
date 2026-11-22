@@ -401,3 +401,4 @@
 - SSH 文件浏览器与 Server Center 选择器改用 SDK ISystemLanguage 和按需捕获的选择器记忆回调，视图无需访问宿主服务容器。Windows Release fused-apps 专项通过。SSH 传输和界面仍在桌面宿主项目。
 - SSH 文件浏览器和编辑器文件适配器共用宿主 SFTP 建连，视图不再读取密码或指纹。建连前后核对同一会话端点，继续校验已接受的主机密钥。Windows Release fused-apps 专项通过；真实 SFTP 切换和独立包待验。
 - SSH 文件浏览器三条目录读取路径（导航、缓存刷新、目录树）经宿主会话读取目录项，视图只处理显示、过滤和缓存。目录导航和树加载拒绝连接切换后的旧结果。Windows Release fused-apps 专项通过，真实 SFTP 和独立包待验。
+- SSH 文件浏览器的重命名、新建目录和删除由宿主会话执行。新建及删除确认绑定打开对话框时的远端会话，不会把操作转送到后来连接的主机。Windows Release fused-apps 专项通过，复制和上传下载仍使用视图内的 SFTP 操作。

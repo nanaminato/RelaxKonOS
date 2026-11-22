@@ -1187,14 +1187,14 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task CreateDirectoryAsync()
     {
-        if (_busy || IsPackagePicker) return;
+        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        var directory = _path;
         var name = await PromptAsync(T("ssh_files.new_folder", "New folder"));
-        if (!ValidName(name)) return;
-        await ChangeAsync(client =>
+        if (!ValidName(name) || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+        await ChangeAsync(async () =>
         {
-            var target = Child(_path, name!);
-            if (client.Exists(target)) throw new IOException(T("ssh_files.exists", "Destination already exists"));
-            client.CreateDirectory(target);
+            if (!await _session.CreateDirectoryAsync(endpoint, Child(directory, name!)))
+                throw new IOException(T("ssh_files.exists", "Destination already exists"));
         });
     }
 
@@ -1250,7 +1250,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task CommitRenameAsync()
     {
-        if (_busy || _renameCommitInProgress || _editingEntry is not { } entry) return;
+        if (_busy || _renameCommitInProgress || _editingEntry is not { } entry || _session.Endpoint is not { } endpoint) return;
         var name = entry.RenameDraft;
         if (name == entry.Name) { CancelRename(); _presentation.Focus(); return; }
         if (!ValidName(name))
@@ -1265,12 +1265,8 @@ internal partial class SshFileBrowserView : UserControl
         var completed = false;
         try
         {
-            await ExecuteAsync(client =>
-            {
-                if (client.Exists(target)) throw new IOException(T("ssh_files.exists", "Destination already exists"));
-                client.RenameFile(entry.Path, target);
-                return true;
-            });
+            if (!await _session.RenamePathAsync(endpoint, entry.Path, target))
+                throw new IOException(T("ssh_files.exists", "Destination already exists"));
             CancelRename();
             completed = true;
         }
@@ -1290,19 +1286,13 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task DeleteAsync()
     {
-        if (_busy || IsPackagePicker) return;
+        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
         var selected = Selection();
         if (selected.Length == 0 || TopLevel.GetTopLevel(this) is not Window owner) return;
-        if (!await new SshFileDeleteDialog(selected.Length).ShowDialog<bool>(owner)) return;
-        await ChangeAsync(client => { foreach (var entry in selected) DeleteTree(client, entry.Path, entry.IsDirectory && !entry.IsLink); });
-    }
-
-    private static void DeleteTree(SftpClient client, string path, bool directory)
-    {
-        if (!directory) { client.DeleteFile(path); return; }
-        foreach (var child in client.ListDirectory(path).Where(file => file.Name is not ("." or "..")))
-            DeleteTree(client, child.FullName, child.IsDirectory && !child.IsSymbolicLink);
-        client.DeleteDirectory(path);
+        if (!await new SshFileDeleteDialog(selected.Length).ShowDialog<bool>(owner)
+            || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+        await ChangeAsync(() => _session.DeletePathsAsync(endpoint,
+            selected.Select(entry => (entry.Path, entry.IsDirectory && !entry.IsLink)).ToArray()));
     }
 
     private void CopySelection(bool cut)
@@ -1579,7 +1569,10 @@ internal partial class SshFileBrowserView : UserControl
         return Path.Combine(directory, name);
     }
 
-    private async Task<bool> ChangeAsync(Action<SftpClient> action)
+    private Task<bool> ChangeAsync(Action<SftpClient> action) =>
+        ChangeAsync(() => ExecuteAsync(client => { action(client); return true; }));
+
+    private async Task<bool> ChangeAsync(Func<Task> action)
     {
         if (_busy) return false;
         _listingGeneration++; _listingCache.Clear();
@@ -1587,7 +1580,7 @@ internal partial class SshFileBrowserView : UserControl
         var completed = false;
         try
         {
-            await ExecuteAsync(client => { action(client); return true; });
+            await action();
             StatusMessage = "";
             completed = true;
         }
