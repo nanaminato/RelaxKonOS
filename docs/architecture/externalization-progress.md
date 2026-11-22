@@ -780,3 +780,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Core 启动前按已接纳目录的历史撤销记录隔离当前安装包，覆盖发行 ID 和归档摘要。期望配置保留，隔离包不进入有效模块列表。Windows Release 生命周期验收通过，验证 Firewall 撤销后在启动时隔离且 Git 保持启用。运行中撤销仍在下一次启动时生效。
 - 启动恢复及撤销包隔离现置于 Core 已取得独占 host.lock 之后，恢复标记使用同一进程代次。Windows Release 生命周期回归通过，验证竞争启动未取得锁时保持原恢复标记不变。
 - Windows Release 的 --signed-git-joint-acceptance 使用 Git 发行 .roapp 的测试副本，仅调高模块最低版本至 99.0.0。隔离 HTTP 宿主接纳真实 Git 执行程序集签名包，桌面等待重启，接续原计划完成登记且只产生一条包安装回执。桌面卸载后服务端包仍保留。Windows 加载文件需在测试进程退出后清理。
+- Git 双包验收在桌面接续完成后请求已认证的 Git Engine 状态。隔离 HTTP 宿主经已安装签名执行包运行真实本地 Git CLI，返回可用状态和非空版本，随后桌面卸载及服务端包保留检查通过。

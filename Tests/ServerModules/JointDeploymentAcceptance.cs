@@ -107,6 +107,14 @@ internal static class JointDeploymentAcceptance
             Require(apps.IsRegistered(new AppId(installed.Id)) && InstalledModuleStore.Read(serverRoot).Single() is { Version: version }
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                 "after restart the desktop registers Git against the signed execution package without resubmitting installation");
+            using var businessClient = new HttpClient();
+            using var probe = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(host.Url), GitApiRoutes.EngineStatus));
+            probe.Headers.Add("test-user", ModuleTestAuthentication.Admin);
+            using var response = await businessClient.SendAsync(probe);
+            response.EnsureSuccessStatusCode();
+            var engine = await response.Content.ReadFromJsonAsync<GitEngineStatusDto>(RelaxKonOSJsonOptions.Default);
+            Require(engine is { IsAvailable: true, Version.Length: > 0 },
+                "the Git endpoint invokes the real local Git CLI through the installed signed execution package");
             Require(await packages.UninstallAsync(installed.Id) && !apps.IsRegistered(new AppId(installed.Id))
                 && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
                 "uninstalling the desktop Git package releases the app without removing the server module");
@@ -1080,6 +1088,10 @@ internal static class JointDeploymentAcceptance
             {
                 builder.Services.AddSingleton(DispatchProxy.Create<RelaxKonOS.Server.Files.IFileService, GitRepositoryAssemblyChecks.RejectTransport>());
                 ServerModules.CreateManaged(new HashSet<string> { ServerModules.GitId }, installed).ConfigureServices(builder, context);
+                builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
+                    new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+                builder.Services.AddSingleton(DispatchProxy.Create<IGitRepositoryStorage, GitRepositoryAssemblyChecks.RejectTransport>());
+                builder.Services.AddSingleton(DispatchProxy.Create<IGitRepositoryHost, GitEngineProbeHost>());
             }
             foreach (var module in online.Where(module => module.Id != ServerModules.GitId)) module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
@@ -1127,6 +1139,16 @@ internal static class JointDeploymentAcceptance
             await app.DisposeAsync();
             store.Dispose();
         }
+    }
+
+    public class GitEngineProbeHost : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) => targetMethod?.Name switch
+        {
+            "get_UsesHelper" => false,
+            "get_CurrentUserId" => null,
+            _ => throw new NotSupportedException("Only the local Git probe is supported."),
+        };
     }
 
     private sealed class FixtureHttpFactory(byte[] signedArchive) : IHttpClientFactory, IDisposable
