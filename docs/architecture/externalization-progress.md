@@ -49,6 +49,7 @@
 首次可用 `--installation-profile=minimal|standard|developer` 与可重复的 `--exclude-bundled-app=<id>` 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖的包须经交互部署。随包提供的 Task Manager 和 Terminal 在启动时检查所需服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 `python Tests/Client/verify-desktop-distribution.py` 检查官方目录、桌面发布项和包清单的应用 ID 是否一致，核对配置集版本下限，并拒绝把声明必需依赖的包列为离线预装。
+完整 Windows Release 发布通过。`verify-desktop-distribution.py --publish-dir` 核对了实际生成的 25 个归档、摘要、入口程序集和配置文件。窗口预览测试的 `--desktop-distribution-only` 在独立 VSD 上使用真实发布配置验证 Minimal、默认 Standard 和 Developer 分别登记 0、9、10 个包；Developer 的 15 个交互项未被自动安装。发行输出中的 SSH Files 归档另通过官方包生命周期专项。该配置验收使用无头宿主，未覆盖 Windows 图形启动。
 
 ## 复用边界
 

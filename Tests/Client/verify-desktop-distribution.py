@@ -1,8 +1,11 @@
 """Check official desktop manifests, the published package list and installation profiles."""
 
+import argparse
+import hashlib
 import json
 import re
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 
@@ -21,7 +24,30 @@ def require(condition, problem):
         raise ValueError(problem)
 
 
-def main():
+def verify_published(publish_dir, manifests, profile_document):
+    packages = publish_dir / "OfficialApps"
+    require(packages.is_dir(), f"OfficialApps is missing under {publish_dir}.")
+    require(read_json(packages / "installation-profiles.json") == profile_document,
+            "Published installation profiles differ from the source configuration.")
+    names = {f"{app_id}.roapp" for app_id in manifests}
+    require({path.name for path in packages.glob("*.roapp")} == names,
+            "Published archives differ from the official desktop publish list.")
+    require({path.name for path in packages.glob("*.roapp.sha256")} == {f"{name}.sha256" for name in names},
+            "Published archive checksum files do not match the official desktop publish list.")
+    for app_id, manifest in manifests.items():
+        archive_path = packages / f"{app_id}.roapp"
+        expected = archive_path.with_suffix(".roapp.sha256").read_text(encoding="utf-8-sig").strip().lower()
+        with archive_path.open("rb") as archive_file:
+            digest = hashlib.file_digest(archive_file, "sha256").hexdigest()
+        require(digest == expected, f"Published checksum mismatch for {app_id}.")
+        with zipfile.ZipFile(archive_path) as archive:
+            packaged = json.loads(archive.read("manifest.json"))
+            require(packaged == manifest, f"Published manifest differs from the source for {app_id}.")
+            require(packaged["entryAssembly"] in archive.namelist(), f"Published entry assembly is absent for {app_id}.")
+    print(f"Verified {len(manifests)} published archive digests, manifests and entry assemblies.")
+
+
+def main(publish_dir):
     repo = Path(__file__).resolve().parents[2]
     desktop = repo / "Client/RelaxKonOS.Client.Desktop"
     project = ET.parse(desktop / "RelaxKonOS.Client.Desktop.csproj")
@@ -59,7 +85,11 @@ def main():
             seen.add(app_id)
     summary = ", ".join(f"{profile}={len(entries)}" for profile, entries in profiles.items())
     print(f"Verified {len(manifests)} official desktop manifests and installation profiles ({summary}).")
+    if publish_dir is not None:
+        verify_published(publish_dir, manifests, document)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--publish-dir", type=Path, help="Verify the actual OfficialApps output of dotnet publish.")
+    main(parser.parse_args().publish_dir)

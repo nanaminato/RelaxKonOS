@@ -162,6 +162,7 @@ if (args.Contains("--docker-inventory-only"))
     return;
 }
 if (args is ["--official-roapp-only", var artifact]) { OfficialRoappChecks.Run(artifact, settings, localization); return; }
+if (args is ["--desktop-distribution-only", var distribution]) { DesktopDistributionChecks.Run(distribution); return; }
 if (args is ["--direct-dependencies-only", var directArtifact]) { DirectDeployDependencyChecks.Run(directArtifact); return; }
 if (args is ["--official-store-only", var storeArtifact]) { OfficialStoreChecks.Run(storeArtifact); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
