@@ -570,7 +570,7 @@ internal static class NginxProcessRecoveryChecks
         var scopes = new OperationTestScopeFactory<NginxWebServerManager.DirectExecution>(() =>
         {
             executionCreated?.Invoke();
-            return new(provider!, metadata, NullLogger<NginxWebServerManager.DirectExecution>.Instance);
+            return new(provider!, metadata, NullLogger<NginxWebServerManager.DirectExecution>.Instance, WebServerExecutionCode.Shared);
         });
         provider = new(new PrivilegedNginxOperations(transport), store, scopes, metadata,
             new TestApplicationLifetime(), new NginxManagedOptions { InstallationRoot = root },

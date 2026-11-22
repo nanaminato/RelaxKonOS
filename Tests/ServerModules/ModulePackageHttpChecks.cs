@@ -22,6 +22,7 @@ using RelaxKonOS.Server.ImageMirrors;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Storage;
+using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.Tailscale;
 
 internal static class ModulePackageHttpChecks
@@ -83,6 +84,7 @@ internal static class ModulePackageHttpChecks
             ModulePackageBuildResult[] firewall = [];
             ModulePackageBuildResult[] git = [];
             ModulePackageBuildResult[] docker = [];
+            ModulePackageBuildResult[] webServer = [];
             ModulePackageBuildResult? incompatibleGit = null;
             if (!isolated)
             {
@@ -146,19 +148,34 @@ internal static class ModulePackageHttpChecks
                 docker = [await ModulePackageBuilder.BuildAsync(dockerOptions, now),
                     await ModulePackageBuilder.BuildAsync(dockerOptions with
                     { Version = "2.0.0", ReleaseId = "docker-2.0.0-" + rid }, now)];
+                var webOptions = dockerOptions with
+                {
+                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer"),
+                    OutputDirectory = Path.Combine(root, "webserver-package"),
+                    ModuleId = ServerModules.WebServerId,
+                    ReleaseId = "webserver-1.0.0-" + rid,
+                    EntryAssembly = WebServerExecutionCode.AssemblyFile,
+                    EntryType = WebServerExecutionCode.EntryType,
+                    Dependencies = [new(ServerModules.CertificatesId, "0.0.0", "9999.0.0")],
+                    Capabilities = [ServerCapabilities.WebServer],
+                    Ui = new("Web Server", "", "", null, "UNLICENSED"),
+                };
+                webServer = [await ModulePackageBuilder.BuildAsync(webOptions, now),
+                    await ModulePackageBuilder.BuildAsync(webOptions with
+                    { Version = "2.0.0", ReleaseId = "webserver-2.0.0-" + rid }, now)];
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
                     now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
                         .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release),
-                        .. docker.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
+                        .. docker.Select(Release), .. webServer.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", dependent is null ? ["fixture-http"]
                     : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale",
-                        ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId],
+                        ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId, ServerModules.WebServerId],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -234,7 +251,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + webServer.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -454,6 +471,7 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledFirewallModule>(client, root, firewall, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
+                await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
                 var mirrorOwner = Guid.NewGuid();
                 var mirrors = new InMemoryImageMirrorRepository();

@@ -10,7 +10,7 @@ internal sealed partial class NginxWebServerManager
     private string AcmeChallengeRoot => webRootChallenges.RootPath;
 
     /// <summary>Executes an admitted direct operation through the original Core Nginx provider.</summary>
-    internal sealed class DirectExecution(NginxWebServerManager nginx, WebServerMetadataRepository metadata, ILogger<DirectExecution> logger)
+    internal sealed class DirectExecution(NginxWebServerManager nginx, WebServerMetadataRepository metadata, ILogger<DirectExecution> logger, WebServerExecutionCode execution)
     {
         internal async Task<WebServerOperationResult> IntegrateAsync(WebServerDto instance,
             WebServerOperationStore.OperationProgress progress, CancellationToken ct)
@@ -19,7 +19,7 @@ internal sealed partial class NginxWebServerManager
             try
             {
                 var ports = new IntegrationPorts(nginx, instance, progress);
-                var lease = WebServerExecutionCode.Shared.Acquire<INginxIntegrationExecutor>(
+                var lease = execution.Acquire<INginxIntegrationExecutor>(
                     "RelaxKonOS.Server.WebServer.NginxIntegrationExecutor", ports);
                 progress.HoldExecution(lease);
                 var result = await RunIntegrationAsync(lease.Executor, ports, ct);
@@ -70,7 +70,7 @@ internal sealed partial class NginxWebServerManager
         private async Task<WebServerOperationResult> ReloadUnderGateAsync(WebServerDto instance,
             WebServerOperationStore.OperationProgress progress, CancellationToken ct)
         {
-            var lease = WebServerExecutionCode.Shared.Acquire<INginxReloadExecutor>(
+            var lease = execution.Acquire<INginxReloadExecutor>(
                 "RelaxKonOS.Server.WebServer.NginxReloadExecutor", new ReloadPorts(nginx, instance, progress));
             progress.HoldExecution(lease);
             var problem = await RunReloadAsync(lease.Executor, ct);
@@ -120,7 +120,7 @@ internal sealed partial class NginxWebServerManager
             await IntegrationGate.WaitAsync(ct);
             try
             {
-                var lease = WebServerExecutionCode.Shared.Acquire<INginxWebRootExecutor>(
+                var lease = execution.Acquire<INginxWebRootExecutor>(
                     "RelaxKonOS.Server.WebServer.NginxWebRootExecutor", new WebRootPorts(nginx, instance, directory, progress, logger));
                 progress.HoldExecution(lease);
                 return new(await RunWebRootAsync(lease.Executor, ct));
@@ -211,7 +211,7 @@ internal sealed partial class NginxWebServerManager
             try
             {
                 var ports = new LifecyclePorts(nginx, layout, action, progress);
-                var lease = WebServerExecutionCode.Shared.Acquire<INginxLifecycleExecutor>(
+                var lease = execution.Acquire<INginxLifecycleExecutor>(
                     "RelaxKonOS.Server.WebServer.NginxLifecycleExecutor", ports);
                 progress.HoldExecution(lease);
                 var succeeded = await RunLifecycleAsync(lease.Executor, ports, ct);

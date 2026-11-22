@@ -18,17 +18,10 @@ internal sealed class WebsitePublicationExecution : IDisposable
     public WebsitePublicationExecution(WebsitePublicationStore store, ApplicationDeploymentManager applications,
         ApplicationDeploymentCatalogStore catalog, IWebServerManager webServers, ICertificateManager certificates,
         CertificateOperationStore certificateOperations, IHttpClientFactory httpClients, IHostApplicationLifetime lifetime,
-        ILogger<WebsitePublicationExecution> logger, NginxWebServerManager? nginx = null)
-        : this(store, applications, catalog, webServers, certificates, certificateOperations, httpClients, lifetime,
-            logger, WebServerExecutionCode.Shared, nginx) { }
-
-    internal WebsitePublicationExecution(WebsitePublicationStore store, ApplicationDeploymentManager applications,
-        ApplicationDeploymentCatalogStore catalog, IWebServerManager webServers, ICertificateManager certificates,
-        CertificateOperationStore certificateOperations, IHttpClientFactory httpClients, IHostApplicationLifetime lifetime,
         ILogger<WebsitePublicationExecution> logger, WebServerExecutionCode code, NginxWebServerManager? nginx = null)
     {
         this.lifetime = lifetime;
-        lease = code.Acquire<IWebsitePublicationExecutor>("RelaxKonOS.Server.WebsitePublishing.WebsitePublicationExecutor",
+        lease = code.Acquire<IWebsitePublicationExecutor>(WebServerExecutionCode.EntryType,
             new Ports(store, applications, catalog, webServers, certificates, certificateOperations, httpClients, logger, nginx));
     }
 

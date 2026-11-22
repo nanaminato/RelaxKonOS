@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.WebsitePublishing;
 
 namespace RelaxKonOS.Server.Startup.Modules;
@@ -15,15 +16,17 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// time, so disabling certificates without disabling this module stops startup with a clear message
 /// rather than leaving a half-working publication path.
 /// </summary>
-internal sealed class WebServerModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
+internal class WebServerModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.WebServerId;
     public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new RelaxKonOS.Server.Residency.ResidentModuleWorkRuntimeFactory(ServerModules.WebServerId);
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.WebServer];
     public IReadOnlyList<string> Requires => [ServerModules.CertificatesId];
+    private protected virtual WebServerExecutionCode Execution => WebServerExecutionCode.Shared;
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
+        builder.Services.AddSingleton(Execution);
         builder.Services.AddHostedService(services => services.GetRequiredService<RelaxKonOS.Server.WebServer.WebServerOperationStore>());
         builder.Services.AddScoped<RelaxKonOS.Server.WebServer.NginxWebServerManager.DirectExecution>();
         builder.Services.AddHostedService<RelaxKonOS.Server.WebServer.NginxCertificateRenewalCoordinator>();
@@ -75,7 +78,7 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
                 .ToArray());
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         endpoints.MapWebServerEndpoints();
         endpoints.MapWebsitePublicationEndpoints();

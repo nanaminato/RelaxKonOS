@@ -1,25 +1,30 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
+using RelaxKonOS.Server.WebsitePublishing;
 
 namespace RelaxKonOS.Server.WebServer;
 
 /// <summary>One bounded collectible generation, shared by request and durable operation scopes.</summary>
 internal sealed class WebServerExecutionCode
 {
+    internal const string AssemblyFile = "RelaxKonOS.ServerModule.WebServer.dll";
+    internal const string EntryType = "RelaxKonOS.Server.WebsitePublishing.WebsitePublicationExecutor";
     internal static WebServerExecutionCode Shared { get; } = new(TimeSpan.FromSeconds(30));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
     private readonly List<WeakReference> generations = [];
     private readonly TimeSpan idleDelay;
+    private readonly Func<string> resolvePath;
     private readonly Timer timer;
     private Generation? current;
     private int active;
     private long lastRelease;
 
-    internal WebServerExecutionCode(TimeSpan idleDelay)
+    internal WebServerExecutionCode(TimeSpan idleDelay, Func<string>? resolvePath = null)
     {
         this.idleDelay = idleDelay;
+        this.resolvePath = resolvePath ?? ResolveBundledPath;
         if (ExecutionContext.IsFlowSuppressed()) timer = CreateTimer();
         else
         {
@@ -47,7 +52,7 @@ internal sealed class WebServerExecutionCode
             catch (Exception)
             {
                 if (active == 0) ScheduleRelease();
-                throw new InvalidDataException("Bundled WebServer execution could not be activated.");
+                throw new InvalidDataException("WebServer execution could not be activated.");
             }
         }
     }
@@ -57,24 +62,56 @@ internal sealed class WebServerExecutionCode
         generations.RemoveAll(reference => !reference.IsAlive);
         if (generations.Count >= MaximumGenerations)
             throw new InvalidDataException("WebServer execution code collection is pending.");
-        var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer");
-        var path = Path.Combine(directory, "RelaxKonOS.ServerModule.WebServer.dll");
-        if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
-            || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Bundled WebServer execution assembly is missing or linked.");
+        var path = resolvePath();
 
         var context = new ExecutionLoadContext();
         var code = new WeakReference(context);
         generations.Add(code);
         try
         {
-            return new Generation(context, context.LoadFromAssemblyPath(path), code);
+            return new Generation(context, ReadAssembly(context, path), code);
         }
         catch (Exception)
         {
             context.Unload();
-            throw new InvalidDataException("Bundled WebServer execution could not be loaded.");
+            throw new InvalidDataException("WebServer execution could not be loaded.");
         }
+    }
+
+    internal static void ValidateEntryPoints(string path)
+    {
+        var context = new ExecutionLoadContext();
+        try { _ = ReadAssembly(context, path); }
+        finally { context.Unload(); }
+    }
+
+    private static Assembly ReadAssembly(ExecutionLoadContext context, string path)
+    {
+        using var stream = File.OpenRead(path);
+        var assembly = context.LoadFromStream(stream);
+        Require<IWebsitePublicationExecutor, IWebsitePublicationPorts>(EntryType);
+        Require<INginxIntegrationExecutor, INginxIntegrationPorts>("RelaxKonOS.Server.WebServer.NginxIntegrationExecutor");
+        Require<INginxReloadExecutor, INginxReloadPorts>("RelaxKonOS.Server.WebServer.NginxReloadExecutor");
+        Require<INginxWebRootExecutor, INginxWebRootPorts>("RelaxKonOS.Server.WebServer.NginxWebRootExecutor");
+        Require<INginxLifecycleExecutor, INginxLifecyclePorts>("RelaxKonOS.Server.WebServer.NginxLifecycleExecutor");
+        return assembly;
+
+        void Require<TExecutor, TPorts>(string name)
+        {
+            var entry = assembly.GetType(name);
+            if (entry is null || entry.IsAbstract || !typeof(TExecutor).IsAssignableFrom(entry) || entry.GetConstructor([typeof(TPorts)]) is null)
+                throw new InvalidDataException("WebServer execution assembly does not implement the required module entry points.");
+        }
+    }
+
+    private static string ResolveBundledPath()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer");
+        var path = Path.Combine(directory, AssemblyFile);
+        if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
+            || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("Bundled WebServer execution assembly is missing or linked.");
+        return path;
     }
 
     private void ScheduleRelease()

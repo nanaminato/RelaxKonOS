@@ -12,7 +12,8 @@ internal sealed partial class ServerModules
     internal static bool ConflictsWithBundledModule(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
         BundledIds.Value.Contains(manifest.ModuleId) && !IsOfficialDatabaseModuleHost(manifest)
         && !InstalledTailscaleModule.MatchesManifest(manifest) && !InstalledFirewallModule.MatchesManifest(manifest)
-        && !InstalledGitModule.MatchesManifest(manifest) && !InstalledDockerModule.MatchesManifest(manifest);
+        && !InstalledGitModule.MatchesManifest(manifest) && !InstalledDockerModule.MatchesManifest(manifest)
+        && !InstalledWebServerModule.MatchesManifest(manifest);
 
     internal static bool IsOfficialDatabaseModuleHost(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
         manifest.ModuleId == DatabaseId && manifest.Runtime == "module-host" && manifest.Purpose == "official";
@@ -88,9 +89,11 @@ internal sealed partial class ServerModules
         var packagedFirewall = installed.Any(module => module is InstalledFirewallModule);
         var packagedGit = installed.Any(module => module is InstalledGitModule);
         var packagedDocker = installed.Any(module => module is InstalledDockerModule);
+        var packagedWebServer = installed.Any(module => module is InstalledWebServerModule);
         return [.. compiled.Where(module => (!packagedDatabase || module.Id != DatabaseId)
             && (!packagedTailscale || module.Id != Modules.TailscaleModule.ModuleId)
             && (!packagedFirewall || module.Id != FirewallId)
-            && (!packagedGit || module.Id != GitId) && (!packagedDocker || module.Id != DockerId)), .. installed];
+            && (!packagedGit || module.Id != GitId) && (!packagedDocker || module.Id != DockerId)
+            && (!packagedWebServer || module.Id != WebServerId)), .. installed];
     }
 }
