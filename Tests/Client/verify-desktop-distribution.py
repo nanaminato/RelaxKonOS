@@ -25,6 +25,15 @@ def require(condition, problem):
 
 
 def verify_published(publish_dir, manifests, profile_document):
+    host_dependencies = publish_dir / "RelaxKonOS.deps.json"
+    if host_dependencies.is_file():
+        require(not any(
+            dependency.split("/", 1)[0] == "RelaxKonOS.App.Settings"
+            for dependency in read_json(host_dependencies)["libraries"]
+        ), "The desktop host dependency graph includes the Settings package implementation.")
+        require(not (publish_dir / "RelaxKonOS.App.Settings.dll").exists(),
+                "The desktop host contains a loose Settings package implementation.")
+
     packages = publish_dir / "OfficialApps"
     require(packages.is_dir(), f"OfficialApps is missing under {publish_dir}.")
     require(read_json(packages / "installation-profiles.json") == profile_document,
