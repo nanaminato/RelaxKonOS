@@ -845,3 +845,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Proxy 双包在独立网络命名空间连接真实 Mihomo v1.19.32。保持一个经环回代理送往临时后端的连接，设置 RK_TEST_MIHOMO_CONNECTIONS=1，生产适配器及签名解析器均返回一个活动连接，TUN 仍关闭。进程和连接在测试退出后清理。
 - Linux x64 签名 Proxy 双包复验从已安装且复验摘要的包加载订阅解析入口，Base64 YAML 解码保留原文与原始字节数，非法 UTF-8 被拒。同轮真实 Mihomo 活动连接读取通过。用例直接提供已授权响应体，订阅下载与发布未纳入本次。
 - Windows Release 签名 Proxy 双包通过生产订阅下载器验收。HTTPS 环回来源在 HTTP 发送前拒绝，可接受的公网地址由测试传输应答一次，已安装签名模块将响应解码为预期 YAML。测试没有公网请求，未覆盖配置发布。
+- Linux x64 签名 Proxy 双包通过 RK_TEST_MIHOMO_CONFIG 接入隔离 Mihomo 的临时配置。已安装签名直连发布执行包调用生产控制器适配器重载，从控制器观察日志级别变更为 warning 后确认，清理时恢复并读回 info。用例使用测试文件与确认端口，未覆盖系统代理、TUN 或完整订阅持久化事务。

@@ -473,7 +473,45 @@ internal static class JointDeploymentAcceptance
                 }), default);
             Require(!observed.TunEnabled && observed.ActiveConnections == expectedConnections,
                 "the joint-installed signed Proxy executor reports the real Mihomo overview");
+            if (Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONFIG") is { Length: > 0 } config)
+                await VerifySignedMihomoPublicationAsync(controller, Path.GetFullPath(config), Path.Combine(packageRoot, manifest.EntryAssembly));
         }
+    }
+
+    private static async Task VerifySignedMihomoPublicationAsync(MihomoControllerClient controller, string path, string entryAssembly)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var ct = timeout.Token;
+        var original = await File.ReadAllTextAsync(path, ct);
+        const string initialSetting = "log-level: info";
+        Require(original.Split('\n').Contains(initialSetting), "the isolated Mihomo fixture starts with the expected configuration");
+        await File.WriteAllTextAsync(path, original.Replace(initialSetting, "log-level: warning", StringComparison.Ordinal), ct);
+        try
+        {
+            using var execution = MihomoDirectPublicationCode.Acquire(new ProxyExecutionCodeGate("joint-publication", () => entryAssembly));
+            var confirmed = false;
+            var result = await execution.PublishProfileAsync(new(
+                () => controller.ReloadAsync(ct),
+                async () => await controller.GetListenerStateAsync(ct) is { Succeeded: true, Value.LogLevel: "warning" },
+                () => true,
+                Restore,
+                () => throw new InvalidOperationException("The fixture always has a previous configuration."),
+                Restore,
+                () => Task.FromResult(confirmed = true),
+                () => Task.CompletedTask,
+                _ => { }));
+            Require(result is null && confirmed, "the installed signed publication executor reloads real Mihomo and confirms the observed change");
+        }
+        finally
+        {
+            Restore();
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            Require(await controller.ReloadAsync(cleanup.Token) is null
+                && await controller.GetListenerStateAsync(cleanup.Token) is { Succeeded: true, Value.LogLevel: "info" },
+                "the temporary Mihomo instance returns to its original configuration");
+        }
+
+        void Restore() => File.WriteAllText(path, original);
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
