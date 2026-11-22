@@ -12,6 +12,7 @@ using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.Firewall;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Tailscale;
 
@@ -71,6 +72,7 @@ internal static class ModulePackageHttpChecks
                 Ui = new("Database Observation", "", "", null, "UNLICENSED"),
             }, now);
             ModulePackageBuildResult[] tailscale = [];
+            ModulePackageBuildResult[] firewall = [];
             if (!isolated)
             {
                 var tailscalePublish = Path.Combine(AppContext.BaseDirectory, "Modules", "Tailscale");
@@ -88,15 +90,31 @@ internal static class ModulePackageHttpChecks
                 tailscale = [await ModulePackageBuilder.BuildAsync(tailscaleOptions, now),
                     await ModulePackageBuilder.BuildAsync(tailscaleOptions with
                     { Version = "2.0.0", ReleaseId = "tailscale-2.0.0-" + rid }, now)];
+                var firewallOptions = tailscaleOptions with
+                {
+                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "Firewall"),
+                    OutputDirectory = Path.Combine(root, "firewall-package"),
+                    ModuleId = ServerModules.FirewallId,
+                    ReleaseId = "firewall-1.0.0-" + rid,
+                    EntryAssembly = CollectibleFirewallExecution.AssemblyFile,
+                    EntryType = CollectibleFirewallExecution.EntryType,
+                    Capabilities = [ServerCapabilities.Firewall],
+                    Ui = new("Firewall", "", "", null, "UNLICENSED"),
+                };
+                firewall = [await ModulePackageBuilder.BuildAsync(firewallOptions, now),
+                    await ModulePackageBuilder.BuildAsync(firewallOptions with
+                    { Version = "2.0.0", ReleaseId = "firewall-2.0.0-" + rid }, now)];
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
-                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!), .. tailscale.Select(Release)], [], []), "builder-key", keyPath)).Envelope;
+                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
+                        .. tailscale.Select(Release), .. firewall.Select(Release)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
-                "https://modules.example/", dependent is null ? ["fixture-http"] : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale"],
+                "https://modules.example/", dependent is null ? ["fixture-http"]
+                    : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale", ServerModules.FirewallId],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -172,7 +190,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4 + tailscale.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4 + tailscale.Length + firewall.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -359,7 +377,11 @@ internal static class ModulePackageHttpChecks
             check(afterPrune.Any(item => item.PlanId == plan.PlanId && item.AppliedOperationId == applied.OperationId)
                 && afterPrune.All(item => item.PlanId != autoPlan.PlanId),
                 "new plan creation prunes expired unexecuted plans but retains applied receipt references");
-            if (tailscale.Length != 0) await VerifyTailscaleVersionsAsync(client, root, tailscale, check);
+            if (tailscale.Length != 0)
+            {
+                await VerifyExecutionPackageVersionsAsync<InstalledTailscaleModule>(client, root, tailscale, check);
+                await VerifyExecutionPackageVersionsAsync<InstalledFirewallModule>(client, root, firewall, check);
+            }
             await app.StopAsync();
             management.Dispose();
         }
@@ -370,9 +392,15 @@ internal static class ModulePackageHttpChecks
         }
     }
 
-    private static async Task VerifyTailscaleVersionsAsync(HttpClient client, string root,
-        ModulePackageBuildResult[] packages, Action<bool, string> check)
+    private static async Task VerifyExecutionPackageVersionsAsync<TModule>(HttpClient client, string root,
+        ModulePackageBuildResult[] packages, Action<bool, string> check) where TModule : IInstalledModuleInfo
     {
+        var moduleId = packages[0].Manifest.ModuleId;
+        var offers = await client.GetFromJsonAsync<ServerModuleStorePageDto>(ServerModuleManagementRoutes.ModuleStoreSearch
+            + "?q=" + moduleId, RelaxKonOSJsonOptions.Default);
+        check(offers?.Items.Count == packages.Length && offers.Items.All(offer => offer.ModuleId == moduleId
+            && offer.RidCompatible && offer.Capabilities.SequenceEqual(packages[0].Manifest.Capabilities)),
+            $"HTTP advertises both signed {moduleId} versions with their declared capability");
         foreach (var package in packages)
         {
             using var upload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
@@ -390,7 +418,7 @@ internal static class ModulePackageHttpChecks
             check(result.Record.ArtifactSha256 == package.ArchiveSha256 && receipt.Version == package.Manifest.Version
                 && receipt.Action == (package == packages[0] ? "install" : "update")
                 && receipt.State == ModulePackageOperationState.AwaitingRestart,
-                $"HTTP accepts the signed Tailscale {package.Manifest.Version} plan and records a restart-bound receipt");
+                $"HTTP accepts the signed {moduleId} {package.Manifest.Version} plan and records a restart-bound receipt");
         }
 
         using var rollback = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
@@ -400,8 +428,8 @@ internal static class ModulePackageHttpChecks
         var rollbackReceipt = await ReadReceiptAsync(restored.OperationId);
         check(restored.Record.ArtifactSha256 == packages[0].ArchiveSha256 && rollbackReceipt is
             { Action: "rollback", State: ModulePackageOperationState.AwaitingRestart, PreviousVersion: "2.0.0", Version: "1.0.0" }
-            && InstalledModuleCatalog.Load(root).OfType<InstalledTailscaleModule>().Single().InstalledVersion == "1.0.0",
-            "HTTP rollback selects the original immutable Tailscale archive for the next Core start");
+            && InstalledModuleCatalog.Load(root).OfType<TModule>().Single().InstalledVersion == "1.0.0",
+            $"HTTP rollback selects the original immutable {moduleId} archive for the next Core start");
 
         async Task<ServerPackageOperationDto> ReadReceiptAsync(Guid operationId) =>
             (await client.GetFromJsonAsync<ServerPackageOperationDto>(ServerModuleManagementRoutes.PackageOperation
