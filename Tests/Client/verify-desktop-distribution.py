@@ -30,7 +30,8 @@ def verify_published(publish_dir, manifests, profile_document):
         dependency.split("/", 1)[0]
         for dependency in read_json(host_dependencies)["libraries"]
     } if host_dependencies.is_file() else set()
-    for app_id in ("relaxkonos.settings", "relaxkonos.component-center", "relaxkonos.explorer", "relaxkonos.server-center"):
+    for app_id in ("relaxkonos.settings", "relaxkonos.component-center", "relaxkonos.explorer",
+                   "relaxkonos.server-center", "relaxkonos.terminal"):
         assembly_name = Path(manifests[app_id]["entryAssembly"]).stem
         require(assembly_name not in host_libraries,
                 f"The desktop host dependency graph includes the {app_id} package implementation.")

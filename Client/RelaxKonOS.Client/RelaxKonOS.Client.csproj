@@ -16,6 +16,8 @@
     <ItemGroup>
     <EmbeddedResource Include="../../Applications/RelaxKonOS.App.ComponentCenter/Localization/*.json"
                       LogicalName="ComponentCenter.Localization.%(Filename).json" />
+    <EmbeddedResource Include="../../Applications/RelaxKonOS.App.Terminal/Localization/*.json"
+                      LogicalName="Terminal.Localization.%(Filename).json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,7 +71,6 @@
       <ProjectReference Include="..\..\Framework\RelaxKonOS.App.SDK\RelaxKonOS.App.SDK.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.Runtime\RelaxKonOS.Runtime.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.UI\RelaxKonOS.UI.csproj" />
-      <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Terminal\RelaxKonOS.App.Terminal.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.CodeEditor\RelaxKonOS.App.CodeEditor.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Git\RelaxKonOS.App.Git.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.FileServices\RelaxKonOS.App.FileServices.csproj" />

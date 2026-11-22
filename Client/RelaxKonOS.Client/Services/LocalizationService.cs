@@ -139,12 +139,6 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 
-        foreach (var resource in RelaxKonOS.App.Terminal.TerminalLocalization.ResourceNames)
-        {
-            using var source = RelaxKonOS.App.Terminal.TerminalLocalization.Open(resource);
-            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
-        }
-
         foreach (var resource in RelaxKonOS.App.Settings.SettingsLocalization.ResourceNames)
         {
             using var source = RelaxKonOS.App.Settings.SettingsLocalization.Open(resource);
@@ -153,7 +147,8 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
 
         var assembly = typeof(LocalizationService).Assembly;
         foreach (var resource in assembly.GetManifestResourceNames()
-            .Where(name => name.StartsWith("ComponentCenter.Localization.", StringComparison.Ordinal)))
+            .Where(name => name.StartsWith("ComponentCenter.Localization.", StringComparison.Ordinal)
+                || name.StartsWith("Terminal.Localization.", StringComparison.Ordinal)))
         {
             using var source = assembly.GetManifestResourceStream(resource)
                 ?? throw new InvalidDataException($"Missing localization resource '{resource}'.");
