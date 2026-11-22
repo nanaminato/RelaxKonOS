@@ -395,3 +395,4 @@
 - 独立 Databases 观察程序集生成 0.2.0 Linux x64 签名候选。一次性 Ubuntu 容器以隔离启动器加载候选，四条查询到达受控回环代理，健康和退出通过。
 - 拆分后的 Databases 0.2.0 签名候选通过一次性 Ubuntu 的完整在线安装与读取验收。既有 Linux x64 发行 Core 从无安装记录开始，应用冻结计划、重启监督新入口、核对回执成功。观察者经真实 Helper 的四条公开查询均返回 200。
 - 一次性 Ubuntu 使用同一签名目录内的 0.1.0 与 0.2.0 Databases 归档完成在线热更新。更新回执为 Succeeded，当前代次报告 0.2.0/running，Core 进程未重启，Core 健康和 Git 仓库枚举继续提供服务。更新后观察者经真实 Helper 的四条查询通过。
+- Ubuntu 在线回退验收在 Databases 0.2.0 运行时应用签名但入口缺失的 0.3.0 测试归档。更新回执为 Failed/module-host-update-rolled-back，监督器恢复 0.2.0/running。旧版本实际处理 PostgreSQL 请求，Core 健康和 Git 仓库枚举继续可用，观察者四条查询通过。
