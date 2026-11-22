@@ -372,6 +372,17 @@ internal static class OfficialRoappChecks
                         await files.DownloadFileAsync(connection, "/fixture.txt", downloaded, _ => { });
                         Check(downloaded.ToArray().AsSpan().SequenceEqual("RelaxKonOS SFTP fixture\n"u8),
                             "The package file capability must download the fixture's exact bytes.");
+                        var uploadedBytes = "RelaxKonOS upload fixture\n"u8.ToArray();
+                        using var upload = new MemoryStream(uploadedBytes);
+                        Check(await files.UploadFileAsync(connection, upload, "/upload.txt", _ => { }),
+                            "The package file capability must upload a new file.");
+                        using var overwrite = new MemoryStream("replacement"u8.ToArray());
+                        Check(!await files.UploadFileAsync(connection, overwrite, "/upload.txt", _ => { }),
+                            "The package file capability must refuse to replace an existing file.");
+                        using var roundTrip = new MemoryStream();
+                        await files.DownloadFileAsync(connection, "/upload.txt", roundTrip, _ => { });
+                        Check(roundTrip.ToArray().AsSpan().SequenceEqual(uploadedBytes),
+                            "An upload must preserve the original bytes after a rejected overwrite.");
 
                         var pin = typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!;
                         var expected = pin.GetValue(sshFixture);
@@ -390,7 +401,7 @@ internal static class OfficialRoappChecks
                             }
                         }
                         finally { pin.SetValue(sshFixture, expected); }
-                        Console.WriteLine("SSH Files listed and downloaded over loopback SFTP and rejected a mismatched host key.");
+                        Console.WriteLine("SSH Files listed, downloaded and uploaded over loopback SFTP, refused overwrite and rejected a mismatched host key.");
                     }
                 }
                 if (isDatabase)

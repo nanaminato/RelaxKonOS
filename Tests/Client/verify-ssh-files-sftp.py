@@ -1,4 +1,4 @@
-"""Run the official SSH Files package check against a read-only loopback SFTP server.
+"""Run the official SSH Files package check against an in-memory loopback SFTP server.
 
 Requires Paramiko and a Release build of the preview test runner. Pass the test
 runner DLL and the built .roapp with its companion .sha256 file.
@@ -19,16 +19,30 @@ from threading import Event
 import paramiko
 
 
+class UploadHandle(paramiko.SFTPHandle):
+    def __init__(self, flags, files, name):
+        super().__init__(flags)
+        self.files = files
+        self.name = name
+        self.writefile = io.BytesIO()
+
+    def close(self):
+        self.files[self.name] = self.writefile.getvalue()
+        super().close()
+
+
 class Directory(paramiko.SFTPServerInterface):
-    content = b"RelaxKonOS SFTP fixture\n"
+    def __init__(self, server, files):
+        super().__init__(server)
+        self.files = files
 
     def canonicalize(self, path):
         return "/" + super().canonicalize(path).lstrip("/")
 
     def stat(self, path):
         path = self.canonicalize(path)
-        if path == "/fixture.txt":
-            return self.file_attributes()
+        if path in self.files:
+            return self.file_attributes(path)
         if path != "/":
             return paramiko.SFTP_NO_SUCH_FILE
         directory = paramiko.SFTPAttributes()
@@ -40,22 +54,25 @@ class Directory(paramiko.SFTPServerInterface):
     def list_folder(self, path):
         if self.canonicalize(path) != "/":
             return paramiko.SFTP_NO_SUCH_FILE
-        return [self.file_attributes()]
+        return [self.file_attributes(path) for path in self.files]
 
     def open(self, path, flags, attr):
+        path = self.canonicalize(path)
+        if path == "/upload.txt" and flags & os.O_CREAT and flags & os.O_EXCL and path not in self.files:
+            return UploadHandle(flags, self.files, path)
         if flags != os.O_RDONLY:
             return paramiko.SFTP_PERMISSION_DENIED
-        if self.canonicalize(path) != "/fixture.txt":
+        if path not in self.files:
             return paramiko.SFTP_NO_SUCH_FILE
         handle = paramiko.SFTPHandle(flags)
-        handle.readfile = io.BytesIO(self.content)
+        handle.readfile = io.BytesIO(self.files[path])
         return handle
 
-    def file_attributes(self):
+    def file_attributes(self, path):
         file = paramiko.SFTPAttributes()
-        file.filename = "fixture.txt"
-        file.st_mode = stat.S_IFREG | 0o444
-        file.st_size = len(self.content)
+        file.filename = path[1:]
+        file.st_mode = stat.S_IFREG | 0o644
+        file.st_size = len(self.files[path])
         file.st_mtime = 1
         return file
 
@@ -77,6 +94,7 @@ class Server(paramiko.ServerInterface):
 
 
 def run(runner, package):
+    files = {"/fixture.txt": b"RelaxKonOS SFTP fixture\n"}
     key = paramiko.RSAKey.generate(2048)
     password = secrets.token_urlsafe(24)
     fingerprint = base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode().rstrip("=")
@@ -89,7 +107,7 @@ def run(runner, package):
         def serve_connection(connection):
             with connection, paramiko.Transport(connection) as transport:
                 transport.add_server_key(key)
-                transport.set_subsystem_handler("sftp", paramiko.SFTPServer, Directory)
+                transport.set_subsystem_handler("sftp", paramiko.SFTPServer, Directory, files)
                 transport.start_server(server=Server(password))
                 while transport.is_active() and not stopped.wait(0.1):
                     pass
