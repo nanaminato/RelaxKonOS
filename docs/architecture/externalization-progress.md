@@ -814,3 +814,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含签名 Tailscale 双包通过生产 HTTP 控制路由验收。匿名请求在 Helper 调用前拒绝，观察者经已安装签名执行程序集及生产适配器取得测试传输快照。随附模块的启用、重启恢复和复用同轮通过。
 - Windows Release 的 --tailscale-live-control-read 在临时隔离台账目录调用 Helper 生产控制读取处理器，真实 Windows Tailscale 守护进程返回可用控制快照，修订长度为 64。探针只输出读取成功标记，未更改网络或登录状态。此路径直接调用处理器，仍需验证经实际 IPC 与签名桌面联合部署串联。
 - Windows Release 使用 RK_TEST_TAILSCALE_HOST_CONFIG 指向已安装个人 Core 的宿主配置，签名 Tailscale 双包在隔离 Core 重启后经生产 HTTP、驻留协调器与认证命名管道读取真实 Helper 和本机守护进程控制快照。验证修订长度，未输出凭据或快照内容；桌面卸载后服务端签名包保留。网络写操作和登录仍待验。
+- Windows Release 签名 Tailscale 双包同一链路验证控制者缺少主机网络提升授权时，断开准备请求返回 403 tailscale.elevation_required。只读测试传输确认无新增 Helper 请求，既有 Windows Helper IPC 模式也通过相同拒绝检查。测试未发出执行请求。

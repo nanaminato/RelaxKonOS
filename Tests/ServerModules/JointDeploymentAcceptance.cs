@@ -73,6 +73,15 @@ internal static class JointDeploymentAcceptance
         var snapshot = await client.GetFromJsonAsync<TailscaleControlSnapshot>(TailscaleEndpoints.Control, RelaxKonOSJsonOptions.Default);
         Require(fixture is null ? snapshot is { Revision.Length: 64 } : snapshot == TailscaleReadHelper.Snapshot && fixture.ReadCount == 1,
             "the HTTP control route reads through the joint-installed Tailscale executor and production Helper adapter");
+        client.DefaultRequestHeaders.Remove("test-user");
+        client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+        using var denied = await client.PostAsJsonAsync(TailscaleEndpoints.Operations,
+            new TailscalePrepareRequest(Guid.NewGuid(), snapshot!.Revision, TailscaleAction.Disconnect), RelaxKonOSJsonOptions.Default);
+        using var problem = JsonDocument.Parse(await denied.Content.ReadAsStringAsync());
+        Require(denied.StatusCode == System.Net.HttpStatusCode.Forbidden
+            && problem.RootElement.GetProperty("code").GetString() == "tailscale.elevation_required"
+            && (fixture is null || fixture.ReadCount == 1),
+            "the installed signed Tailscale executor rejects a controller without host-network elevation");
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
@@ -1398,7 +1407,7 @@ internal static class JointDeploymentAcceptance
                     new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
                 ServerModules.CreateManaged(new HashSet<string> { "relaxkonos.tailscale" }, installed).ConfigureServices(builder, context);
                 if (!hasTunnels)
-                    builder.Services.AddSingleton(DispatchProxy.Create<IHostElevationSessionStore, GitRepositoryAssemblyChecks.RejectTransport>());
+                    builder.Services.AddSingleton<IHostElevationSessionStore, NoElevation>();
             }
             foreach (var module in online.Where(module => module.Id is not (ServerModules.GitId or "relaxkonos.tailscale")))
                 module.ConfigureServices(builder, context);
