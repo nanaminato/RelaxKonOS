@@ -5,24 +5,25 @@ using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Tailscale;
 
-internal sealed class TailscaleModuleRuntimeFactory : IServerModuleRuntimeFactory
+internal sealed class TailscaleModuleRuntimeFactory(Func<CollectibleTailscaleExecution> loadExecution) : IServerModuleRuntimeFactory
 {
     public string ModuleId => "relaxkonos.tailscale";
     public ValueTask<IServerModuleRuntime> CreateAsync(IServiceProvider services, ServerModuleContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IServerModuleRuntime>(new TailscaleModuleRuntime(services));
+        return ValueTask.FromResult<IServerModuleRuntime>(new TailscaleModuleRuntime(services, loadExecution));
     }
 }
 
 internal sealed class TailscaleModuleRuntime : IServerModuleRuntime
 {
     private readonly ModuleServiceContainer _services;
-    private readonly Lazy<CollectibleTailscaleExecution> _execution = new(static () => new CollectibleTailscaleExecution());
+    private readonly Lazy<CollectibleTailscaleExecution> _execution;
     public string ModuleId => "relaxkonos.tailscale";
-    internal TailscaleModuleRuntime(IServiceProvider root)
+    internal TailscaleModuleRuntime(IServiceProvider root, Func<CollectibleTailscaleExecution> loadExecution)
     {
+        _execution = new(loadExecution);
         _services = new ModuleServiceContainer(ModuleId, root);
         _services.AddSingleton<ITailscaleControlAuthorization>(services => services.Create<TailscaleControlAuthorization>());
         _services.AddSingleton<ITailscaleControlHost>(services => services.Create<HelperTailscaleControlHost>());

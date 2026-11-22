@@ -256,8 +256,12 @@ internal interface IInstalledModuleInfo
 internal static class InstalledModuleCatalog
 {
     internal static IReadOnlyList<IServerModule> Load(string contentRoot) =>
-        InstalledModuleStore.Read(contentRoot).Select(record => record.Runtime == "module-host"
-            ? (IServerModule)new InstalledIsolatedModule(record, contentRoot) : new InstalledServerModule(record, contentRoot)).ToArray();
+        InstalledModuleStore.Read(contentRoot).Select<InstalledModuleRecord, IServerModule>(record => record switch
+        {
+            { ModuleId: Modules.TailscaleModule.ModuleId, Runtime: "in-process" } => new InstalledTailscaleModule(record, contentRoot),
+            { Runtime: "module-host" } => new InstalledIsolatedModule(record, contentRoot),
+            _ => new InstalledServerModule(record, contentRoot),
+        }).ToArray();
 }
 
 /// <summary>Adapts the public installed-module ABI to the internal server-module lifecycle.</summary>

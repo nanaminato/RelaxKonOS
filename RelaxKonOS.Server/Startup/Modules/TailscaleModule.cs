@@ -5,13 +5,14 @@ using RelaxKonOS.Server.Tailscale;
 
 namespace RelaxKonOS.Server.Startup.Modules;
 
-internal sealed class TailscaleModule : IServerModule, IServerModuleResidency
+internal class TailscaleModule : IServerModule, IServerModuleResidency
 {
-    public string Id => "relaxkonos.tailscale";
+    internal const string ModuleId = "relaxkonos.tailscale";
+    public string Id => ModuleId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Tailscale];
-    public IReadOnlyList<string> Requires => [];
-    public IServerModuleRuntimeFactory RuntimeFactory { get; } = new TailscaleModuleRuntimeFactory();
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual IReadOnlyList<string> Requires => [];
+    public virtual IServerModuleRuntimeFactory RuntimeFactory { get; } = new TailscaleModuleRuntimeFactory(static () => new());
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         builder.Services.AddSingleton<ITailscaleManager>(services =>
             ModuleServiceProxy<ITailscaleManager>.Create(services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
@@ -20,7 +21,7 @@ internal sealed class TailscaleModule : IServerModule, IServerModuleResidency
         builder.Services.AddSingleton<ITailscaleLogin>(services =>
             ModuleServiceProxy<ITailscaleLogin>.Create(services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
     }
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         endpoints.MapGet(TailscaleEndpoints.Status, async (ITailscaleManager manager, HttpContext http,
                 RelaxKonOS.Server.Privileged.IHostElevationSessionStore grants, CancellationToken ct) =>

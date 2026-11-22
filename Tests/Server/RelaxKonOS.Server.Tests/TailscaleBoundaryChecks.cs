@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 using RelaxKonOS.Server.Privileged;
@@ -35,7 +36,7 @@ internal static class TailscaleBoundaryChecks
         try
         {
             Check(await VerifySignedExecutionPackageAsync(root),
-                "The real bundled Tailscale execution assembly builds and verifies as a signed RID-specific package");
+                "The signed Tailscale execution package verifies, installs and replaces the bundled catalog entry");
             await using var f = new Fixture(root);
             var co = f.Coordinator;
             var kept = new List<Task>();
@@ -187,7 +188,7 @@ internal static class TailscaleBoundaryChecks
         var options = new ModulePackageBuildOptions(publish, Path.Combine(root, "package-output"), ModuleId,
             "1.0.0", "tailscale-boundary-" + rid, "boundary-fixture", "official", rid, assemblyName, entryType,
             "tailscale-boundary", new string('a', 40), "boundary-source", 1,
-            "https://modules.example/", keyPath, "boundary-key", 3600);
+            "https://modules.example/", keyPath, "boundary-key", 3600, Capabilities: [ServerCapabilities.Tailscale]);
         var result = await ModulePackageBuilder.BuildAsync(options, now);
         var policy = new ModulePackageTrustPolicy(1, options.SourceId, 1, true, options.PublisherId, options.Purpose,
             options.ArtifactOrigin, [ModuleId], new Dictionary<string, string>
@@ -198,9 +199,15 @@ internal static class TailscaleBoundaryChecks
         await using var archive = File.OpenRead(result.ArchivePath);
         var candidate = await ModulePackageVerifier.VerifyCandidateAsync(archive, await File.ReadAllBytesAsync(result.CatalogPath),
             policy, context, ModulePackageTrustHistory.Empty(policy, context), options.ReleaseId, now);
-        return candidate.Manifest.ModuleId == ModuleId && candidate.Manifest.Runtime == "in-process"
-            && candidate.Manifest.EntryType == entryType && candidate.ArchiveSha256 == result.ArchiveSha256
-            && candidate.Manifest.Files.Single().Path == $"server/{rid}/{assemblyName}";
+        if (!InstalledTailscaleModule.MatchesManifest(candidate.Manifest)
+            || InstalledTailscaleModule.MatchesManifest(candidate.Manifest with { EntryType = "Unrelated.Entry" })
+            || candidate.ArchiveSha256 != result.ArchiveSha256
+            || candidate.Manifest.Files.Single().Path != $"server/{rid}/{assemblyName}") return false;
+        archive.Position = 0;
+        var record = await InstalledModuleInstaller.InstallVerifiedAsync(root, options.SourceId, candidate.Manifest,
+            result.ManifestSha256, candidate.ArchiveSha256, archive, now);
+        return InstalledModuleCatalog.Load(root).Single() is InstalledTailscaleModule installed
+            && installed.InstalledVersion == record.Version && installed.ArtifactDigest == record.ArtifactSha256;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -287,7 +294,7 @@ internal static class TailscaleBoundaryChecks
             builder.Services.AddSingleton(new ServerRuntimeSettingsStore(Path.Combine(root, "settings.json")));
             builder.Services.AddSingleton<IPrivilegedOperationTransport>(Transport);
             builder.Services.AddScoped<IHostElevationSessionStore>(_ => new ScopedGrants(Grants));
-            var modules = ServerModules.CreateManaged(new HashSet<string> { ModuleId });
+            var modules = ServerModules.CreateManaged(new HashSet<string> { ModuleId }, InstalledModuleCatalog.Load(root));
             modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
             App = builder.Build(); Manager = App.Services.GetRequiredService<ITailscaleManager>(); Control = App.Services.GetRequiredService<ITailscaleControl>(); Login = App.Services.GetRequiredService<ITailscaleLogin>();
         }
