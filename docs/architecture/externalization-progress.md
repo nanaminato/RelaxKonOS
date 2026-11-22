@@ -38,7 +38,7 @@
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 隔离模块启用、重启恢复和证书依赖保护已验，Nginx 业务联调待验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
-| tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows Release 包生命周期已验，真实 FRP 待验 |
+| tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
 | database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows Release 包生命周期及授权验证通过，实机待验 |
@@ -802,3 +802,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 真实外部 FRP 复验覆盖双向 TCP 载荷及停止后的端口释放。后端回显经同一 frpc/frps 连接返回，Core 停止后 frps 环回代理端口拒绝新连接。同轮模块 HTTP 专项 133 条 PASS。现有隔离 WSL 的 PID 1 为 WSL init，尚未在该环境验证依赖 systemd 的真实受管 Helper。
 - Windows Release 签名 Tunnels 双包验收在桌面卸载后验证服务端依赖登记已释放。停用计划进入 AwaitingRestart，重启重新绑定模块管理客户端后，原回执完成且生效状态为停用。隧道档案 HTTP 路由返回 404，Core 就绪路由仍可用，签名包摘要不变。真实受管 Helper 未覆盖。
 - Linux x64 自包含宿主使用真实外部 FRP 复验签名 Tunnels 的双向转发、停止释放端口、桌面卸载和依赖释放。服务端停用重启后原回执完成，隧道档案路由返回 404，Core 就绪且签名包摘要保持一致。同轮模块 HTTP 专项 133 条 PASS。
+- Windows Release 通过同一签名双包验证桌面依赖保护。Tunnel Manager 在安装时登记服务端依赖，停用预览返回 module-desktop-dependency-blocked。卸载后停用获得批准，重启后撤回隧道路由且 Core 仍就绪。

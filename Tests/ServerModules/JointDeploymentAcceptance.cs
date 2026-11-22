@@ -125,6 +125,19 @@ internal static class JointDeploymentAcceptance
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                 $"after restart the desktop registers {moduleId} against the signed execution package without resubmitting installation");
             await verifyBusiness(host, root);
+            if (moduleId == "relaxkonos.tunnels")
+            {
+                var protectionHttp = factory.CreateClient("joint-fixture");
+                var management = new ServerModuleManagementClient(protectionHttp, auth);
+                var inventory = await management.ReadAsync();
+                var desired = inventory.Where(module => module.DesiredEnabled && module.Id != moduleId)
+                    .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+                var disable = await management.PreviewAsync(new(serviceId, ServerModuleAction.Disable, [moduleId],
+                    desired, inventory[0].DesiredRevision!, "protect-signed-tunnels"));
+                Require(disable.BlockedBy.Any(blocker => blocker.ModuleId == moduleId
+                    && blocker.ProblemCode == "module-desktop-dependency-blocked"),
+                    "the server blocks disabling signed Tunnels while Tunnel Manager depends on it");
+            }
             Require(await packages.UninstallAsync(installed.Id) && !apps.IsRegistered(new AppId(installed.Id))
                 && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
                 $"uninstalling the desktop {moduleId} package releases the app without removing the server module");
