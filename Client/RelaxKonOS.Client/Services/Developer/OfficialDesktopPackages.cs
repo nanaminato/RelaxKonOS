@@ -21,11 +21,14 @@ internal sealed partial class OfficialDesktopPackages(string directory, HttpClie
     internal static bool OwnsSettingsWorkspace(string appId, PackageOrigin origin) =>
         origin == PackageOrigin.OfficialDistribution && appId == "relaxkonos.settings";
 
+    internal static bool OwnsComponentCenterWorkspace(string appId, PackageOrigin origin) =>
+        origin == PackageOrigin.OfficialDistribution && appId == "relaxkonos.component-center";
+
     internal static bool OwnsShellRoute(string appId, PackageOrigin origin, Uri uri) =>
-        OwnsSettingsWorkspace(appId, origin)
-        && uri.IsAbsoluteUri
-        && uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
-        && uri.Host.Equals("settings", StringComparison.OrdinalIgnoreCase);
+        uri.IsAbsoluteUri && uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
+        && (OwnsSettingsWorkspace(appId, origin) && uri.Host.Equals("settings", StringComparison.OrdinalIgnoreCase)
+            || OwnsComponentCenterWorkspace(appId, origin)
+                && Apps.ComponentCenter.ComponentCenterNavigation.TryParse(uri, out _));
 
     public async Task<string> VerifyAsync(string path, string appId, Stream package, CancellationToken cancellationToken)
     {

@@ -73,7 +73,8 @@ internal static class SettingsWindowChecks
             null!, windows, null!, new RelaxKonOS.Client.Apps.Explorer.ExplorerClient(http, session, memory),
             new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings), null!, null!, null!,
             null!, null!, memory, null!, null!, null!, null!,
-            settingsWindow: workspace);
+            settingsWindow: workspace,
+            componentCenterWorkspace: new RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace(services));
         var factory = CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services));
         var settingsManifest = new RelaxKonOS.App.Settings.SettingsPackageApp().Manifest;
         using var packageLifetime = new CancellationTokenSource();
@@ -100,6 +101,22 @@ internal static class SettingsWindowChecks
             throw new Exception("A retired Settings package retained workspace access.");
         }
         catch (OperationCanceledException) { }
+
+        var centerManifest = new RelaxKonOS.App.ComponentCenter.ComponentCenterPackageApp().Manifest;
+        var centerUri = new Uri("relaxkonos://components/server-modules?hostId=fixture");
+        using var centerLifetime = new CancellationTokenSource();
+        var center = ((IComponentCenterPackageContext)factory.CreateForInstalledPackage(
+            centerManifest, official, centerLifetime.Token, null, null)).ComponentCenterWorkspace;
+        Check(center?.CanNavigate(centerUri) == true
+            && ((IComponentCenterPackageContext)factory.CreateForInstalledPackage(centerManifest, local, default, null, null)).ComponentCenterWorkspace is null
+            && ((IComponentCenterPackageContext)factory.CreateForInstalledPackage(settingsManifest, official, default, null, null)).ComponentCenterWorkspace is null,
+            "Only the official Component Center package receives its workspace capability.");
+        Check(OfficialDesktopPackages.OwnsShellRoute(centerManifest.Id.Value, official, centerUri)
+            && !OfficialDesktopPackages.OwnsShellRoute(centerManifest.Id.Value, local, centerUri)
+            && !OfficialDesktopPackages.OwnsShellRoute(centerManifest.Id.Value, official, new Uri(centerUri + "&action=install")),
+            "The Component Center package route must pass the existing host parser.");
+        centerLifetime.Cancel();
+        Check(center?.CanNavigate(centerUri) == false, "A retired Component Center package remained eligible for navigation.");
 
         var apps = new ApplicationManager(windows, services);
         var developer = new DeveloperModeService();
