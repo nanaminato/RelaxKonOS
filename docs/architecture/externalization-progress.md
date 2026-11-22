@@ -880,3 +880,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 从 SagerNet 官方 1.14.3 发行下载 Windows 和 Linux amd64 归档，两者 SHA-256 均与 SingBoxManifest 固定值一致。Tests/ProxyServer 在两平台使用真实二进制验证 REALITY、VLESS TLS、VLESS WebSocket、Trojan 和 Hysteria2 的服务端配置及 sing-box 客户端导出可通过原生 check。HTTP 回执与进程恢复同轮通过。服务生命周期和流量转发未覆盖，Linux 回归在独立网络命名空间执行。
 - Windows 和 Linux amd64 的 Proxy Server 原生专项增加 sing-box 1.14.3 临时环回监听验收。使用生成的 Trojan 服务端配置启动前台进程，TLS 客户端核对服务端呈现测试证书，检查结束后停止并等待进程退出。Linux 在独立网络命名空间通过。未发送代理请求，生产 Helper 发布及业务流量仍待验。
 - Linux x64 在独立网络命名空间使用校验过的 sing-box 1.14.3 临时二进制复验 Proxy Server 凭据到期。真实环回流量在到期前转发，到期后旧流关闭、到期凭据被拒、有效凭据可重连。模拟 Helper 响应丢失和工作进程退出后，通过原回执恢复且仅应用一次。此用例使用生产 Proxy 启动保护和发布服务，经测试传输连接真实二进制。签名双包直接发布和系统 Helper 仍待验。
+- Windows Release 和 Linux x64 以各自完整重建的桌面发行目录复验签名 Proxy 双包。Developer 审阅、不可用版本与连接重试、一次独立签名安装和重启续跑均通过；Proxy Server、Squid 复用同一归档并通过就绪检查，最后一款应用卸载后解除服务端停用阻止。Linux 同轮通过真实 Mihomo 配置发布和失败补偿，Windows 测试目录由包加载上下文延迟至进程退出后释放。
