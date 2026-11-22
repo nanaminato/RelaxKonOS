@@ -59,6 +59,9 @@
         <DataTemplate DataType="settingsApp:IAccountSecurityPage">
             <settingsApp:AccountSecurityPageView VerticalAlignment="Top" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:INetworkPage">
+            <settingsApp:NetworkPageView VerticalAlignment="Top" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 

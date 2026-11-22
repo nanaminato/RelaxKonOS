@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -10,12 +12,17 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// machine's Docker daemon and the Server's own docker child processes, so it is not tied to the
 /// signed-in user. Both layers are reported separately because they use unrelated host mechanisms.
 /// </summary>
-public sealed partial class DockerProxyViewModel(IRemoteDockerClient client) : ObservableObject
+public sealed partial class DockerProxyViewModel(IRemoteDockerClient client) : ObservableObject, IOutboundProxyEditor
 {
     /// <summary>
     /// Asked before a change that restarts the Docker daemon, which interrupts running containers.
     /// The page has no window of its own, so the host supplies the dialog.
     /// </summary>
+    object? IOutboundProxyEditor.StatusText => StatusText;
+    object? IOutboundProxyEditor.ProblemText => ProblemText;
+    ICommand IOutboundProxyEditor.SaveCommand => SaveCommand;
+    ICommand IOutboundProxyEditor.RefreshCommand => RefreshCommand;
+
     public Func<string, Task<bool>> RequestConfirmationAsync { get; set; } = _ => Task.FromResult(false);
 
     [ObservableProperty] private bool _isEnabled;

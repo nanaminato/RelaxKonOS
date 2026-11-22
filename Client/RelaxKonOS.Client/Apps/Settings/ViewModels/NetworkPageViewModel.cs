@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using System.Diagnostics;
 using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Services;
@@ -8,7 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Remote adapter settings, connection details, outbound proxy, and a lightweight latency test.</summary>
-public sealed partial class NetworkPageViewModel : SettingsPageViewModel
+public sealed partial class NetworkPageViewModel : SettingsPageViewModel, INetworkPage
 {
     private readonly IAuthSession _session;
     private readonly IRelaxKonOSClient _remote;
@@ -26,6 +28,17 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         _session = session;
         _remote = remote;
         OutboundProxy = new DockerProxyViewModel(docker);
+    }
+
+    public Func<string, string> Labels => key => T(key, key);
+    object INetworkPage.HostNetwork => HostNetwork;
+    IOutboundProxyEditor INetworkPage.OutboundProxy => OutboundProxy;
+    ICommand INetworkPage.TestConnectionCommand => TestConnectionCommand;
+
+    protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
+    {
+        base.OnLanguageChanged(sender, e);
+        OnPropertyChanged(nameof(Labels));
     }
 
     public HostNetworkEditorViewModel HostNetwork { get; }
