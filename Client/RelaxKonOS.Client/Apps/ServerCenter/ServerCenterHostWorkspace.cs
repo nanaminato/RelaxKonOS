@@ -79,7 +79,6 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
     {
         ServerCenterWorkspacePage.Hosts => new ServerCenterHostsPage(),
         ServerCenterWorkspacePage.Deployment => new ServerCenterDeploymentPage(),
-        ServerCenterWorkspacePage.History => new ServerCenterHistoryPage(),
         _ => throw new ArgumentOutOfRangeException(nameof(page)),
     };
 }

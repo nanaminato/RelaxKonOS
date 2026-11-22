@@ -14,12 +14,14 @@ public partial class ServerCenterWorkspace : UserControl
         Header.Attach(window);
     }
 
+    private readonly IServerCenterWorkspacePresentation _presentation;
     private readonly Func<ServerCenterWorkspacePage, Control> _createPage;
     private Button? _selectedButton;
 
     public ServerCenterWorkspace(IServerCenterWorkspacePresentation presentation, Func<ServerCenterWorkspacePage, Control> createPage)
     {
         InitializeComponent();
+        _presentation = presentation;
         _createPage = createPage;
         DataContext = presentation;
         RelaxKonOS.WindowManager.CompactWorkspaceNavigation.Install(this, WorkspaceBody,
@@ -38,11 +40,11 @@ public partial class ServerCenterWorkspace : UserControl
         _selectedButton?.Classes.Remove("nav-selected");
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        ContentHost.Content = _createPage(page switch
+        ContentHost.Content = page switch
         {
-            "deployment" => ServerCenterWorkspacePage.Deployment,
-            "history" => ServerCenterWorkspacePage.History,
-            _ => ServerCenterWorkspacePage.Hosts,
-        });
+            "deployment" => _createPage(ServerCenterWorkspacePage.Deployment),
+            "history" => new ServerCenterHistoryPage(_presentation.History),
+            _ => _createPage(ServerCenterWorkspacePage.Hosts),
+        };
     }
 }

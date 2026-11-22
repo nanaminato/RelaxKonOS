@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
     <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" />
     <AvaloniaResource Include="Assets/server-center.png" />
   </ItemGroup>
 </Project>

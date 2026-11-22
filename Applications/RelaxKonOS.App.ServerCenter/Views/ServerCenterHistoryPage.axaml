@@ -1,10 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
-             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterHistoryPage"
-             x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
+             xmlns:vm="clr-namespace:RelaxKonOS.AppSDK;assembly=RelaxKonOS.App.SDK"
+             x:Class="RelaxKonOS.App.ServerCenter.Views.ServerCenterHistoryPage"
+             x:DataType="vm:IServerCenterHistoryPresentation" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,*" RowSpacing="18" Margin="0,0,12,0">
         <TextBlock Text="{Binding HistoryPageTitle}" FontSize="21" FontWeight="SemiBold" />
         <TextBlock Grid.Row="1" Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
@@ -17,7 +15,7 @@
                     <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}"
                               PlaceholderText="{Binding PlatformLabel}" MinWidth="180">
                         <ComboBox.ItemTemplate>
-                            <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                            <DataTemplate><TextBlock Text="{ReflectionBinding DisplayName}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <Button Command="{Binding LoadOperationHistoryCommand}" Content="{Binding LoadOperationHistoryText}" />
@@ -25,22 +23,22 @@
                     <Button Command="{Binding ClearOperationHistoryCommand}" Content="{Binding ClearOperationHistoryText}" />
                 </WrapPanel>
                 </StackPanel>
-                <DataGrid Grid.Row="1" ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation, Mode=TwoWay}"
+                <DataGrid x:Name="HistoryGrid" Grid.Row="1" ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation, Mode=TwoWay}"
                           AutoGenerateColumns="False" IsReadOnly="True"
                           SelectionMode="Single" CanUserSortColumns="True" CanUserResizeColumns="True"
                           HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" RowHeight="36" Classes="resource-table">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="{loc:Loc server_center.history.time}" Binding="{ReflectionBinding StartedAtLocalText}"
+                        <DataGridTextColumn Binding="{ReflectionBinding StartedAtLocalText}"
                                             SortMemberPath="StartedAtUtc" Width="230" MinWidth="160" />
-                        <DataGridTextColumn Header="{loc:Loc server_center.history.kind}" Binding="{ReflectionBinding Kind}"
+                        <DataGridTextColumn Binding="{ReflectionBinding Kind}"
                                             SortMemberPath="Kind" Width="120" MinWidth="80" />
-                        <DataGridTextColumn Header="{loc:Loc server_center.history.state}" Binding="{ReflectionBinding State}"
+                        <DataGridTextColumn Binding="{ReflectionBinding State}"
                                             SortMemberPath="State" Width="120" MinWidth="80" />
-                        <DataGridTemplateColumn Header="{loc:Loc server_center.history.message}" SortMemberPath="SafeMessage" Width="*" MinWidth="200">
+                        <DataGridTemplateColumn SortMemberPath="SafeMessage" Width="*" MinWidth="200">
                             <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate x:DataType="services:ServerCenterOperationRecord">
-                                    <TextBlock Text="{Binding SafeMessage}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                               Margin="8,0" ToolTip.Tip="{Binding SafeMessage}" />
+                                <DataTemplate>
+                                    <TextBlock Text="{ReflectionBinding SafeMessage}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                               Margin="8,0" ToolTip.Tip="{ReflectionBinding SafeMessage}" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

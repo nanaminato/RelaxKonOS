@@ -2,6 +2,9 @@ using System.Collections.ObjectModel;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.AppSDK;
+using System.Collections;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
@@ -14,7 +17,7 @@ namespace RelaxKonOS.Client.ViewModels.ServerCenter;
 /// Login-independent desktop host inventory. It keeps selectable SSH server-and-user targets;
 /// credentials remain in platform secure storage and deployment remains a separate remote action.
 /// </summary>
-public partial class ServerCenterViewModel : ObservableObject, RelaxKonOS.AppSDK.IServerCenterWorkspacePresentation
+public partial class ServerCenterViewModel : ObservableObject, IServerCenterWorkspacePresentation, IServerCenterHistoryPresentation
 {
     private readonly IHostTargetStore _targets;
     private readonly IServerCenterConnectionResolver _connections;
@@ -163,6 +166,27 @@ public partial class ServerCenterViewModel : ObservableObject, RelaxKonOS.AppSDK
     public string NavigationMenuTitle => T("common.view", "View");
     public string HostsPageTitle => T("server_center.page.hosts", "Hosts");
     public string DeploymentPageTitle => T("server_center.page.deployment", "Installation and maintenance");
+    IServerCenterHistoryPresentation IServerCenterWorkspacePresentation.History => this;
+    IEnumerable IServerCenterHistoryPresentation.Platforms => Platforms;
+    IEnumerable IServerCenterHistoryPresentation.Operations => Operations;
+    object? IServerCenterHistoryPresentation.SelectedPlatform
+    {
+        get => SelectedPlatform;
+        set => SelectedPlatform = (HostPlatformOption?)value;
+    }
+    object? IServerCenterHistoryPresentation.SelectedOperation
+    {
+        get => SelectedOperation;
+        set => SelectedOperation = (ServerCenterOperationRecord?)value;
+    }
+    ICommand IServerCenterHistoryPresentation.LoadOperationHistoryCommand => LoadOperationHistoryCommand;
+    ICommand IServerCenterHistoryPresentation.RefreshOperationCommand => RefreshOperationCommand;
+    ICommand IServerCenterHistoryPresentation.ClearOperationHistoryCommand => ClearOperationHistoryCommand;
+
+    public string HistoryTimeHeader => T("server_center.history.time", "Started at");
+    public string HistoryKindHeader => T("server_center.history.kind", "Operation");
+    public string HistoryStateHeader => T("server_center.history.state", "State");
+    public string HistoryMessageHeader => T("server_center.history.message", "Message");
     public string HistoryPageTitle => T("server_center.page.history", "Operation history");
     public string SelectHostHint => T("server_center.select_host_hint", "Select a server and user above.");
     public string HostsLabel => T("server_center.hosts", "Managed hosts");

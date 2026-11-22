@@ -628,6 +628,15 @@ internal static class SettingsWindowChecks
             Pump();
             Check(ReferenceEquals(window, windows.Windows.Single(item => item.Info.OwnerAppId == appId)),
                 "Server Center opened a second workspace instead of reusing the existing window.");
+            var workspace = (UserControl)window.View.Content!;
+            var historyButton = workspace.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "history"));
+            historyButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Pump();
+            var history = (UserControl)workspace.FindControl<ContentControl>("ContentHost")!.Content!;
+            var historyGrid = history.FindControl<DataGrid>("HistoryGrid")!;
+            Check(history.GetType().Assembly == workspace.GetType().Assembly
+                && Equals(historyGrid.Columns[0].Header, model.HistoryTimeHeader),
+                "The package must own the history page and bind its localized columns.");
             var wizardResult = model.ShowInstallationWizardAsync!();
             PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
             var wizardWindow = windows.Windows.Single(item => item.IsModalDialog);
