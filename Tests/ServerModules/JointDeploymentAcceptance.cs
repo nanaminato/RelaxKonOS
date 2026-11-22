@@ -617,6 +617,7 @@ internal static class JointDeploymentAcceptance
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
             builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
+            builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport, IdleDatabaseHelper>();
             builder.Services.AddSingleton(store);
             builder.Services.AddSingleton(modules);
             builder.Services.AddSingleton(context);
