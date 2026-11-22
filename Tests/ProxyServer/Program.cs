@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -232,6 +234,8 @@ try
                 [new(tlsInbound.Id, certificate.ExportCertificatePem(), rsa.ExportPkcs8PrivateKeyPem(), "test")]);
             await File.WriteAllTextAsync(nativePath, SingBoxConfiguration.Render(tlsMaterial));
             await RunAsync(binary, ["check", "-c", nativePath]);
+            if (protocol == ProxyServerProtocol.Trojan)
+                await VerifyNativeListenerAsync(binary, nativePath, tlsMaterial, certificate.Thumbprint);
             await File.WriteAllTextAsync(nativePath, ProxyServerClientExport.Create(tlsMaterial, secret, "TLS device", "sing-box").Content);
             await RunAsync(binary, ["check", "-c", nativePath]);
             Console.WriteLine("Native server and client configuration passed: " + protocol);
@@ -299,6 +303,48 @@ static async Task<string> RunAsync(string binary, string[] arguments)
     var text = await output; var problem = await error;
     if (process.ExitCode != 0) throw new Exception("Native validation failed: " + problem);
     return text;
+}
+
+static async Task VerifyNativeListenerAsync(string binary, string configPath, ProxyServerMaterial material, string thumbprint)
+{
+    using var reservation = new TcpListener(IPAddress.Loopback, 0);
+    reservation.Start();
+    var port = ((IPEndPoint)reservation.LocalEndpoint).Port;
+    var inbound = material.Configuration.Inbounds.Single() with { ListenPort = port };
+    await File.WriteAllTextAsync(configPath, SingBoxConfiguration.Render(material with
+    {
+        Configuration = material.Configuration with { Inbounds = [inbound] },
+    }));
+    reservation.Stop();
+    var start = new ProcessStartInfo(binary) { UseShellExecute = false, CreateNoWindow = true,
+        ArgumentList = { "run", "-c", configPath } };
+    using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not launch sing-box.");
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    try
+    {
+        while (true)
+        {
+            Check(!process.HasExited, "The sing-box test listener exited before becoming ready.");
+            using var client = new TcpClient();
+            try { await client.ConnectAsync(IPAddress.Loopback, port, deadline.Token); }
+            catch (SocketException) when (!deadline.IsCancellationRequested)
+            {
+                await Task.Delay(100, deadline.Token);
+                continue;
+            }
+            using var tls = new SslStream(client.GetStream(), leaveInnerStreamOpen: false,
+                (_, presented, _, _) => presented?.GetCertHashString() == thumbprint);
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = inbound.ServerName }, deadline.Token);
+            Check(tls.IsAuthenticated && !process.HasExited, "The native loopback listener did not present its configured certificate.");
+            break;
+        }
+    }
+    finally
+    {
+        if (!process.HasExited) process.Kill(entireProcessTree: true);
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    Console.WriteLine("Native sing-box loopback listener presented the configured TLS certificate and exited after cleanup.");
 }
 sealed class Paths(string root) : IProxyPlatformPaths
 {
