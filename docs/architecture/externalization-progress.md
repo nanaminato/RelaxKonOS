@@ -661,3 +661,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows Release 使用实际 Welcome 发行归档运行生产安装器界面回归，覆盖可选模块默认勾选及取消、必需模块无取消入口、准确展示升级前后版本及已满足模块。版本显示使用受控计划数据。实际 Windows 发行目录复验 Minimal、Standard、Developer 分别预装 0、13、14 个包，Minimal 可逐一从发行归档安装和修复 13 个基础应用。Terminal 和 Task Manager 在服务能力恢复前阻止激活，切换配置保留用户卸载状态。
 - 从当前分支发布 Linux x64 自包含测试运行器，在 WSL 原生文件系统以 Linux 发行目录的 10 个 .roapp 通过 135 项联合部署断言。数据库端点边界、模块生命周期及签名模块包 HTTP 专项均通过，覆盖已消费上传的幂等重试和丢失响应后的原回执。首次组合脚本末行带 CR，导致数据库专项参数未被识别并误入缺少 dotnet 的默认全套测试；直接执行正确参数后通过。此轮使用隔离宿主，未重跑真实 Helper 双包安装。
 - 新增 `RelaxKonOS.ServerModules.Tests --module-recovery-checks <Server 可执行文件路径>`。Linux x64 自包含测试运行器在 WSL 用独立发布的自包含 Core 通过 36 项断言，无需安装 dotnet 命令。验证发行二进制可离线诊断并保持台账不变，恢复宿主保留授权边界、拒绝业务路由，并持久保存待正常重启的恢复回执。
+- 当前 Windows x64 自包含 Core 发布通过。独立发行二进制通过 37 项模块恢复断言。SQLite 系统模式在临时发行副本中移除 Databases 执行程序集后，启用 Databases 时拒绝启动并报告缺失程序集，显式停用时 `/healthz` 返回 200。该验证使用空白安装台账和本机环回。
