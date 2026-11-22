@@ -109,8 +109,12 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         if (profile is null || !document.Profiles.TryGetValue(profile, out var entries)
             || exclusions.Any(id => !entries.Any(entry => entry.AppId == id)))
             throw new InvalidDataException("Invalid installation profile selection.");
-        if (saved is not null && requested.Length == 0 && exclusions.Length == 0)
-            return saved.Excluded is not null ? saved : throw new InvalidDataException("Invalid saved installation profile.");
+        if (saved is not null && saved.Profile == profile)
+        {
+            if (saved.Excluded is null) throw new InvalidDataException("Invalid saved installation profile.");
+            if (exclusions.Length == 0 || saved.Excluded.SequenceEqual(exclusions, StringComparer.Ordinal))
+                return saved;
+        }
         return new(profile, exclusions);
     }
 

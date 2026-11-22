@@ -441,6 +441,8 @@ internal static class OfficialRoappChecks
             await provisioner.RunAsync(["--installation-profile=standard", $"--exclude-bundled-app={applicationId}"]);
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
+            await provisioner.RunAsync(["--installation-profile=standard"]);
+            Check(packages.FindInstalled(applicationId) is null, "Explicitly selecting the same profile preserves its exclusions.");
             compatibility.TaskManagerServerAvailable = !isTaskManager;
             if (interactive)
                 await WriteProfileAsync("interactive");
