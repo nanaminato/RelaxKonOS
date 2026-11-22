@@ -94,8 +94,6 @@ internal static class JointDeploymentAcceptance
     private static async Task VerifySignedCertificatesAsync(TestHost _, string root)
     {
         var serverRoot = Path.Combine(root, "server");
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
-        builder.Configuration["Storage:Provider"] = "memory";
         var fixture = Environment.GetEnvironmentVariable("RK_TEST_ACME_FIXTURE");
         var options = new CertificateOptions
         {
@@ -103,30 +101,37 @@ internal static class JointDeploymentAcceptance
             StorageRoot = Path.Combine(serverRoot, "certificates"),
             ChallengeRoot = Path.Combine(serverRoot, "challenges"),
         };
-        builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton<FileHttp01ChallengeStore>();
-        builder.Services.AddSingleton<CertificateMetadataRepository>();
-        var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.CertificatesId }, InstalledModuleCatalog.Load(serverRoot));
-        modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
-        if (fixture is not null)
+        (WebApplicationBuilder Builder, ServerModules Modules) ConfigureHost()
         {
-            builder.Services.AddSingleton(_ => new DirectHttp01ChallengeStore("http://+:5002/.well-known/acme-challenge/"));
-            builder.Services.AddSingleton<ICertificateStore, FileCertificateStore>();
-            builder.Services.AddSingleton<HostOperationJournal>();
-            builder.Services.AddSingleton<KestrelCertificateRegistry>();
-            builder.Services.AddSingleton<CertificateDeploymentRepository>();
-            builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
-                new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
-            builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IHostPrivilegeService, CertificateFixturePrivilege>();
-            builder.Services.AddSingleton<IHostElevationSessionStore, CertificateFixtureElevation>();
-            builder.Services.AddSingleton<IServerModeResolver>(new ServerModeResolver(builder.Configuration,
-                RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
-            builder.Services.AddAuthentication("module-test")
-                .AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
-            builder.Services.AddAuthorization();
-            builder.Services.ConfigureHttpJsonOptions(json => json.SerializerOptions.Converters.Add(
-                new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
+            builder.Configuration["Storage:Provider"] = "memory";
+            builder.Services.AddSingleton(options);
+            builder.Services.AddSingleton<FileHttp01ChallengeStore>();
+            builder.Services.AddSingleton<CertificateMetadataRepository>();
+            var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.CertificatesId }, InstalledModuleCatalog.Load(serverRoot));
+            modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+            if (fixture is not null)
+            {
+                builder.Services.AddSingleton(_ => new DirectHttp01ChallengeStore("http://+:5002/.well-known/acme-challenge/"));
+                builder.Services.AddSingleton<ICertificateStore, FileCertificateStore>();
+                builder.Services.AddSingleton<HostOperationJournal>();
+                builder.Services.AddSingleton<KestrelCertificateRegistry>();
+                builder.Services.AddSingleton<CertificateDeploymentRepository>();
+                builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
+                    new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+                builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IHostPrivilegeService, CertificateFixturePrivilege>();
+                builder.Services.AddSingleton<IHostElevationSessionStore, CertificateFixtureElevation>();
+                builder.Services.AddSingleton<IServerModeResolver>(new ServerModeResolver(builder.Configuration,
+                    RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
+                builder.Services.AddAuthentication("module-test")
+                    .AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
+                builder.Services.AddAuthorization();
+                builder.Services.ConfigureHttpJsonOptions(json => json.SerializerOptions.Converters.Add(
+                    new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+            }
+            return (builder, modules);
         }
+        var (builder, modules) = ConfigureHost();
         await using var host = builder.Build();
         var execution = host.Services.GetRequiredService<AcmeExecution>();
         if (fixture is not null)
@@ -136,6 +141,7 @@ internal static class JointDeploymentAcceptance
             modules.MapEndpoints(host, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
             host.Urls.Add("http://127.0.0.1:0");
             await host.StartAsync();
+            CertificateOperationDto completed;
             try
             {
                 using var client = new HttpClient { BaseAddress = new Uri(host.Urls.Single()) };
@@ -153,7 +159,7 @@ internal static class JointDeploymentAcceptance
                 started.EnsureSuccessStatusCode();
                 var receipt = (await started.Content.ReadFromJsonAsync<CertificateOperationDto>(RelaxKonOSJsonOptions.Default, timeout.Token))!;
                 var status = CertificateApiRoutes.Operations.Replace("{operationId}", receipt.OperationId.ToString("D"));
-                var completed = receipt;
+                completed = receipt;
                 while (completed.State is CertificateOperationState.Queued or CertificateOperationState.Running)
                 {
                     await Task.Delay(100, timeout.Token);
@@ -188,6 +194,33 @@ internal static class JointDeploymentAcceptance
                 finally { foreach (var certificate in bundle) certificate.Dispose(); }
             }
             finally { await host.StopAsync(); }
+
+            var (restartBuilder, restartModules) = ConfigureHost();
+            await using var restarted = restartBuilder.Build();
+            restarted.UseAuthentication();
+            restarted.UseAuthorization();
+            restartModules.MapEndpoints(restarted, ServerModuleContext.Create(restartBuilder.Configuration, restartBuilder.Environment, "memory"));
+            restarted.Urls.Add("http://127.0.0.1:0");
+            await restarted.StartAsync();
+            try
+            {
+                using var client = new HttpClient { BaseAddress = new Uri(restarted.Urls.Single()) };
+                client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+                client.DefaultRequestHeaders.Add("Idempotency-Key", "signed-acme-issuance");
+                var status = CertificateApiRoutes.Operations.Replace("{operationId}", completed.OperationId.ToString("D"));
+                var recovered = await client.GetFromJsonAsync<CertificateOperationDto>(status, RelaxKonOSJsonOptions.Default);
+                var request = new RequestCertificateRequest(["localhost"], CertificateChallengeType.DirectHttp01,
+                    "acceptance@example.test", true, PublicReachabilityConfirmed: true);
+                using var replay = await client.PostAsJsonAsync(CertificateApiRoutes.Request, request, RelaxKonOSJsonOptions.Default);
+                replay.EnsureSuccessStatusCode();
+                var replayed = await replay.Content.ReadFromJsonAsync<CertificateOperationDto>(RelaxKonOSJsonOptions.Default);
+                Require(recovered is { State: CertificateOperationState.Succeeded }
+                    && recovered.OperationId == completed.OperationId && recovered.CertificateId == completed.CertificateId
+                    && replayed == recovered,
+                    "after restart the production certificate API recovers and replays the original issuance receipt");
+            }
+            finally { await restarted.StopAsync(); }
+
             return;
         }
         var acme = host.Services.GetRequiredService<IAcmeService>();
