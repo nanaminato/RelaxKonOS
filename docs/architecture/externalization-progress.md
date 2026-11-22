@@ -362,3 +362,4 @@
 - 安装器已允许同 ID 的官方 Databases ModuleHost 候选。已安装包描述在模块目录中接替内置描述，沿用数据库启用开关、能力公告、Core 服务和停用检查，并由监督器跟踪包版本。Core 公开查询转发和实际安装待验。
 - 已安装的 Databases ModuleHost 通过四条固定公开 GET 接收查询。Core 保留读策略和凭据暂存，转发绑定受信包代次及用户请求上下文。进程不可用时返回 503，通用代理拒绝该模块。真实设备安装和端到端读取待验。
 - 官方模块来源策略修订升至 5，并授权 relaxkonos.database。默认仍需部署方显式启用来源并配置可信公钥。WSL x86_64 使用自包含 ModuleHost 加载签名候选，核对无令牌请求返回 401、PostgreSQL 实例参数与两种上下文头送达受控回环代理，并通过 ready、health 与 shutdown。真实 Core、目录接纳、在线安装和 Helper 验收待完成。
+- WSL x86_64 运行当前 Linux x64 自包含 Core，在临时服务根以本地测试公钥接纳 Databases 签名目录，并通过离线安装写入 0.1.0 ModuleHost 安装事实。同一操作 ID 的持久回执为 AwaitingRestart，effective=false。在线计划、运行信任确认、监督器激活及真实 Helper 查询待验。
