@@ -159,6 +159,7 @@
     "component_center.page.Tasks": "任务与恢复",
     "component_center.page.Sources": "发布源",
     "component_center.category.network": "网络服务",
+    "component_center.category.database": "数据库",
     "component_center.required": "必需组件",
     "component_center.optional": "可选组件",
     "component_center.choose_component": "请选择组件",

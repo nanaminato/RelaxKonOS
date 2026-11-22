@@ -177,9 +177,11 @@ internal static class ComponentCenterWorkspaceChecks
                     var observationView = new ComponentCenterWorkspace(multiModel);
                     var observationWindow = new Window { Width = 1060, Height = 800, Content = observationView };
                     observationWindow.Show(); Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
-                    Check(!observationView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
-                        text.Text?.Contains("component_center.", StringComparison.Ordinal) == true),
-                        "Host facts resolve in " + language);
+                    var unresolvedHostFacts = observationView.GetVisualDescendants().OfType<TextBlock>()
+                        .Select(text => text.Text).Where(text => text?.Contains("component_center.", StringComparison.Ordinal) == true)
+                        .Distinct().ToArray();
+                    Check(unresolvedHostFacts.Length == 0,
+                        $"Host facts resolve in {language} ({string.Join(", ", unresolvedHostFacts)})");
                     using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
                     {
                         bitmap.Render(observationWindow);

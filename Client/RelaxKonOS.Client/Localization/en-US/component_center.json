@@ -159,6 +159,7 @@
     "component_center.page.Tasks": "Tasks and recovery",
     "component_center.page.Sources": "Release sources",
     "component_center.category.network": "Network services",
+    "component_center.category.database": "Databases",
     "component_center.required": "Required components",
     "component_center.optional": "Optional components",
     "component_center.choose_component": "Select a component",

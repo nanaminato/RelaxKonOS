@@ -159,6 +159,7 @@
     "component_center.page.Tasks": "タスクと復旧",
     "component_center.page.Sources": "配布元",
     "component_center.category.network": "ネットワークサービス",
+    "component_center.category.database": "データベース",
     "component_center.required": "必須コンポーネント",
     "component_center.optional": "任意コンポーネント",
     "component_center.choose_component": "コンポーネントを選択",
