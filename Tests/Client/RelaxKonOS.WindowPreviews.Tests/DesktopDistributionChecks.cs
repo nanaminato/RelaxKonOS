@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,10 @@ internal static class DesktopDistributionChecks
     {
         var source = Path.Combine(publishDirectory, "OfficialApps");
         var published = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(source, "installation-profiles.json"), cancellationToken))!;
+        var basicApps = published["profiles"]!["standard"]!.AsArray()
+            .Where(entry => (string?)entry!["installPolicy"] == "offline")
+            .Select(entry => (string)entry!["appId"]!)
+            .ToArray();
         var parent = Path.Combine(System.AppContext.BaseDirectory, "preview-qa");
         var root = Path.Combine(parent, "desktop-profile-" + Guid.NewGuid().ToString("N"));
         using var services = new ServiceCollection()
@@ -74,7 +79,7 @@ internal static class DesktopDistributionChecks
                             || applications.GetManifest(new AppId(id))?.Version != actual[id].Version)
                             throw new InvalidOperationException($"{profile} did not register the published package {id}.");
                     Console.WriteLine($"{profile}: provisioned {actual.Count} official packages from the published distribution.");
-                    foreach (var basicApp in new[] { "relaxkonos.settings", "relaxkonos.component-center", "relaxkonos.explorer", "relaxkonos.server-center" })
+                    foreach (var basicApp in basicApps)
                     {
                         var appId = new AppId(basicApp);
                         if (profile == "minimal")
@@ -84,10 +89,16 @@ internal static class DesktopDistributionChecks
                             var archive = Path.Combine(source, basicApp + ".roapp");
                             var candidate = await installer.InspectLocalAsync(archive, cancellationToken: cancellationToken);
                             var recovered = await installer.InstallAsync(candidate, cancellationToken);
+                            var asset = ReadRepairAsset(archive);
+                            var originalPath = Path.Combine(recovered.InstallationPath, asset);
+                            var originalBytes = await File.ReadAllBytesAsync(originalPath, cancellationToken);
+                            File.Delete(originalPath);
                             var repair = await installer.InspectLocalAsync(archive, cancellationToken: cancellationToken);
                             var repaired = await installer.InstallAsync(repair, cancellationToken);
+                            var repairedBytes = await File.ReadAllBytesAsync(Path.Combine(repaired.InstallationPath, asset), cancellationToken);
                             if (recovered.Id != basicApp || repaired.Version != recovered.Version
-                                || applications.IsBuiltIn(appId) || applications.GetManifest(appId)?.Version != repaired.Version)
+                                || applications.IsBuiltIn(appId) || applications.GetManifest(appId)?.Version != repaired.Version
+                                || !originalBytes.AsSpan().SequenceEqual(repairedBytes))
                                 throw new InvalidOperationException($"Minimal could not recover and repair {basicApp} from its bundled archive.");
                             Console.WriteLine($"minimal: installed and repaired {basicApp} through the bundled archive.");
                         }
@@ -129,5 +140,17 @@ internal static class DesktopDistributionChecks
                     // Retired collectible contexts may retain a package DLL until process exit.
                 }
         }
+    }
+
+    private static string ReadRepairAsset(string archive)
+    {
+        using var package = ZipFile.OpenRead(archive);
+        using var manifest = package.GetEntry("manifest.json")!.Open();
+        var document = JsonNode.Parse(manifest)!;
+        var asset = (string?)document["iconPath"] ?? Path.ChangeExtension((string?)document["entryAssembly"], ".deps.json");
+        if (string.IsNullOrEmpty(asset) || Path.IsPathRooted(asset)
+            || asset.Split('/', '\\').Any(segment => segment is "" or "." or "..") || package.GetEntry(asset) is null)
+            throw new InvalidDataException($"No safe repair asset in {archive}.");
+        return asset;
     }
 }
