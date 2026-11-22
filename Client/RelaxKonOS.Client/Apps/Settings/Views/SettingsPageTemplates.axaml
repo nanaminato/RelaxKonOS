@@ -13,9 +13,6 @@
         <DataTemplate DataType="vm:PersonalizationLayoutPageViewModel">
                 <pages:PersonalizationLayoutView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:PersonalizationBackgroundPageViewModel">
-                <pages:PersonalizationBackgroundView DataContext="{Binding Editor}" VerticalAlignment="Top" />
-        </DataTemplate>
 
         <DataTemplate DataType="vm:AccountSecurityPageViewModel">
                 <pages:AccountSecurityPageView VerticalAlignment="Top" />

@@ -254,6 +254,13 @@ internal static class SettingsWindowChecks
             window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null); Pump();
             Check(!model.HasSearch, "Escape in embedded search did not restore content.");
             Capture(window, new PixelSize(1100, 800), Path.Combine(output, "window-embedded-header-breadcrumb.png"));
+            model.OpenPageCommand.Execute("personalization/background"); Pump();
+            var backgroundPage = view.GetVisualDescendants()
+                .OfType<RelaxKonOS.App.Settings.Views.PersonalizationBackgroundView>().Single();
+            var wallpaperList = backgroundPage.GetVisualDescendants().OfType<ListBox>().Single();
+            Check(wallpaperList.Items.Count == settings.Wallpapers.Count
+                && wallpaperList.SelectedIndex == settings.WallpaperIndex,
+                "The background page lost the wallpaper choices or the current selection.");
 
             // The same window under every window-chrome recipe. The Settings view names no column and
             // no inset, so this is the assertion that the host's role slots really do the placing -

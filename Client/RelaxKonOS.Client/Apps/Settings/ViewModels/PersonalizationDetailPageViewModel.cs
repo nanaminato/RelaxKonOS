@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Settings.Views;
 using RelaxKonOS.Client.Services;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
@@ -25,8 +26,9 @@ public sealed class PersonalizationLayoutPageViewModel(ShellSettings settings, P
     public override string DisplayNameKey => "settings.desktop_layout";
     public override string DisplayName => "Desktop layout";
 }
-public sealed class PersonalizationBackgroundPageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor)
+public sealed class PersonalizationBackgroundPageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor), IPersonalizationBackgroundPage
 {
+    IPersonalizationBackground IPersonalizationBackgroundPage.Editor => Editor;
     public override string Route => "personalization/background";
     public override string DisplayNameKey => "settings.wallpaper";
     public override string DisplayName => "Background";

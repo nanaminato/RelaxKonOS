@@ -38,6 +38,9 @@
         <DataTemplate DataType="settingsApp:IPersonalizationOverview">
             <settingsApp:PersonalizationPageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:IPersonalizationBackgroundPage">
+            <settingsApp:PersonalizationBackgroundView DataContext="{Binding Editor}" VerticalAlignment="Top" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 

@@ -21,7 +21,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 /// 三者是独立的用户意图：切换颜色不会改变菜单布局，切换风格不会改写调色板，
 /// 而“采用推荐风格”始终是一次显式、可撤销的操作。
 /// 透传读写 <see cref="ShellSettings"/>，改动即时反映到桌面并触发保存。</summary>
-public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel, IPersonalizationOverview
+public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel, IPersonalizationOverview, IPersonalizationBackground
 {
     private readonly IShellCatalog _shellCatalog;
     private readonly ISystemStyleRegistry _systemStyles;
@@ -102,6 +102,11 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public override string DisplayName => "Personalization";
 
     // ── 颜色与模式 ──────────────────────────────────────────────────────────────
+
+    IReadOnlyList<WallpaperPreview> IPersonalizationBackground.Wallpapers =>
+        Wallpapers.Select(option => new WallpaperPreview(option.Name, option.Brush)).ToArray();
+    System.Windows.Input.ICommand IPersonalizationBackground.ChooseImageCommand => ChooseImageCommand;
+    System.Windows.Input.ICommand IPersonalizationBackground.ResetBackgroundCommand => ResetBackgroundCommand;
 
     public IReadOnlyList<WallpaperOption> Wallpapers => Settings.Wallpapers.Select(option => option.Key switch
     {
