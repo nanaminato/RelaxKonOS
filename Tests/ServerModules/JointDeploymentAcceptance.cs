@@ -260,6 +260,18 @@ internal static class JointDeploymentAcceptance
                 Require(confirmations == 2 && !applications.IsRegistered(new AppId(AppIdText)),
                     "retry after a replacement login requires a fresh confirmation");
             }
+            factory.SubstituteServerIdentity = Guid.NewGuid().ToString("D");
+            try
+            {
+                await joint.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected a changed server identity to reject the original plan.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-server-changed") { }
+            finally { factory.SubstituteServerIdentity = null; }
+            Require(!applications.IsRegistered(new AppId(AppIdText))
+                && ModulePackageOperationStore.Read(serverRoot).Count == 0
+                && await new FileDeploymentJournal(journalPath).FindStartedPlanAsync(review.Plan.Id) is null,
+                "a different server identity at the same address rejects the old plan before creating a checkpoint or applying it");
             await ExpectRestartAsync(joint, review);
             Require(!applications.IsRegistered(new AppId(AppIdText)) && InstalledModuleStore.Read(serverRoot).Single().ModuleId == ModuleId,
                 "the first execution installs the signed module and leaves the desktop package pending");
@@ -741,6 +753,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteBlockedHealth { get => handler.SubstituteBlockedHealth; set => handler.SubstituteBlockedHealth = value; }
         public bool HideEffectiveVersion { get => handler.HideEffectiveVersion; set => handler.HideEffectiveVersion = value; }
         public bool SubstituteInventoryDigest { get => handler.SubstituteInventoryDigest; set => handler.SubstituteInventoryDigest = value; }
+        public string? SubstituteServerIdentity { set => handler.SubstituteServerIdentity = value; }
         public bool SubstituteInstalledDigest { get => handler.SubstituteInstalledDigest; set => handler.SubstituteInstalledDigest = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
@@ -772,6 +785,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteBlockedHealth { get; set; }
         public bool HideEffectiveVersion { get; set; }
         public bool SubstituteInventoryDigest { get; set; }
+        public string? SubstituteServerIdentity { get; set; }
         public bool SubstituteInstalledDigest { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
@@ -835,14 +849,16 @@ internal static class JointDeploymentAcceptance
                 };
             }
             if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules
-                && (FaultedModule is not null || HideEffectiveVersion || SubstituteInventoryDigest))
+                && (FaultedModule is not null || HideEffectiveVersion || SubstituteInventoryDigest || SubstituteServerIdentity is not null))
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
                 var modules = await response.Content.ReadFromJsonAsync<ServerModuleDto[]>(RelaxKonOSJsonOptions.Default, cancellationToken);
                 return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(modules!.Select(module => module.Id == FaultedModule
+                    Content = JsonContent.Create(modules!.Select(module => SubstituteServerIdentity is { } identity
+                        ? module with { ServiceId = identity }
+                        : module.Id == FaultedModule
                         ? module with { Residency = new("faulted", false, "KeepLoaded", 0, 0, null, null, null, "fixture", null) }
                         : HideEffectiveVersion && module.Id == ModuleId ? module with { EffectiveVersion = null }
                         : SubstituteInventoryDigest && module.Id == ModuleId ? module with { ArtifactDigest = new string('0', 64) }
