@@ -47,7 +47,7 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
     private ManagedWindow? _window;
     public void Open(Func<ISettingsWorkspace, ManagedWindow> showWorkspace)
     {
-        var context = new AppContext(SettingsApp.Id, services.GetRequiredService<IWindowManager>(), services);
+        var context = new AppContext(SettingsPackageApp.Id, services.GetRequiredService<IWindowManager>(), services);
         var settings = context.Services.GetRequiredService<ShellSettings>();
         var session = context.Services.GetRequiredService<IAuthSession>();
         var settingsClient = context.Services.GetRequiredService<IWorkspaceSettingsService>();

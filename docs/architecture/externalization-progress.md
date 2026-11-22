@@ -530,3 +530,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Settings 包清单与官方包内部路由授权已实现，路由限定设置 URI 的方案、主机名、应用 ID 和官方来源。Windows Release 设置回归通过。DevCli 成功构建 Settings.roapp，归档 CRC、清单与入口 DLL 路径已核对。发行目录注册、实际安装和启动仍待验收。
 - Settings 切换到桌面官方包目录，移除内置注册。Standard 与 Developer 离线预装，Minimal 保留 App Installer。Windows Release 使用既有 25 个官方归档与新 Settings.roapp 验证全部 26 个清单、摘要及入口文件，并运行三档安装测试。Minimal 离线安装和同版本修复通过，Standard 安装 10 项，Developer 安装 11 项，其余是交互项。完整重发及包窗口启动专项仍待核对。
 - Windows Release Settings 包启动验收通过。测试使用官方归档安装到隔离盘，经真实包加载器和应用管理器打开关于页，确认窗口来自可卸载加载上下文，随后打开首页时复用同一窗体。宿主工作区由测试提供，未执行已登录主机操作。
+- 移除未注册的旧 Settings 内置入口，窗口创建和路由分发由包入口直接处理。Windows Release 工作区偏好及重建归档的隔离安装和深链接回归均通过。

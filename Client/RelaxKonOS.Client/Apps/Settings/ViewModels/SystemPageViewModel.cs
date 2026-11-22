@@ -177,7 +177,7 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel, ISystem
     public string UserCreated => _session.CurrentUser?.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—";
     public string LastLogin => _session.CurrentUser?.LastLoginAt?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—";
 
-    /// <summary>Provided by SettingsApp so system-property actions always open in a child window.</summary>
+    /// <summary>Provided by the Settings window so system-property actions always open in a child window.</summary>
     public Func<Task>? RequestEnvironmentVariablesAsync { get; set; }
     public Func<Task>? RequestWorkspaceEnvironmentAsync { get; set; }
     [RelayCommand]

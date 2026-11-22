@@ -28,7 +28,10 @@ await WorkspaceEnvironmentTransportChecks.RunAsync();
 
 // Settings activation must reach the new detail routes without accepting arbitrary pages.
 var settingsWindow = new SettingsWindowProbe();
-var settingsApp = new RelaxKonOS.App.Settings.SettingsApp(settingsWindow);
+var settingsApp = new RelaxKonOS.App.Settings.SettingsPackageApp();
+var packageContext = DispatchProxy.Create<ISettingsPackageProbeContext, SettingsPackageContextProbe>();
+var packageProbe = (SettingsPackageContextProbe)(object)packageContext;
+packageProbe.Workspace = settingsWindow;
 foreach (var route in new[] { "home", "accessibility", "system/preferences", "system/environment", "personalization/colors", "personalization/style", "personalization/layout", "personalization/background", "default-apps" })
     Check(settingsApp.CanHandleActivation(new Uri("relaxkonos://settings/" + route)), $"Settings rejected route '{route}'.");
 foreach (var uri in new[] { "relaxkonos://settings/personalization/unknown", "relaxkonos://settings/image-mirrors", "https://settings/home", "relaxkonos://other/home", "relaxkonos://settings/system%2Fenvironment" })
@@ -42,23 +45,17 @@ foreach (var (route, target) in new[]
 {
     var uri = new Uri(route);
     Check(settingsApp.CanHandleActivation(uri), $"Settings rejected '{route}'.");
-    settingsApp.HandleActivation(null!, new(uri), null);
+    await settingsApp.HandleActivationAsync(packageContext, uri);
     Check(settingsWindow.Target == target, $"Settings dispatched '{route}' to the wrong destination.");
 }
-settingsApp.HandleActivation(null!, new(new Uri("https://settings/home")), null);
+await settingsApp.HandleActivationAsync(packageContext, new Uri("https://settings/home"));
 Check(settingsWindow.Target == "permissions:example.App", "Settings dispatched an unsupported activation.");
 
-var packageApp = new RelaxKonOS.App.Settings.SettingsPackageApp();
-var packageContext = DispatchProxy.Create<ISettingsPackageProbeContext, SettingsPackageContextProbe>();
-var packageProbe = (SettingsPackageContextProbe)(object)packageContext;
-packageProbe.Workspace = settingsWindow;
 var homeUri = new Uri("relaxkonos://settings/home");
-await packageApp.HandleActivationAsync(packageContext, homeUri);
-Check(settingsWindow.Target == "home", "The Settings package did not dispatch through its workspace capability.");
 packageProbe.Workspace = null;
 try
 {
-    await packageApp.HandleActivationAsync(packageContext, homeUri);
+    await settingsApp.HandleActivationAsync(packageContext, homeUri);
     throw new Exception("The Settings package accepted activation without its workspace capability.");
 }
 catch (InvalidOperationException) { }
@@ -267,7 +264,7 @@ public class SettingsPackageContextProbe : DispatchProxy
 
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
-        "get_AppId" => RelaxKonOS.App.Settings.SettingsApp.Id,
+        "get_AppId" => RelaxKonOS.App.Settings.SettingsPackageApp.Id,
         "get_SettingsWindow" => Workspace,
         _ => throw new NotSupportedException(method?.Name),
     };
