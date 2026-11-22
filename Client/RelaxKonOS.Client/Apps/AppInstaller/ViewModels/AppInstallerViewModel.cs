@@ -231,6 +231,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         { Message: "deployment-module-unhealthy" } => LocalizedText.Get("app_installer.deployment.health_pending"),
         { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),
+        HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError or HttpRequestError.NameResolutionError } =>
+            LocalizedText.Get("app_installer.deployment.server_unreachable"),
         { Message: "deployment-plan-in-progress" } => LocalizedText.Get("app_installer.deployment.plan_in_progress"),
         { Message: "deployment-account-changed" or "module-session-changed" } =>
             LocalizedText.Get("app_installer.deployment.session_changed"),

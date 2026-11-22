@@ -60,6 +60,7 @@
         "app_installer.deployment.module_recovery_operation": "{0} requires recovery for operation {1}. Resolve that operation in Component Center on the connected server before retrying this deployment.",
         "app_installer.deployment.activation_pending": "A required module is not active. Check its status in Component Center, then retry.",
         "app_installer.deployment.no_permission": "The current account does not have permission to manage server modules.",
+        "app_installer.deployment.server_unreachable": "The server could not be reached. Check the connection, then retry the deployment review.",
         "app_installer.deployment.module_unavailable": "No compatible server module is available for {0}. Check the module and its sources in Component Center.",
         "app_installer.deployment.app_unavailable": "No compatible installed application satisfies the dependency on {0}.",
         "app_installer.deployment.session_changed": "The login session changed. Review the deployment again after signing in.",

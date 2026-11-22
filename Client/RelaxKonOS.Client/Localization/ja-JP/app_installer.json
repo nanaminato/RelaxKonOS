@@ -60,6 +60,7 @@
         "app_installer.deployment.module_recovery_operation": "モジュール {0} の操作 {1} の復旧が必要です。コンポーネントセンターで接続先サーバーの該当操作を復旧してから、デプロイを再試行してください。",
         "app_installer.deployment.activation_pending": "必須モジュールが有効になっていません。コンポーネントセンターで状態を確認してから再試行してください。",
         "app_installer.deployment.no_permission": "現在のアカウントにはサーバーモジュールの管理権限がありません。",
+        "app_installer.deployment.server_unreachable": "サーバーに接続できませんでした。接続を確認してから、デプロイの確認をやり直してください。",
         "app_installer.deployment.module_unavailable": "互換性のあるサーバーモジュール {0} が見つかりません。コンポーネントセンターでモジュールと配布元を確認してください。",
         "app_installer.deployment.app_unavailable": "{0} への依存関係を満たす互換アプリがインストールされていません。",
         "app_installer.deployment.session_changed": "ログインセッションが変わりました。サインイン後にデプロイ計画をもう一度確認してください。",

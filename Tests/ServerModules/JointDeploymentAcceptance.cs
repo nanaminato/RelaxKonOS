@@ -699,6 +699,7 @@ internal static class JointDeploymentAcceptance
                 Require(store.SelectedOfficialApp is { SelectedByProfile: true } selected && selected.Id == candidate.Manifest.Id,
                     "the official store selects the Developer-profile Proxy archive for review");
                 await store.DownloadOfficialCommand.ExecuteAsync(null);
+                var staged = store.CurrentPackage;
                 DeploymentPlan? declined = null;
                 store.SelectOptionalAsync = requirements => Task.FromResult<IReadOnlyList<DeploymentRequirement>?>(requirements);
                 store.ConfirmDeploymentAsync = plan =>
@@ -706,6 +707,19 @@ internal static class JointDeploymentAcceptance
                     declined = plan;
                     return Task.FromResult(false);
                 };
+                string? reportedError = null;
+                store.ShowMessageAsync = (_, message) =>
+                {
+                    reportedError = message;
+                    return Task.CompletedTask;
+                };
+                factory.BeforeNextRequest = () => throw new HttpRequestException(HttpRequestError.ConnectionError, "fixture server unreachable");
+                await store.InstallCommand.ExecuteAsync(null);
+                Require(staged is not null && ReferenceEquals(store.CurrentPackage, staged) && declined is null
+                    && reportedError?.Contains(RelaxKonOS.Client.Localization.LocalizedText.Get(
+                        "app_installer.deployment.server_unreachable"), StringComparison.Ordinal) == true
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 0,
+                    "an unreachable server leaves the Developer-profile archive ready to retry without deploying");
                 await store.InstallCommand.ExecuteAsync(null);
                 Require(declined is { PreparedSteps.Length: 1 }
                     && declined.OrderedReleases.Any(release => release.Package.Kind == DeploymentPackageKind.ServerModule

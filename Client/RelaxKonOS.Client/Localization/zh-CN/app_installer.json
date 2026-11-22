@@ -60,6 +60,7 @@
         "app_installer.deployment.module_recovery_operation": "模块 {0} 的操作 {1} 需要恢复。请在组件中心处理当前服务器上的该操作，再重试部署。",
         "app_installer.deployment.activation_pending": "必需模块尚未启用。请在组件中心检查其状态，然后重试。",
         "app_installer.deployment.no_permission": "当前账户没有管理服务端模块的权限。",
+        "app_installer.deployment.server_unreachable": "无法连接服务端。请检查连接后重新审阅部署。",
         "app_installer.deployment.module_unavailable": "没有可用的兼容服务端模块 {0}。请在组件中心检查该模块及其来源。",
         "app_installer.deployment.app_unavailable": "已安装的应用中没有兼容版本可满足对 {0} 的依赖。",
         "app_installer.deployment.session_changed": "登录会话已变更。请登录后重新审阅部署计划。",
