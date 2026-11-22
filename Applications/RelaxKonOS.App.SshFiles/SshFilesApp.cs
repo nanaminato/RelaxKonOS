@@ -8,12 +8,10 @@ namespace RelaxKonOS.App.SshFiles;
 
 public sealed class SshFilesApp : IExternalRemoteApplication
 {
-    internal const string TitleKey = "application.relaxkonos.ssh-files.display_name";
-    internal static ApplicationManifest Definition { get; } = new(
+    private const string TitleKey = "application.relaxkonos.ssh-files.display_name";
+    public ApplicationManifest Manifest { get; } = new(
         Id: new AppId("relaxkonos.ssh-files"), DisplayName: "SSH files",
         Version: "1.0.0", IconGlyph: "📁", Description: "Browse and transfer files over SFTP");
-
-    public ApplicationManifest Manifest => Definition;
 
     public Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default)
     {

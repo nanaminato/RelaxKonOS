@@ -28,9 +28,9 @@ relaxkonos://file/open?appId={appId}&path={encodedPath}
 relaxkonos://components/{componentId}?hostId={serverIdentity}&appId={associatedAppId}
 ```
 
-文件打开路线允许 Shell、`relaxkonos.explorer` 和 `relaxkonos.ssh-files` 作为来源；外置包不能用它
-传递宿主路径，而应使用其受限的文件 capability。调用方应使用
-`RelaxKonOSActivationUris`，不能手工拼接字符串。
+文件打开路线允许 Shell、`relaxkonos.explorer` 和 `relaxkonos.ssh-files` 作为来源。官方 SSH 文件包通过
+`ISshFileOpener` 请求打开远端文件，宿主核对当前 SSH 会话并选择关联应用。其他外部应用使用各自的文件能力。
+宿主调用方使用 `RelaxKonOSActivationUris` 构造路线。
 
 应用启动路线接收已注册的应用 ID，并沿用窗口实例策略、兼容性和启动守卫。调用方可使用
 `RelaxKonOSActivationUris.LaunchApplication`。Welcome 从这一入口打开记事本，记事本不可用时打开应用安装器。

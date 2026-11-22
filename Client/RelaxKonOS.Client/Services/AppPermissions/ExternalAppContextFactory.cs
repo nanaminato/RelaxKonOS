@@ -48,6 +48,8 @@ public sealed class ExternalAppContextFactory
     private readonly DockerImageMirrorClient _dockerMirrors;
     private readonly IExplorerClient _files;
     private readonly SshDesktopSession _sshSession;
+    private readonly object _sshFilesGate = new();
+    private (ServerCenterSshEndpoint Endpoint, CancellationToken Lifetime, ExternalSshFileSession Session)? _sshFileCapability;
     private readonly SshExplorerClient _sshFiles;
     private readonly ISettingsNavigation _settingsNavigation;
     private readonly IAppCapabilityClient _capabilities;
@@ -234,7 +236,7 @@ public sealed class ExternalAppContextFactory
         appId.Value == "relaxkonos.terminal"
             ? new ExternalTerminal(connection.IsCurrent ? connection : null, _sshSession, _diagnostics) : null,
         appId.Value == "relaxkonos.ssh-files" && sshEndpoint is not null
-            ? new ExternalSshFileSession(_sshSession, sshEndpoint, lifetime) : null,
+            ? GetSshFileCapability(sshEndpoint, lifetime) : null,
         appId.Value == "relaxkonos.ssh-files" && sshEndpoint is not null
             ? new SshTransferPicker(() => fileSession) : null,
         appId.Value == "relaxkonos.ssh-files" && sshEndpoint is not null && _activations is ApplicationManager applications
@@ -261,6 +263,19 @@ public sealed class ExternalAppContextFactory
         new ExternalAppActivation(appId, _activations),
         _settingsNavigation,
         new ExternalAppWindowService(manifest, _windowManager, lifetime, onWindowCreated));
+    }
+
+    private ISshFileSession GetSshFileCapability(ServerCenterSshEndpoint endpoint, CancellationToken lifetime)
+    {
+        lock (_sshFilesGate)
+        {
+            // Windows from the same installed package share clipboard and drag-and-drop state.
+            if (_sshFileCapability is { } current && ReferenceEquals(current.Endpoint, endpoint) && current.Lifetime == lifetime)
+                return current.Session;
+            var session = new ExternalSshFileSession(_sshSession, endpoint, lifetime);
+            _sshFileCapability = (endpoint, lifetime, session);
+            return session;
+        }
     }
 
     private sealed record ExternalAppContext(

@@ -344,8 +344,16 @@ internal static class OfficialRoappChecks
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
                     "The installed entry point must create its own workspace.");
                 if (isSshFiles)
+                {
                     Check(System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(workspace.View.Content!.GetType().Assembly)?.IsCollectible == true,
                         "SSH Files must display the view loaded from the installed package.");
+                    Check(await packages.LaunchAsync(applicationId), "The SSH Files package must support multiple windows.");
+                    var second = windows.Windows.Single(window => !ReferenceEquals(window, workspace));
+                    var sessionField = workspace.View.Content!.GetType().GetField("_session", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    Check(ReferenceEquals(sessionField.GetValue(workspace.View.Content), sessionField.GetValue(second.View.Content)),
+                        "SSH Files windows from the same package and connection must share clipboard and drag state.");
+                    windows.Close(second);
+                }
                 if (isDatabase)
                 {
                     var model = ((Control)workspace.View.Content!).DataContext!;

@@ -1,4 +1,3 @@
-using RelaxKonOS.App.SshFiles.Views;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -42,22 +41,30 @@ internal static class LiveSshFusedReview
         var apps = services.GetRequiredService<ApplicationManager>();
         if (!apps.Launch(new AppId("relaxkonos.server-center")) || !apps.Launch(new AppId("relaxkonos.ssh-files")))
             throw new InvalidOperationException("SSH workspace applications could not be launched.");
-        var fileWindow = windows.Windows.Single(window => window.Info.OwnerAppId.Value == "relaxkonos.ssh-files");
-        var view = (SshFileBrowserView)fileWindow.View.Content!;
-        while (Busy() || view.ActiveTab.Path == ".") await Task.Delay(100, ct);
-        var first = view.ActiveTab;
-        view.SearchText = "review-filter";
-        view.NewTab();
-        var second = view.ActiveTab;
+        ManagedWindow? fileWindow;
+        while ((fileWindow = windows.Windows.SingleOrDefault(window => window.Info.OwnerAppId.Value == "relaxkonos.ssh-files")) is null)
+            await Task.Delay(100, ct);
+        var view = (Control)fileWindow.View.Content!;
+        var viewType = view.GetType();
+        Require(viewType.FullName == "RelaxKonOS.App.SshFiles.Views.SshFileBrowserView"
+            && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(viewType.Assembly)?.IsCollectible == true,
+            "SSH Files must launch its installed official package.");
+        const BindingFlags internalMember = BindingFlags.Instance | BindingFlags.NonPublic;
+        var search = viewType.GetProperty("SearchText")!;
+        while (Busy() || PathOf(ActiveTab()) == ".") await Task.Delay(100, ct);
+        var first = ActiveTab();
+        search.SetValue(view, "review-filter");
+        Invoke("NewTab");
+        var second = ActiveTab();
         await Navigate("/");
-        Require(second.Path == "/" && view.SearchText == "", "New SSH tab did not navigate independently.");
-        view.SwitchTab(first);
-        Require(view.SearchText == "review-filter" && first.Path != ".", "SSH switching lost the first tab's directory/filter.");
-        view.SwitchTab(second);
-        Require(view.SearchText == "" && second.Path == "/", "SSH switching reused the first tab's filter.");
-        view.CloseTab(second);
-        Require(ReferenceEquals(view.ActiveTab, first), "Closing the active SSH tab did not restore its neighbor.");
-        view.SearchText = "";
+        Require(PathOf(second) == "/" && Equals(search.GetValue(view), ""), "New SSH tab did not navigate independently.");
+        Invoke("SwitchTab", first);
+        Require(Equals(search.GetValue(view), "review-filter") && PathOf(first) != ".", "SSH switching lost the first tab's directory/filter.");
+        Invoke("SwitchTab", second);
+        Require(Equals(search.GetValue(view), "") && PathOf(second) == "/", "SSH switching reused the first tab's filter.");
+        Invoke("CloseTab", second);
+        Require(ReferenceEquals(ActiveTab(), first), "Closing the active SSH tab did not restore its neighbor.");
+        search.SetValue(view, "");
         Console.WriteLine("LIVE SSH TABS PASS: SFTP home/root reads, independent filters, switching and active-tab close.");
 
         var settings = services.GetRequiredService<ShellSettings>();
@@ -86,11 +93,14 @@ internal static class LiveSshFusedReview
         finally { settings.Apply(original); foreach (var window in windows.Windows.ToArray()) windows.ForceClose(window); session.Disconnect(); }
         Console.WriteLine("LIVE SSH REVIEW PASS: authenticated SFTP and server-center workspace; no remote write operations.");
 
-        bool Busy() => (bool)typeof(SshFileBrowserView).GetField("_busy", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
+        bool Busy() => (bool)viewType.GetField("_busy", internalMember)!.GetValue(view)!;
+        object ActiveTab() => viewType.GetProperty("ActiveTab", internalMember)!.GetValue(view)!;
+        static string PathOf(object tab) => (string)tab.GetType().GetProperty("Path")!.GetValue(tab)!;
+        object? Invoke(string method, params object[] arguments) =>
+            viewType.GetMethod(method, internalMember)!.Invoke(view, arguments);
         async Task Navigate(string path)
         {
-            await ((Task)typeof(SshFileBrowserView).GetMethod("NavigateAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(view, [path, true])!).WaitAsync(ct);
+            await ((Task)Invoke("NavigateAsync", path, true)!).WaitAsync(ct);
         }
     }
 

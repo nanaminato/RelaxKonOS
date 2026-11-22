@@ -355,7 +355,6 @@ public static class Bootstrapper
         // Built-in applications.
         services.AddSingleton<SettingsApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.SshFileBrowserApp>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
         services.AddHttpClient<IServerPostgreSql, Databases.PostgreSqlClient>()
