@@ -201,6 +201,15 @@ internal static class JointDeploymentAcceptance
             catch (InvalidOperationException error) when (error.Message == "deployment-module-unhealthy") { }
             finally { factory.SubstituteHealthVersion = false; }
             await executor.VerifyAsync(review.Plan, moduleRelease, default);
+            factory.SubstituteBlockedHealth = true;
+            try
+            {
+                var report = await new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth).CheckHealthAsync();
+                Require(report.Modules.Single(item => item.ModuleId == ModuleId) is
+                    { Status: "blocked", ProblemCode: "module-host-code-trust-required" },
+                    "the desktop accepts a valid health report containing a blocked ModuleHost");
+            }
+            finally { factory.SubstituteBlockedHealth = false; }
             try
             {
                 await joint.ExecuteAsync(review with
@@ -532,6 +541,7 @@ internal static class JointDeploymentAcceptance
         public int Requests => handler.Requests;
         public bool SubstituteReceiptRelease { get => handler.SubstituteReceiptRelease; set => handler.SubstituteReceiptRelease = value; }
         public bool SubstituteHealthVersion { get => handler.SubstituteHealthVersion; set => handler.SubstituteHealthVersion = value; }
+        public bool SubstituteBlockedHealth { get => handler.SubstituteBlockedHealth; set => handler.SubstituteBlockedHealth = value; }
         public bool HideEffectiveVersion { get => handler.HideEffectiveVersion; set => handler.HideEffectiveVersion = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
@@ -559,6 +569,7 @@ internal static class JointDeploymentAcceptance
         public bool DropEnableResponse { get; set; }
         public bool SubstituteReceiptRelease { get; set; }
         public bool SubstituteHealthVersion { get; set; }
+        public bool SubstituteBlockedHealth { get; set; }
         public bool HideEffectiveVersion { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
@@ -569,7 +580,8 @@ internal static class JointDeploymentAcceptance
             Requests++;
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
-            if (SubstituteHealthVersion && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleHealth)
+            if ((SubstituteHealthVersion || SubstituteBlockedHealth)
+                && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleHealth)
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
@@ -579,8 +591,13 @@ internal static class JointDeploymentAcceptance
                 {
                     Content = JsonContent.Create(report with
                     {
-                        Modules = report.Modules.Select(item => item.ModuleId == ModuleId
-                            ? item with { Version = "9.0.0" } : item).ToArray(),
+                        Healthy = report.Healthy && !SubstituteBlockedHealth,
+                        Modules = report.Modules.Select(item => item.ModuleId != ModuleId ? item
+                            : SubstituteBlockedHealth ? item with
+                            {
+                                Status = "blocked", ProblemCode = "module-host-code-trust-required", Version = null,
+                            }
+                            : item with { Version = "9.0.0" }).ToArray(),
                     }, options: RelaxKonOSJsonOptions.Default),
                 };
             }

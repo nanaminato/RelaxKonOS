@@ -296,6 +296,7 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         Require(report is not null && report.CheckedAt != default && report.Modules is { Count: <= 256 }
             && report.Modules.All(module => module is not null && ValidIds([module.ModuleId])
                 && module.Status is "host" or "loaded" or "healthy" or "unhealthy" or "quarantined" or "load-failed"
+                    or "disabled" or "blocked" or "starting" or "draining" or "stopping" or "stopped" or "faulted"
                 && ValidCode(module.ProblemCode))
             && report.Modules.Select(module => module.ModuleId).Distinct(StringComparer.Ordinal).Count() == report.Modules.Count);
         return report;
