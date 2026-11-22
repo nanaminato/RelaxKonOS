@@ -26,9 +26,6 @@
         <DataTemplate DataType="vm:PersonalizationPageViewModel">
                 <pages:PersonalizationPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:TimeLanguagePageViewModel">
-                <pages:TimeLanguagePageView VerticalAlignment="Top" />
-        </DataTemplate>
         <DataTemplate DataType="vm:NetworkAdapterPageViewModel">
             <pages:HostNetworkView DataContext="{Binding Editor}" IsAdapterDetailPage="True" VerticalAlignment="Top" />
         </DataTemplate>

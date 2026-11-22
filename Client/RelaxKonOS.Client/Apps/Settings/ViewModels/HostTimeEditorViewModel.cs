@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,7 +12,7 @@ using RelaxKonOS.Protocol.Settings;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Draft/preview/apply UI over the independent remote service; never reads client OS time zone.</summary>
-public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposable
+public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposable, IHostTimeEditor
 {
     private readonly IHostTimeService _service;
     private readonly IAuthSession _session;
@@ -36,6 +38,11 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     public Func<HostSettingsConnection, Task<bool>>? RequestAuthorizationAsync { get; set; }
     /// <summary>Reports a failed request through a prompt; the page keeps no operation-details surface.</summary>
     public Func<string, Task>? RequestReportProblemAsync { get; set; }
+    ICommand IHostTimeEditor.ReloadCommand => ReloadCommand;
+    ICommand IHostTimeEditor.ApplyCommand => ApplyCommand;
+    ICommand IHostTimeEditor.QueryCommand => QueryCommand;
+    ICommand IHostTimeEditor.ResetDraftCommand => ResetDraftCommand;
+
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _targetText = "";
     [ObservableProperty] private string _currentZone = "";

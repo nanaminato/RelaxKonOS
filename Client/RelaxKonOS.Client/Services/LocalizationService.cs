@@ -206,4 +206,3 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
 }
 
 /// <summary>A selectable UI language discovered from a language file.</summary>
-public sealed record SystemLanguageOption(string Culture, string DisplayName);

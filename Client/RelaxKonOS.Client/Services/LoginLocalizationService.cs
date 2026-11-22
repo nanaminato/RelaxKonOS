@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -71,7 +72,7 @@ public sealed class LoginLocalizationService : ObservableObject
 
     private static Dictionary<string, LanguageFile> LoadLanguageFiles()
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "Localization");
+        var directory = Path.Combine(System.AppContext.BaseDirectory, "Localization");
         var loaded = new Dictionary<string, LanguageFileBuilder>(StringComparer.OrdinalIgnoreCase);
         if (Directory.Exists(directory))
         {

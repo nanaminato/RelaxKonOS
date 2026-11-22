@@ -1,3 +1,6 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Services.Diagnostics;
 using System.Globalization;
@@ -8,7 +11,7 @@ using RelaxKonOS.Protocol.Workspace;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Workspace display formats and a separate, explicitly targeted remote host time editor.</summary>
-public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
+public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, ITimeLanguagePage
 {
     private readonly LocalizationService _localization;
     private bool _refreshingLanguageOptions;
@@ -43,6 +46,7 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
                 LanguageOptions = BuildLanguageOptions();
                 base.OnLanguageChanged(sender, e);
                 OnPropertyChanged(nameof(SelectedLanguage));
+                OnPropertyChanged(nameof(Labels));
             }
             finally { _refreshingLanguageOptions = false; }
         });
@@ -51,6 +55,13 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
     public override string Route => "time-language";
     public override string DisplayNameKey => "settings.page.time_language";
     public override string DisplayName => "Time & language";
+
+    public Func<string, string> Labels => key => _localization.Get(key, key);
+    IReadOnlyList<string> ITimeLanguagePage.TimeFormats => TimeFormats;
+    IReadOnlyList<string> ITimeLanguagePage.DateFormats => DateFormats;
+    IReadOnlyList<string> ITimeLanguagePage.Regions => Regions;
+    IHostTimeEditor ITimeLanguagePage.HostTime => HostTime;
+    ICommand ITimeLanguagePage.ResetTimeFormatsCommand => ResetTimeFormatsCommand;
 
     public static IReadOnlyList<string> TimeFormats { get; } = new[] { "24h", "12h" };
 

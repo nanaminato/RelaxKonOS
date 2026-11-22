@@ -1,3 +1,5 @@
+using RelaxKonOS.App.Settings.Views;
+using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Threading;

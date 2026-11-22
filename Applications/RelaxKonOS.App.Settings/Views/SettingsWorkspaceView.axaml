@@ -32,6 +32,9 @@
         <DataTemplate DataType="settingsApp:AppPermissionEditor">
             <settingsApp:AppPermissionDialogView VerticalAlignment="Top" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:ITimeLanguagePage">
+            <settingsApp:TimeLanguagePageView VerticalAlignment="Top" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 
