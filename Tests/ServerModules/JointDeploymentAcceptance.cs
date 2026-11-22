@@ -607,6 +607,13 @@ internal static class JointDeploymentAcceptance
                 host = await TestHost.StartAsync(serverRoot, config);
                 session.Url = host.Url;
                 joint = Service();
+                var restartedClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                var stoppedInventory = await restartedClient.ReadAsync();
+                var stopped = stoppedInventory.Single(module => module.Id == dependencyId);
+                var stopReceipt = await restartedClient.OperationAsync(disabled.OperationId);
+                Require(!stopped.DesiredEnabled && !stopped.EffectiveEnabled && !stopped.RestartRequired
+                    && stopReceipt.State == ServerModuleOperationState.Succeeded,
+                    $"restart completes the disable receipt and makes {dependencyId} ineffective");
 
                 var officialArchive = activationArchives.GetValueOrDefault(dependencyId);
                 var activationAppId = officialArchive is null ? "fixture.bundled" : Path.GetFileNameWithoutExtension(officialArchive);
