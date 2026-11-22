@@ -78,18 +78,21 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
 
     public async Task ExecuteAsync(DeploymentPlan plan, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         await using var lease = await journal.OpenAsync(plan, cancellationToken);
         var checkpoint = lease.Checkpoint;
         if (checkpoint?.RequiresReview == true)
             throw new DeploymentPlanReviewRequiredException("deployment-module-plan-expired");
+        if (checkpoint is null)
+            CheckExpiration();
+
         var current = await backend.ObserveAsync(cancellationToken);
         if (current.ServerIdentity != plan.Target.ServerIdentity)
             throw new InvalidOperationException("deployment-server-changed");
 
         if (checkpoint is null)
         {
-            if (clock.GetUtcNow() >= plan.ExpiresAt)
-                throw new InvalidOperationException("deployment-plan-expired");
+            CheckExpiration();
             if (current != plan.Target)
                 throw new InvalidOperationException("deployment-snapshot-changed");
 
@@ -118,5 +121,11 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
         cancellationToken.ThrowIfCancellationRequested();
         await backend.VerifyAsync(plan, cancellationToken);
         await lease.SaveAsync(new(plan.OrderedReleases.Length, true), CancellationToken.None);
+
+        void CheckExpiration()
+        {
+            if (clock.GetUtcNow() >= plan.ExpiresAt)
+                throw new InvalidOperationException("deployment-plan-expired");
+        }
     }
 }

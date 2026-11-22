@@ -446,3 +446,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows Release 将实际 Docker Manager 官方归档加入 `--joint-deployment-acceptance`。隔离环回宿主使用实际 Compose 操作台账，验证随附 Docker 模块停用后仅生成启用计划，服务端重启后才登记应用。直接复用已启用模块时未产生新的模块包操作，卸载应用只移除依赖记录。测试未调用 Docker Engine。
 - Windows Release 使用实际 Web Server Manager 官方归档验证传递依赖的启用和恢复。计划先复用 Certificates，再启用 Web Servers，服务端重启后才登记桌面应用。服务端停用预览在 Web Servers 仍启用时阻止停用 Certificates。卸载桌面应用只移除直接依赖记录，不更改服务端模块。Docker Manager 同轮回归通过，未调用 Nginx 或 Docker Engine。
 - 联合部署只接受包清单声明的可选依赖及原版本、能力条件，无效选择在任何服务端请求之前被拒绝。Windows Release 隔离双包回归使用声明了可选 Firewall 和必需签名模块的测试桌面归档，验证选中时保留 Firewall，取消后仍规划并安装必需签名模块。安装器对话框继续默认勾选清单的可选项，本次通过安装器视图模型和环回模块管理 API 验收。
+- 从未开始的过期联合部署计划在联系服务器前被拒绝，避免离线错误掩盖必须重新审阅的状态。读取当前快照后再次校验时限，已写入检查点的计划继续沿用原恢复流程。Release 协调器测试通过，覆盖服务器不可达时返回过期、未生成执行检查点以及现有中断恢复。

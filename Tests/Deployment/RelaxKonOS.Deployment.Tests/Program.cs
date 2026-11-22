@@ -58,7 +58,11 @@ async Task Reject(DeploymentPlan candidate, string message)
     try { await coordinator.ExecuteAsync(candidate); throw new Exception("Expected rejection."); }
     catch (InvalidOperationException ex) when (ex.Message == message) { }
 }
-await Reject(plan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }, "deployment-plan-expired");
+var expired = plan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) };
+backend.Offline = true;
+await Reject(expired, "deployment-plan-expired");
+Check(await journal.FindStartedPlanAsync(expired.Id) is null);
+backend.Offline = false;
 backend.Target = backend.Target with { ServerIdentity = "other" };
 await Reject(plan, "deployment-server-changed");
 backend.Target = plan.Target;
@@ -155,7 +159,9 @@ sealed class Backend : IDeploymentBackend
     public int Verifications;
     public Action AfterStep;
     public int? ReviewRequiredAt;
-    public Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken) => Task.FromResult(Target);
+    public bool Offline;
+    public Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken) =>
+        Offline ? Task.FromException<DeploymentTarget>(new IOException("Server unreachable")) : Task.FromResult(Target);
     public Task ApplyOrReconcileAsync(DeploymentPlan plan, int index, CancellationToken cancellationToken)
     {
         Applied.Add(index);
