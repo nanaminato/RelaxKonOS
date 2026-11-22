@@ -234,6 +234,11 @@ internal static class InstalledModuleChecks
                 && !quarantineBuilder.Services.Any(descriptor => descriptor.ServiceType.FullName == "FixtureModule.FixtureMarker"),
                 "a quarantined module publishes no capability and loads no assembly");
             ModulePackageStartupGuard.Complete(root);
+            var quarantinedRetry = ModulePackageOperationStore.Record(root, "install", quarantined, null, now);
+            var quarantinedStartup = ModulePackageOperationStore.VerifyStartup(root, InstalledModuleStore.Read(root), "quarantined-startup", now);
+            check(quarantinedStartup.Single(operation => operation.OperationId == quarantinedRetry.OperationId) is
+                { State: ModulePackageOperationState.Failed, ProblemCode: "module-package-quarantined" },
+                "startup verification cannot mark a quarantined target successful even when identity and digest match");
             var restoredModules = InstalledModuleStore.Read(root).ToList();
             restoredModules[restoredModules.FindIndex(module => module.ModuleId == "fixture-module")] = fixtureRecord;
             InstalledModuleStore.Write(root, restoredModules);

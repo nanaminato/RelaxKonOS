@@ -76,7 +76,7 @@ internal static class ModulePackageOperationStore
     }
 
     /// <summary>Called after the Host is healthy: a pending intent becomes Succeeded only when the
-    /// installed fact still names the exact release it asked for.</summary>
+    /// installed fact still names the exact release it asked for and is not quarantined.</summary>
     internal static IReadOnlyList<ModulePackageOperation> VerifyStartup(string contentRoot,
         IReadOnlyList<InstalledModuleRecord> installed, string processGeneration, DateTimeOffset now)
     {
@@ -90,10 +90,11 @@ internal static class ModulePackageOperationStore
             var matched = byModule.TryGetValue(operation.ModuleId, out var current)
                 && current.Version == operation.Version && current.ReleaseId == operation.ReleaseId
                 && current.ArtifactSha256 == operation.ArtifactSha256;
+            var quarantined = matched && current!.Quarantined;
             var updated = operation with
             {
-                State = matched ? ModulePackageOperationState.Succeeded : ModulePackageOperationState.Failed,
-                ProblemCode = matched ? null : operation.State == ModulePackageOperationState.Applying
+                State = matched && !quarantined ? ModulePackageOperationState.Succeeded : ModulePackageOperationState.Failed,
+                ProblemCode = quarantined ? "module-package-quarantined" : matched ? null : operation.State == ModulePackageOperationState.Applying
                     ? "module-host-update-interrupted" : "module-package-operation-target-mismatch",
                 ProcessGeneration = processGeneration,
                 UpdatedAt = now,

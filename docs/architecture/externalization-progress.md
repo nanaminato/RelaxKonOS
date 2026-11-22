@@ -775,3 +775,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 启动恢复仅处理每个模块最新且与当前安装事实精确匹配的待重启回执。旧回执只标记目标不匹配，不再触发隔离或回滚。自动回滚也检查历史版本撤销记录。Windows Release 模块包和 HTTP 专项通过，覆盖过时首次安装回执及 Git 历史归档撤销后的隔离。
 - Core 解析有效模块时排除隔离的已安装包，并按依赖顺序阻止其使用方启动。清单保留期望配置，健康报告明确依赖隔离，有效能力不再包含受阻模块。Windows Release 生命周期与 HTTP 专项通过，覆盖 Certificates 隔离时 Web Server 停止声明可用能力。
 - 当前分支的 Linux x64 自包含模块测试宿主重新发布，在 WSL 本地临时目录通过 157 项模块包检查和 192 项生命周期检查。使用现有 Linux 发行 Welcome、Web Server Manager、Docker Manager 归档另通过联合部署专项，覆盖依赖复用、登记、卸载释放及离线客户端依赖。联合专项使用隔离测试宿主。
+- 启动回执核验拒绝把隔离的安装目标标记为成功，即便版本、发行 ID 与摘要全部相同。Windows Release 模块包专项覆盖该情形并通过。
