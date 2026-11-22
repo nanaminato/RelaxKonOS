@@ -185,7 +185,7 @@ if (args is ["--live-git-joint-deployment", var gitServer, var gitArchive, var g
     return;
 }
 
-if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"])
+if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"] or ["--docker-signed-package-live"])
 {
     void VerifyLifecycle(bool passed, string message)
     {
@@ -198,7 +198,8 @@ if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"])
         ModuleRemovalChecks.Run(VerifyLifecycle);
         await ModuleManagementHttpChecks.RunAsync(VerifyLifecycle);
     }
-    await ModulePackageHttpChecks.RunAsync(VerifyLifecycle);
+    await ModulePackageHttpChecks.RunAsync(VerifyLifecycle, liveDocker: args[0] == "--docker-signed-package-live");
+    if (args[0] == "--docker-signed-package-live") return;
     await ModulePackageHttpChecks.RunAsync(VerifyLifecycle, isolated: true);
     await ModulePackageHttpChecks.RunAsync(VerifyLifecycle, isolated: true, preinstalled: true);
     return;

@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Docker;
@@ -21,7 +22,7 @@ using RelaxKonOS.Server.Tailscale;
 
 internal static class ModulePackageHttpChecks
 {
-    internal static async Task RunAsync(Action<bool, string> check, bool isolated = false, bool preinstalled = false)
+    internal static async Task RunAsync(Action<bool, string> check, bool isolated = false, bool preinstalled = false, bool liveDocker = false)
     {
         if (isolated)
         {
@@ -458,6 +459,7 @@ internal static class ModulePackageHttpChecks
                     var compose = composeScope.ServiceProvider.GetRequiredService<IDockerComposeService>();
                     var preview = await compose.PreviewAsync(new("package-check", "services:\n  web:\n    image: nginx:alpine\n"));
                     check(preview.Services.Single().Service == "web", "a fresh Core host parses a Compose preview using the restored signed execution package");
+                    if (liveDocker) await VerifyLiveComposeAsync(compose, check);
                 }
                 using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "2.0.0"), RelaxKonOSJsonOptions.Default);
@@ -482,6 +484,35 @@ internal static class ModulePackageHttpChecks
         {
             try { Directory.Delete(root, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    private static async Task VerifyLiveComposeAsync(IDockerComposeService compose, Action<bool, string> check)
+    {
+        var project = "rk-signed-" + Guid.NewGuid().ToString("N");
+        const string definition = """
+            services:
+              probe:
+                image: debian:stable-slim
+                pull_policy: never
+                command: ["sleep", "120"]
+            """;
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        try
+        {
+            var result = await compose.DeployAsync(new(project, definition), budget.Token);
+            check(result.Success, "the restored signed Compose executor deploys an isolated local-image project (" + result.ProblemCode + ")");
+            var services = await compose.ListServicesAsync(project, budget.Token);
+            check(services is [{ Service: "probe", State: "running" }],
+                "the actual Docker Engine reports the signed package's probe container running");
+        }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            var result = await compose.ApplyActionAsync(project, DockerStackOperationKind.Delete, confirmed: true, cleanup.Token);
+            check((result.Success || result.ProblemCode == DockerStackProblem.NotFound)
+                && (await compose.ListServicesAsync(project, cleanup.Token)).Count == 0,
+                "the live signed-package test removes its isolated project containers");
         }
     }
 
