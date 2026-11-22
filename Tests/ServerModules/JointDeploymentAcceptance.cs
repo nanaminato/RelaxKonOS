@@ -302,6 +302,7 @@ internal static class JointDeploymentAcceptance
                     "relaxkonos.webservers" => [ServerModules.CertificatesId, ServerModules.WebServerId],
                     "relaxkonos.git" => [ServerModules.GitId],
                     "relaxkonos.firewall" => [ServerModules.FirewallId],
+                    "relaxkonos.database" => [ServerModules.DatabaseId],
                     "relaxkonos.proxy" or "relaxkonos.proxy-server" or "relaxkonos.squid" => [ServerModules.ProxyId],
                     _ => throw new ArgumentException($"Unrecognized bundled-module test package: {appId}"),
                 };
@@ -323,7 +324,16 @@ internal static class JointDeploymentAcceptance
                     && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
                     $"{appId} installs through the coordinator without mutating existing modules");
                 if (expectedModules.Contains(ServerModules.ProxyId)) proxyDependents.Add(appId);
-                else await packages.UninstallAsync(appId);
+                else
+                {
+                    var dependencies = expectedModules.Select(id => new DeploymentPackageKey(DeploymentPackageKind.ServerModule, id)).ToArray();
+                    Require(dependencies.All(key => packages.RequiredBy(key).Contains(appId)),
+                        $"{appId} is recorded as a dependent of each reused module");
+                    await packages.UninstallAsync(appId);
+                    Require(dependencies.All(key => !packages.RequiredBy(key).Contains(appId))
+                        && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
+                        $"uninstalling {appId} removes its dependency without changing the reused modules");
+                }
             }
 
             var proxyModule = new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ServerModules.ProxyId);
