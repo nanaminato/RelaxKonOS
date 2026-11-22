@@ -370,6 +370,27 @@ internal static class JointDeploymentAcceptance
             session.Url = host.Url;
             joint = Service();
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing deployment after enable.");
+            var failureJournal = new FileDeploymentJournal(Path.Combine(journalPath, "failed-package"));
+            var failureService = new JointAppDeploymentService(factory, auth, installer, packages, applications, failureJournal);
+            await using (var lease = await failureJournal.OpenAsync(review.Plan, default))
+                await lease.SaveAsync(new DeploymentCheckpoint(0, false), default);
+            factory.SubstituteFailedPackage = true;
+            try
+            {
+                await failureService.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected a failed package receipt to require a new review.");
+            }
+            catch (ModulePackageDeploymentFailedException error) when (error.ModuleId == ModuleId
+                && error.OperationId != Guid.Empty && error.Message == "fixture-package-failure") { }
+            finally { factory.SubstituteFailedPackage = false; }
+            var reopenedFailure = new JointAppDeploymentService(factory, auth, installer, packages, applications,
+                new FileDeploymentJournal(Path.Combine(journalPath, "failed-package")));
+            var recoveredFailure = await reopenedFailure.RecoverArchivesAsync([], default);
+            Require(!applications.IsRegistered(new AppId(AppIdText))
+                && await reopenedFailure.FindPendingAsync(candidate, default) is null
+                && recoveredFailure is [{ IsRecoveredDeployment: true, RequiresDeploymentReview: true } recovered]
+                && recovered.ExpectedSha256 == review.Plan.OrderedReleases[^1].ArtifactIdentity,
+                "a terminal package failure recovers the exact desktop archive for review instead of resuming execution");
             factory.DropDependencyReply = true;
             factory.BlockDependencyRelease = true;
             try
@@ -387,15 +408,6 @@ internal static class JointDeploymentAcceptance
             var installed = await joint.ExecuteAsync(review, default);
             var executor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
             var moduleRelease = review.Plan.OrderedReleases.Single(item => item.Package.Id == ModuleId);
-            factory.SubstituteFailedPackage = true;
-            try
-            {
-                await executor.ApplyOrReconcileAsync(review.Plan, moduleRelease, default);
-                throw new InvalidOperationException("Expected a failed package receipt to require a new review.");
-            }
-            catch (ModulePackageDeploymentFailedException error) when (error.ModuleId == ModuleId
-                && error.OperationId != Guid.Empty && error.Message == "fixture-package-failure") { }
-            finally { factory.SubstituteFailedPackage = false; }
             factory.FaultedModule = ModuleId;
             try
             {
