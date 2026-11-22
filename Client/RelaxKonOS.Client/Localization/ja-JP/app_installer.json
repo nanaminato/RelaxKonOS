@@ -49,6 +49,8 @@
         "app_installer.deployment.satisfied": "{0} {1} は要件を満たしています",
         "app_installer.deployment.change": "{0} を {1} にインストールまたは更新",
         "app_installer.deployment.version_change": "{0}  {1} → {2}",
+        "app_installer.deployment.resume": "デプロイを再開",
+        "app_installer.deployment.resume_pending": "保存されたデプロイを再開し、このアプリのインストールまたは検証を完了します。",
         "app_installer.deployment.health_pending": "サーバーモジュールが正常性チェックに失敗しました。コンポーネントセンターでモジュールの状態を確認してから、再試行してデプロイの検証を完了してください。",
         "app_installer.deployment.module_package_failed": "モジュール {0} のパッケージ操作 {1} が失敗しました。コンポーネントセンターで操作を確認してから、新しいデプロイ計画を確認してください。",
         "app_installer.deployment.restart_pending": "デプロイを続行するにはサーバーの再起動が必要です。再接続後に再試行してください。",

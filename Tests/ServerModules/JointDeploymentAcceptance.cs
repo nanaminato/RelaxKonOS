@@ -419,9 +419,27 @@ internal static class JointDeploymentAcceptance
                     && pending.CompletedSteps == review.Plan.OrderedReleases.Length,
                     "failed final health leaves the committed application awaiting verification");
             joint = Service();
-            var installed = await joint.ExecuteAsync(review, default);
-            Require(installed.InstallationPath == committedPath,
-                "retry after final health recovers the committed application without reinstalling");
+            var resumedCandidate = (await joint.RecoverArchivesAsync([], default))
+                .Single(item => item.ExpectedSha256 == review.Plan.OrderedReleases[^1].ArtifactIdentity);
+            using (var uiServices = new ServiceCollection().AddSingleton(localization).BuildServiceProvider())
+            {
+                typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, uiServices);
+                using var model = new AppInstallerViewModel(installer)
+                {
+                    JointDeployment = joint,
+                    CurrentPackage = resumedCandidate,
+                    ConfirmDeploymentAsync = plan => Task.FromResult(plan.Id == review.Plan.Id),
+                };
+                Require(resumedCandidate.IsRepair && model.ActionLabel == localization.Get("app_installer.deployment.resume", ""),
+                    "the installer offers to resume an already committed deployment");
+                await model.InstallCommand.ExecuteAsync(null);
+                var current = packages.FindInstalled(AppIdText);
+                Require(current is not null && current.InstallationPath == committedPath && model.CurrentPackage is null
+                    && model.Status.Resolve() == string.Format(localization.Get("app_installer.status.installed", ""),
+                        current.DisplayName, current.Version),
+                    "resuming the final health check preserves the installation and reports the original install");
+            }
+            var installed = packages.FindInstalled(AppIdText)!;
             var executor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
             var moduleRelease = review.Plan.OrderedReleases.Single(item => item.Package.Id == ModuleId);
             factory.FaultedModule = ModuleId;

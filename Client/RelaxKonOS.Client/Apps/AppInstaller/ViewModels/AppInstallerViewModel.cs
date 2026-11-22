@@ -46,8 +46,14 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     public bool HasPackageIcon => PackageIcon is not null;
     public string PackageIconGlyph => string.IsNullOrWhiteSpace(CurrentPackage?.Manifest.IconGlyph) ? "📦" : CurrentPackage.Manifest.IconGlyph;
     public bool HasPackage => CurrentPackage is not null;
-    public string ActionLabel => CurrentPackage?.IsRepair == true ? LocalizedText.Get("app_installer.action.repair")
-        : CurrentPackage?.IsUpdate == true ? LocalizedText.Get("common.update") : LocalizedText.Get("common.install");
+    public string ActionLabel => LocalizedText.Get(CurrentPackage switch
+    {
+        { RequiresDeploymentReview: true } => "app_installer.deployment.review",
+        { IsRecoveredDeployment: true } => "app_installer.deployment.resume",
+        { IsRepair: true } => "app_installer.action.repair",
+        { IsUpdate: true } => "common.update",
+        _ => "common.install",
+    });
     public string CurrentVersionText => CurrentPackage?.InstalledVersion is null ? LocalizedText.Get("app_installer.not_installed") : LocalizedText.Format("app_installer.current_version", CurrentPackage.InstalledVersion);
     public int PendingCount => _pending.Count;
     public IReadOnlyList<LocalizedPermissionInfo> RequestedPermissions => CurrentPackage?.Manifest.RequestedPermissions
@@ -162,11 +168,12 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
                     _jointReview = review;
                 }
             }
+            var reviewedCandidate = _jointReview?.Candidate ?? candidate;
             var installed = _jointReview is { } confirmed && JointDeployment is { } deployment
                 ? await deployment.ExecuteAsync(confirmed, _storeLifetime.Token)
                 : await _installer.InstallAsync(candidate);
-            Status = LocalizedText.Ref(CurrentPackage.IsRepair ? "app_installer.status.repaired"
-                : CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
+            Status = LocalizedText.Ref(reviewedCandidate.IsRepair ? "app_installer.status.repaired"
+                : reviewedCandidate.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
             CurrentPackage = null;
             ShowNext();
             RefreshOfficialRows();
@@ -278,6 +285,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         if (CurrentPackage is not null || _pending.Count == 0) return;
         CurrentPackage = _pending.Dequeue();
         Status = CurrentPackage.RequiresDeploymentReview ? LocalizedText.Ref("app_installer.deployment.review_again")
+            : CurrentPackage.IsRecoveredDeployment ? LocalizedText.Ref("app_installer.deployment.resume_pending")
             : CurrentPackage.IsRepair ? LocalizedText.Ref("app_installer.status.confirm_repair")
             : CurrentPackage.IsUpdate ? LocalizedText.Ref("app_installer.status.confirm_update") : LocalizedText.Ref("app_installer.status.confirm_install");
         OnPropertyChanged(nameof(PendingCount));
