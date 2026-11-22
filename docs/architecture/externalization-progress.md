@@ -656,3 +656,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 当前桌面三语资源检查通过，覆盖 4,366 个宿主键及 39 套独立应用资源。完整 Windows Release 重发核对 29 个实际归档与源码清单，并从发行中的组件中心归档读取三语桌面依赖提示，确认与源码一致。三档预装实测为 0、13、14 个包，Minimal 的四个基础包安装与修复及配置切换恢复检查通过。
 - Linux x64 发行 Core 在 WSL 以非特权用户运行，SQLite 和内存存储的 `/healthz` 均返回 200。隧道依赖 SQLite，仅在 SQLite 模式注册路由。两种模式均验证缺少内置 Databases 执行程序集时启动失败。
 - Databases 停用保护由 Core 直接读取宿主安装台账并查询 Helper，停用时无需加载随附执行程序集。Windows Release 专项以受控 Linux Helper 验证空闲状态可停用且未加载执行程序集，待处理工作、二级实例备份计划、Helper 不可用和损坏台账仍会阻止停用。PostgreSQL Release 60 项检查通过。
+- 重新发布 Linux x64 Core 并在 WSL 以非特权用户运行。SQLite 模式显式停用 Firewall、移除其发行程序集后健康检查通过，内存存储模式也通过。移除 Databases 执行程序集后，启用时明确报告缺少程序集，停用时仍能进入宿主停用检查。用户模式没有 Helper，因此无法确认原生工作归属并拒绝启动。此轮未验证真实 Helper 判定空闲后的停用启动。
