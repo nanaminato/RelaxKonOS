@@ -34,7 +34,7 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// system-proxy reconciliation, grant expiry and durable publication recovery across module disable.
 /// The aggregate remains resident; scoped object release is not collectible code or module sleep.
 /// </summary>
-internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
+internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.ProxyId;
     public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new ProxyWorkRuntimeFactory();
@@ -50,9 +50,11 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
     ];
 
     public IReadOnlyList<string> Requires => [];
+    private protected virtual ProxyConnectionExecutionGate Execution => ProxyConnectionExecutionGate.Shared;
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
+        builder.Services.AddSingleton(Execution);
         // Management engine graphs are owned by request or independent operation scopes.
         builder.Services.AddScoped<IProxyEngine, MihomoEngine>();
         builder.Services.AddScoped<IMihomoConfigurationValidator, MihomoConfigurationValidator>();
@@ -77,7 +79,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static (services, _, ct) =>
             services.GetRequiredService<MihomoRuntimeStatusReader>().GetObservedAsync(
                 token => services.GetRequiredService<IMihomoControllerClient>().IsReachableAsync(token), ct));
-        ProxyOverviewService.Register(builder.Services);
+        ProxyOverviewService.Register(builder.Services, Execution);
         ProxyReadSampler<ProxyTrafficDto>.Register(builder.Services,
             static (services, _, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
         ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>.Register(builder.Services,
@@ -268,7 +270,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         finally { store.Gate.Release(); }
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         endpoints.MapProxyEndpoints();
         endpoints.MapGatewayProxyEndpoints();

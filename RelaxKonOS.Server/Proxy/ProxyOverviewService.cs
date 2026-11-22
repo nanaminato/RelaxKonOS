@@ -6,9 +6,9 @@ namespace RelaxKonOS.Server.Proxy;
 
 internal sealed class ProxyOverviewService(Func<CancellationToken, Task<MihomoRuntimeObservation>> observeRuntime)
 {
-    internal static void Register(IServiceCollection services)
+    internal static void Register(IServiceCollection services, ProxyConnectionExecutionGate? execution = null)
     {
-        services.AddScoped(static _ => ProxyConnectionExecutionGate.Shared.AcquireOverview());
+        services.AddScoped(_ => (execution ?? ProxyConnectionExecutionGate.Shared).AcquireOverview());
         services.AddSingleton(new ProxyReadSamplerRegistration(typeof(ProxyReadSampler<ProxyOverviewDto>), static (scopes, leases, runtime) =>
         {
             var overview = new ProxyOverviewService(ct => ProxyReadSampler<MihomoRuntimeObservation>.Resolve(runtime).ReadAsync(ct));

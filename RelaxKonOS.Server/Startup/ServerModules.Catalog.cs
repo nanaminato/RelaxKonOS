@@ -13,7 +13,8 @@ internal sealed partial class ServerModules
         BundledIds.Value.Contains(manifest.ModuleId) && !IsOfficialDatabaseModuleHost(manifest)
         && !InstalledTailscaleModule.MatchesManifest(manifest) && !InstalledFirewallModule.MatchesManifest(manifest)
         && !InstalledGitModule.MatchesManifest(manifest) && !InstalledDockerModule.MatchesManifest(manifest)
-        && !InstalledWebServerModule.MatchesManifest(manifest) && !InstalledCertificateModule.MatchesManifest(manifest);
+        && !InstalledWebServerModule.MatchesManifest(manifest) && !InstalledCertificateModule.MatchesManifest(manifest)
+        && !InstalledProxyModule.MatchesManifest(manifest);
 
     internal static bool IsOfficialDatabaseModuleHost(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
         manifest.ModuleId == DatabaseId && manifest.Runtime == "module-host" && manifest.Purpose == "official";
@@ -91,11 +92,12 @@ internal sealed partial class ServerModules
         var packagedDocker = installed.Any(module => module is InstalledDockerModule);
         var packagedWebServer = installed.Any(module => module is InstalledWebServerModule);
         var packagedCertificates = installed.Any(module => module is InstalledCertificateModule);
+        var packagedProxy = installed.Any(module => module is InstalledProxyModule);
         return [.. compiled.Where(module => (!packagedDatabase || module.Id != DatabaseId)
             && (!packagedTailscale || module.Id != Modules.TailscaleModule.ModuleId)
             && (!packagedFirewall || module.Id != FirewallId)
             && (!packagedGit || module.Id != GitId) && (!packagedDocker || module.Id != DockerId)
             && (!packagedWebServer || module.Id != WebServerId)
-            && (!packagedCertificates || module.Id != CertificatesId)), .. installed];
+            && (!packagedCertificates || module.Id != CertificatesId) && (!packagedProxy || module.Id != ProxyId)), .. installed];
     }
 }

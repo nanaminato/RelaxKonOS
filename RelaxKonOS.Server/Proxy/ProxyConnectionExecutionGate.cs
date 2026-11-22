@@ -7,6 +7,7 @@ namespace RelaxKonOS.Server.Proxy;
 /// <summary>One reusable read generation for the connection parser and the overview executor.</summary>
 internal sealed class ProxyConnectionExecutionGate
 {
+    internal const string OverviewEntryType = "RelaxKonOS.Server.Proxy.ProxyOverviewExecutor";
     internal static ProxyConnectionExecutionGate Shared { get; } = new(TimeSpan.FromSeconds(30));
     internal const int MaximumOutstandingGenerations = 4;
     private const int MaximumRecordBytes = 256 * 1024;
@@ -15,13 +16,15 @@ internal sealed class ProxyConnectionExecutionGate
     private readonly List<WeakReference> generations = [];
     private readonly Timer timer;
     private readonly TimeSpan idleDelay;
+    private readonly Func<string> resolvePath;
     private Generation? current;
     private int active;
     private long lastRelease;
 
-    internal ProxyConnectionExecutionGate(TimeSpan idleDelay)
+    internal ProxyConnectionExecutionGate(TimeSpan idleDelay, Func<string>? resolvePath = null)
     {
         this.idleDelay = idleDelay;
+        this.resolvePath = resolvePath ?? ProxyExecutionLoadContext.BundledAssemblyPath;
         if (ExecutionContext.IsFlowSuppressed()) timer = CreateTimer();
         else
         {
@@ -103,10 +106,11 @@ internal sealed class ProxyConnectionExecutionGate
                 generations.Add(code);
                 try
                 {
-                    var assembly = context.LoadFromAssemblyPath(ProxyExecutionLoadContext.BundledAssemblyPath());
+                    using var stream = File.OpenRead(resolvePath());
+                    var assembly = context.LoadFromStream(stream);
                     var reader = assembly.GetType("RelaxKonOS.Server.Proxy.Mihomo.MihomoConnectionSnapshotReader", throwOnError: true)!;
                     var overview = (IProxyOverviewExecutor)Activator.CreateInstance(
-                        assembly.GetType("RelaxKonOS.Server.Proxy.ProxyOverviewExecutor", throwOnError: true)!)!;
+                        assembly.GetType(OverviewEntryType, throwOnError: true)!)!;
                     current = new Generation(context, reader, overview, code);
                 }
                 catch (Exception)

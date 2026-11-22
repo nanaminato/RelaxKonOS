@@ -48,6 +48,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
     private readonly IProxyControllerSecretStore _secrets;
     private readonly MihomoControllerOptions _options;
     private readonly ILogger<MihomoControllerClient>? _logger;
+    internal ProxyConnectionExecutionGate ConnectionExecution { private get; init; } = ProxyConnectionExecutionGate.Shared;
 
     public MihomoControllerClient(
         HttpClient httpClient,
@@ -174,7 +175,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         ReadConnectionsAsync(null, cancellationToken);
 
     private Task<ControllerResult<int>> ReadConnectionsAsync(List<ProxyConnectionDto>? details, CancellationToken cancellationToken) =>
-        ReadConnectionSnapshotAsync((stream, ct) => ProxyConnectionExecutionGate.Shared.ReadAsync(stream, details is null ? null : item =>
+        ReadConnectionSnapshotAsync((stream, ct) => ConnectionExecution.ReadAsync(stream, details is null ? null : item =>
             details.Add(new ProxyConnectionDto(item.Id, item.Network, item.Source, item.Destination, item.Rule, item.Chains, item.Start)), ct),
             cancellationToken);
 
@@ -221,7 +222,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         }
         finally { result.Value?.Dispose(); }
 
-        var snapshot = await ReadConnectionSnapshotAsync(ProxyConnectionExecutionGate.Shared.ReadStatisticsAsync, cancellationToken);
+        var snapshot = await ReadConnectionSnapshotAsync(ConnectionExecution.ReadStatisticsAsync, cancellationToken);
         return snapshot.Succeeded
             ? new(uploadRate, downloadRate, snapshot.Value.UploadTotal, snapshot.Value.DownloadTotal, snapshot.Value.Memory)
             : new(0, 0, 0, 0, 0, snapshot.ProblemCode);

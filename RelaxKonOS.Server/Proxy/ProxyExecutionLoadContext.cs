@@ -5,10 +5,11 @@ namespace RelaxKonOS.Server.Proxy;
 
 internal sealed class ProxyExecutionLoadContext(string purpose) : AssemblyLoadContext($"proxy-{purpose}:{Guid.NewGuid():N}", true)
 {
+    internal const string AssemblyFile = "RelaxKonOS.ServerModule.Proxy.dll";
     internal static string BundledAssemblyPath()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Proxy");
-        var path = Path.Combine(directory, "RelaxKonOS.ServerModule.Proxy.dll");
+        var path = Path.Combine(directory, AssemblyFile);
         if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
             || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("Bundled Proxy execution assembly is missing or linked.");

@@ -32,7 +32,13 @@ internal static class ProxyRuntimeRegistration
         // The controller is an optional local process. Its expected "not started" condition is
         // reported by MihomoControllerClient as one actionable warning, instead of HttpClient's
         // full connection exception stack on every status poll.
-        builder.Services.AddHttpClient<RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerClient, RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerClient>()
+        builder.Services.AddHttpClient(nameof(RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerClient))
+            .AddTypedClient<RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerClient>((client, services) =>
+                new RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerClient(client,
+                    services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.IProxyControllerSecretStore>(),
+                    services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerOptions>(),
+                    services.GetService<ILogger<RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerClient>>())
+                { ConnectionExecution = services.GetService<RelaxKonOS.Server.Proxy.ProxyConnectionExecutionGate>() ?? RelaxKonOS.Server.Proxy.ProxyConnectionExecutionGate.Shared })
             .RemoveAllLoggers();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyPrivilegedOperations, RelaxKonOS.Server.Proxy.Platform.NativeMihomoPrivilegedOperations>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyDiagnosticLogStore, RelaxKonOS.Server.Proxy.ProxyDiagnosticLogStore>();
