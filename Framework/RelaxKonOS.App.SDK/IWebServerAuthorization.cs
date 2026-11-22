@@ -1,6 +1,6 @@
 using RelaxKonOS.Protocol.Privileged;
 
-namespace RelaxKonOS.App.WebServers;
+namespace RelaxKonOS.AppSDK;
 
 /// <summary>Runs an instance-scoped operation after the host has authorized it.</summary>
 public interface IWebServerAuthorization

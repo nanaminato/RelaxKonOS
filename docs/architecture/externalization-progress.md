@@ -86,6 +86,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Web Server Manager 的站点列表和站点编辑对话框已迁入应用程序集，并直接加载应用文案。Windows Release 网站专项验证两种宿主平台映射的列表表头、嵌套路由草稿确认及提交保护。主工作区、实例页、独立入口和发行包仍待迁移。
 
 - Web Server Manager 和组件中心共享的主视图模型已迁入 `RelaxKonOS.App.WebServers`。模型通过应用语言资源解析状态文案，宿主提供组件设置页和特权错误文案。Windows Release 网站专项覆盖现有站点编辑、授权、连接失效和组件中心卸载派发。应用窗口及发行包仍待迁移。
+- Web Servers 的实例操作授权接口已迁入应用 SDK，桌面宿主从同源 JSON 嵌入中英日资源。Windows Release 实例选择回归覆盖两种宿主平台、候选实例授权、连接切换和 Component Center 卸载派发。Component Center 当前 Nginx 选择视图仍需解除对应用视图模型的引用。
 
 - Web Server Manager 的视图模型通过应用项目定义的实例授权接口调用宿主提权代理。Windows Release 网站专项验证提权后重新核对站点目标，以及连接变化时阻止保存。主视图模型仍由桌面宿主编译。
 

@@ -26,6 +26,8 @@
                       LogicalName="FileServices.Localization.%(Filename).json" />
     <EmbeddedResource Include="../../Applications/RelaxKonOS.App.Certificates/Localization/*.json"
                       LogicalName="Certificates.Localization.%(Filename).json" />
+    <EmbeddedResource Include="../../Applications/RelaxKonOS.App.WebServers/Localization/*.json"
+                      LogicalName="WebServers.Localization.%(Filename).json" />
   </ItemGroup>
 
   <ItemGroup>
