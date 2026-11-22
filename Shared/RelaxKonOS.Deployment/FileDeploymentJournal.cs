@@ -43,7 +43,8 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
                 || client.ConnectionIdentity != connectionIdentity) continue;
             entries.Add(entry);
         }
-        return entries.OrderByDescending(entry => entry.Plan.ExpiresAt)
+        return entries.OrderByDescending(entry => entry.StartedAt)
+            .ThenByDescending(entry => entry.Plan.ExpiresAt)
             .ThenByDescending(entry => entry.Checkpoint.Verified)
             .ThenBy(entry => entry.Plan.Id)
             .DistinctBy(entry => (entry.Plan.OrderedReleases[^1].Package, entry.Plan.OrderedReleases[^1].Version,
@@ -87,7 +88,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
                 if (entry.Identity != identity)
                     throw new InvalidOperationException("deployment-plan-identity-changed");
             }
-            return new Lease(fileLock, path, identity, plan, entry?.Checkpoint);
+            return new Lease(fileLock, path, identity, plan, entry);
         }
         catch
         {
@@ -142,12 +143,13 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
         checkpoint.CompletedSteps >= 0 && checkpoint.CompletedSteps <= totalSteps
         && (!checkpoint.Verified || checkpoint.CompletedSteps == totalSteps && !checkpoint.RequiresReview);
 
-    private sealed record Entry(string Identity, DeploymentPlan Plan, DeploymentCheckpoint Checkpoint);
+    private sealed record Entry(string Identity, DeploymentPlan Plan, DeploymentCheckpoint Checkpoint, DateTimeOffset StartedAt);
 
-    private sealed class Lease(FileStream fileLock, string path, string identity, DeploymentPlan plan, DeploymentCheckpoint? checkpoint)
+    private sealed class Lease(FileStream fileLock, string path, string identity, DeploymentPlan plan, Entry? entry)
         : IDeploymentLease
     {
-        public DeploymentCheckpoint? Checkpoint { get; private set; } = checkpoint;
+        private DateTimeOffset? _startedAt = entry?.StartedAt;
+        public DeploymentCheckpoint? Checkpoint { get; private set; } = entry?.Checkpoint;
 
         public async Task SaveAsync(DeploymentCheckpoint value, CancellationToken cancellationToken)
         {
@@ -158,14 +160,17 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
                 throw new InvalidDataException("Invalid deployment checkpoint transition.");
 
             var staging = path + ".tmp";
+            var startedAt = _startedAt ?? DateTimeOffset.UtcNow;
             try
             {
                 await using (var output = new FileStream(staging, FileMode.Create, FileAccess.Write, FileShare.None))
                 {
-                    await JsonSerializer.SerializeAsync(output, new Entry(identity, plan, value), cancellationToken: cancellationToken);
+                    await JsonSerializer.SerializeAsync(output, new Entry(identity, plan, value, startedAt),
+                        cancellationToken: cancellationToken);
                     output.Flush(flushToDisk: true);
                 }
                 File.Move(staging, path, overwrite: true);
+                _startedAt = startedAt;
                 Checkpoint = value;
             }
             finally { File.Delete(staging); }

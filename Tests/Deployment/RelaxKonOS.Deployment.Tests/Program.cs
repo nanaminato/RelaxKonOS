@@ -162,8 +162,11 @@ Check((await reopenedJournal.ReadPendingRecoveriesAsync(binding.AccountId, bindi
 backend.ReviewRequiredAt = null;
 await Reject(expiredStepPlan, "deployment-plan-review-required");
 Check(backend.Applied.Count == attempts);
-var replacement = plan with { Id = Guid.NewGuid(), ExpiresAt = expiredStepPlan.ExpiresAt.AddMinutes(1) };
+// The newer review can expire sooner when a server installer plan has a shorter validity window.
+var replacement = plan with { Id = Guid.NewGuid() };
 await coordinator.ExecuteAsync(replacement);
+await using (var lease = await reopenedJournal.OpenAsync(expiredStepPlan, CancellationToken.None))
+    await lease.SaveAsync(lease.Checkpoint!, CancellationToken.None);
 Check((await reopenedJournal.ReadPendingRecoveriesAsync(binding.AccountId, binding.ConnectionIdentity)).Count == 0);
 var sourceA = new DeploymentComponentRelease("source-a", "fixture", "publisher-a", "release-a");
 var sourceB = sourceA with { SourceId = "source-b", PublisherId = "publisher-b" };
