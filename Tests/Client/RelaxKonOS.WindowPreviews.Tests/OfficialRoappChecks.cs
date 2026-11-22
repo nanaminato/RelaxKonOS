@@ -20,6 +20,7 @@ using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Protocol.Browser;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Developer;
 using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Runtime;
 using System.Reflection;
@@ -27,6 +28,19 @@ using WindowManager = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class OfficialRoappChecks
 {
+    private sealed class OfficialRecoveryTransport(Func<HttpRequestMessage, HttpContent> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = respond(request),
+            });
+        }
+    }
+
     public static void Run(string artifact, ShellSettings settings, RelaxKonOS.AppSDK.ISystemLanguage language)
     {
         if (DeveloperProfile.IsDebug) throw new InvalidOperationException("Build this check in Release.");
@@ -307,6 +321,7 @@ internal static class OfficialRoappChecks
                 Check(recovered is [{ IsRecoveredDeployment: true }] && recovered[0].OfficialRelease == published
                     && recovered[0].ExpectedSha256 == candidate.ExpectedSha256,
                     "The current catalog must recover the exact reviewed release without an archive path.");
+                await CheckOnlineRecoveryAsync(published);
             }
             await WriteProfileAsync("offline");
             await File.AppendAllTextAsync(path, "corrupted distribution package");
@@ -695,7 +710,66 @@ internal static class OfficialRoappChecks
                 try { Directory.Delete(root, true); } catch (IOException) { }
         }
 
-        (DeveloperPackageManager, ApplicationManager, WindowManager) CreateRuntime()
+        async Task CheckOnlineRecoveryAsync(OfficialDesktopRelease release)
+        {
+            var onlineDirectory = Directory.CreateDirectory(Path.Combine(root, "OnlineOfficialApps")).FullName;
+            var catalogUri = new Uri("https://packages.example.test/desktop/catalog.json");
+            await File.WriteAllTextAsync(Path.Combine(onlineDirectory, OfficialDesktopPackages.SourceFile),
+                System.Text.Json.JsonSerializer.Serialize(new { catalogUri }));
+            var archiveUri = new Uri(catalogUri, OfficialDesktopCatalogRules.ArtifactPath(release.AppId, release.Version));
+            var archive = await File.ReadAllBytesAsync(artifact);
+            var broken = archive.ToArray();
+            broken[0] ^= 1;
+            var catalogDocument = new OfficialDesktopCatalogDocument(OfficialDesktopCatalogRules.SchemaVersion,
+                [new(release.AppId, release.Version, release.DisplayName, release.Description, release.Sha256, release.Bytes)]);
+            var json = System.Text.Json.JsonSerializer.Serialize(catalogDocument,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            var downloads = 0;
+            var corruptDownload = false;
+            using var online = new HttpClient(new OfficialRecoveryTransport(request =>
+            {
+                if (request.RequestUri == catalogUri) return new StringContent(json);
+                if (request.RequestUri != archiveUri) throw new InvalidOperationException("Unexpected official recovery request.");
+                downloads++;
+                return new ByteArrayContent(corruptDownload ? broken : archive);
+            }));
+            var (onlinePackages, onlineApplications, _) = CreateRuntime(onlineDirectory, online);
+            var onlineInstaller = new AppPackageInstallerService(onlinePackages, null!, catalog);
+            var onlineJournalPath = Path.Combine(root, "resume-online-catalog");
+            var onlineJournal = new FileDeploymentJournal(onlineJournalPath);
+            var deployment = new JointAppDeploymentService(null!, null!, onlineInstaller, onlinePackages, onlineApplications, onlineJournal);
+            var initial = await onlineInstaller.BrowseOfficialAsync(CancellationToken.None);
+            var staged = await onlineInstaller.StageOfficialAsync(initial.Releases.Single(), CancellationToken.None);
+            try
+            {
+                var review = await deployment.PrepareAsync(staged, [], CancellationToken.None);
+                await using var lease = await onlineJournal.OpenAsync(review.Plan, CancellationToken.None);
+                await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
+            }
+            finally { onlineInstaller.Discard(staged); }
+            Check(!File.Exists(staged.LocalPath), "The original downloaded archive must be gone before recovery.");
+
+            var (reopenedPackages, reopenedApplications, _) = CreateRuntime(onlineDirectory, online);
+            var reopenedInstaller = new AppPackageInstallerService(reopenedPackages, null!, catalog);
+            var reopened = new JointAppDeploymentService(null!, null!, reopenedInstaller, reopenedPackages, reopenedApplications,
+                new FileDeploymentJournal(onlineJournalPath));
+            var current = await reopenedInstaller.BrowseOfficialAsync(CancellationToken.None);
+            corruptDownload = true;
+            Check((await reopened.RecoverArchivesAsync(current.Releases, CancellationToken.None)).Count == 0 && downloads == 2,
+                "A same-length online archive with incorrect bytes must be rejected.");
+            corruptDownload = false;
+            var recovered = await reopened.RecoverArchivesAsync(current.Releases, CancellationToken.None);
+            try
+            {
+                Check(recovered is [{ IsRecoveredDeployment: true, DeleteWhenFinished: true }]
+                    && recovered[0].LocalPath != staged.LocalPath && downloads == 3
+                    && reopenedPackages.FindInstalled(applicationId) is null,
+                    "Online recovery must stage a fresh verified archive without installing it.");
+            }
+            finally { foreach (var candidate in recovered) reopenedInstaller.Discard(candidate); }
+        }
+
+        (DeveloperPackageManager, ApplicationManager, WindowManager) CreateRuntime(string? officialDirectory = null, HttpClient? officialHttp = null)
         {
             var windows = new WindowManager();
             var apps = new ApplicationManager(windows, services);
@@ -777,7 +851,8 @@ internal static class OfficialRoappChecks
                 createProxyServerClient: proxyServer is null ? null : () => proxyServer,
                 createProxyClient: proxyManager is null ? null : () => proxyManager, tailscale: tailscale,
                 createPostgreSqlClient: postgres is null ? null : () => postgres);
-            return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
+            return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(),
+                drive, officialDirectory ?? source, officialHttp), apps, windows);
         }
 
         async Task PublishCandidateAsync(Action<JsonObject> editManifest, Action<ZipArchive>? editArchive = null)
