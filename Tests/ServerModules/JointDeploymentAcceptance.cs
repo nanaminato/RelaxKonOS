@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia;
@@ -95,12 +96,13 @@ internal static class JointDeploymentAcceptance
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
         builder.Configuration["Storage:Provider"] = "memory";
         var fixture = Environment.GetEnvironmentVariable("RK_TEST_ACME_FIXTURE");
-        builder.Services.AddSingleton(new CertificateOptions
+        var options = new CertificateOptions
         {
             DirectoryUrl = fixture is null ? "invalid-directory" : "https://localhost:14000/dir",
             StorageRoot = Path.Combine(serverRoot, "certificates"),
             ChallengeRoot = Path.Combine(serverRoot, "challenges"),
-        });
+        };
+        builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<FileHttp01ChallengeStore>();
         builder.Services.AddSingleton<CertificateMetadataRepository>();
         var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.CertificatesId }, InstalledModuleCatalog.Load(serverRoot));
@@ -117,9 +119,32 @@ internal static class JointDeploymentAcceptance
             var material = await acme.IssueAsync(Guid.NewGuid(), [domain],
                 RelaxKonOS.Protocol.Certificates.CertificateChallengeType.DirectHttp01,
                 RelaxKonOS.Protocol.Certificates.CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", timeout.Token);
-            using var leaf = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(material.CertificatePem, material.PrivateKeyPem);
+            using var leaf = X509Certificate2.CreateFromPem(material.CertificatePem, material.PrivateKeyPem);
             Require(!ReferenceEquals(execution, AcmeExecution.Shared) && leaf.HasPrivateKey && leaf.MatchesHostname(domain),
                 "the joint-installed signed Certificates package issues a real Pebble certificate with the requested identity");
+            var metadata = host.Services.GetRequiredService<CertificateMetadataRepository>();
+            var storage = new FileCertificateStore(builder.Environment, options, metadata);
+            await storage.SaveAsync(material, timeout.Token);
+
+            var reopened = new FileCertificateStore(builder.Environment, options,
+                new CertificateMetadataRepository(builder.Environment, builder.Configuration));
+            var paths = await reopened.GetNginxPathsAsync(material.Id, timeout.Token)
+                ?? throw new InvalidOperationException("The issued certificate has no persisted deployment chain.");
+            var bundle = new X509Certificate2Collection();
+            bundle.ImportFromPemFile(paths.FullChainPath);
+            try
+            {
+                using var rootCertificate = X509Certificate2.CreateFromPem(await File.ReadAllTextAsync(Path.Combine(fixture, "issuance-root.pem"), timeout.Token));
+                using var chain = new X509Chain();
+                chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                chain.ChainPolicy.CustomTrustStore.Add(rootCertificate);
+                chain.ChainPolicy.ExtraStore.AddRange(bundle);
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                chain.ChainPolicy.DisableCertificateDownloads = true;
+                Require(bundle.Count >= 2 && bundle[0].RawData.AsSpan().SequenceEqual(leaf.RawData) && chain.Build(bundle[0]),
+                    "the reopened certificate store exposes a deployment chain that validates against the isolated Pebble root");
+            }
+            finally { foreach (var certificate in bundle) certificate.Dispose(); }
             return;
         }
         var directory = new Uri("https://fixture.invalid/dir");

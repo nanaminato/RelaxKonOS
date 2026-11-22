@@ -820,3 +820,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含 Certificates 签名双包在 WSL 复验通过。一次安装提交，Core 重启续跑，生产 ACME 观察入口加载已安装签名程序集，对无效 CA 目录返回 unavailable，卸载桌面保留签名包。真实 CA 签发仍待验。
 - WSL 使用官方 Pebble 与挑战 DNS 2.10.1 镜像中的二进制，在独立网络命名空间执行仓库 run-acme-live.sh。Linux 自包含服务测试通过，测试 CA 记录 7 个订单及 4 次成功 finalization。该轮验证随附 ACME 执行程序集与真实测试 CA；同一签名联合安装后执行真实签发仍待验。
 - Linux x64 签名 Certificates 双包可用 RK_TEST_ACME_FIXTURE 在隔离 Pebble 环境复验真实签发。Core 重启并接续部署后，已安装签名程序集完成 HTTP-01 签发。返回的叶证书与私钥匹配并包含请求的域名。Pebble 记录一个订单及一次 finalization，桌面卸载后保留服务端签名包。此用例直接调用生产 ACME 服务，未覆盖签发 HTTP 管理入口与部署持久化。
+- Linux x64 签名联合部署后真实 Pebble 签发通过生产 FileCertificateStore 保存。重新创建存储实例从磁盘取得部署链，核对叶证书与签发结果一致，并用隔离测试 CA 根验证完整链。测试 CA 仍只记录一个订单及一次 finalization。管理 HTTP 签发入口仍待验。
