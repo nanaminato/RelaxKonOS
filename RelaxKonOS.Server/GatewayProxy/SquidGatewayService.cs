@@ -9,7 +9,7 @@ namespace RelaxKonOS.Server.GatewayProxy;
 
 public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, SquidConfigurationStore configurations)
 {
-    internal const string ReceiptVerifierEntryType = "RelaxKonOS.Server.Proxy.SquidPublicationReceiptVerifier";
+    internal const string ReceiptVerifierEntryType = "RelaxKonOS.Server.Proxy.SquidReceiptVerifier";
     internal static ProxyExecutionCodeGate BundledReceiptExecution { get; } = new("squid-receipts");
     internal ProxyExecutionCodeGate ReceiptExecution { get; init; } = BundledReceiptExecution;
 
@@ -105,7 +105,7 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         var preview = SquidConfigurationRenderer.Preview(state.Configuration);
         if (!preview.Valid) return false;
         using var code = ReceiptExecution.Acquire();
-        return code.Create<ISquidPublicationReceiptVerifier>(ReceiptVerifierEntryType).Matches(
+        return code.Create<ISquidReceiptVerifier>(ReceiptVerifierEntryType).Matches(
             state.PublicationOperationId, preview.Configuration!, receipt.OperationId, receipt.CandidateHash,
             receipt.ObservedHash, receipt.Applied);
     }
@@ -165,10 +165,17 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         return MatchesLifecycle(result, id, action);
     }
 
-    private static bool MatchesLifecycle(PrivilegedOperationResult result, Guid id, SquidServiceAction action)
+    private bool MatchesLifecycle(PrivilegedOperationResult result, Guid id, SquidServiceAction action)
     {
         if (!result.Success || result.OutputBase64 is not { } output) return false;
-        try { return JsonSerializer.Deserialize<SquidLifecycleReceipt>(Convert.FromBase64String(output)) == new SquidLifecycleReceipt(id, action); }
+        try
+        {
+            var receipt = JsonSerializer.Deserialize<SquidLifecycleReceipt>(Convert.FromBase64String(output));
+            if (receipt is null) return false;
+            using var code = ReceiptExecution.Acquire();
+            return code.Create<ISquidReceiptVerifier>(ReceiptVerifierEntryType)
+                .MatchesLifecycle(id, (int)action, receipt.OperationId, (int)receipt.Action);
+        }
         catch (Exception error) when (error is JsonException or FormatException) { return false; }
     }
 
@@ -207,14 +214,16 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         return ReadAccountReceipt(result, id, identity);
     }
 
-    private static SquidAccountReceipt? ReadAccountReceipt(PrivilegedOperationResult result, Guid id, string identity)
+    private SquidAccountReceipt? ReadAccountReceipt(PrivilegedOperationResult result, Guid id, string identity)
     {
         if (!result.Success || result.OutputBase64 is not { } output) return null;
         try
         {
             var receipt = JsonSerializer.Deserialize<SquidAccountReceipt>(Convert.FromBase64String(output));
-            return receipt is not null && receipt.OperationId == id && receipt.RequestIdentity == identity
-                && (receipt.Problem is null || KnownAccountProblem(receipt.Problem)) ? receipt : null;
+            if (receipt is null || IsAccountUnconfirmed(receipt.Problem)) return null;
+            using var code = ReceiptExecution.Acquire();
+            return code.Create<ISquidReceiptVerifier>(ReceiptVerifierEntryType)
+                .MatchesAccount(id, identity, receipt.OperationId, receipt.RequestIdentity) ? receipt : null;
         }
         catch (Exception error) when (error is JsonException or FormatException) { return null; }
     }

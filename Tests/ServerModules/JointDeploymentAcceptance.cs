@@ -444,6 +444,14 @@ internal static class JointDeploymentAcceptance
         Require(await squid.ApplyAsync(rollbackId, new(configuration), _ => Task.CompletedTask, default) == SquidGatewayService.RolledBack
             && await store.ReadAsync(default) is { DesiredRevision: 2, PublishedRevision: 1, LastProblemCode: SquidGatewayService.RolledBack },
             "a verified rollback keeps the last published Squid revision");
+        helper.LifecycleReceipt = new(operationId, SquidServiceAction.Start);
+        Require(!await squid.RecoverLifecycleAsync(operationId, SquidServiceAction.Reload)
+            && await squid.RecoverLifecycleAsync(operationId, SquidServiceAction.Start),
+            "the signed Squid verifier confirms only the original lifecycle action");
+        helper.AccountReceipt = new(operationId, "original-request", null);
+        Require(await squid.RecoverAccountAsync(operationId, "another-request") is null
+            && await squid.RecoverAccountAsync(operationId, "original-request") == helper.AccountReceipt,
+            "the signed Squid verifier confirms only the original account request");
         using var overview = execution.AcquireOverview();
         var reads = new ProxyOverviewReads(_ => Task.CompletedTask, _ => Task.FromResult(false), _ => Task.FromResult<bool?>(true),
             _ => throw new InvalidOperationException("Runtime observation must take precedence."), _ => Task.FromResult(true), _ => Task.FromResult(3));
@@ -1930,9 +1938,17 @@ internal static class JointDeploymentAcceptance
     private sealed class SquidPublicationHelper : IPrivilegedOperationTransport
     {
         public SquidPublicationReceipt? Receipt { get; set; }
+        public SquidLifecycleReceipt? LifecycleReceipt { get; set; }
+        public SquidAccountReceipt? AccountReceipt { get; set; }
 
         public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
         {
+            if (request.Operation == PrivilegedOperationKind.SquidLifecycleReceipt)
+                return Task.FromResult(new PrivilegedOperationResult(true,
+                    OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(LifecycleReceipt))));
+            if (request.Operation == PrivilegedOperationKind.SquidAccountReceipt)
+                return Task.FromResult(new PrivilegedOperationResult(true,
+                    OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(AccountReceipt))));
             if (request.Operation is not (PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidConfigurationReceipt))
                 throw new InvalidOperationException($"Unexpected Squid fixture request: {request.Operation}");
             var rolledBack = request.Operation == PrivilegedOperationKind.SquidApplyConfiguration && Receipt is { Applied: false };

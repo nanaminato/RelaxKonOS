@@ -854,3 +854,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 使用实际 Proxy Server 与 Squid 官方归档复验启动就绪检查。两款应用在复用签名 Proxy 模块后，通过生产 ApplicationAvailabilityService 的服务端依赖检查。该检查与之前的停用预览及真实 Mihomo 联调同轮通过。
 - Squid 配置发布回执的操作 ID、候选摘要和观察摘要由 Proxy 执行程序集验证，覆盖应用与恢复两条宿主路径。Core 继续持有持久化和 Helper 传输。签名包启动时检查新执行入口，旧签名 Proxy 包需要重新构建和签名。Linux x64 联合部署验证签名包接受成功与回滚回执、拒绝错误操作 ID 和不一致摘要。Windows Release Squid 专项通过，真实 Squid 守护进程仍待验。
 - Linux x64 签名 Proxy 联合验收通过生产 SquidGatewayService 和隔离状态目录执行发布及恢复。测试 Helper 返回不一致摘要时保持未发布，错误操作回执不能完成恢复，正确回执持久提交原版本，随后验证回滚保留上一个发布版本。真实 Squid 守护进程仍待验。
+- Squid 生命周期和账户恢复沿用签名 Proxy 模块中的统一回执校验器。Linux x64 双包联调通过生产服务和测试 Helper，确认生命周期回执必须匹配原动作，账户回执必须匹配原请求身份。发布与回滚用例同轮通过。此前构建的 Proxy 包须以新入口重新构建并签名。
