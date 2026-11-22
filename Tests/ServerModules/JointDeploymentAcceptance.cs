@@ -277,10 +277,11 @@ internal static class JointDeploymentAcceptance
 
             var activationArchives = bundledModuleArchives.Where(path =>
                 Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId
-                    or ServerModules.DatabaseId or ServerModules.DockerId)
-                .ToDictionary(path => Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal);
+                    or ServerModules.DatabaseId or ServerModules.DockerId or "relaxkonos.webservers")
+                .ToDictionary(path => Path.GetFileNameWithoutExtension(path) == "relaxkonos.webservers"
+                    ? ServerModules.WebServerId : Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal);
             var activationDependencies = new[] { ServerModules.FirewallId, ModuleId }
-                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId, ServerModules.DockerId }
+                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId, ServerModules.DockerId, ServerModules.WebServerId }
                     .Where(activationArchives.ContainsKey));
             foreach (var dependencyId in activationDependencies)
             {
@@ -302,7 +303,7 @@ internal static class JointDeploymentAcceptance
                 joint = Service();
 
                 var officialArchive = activationArchives.GetValueOrDefault(dependencyId);
-                var activationAppId = officialArchive is null ? "fixture.bundled" : dependencyId;
+                var activationAppId = officialArchive is null ? "fixture.bundled" : Path.GetFileNameWithoutExtension(officialArchive);
                 var activationArchive = officialArchive is null
                     ? Path.Combine(root, dependencyId + "-dependent.roapp")
                     : Path.Combine(official, activationAppId + ".roapp");
@@ -317,8 +318,14 @@ internal static class JointDeploymentAcceptance
                 var activationCandidate = await installer.InspectLocalAsync(activationArchive);
                 var activationReview = await joint.PrepareAsync(activationCandidate, [], default);
                 Require(activationReview.Plan.PreparedSteps.IsEmpty &&
-                    activationReview.Plan.OrderedReleases[0] is { ActivationOnly: true, Satisfied: false },
+                    activationReview.Plan.OrderedReleases.Single(release => release.ActivationOnly)
+                        is { Satisfied: false } activation && activation.Package.Id == dependencyId,
                     $"{dependencyId} is reviewed as enable-only without a package download");
+                if (dependencyId == ServerModules.WebServerId)
+                    Require(activationReview.Plan.OrderedReleases.Select(release => release.Package.Id)
+                            .SequenceEqual([ServerModules.CertificatesId, ServerModules.WebServerId, activationAppId])
+                        && activationReview.Plan.OrderedReleases[0].Satisfied,
+                        "the Web Server Manager review reuses Certificates before activating Web Servers");
                 await ExpectRestartAsync(joint, activationReview);
                 Require(!applications.IsRegistered(new AppId(activationAppId))
                     && ModulePackageOperationStore.Read(serverRoot).Count == 1,
@@ -370,9 +377,22 @@ internal static class JointDeploymentAcceptance
                 if (expectedModules.Contains(ServerModules.ProxyId)) proxyDependents.Add(appId);
                 else
                 {
-                    var dependencies = expectedModules.Select(id => new DeploymentPackageKey(DeploymentPackageKind.ServerModule, id)).ToArray();
+                    var directModules = appId == "relaxkonos.webservers" ? [ServerModules.WebServerId] : expectedModules;
+                    var dependencies = directModules.Select(id => new DeploymentPackageKey(DeploymentPackageKind.ServerModule, id)).ToArray();
                     Require(dependencies.All(key => packages.RequiredBy(key).Contains(appId)),
-                        $"{appId} is recorded as a dependent of each reused module");
+                        $"{appId} is recorded as a dependent of each directly required module");
+                    if (appId == "relaxkonos.webservers")
+                    {
+                        var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                        var inventory = await moduleClient.ReadAsync();
+                        var desired = inventory.Where(module => module.DesiredEnabled && module.Id != ServerModules.CertificatesId)
+                            .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+                        var disable = await moduleClient.PreviewAsync(new(serviceId, ServerModuleAction.Disable,
+                            [ServerModules.CertificatesId], desired, inventory[0].DesiredRevision!, "verify-webserver-certificate-protection"));
+                        Require(disable.BlockedBy.Any(blocker => blocker.ProblemCode == "module-dependency-blocked"
+                            && blocker.ModuleId == ServerModules.CertificatesId),
+                            "the server protects Certificates while Web Servers requires it");
+                    }
                     await packages.UninstallAsync(appId);
                     Require(dependencies.All(key => !packages.RequiredBy(key).Contains(appId))
                         && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
