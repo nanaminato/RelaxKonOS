@@ -419,6 +419,8 @@ internal static class JointDeploymentAcceptance
             "the joint-installed signed Proxy package computes an overview from host observations");
         if (Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONTROLLER") is { Length: > 0 } endpoint)
         {
+            var expectedConnections = int.Parse(Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONNECTIONS") ?? "0",
+                System.Globalization.CultureInfo.InvariantCulture);
             var secrets = new DataProtectionProxyControllerSecretStore(builder.Environment,
                 new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
             using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }),
@@ -440,10 +442,10 @@ internal static class JointDeploymentAcceptance
                 async ct =>
                 {
                     var count = await controller.GetConnectionCountAsync(ct);
-                    Require(count is { Succeeded: true, Value: 0 }, "the signed connection reader decodes the real empty Mihomo snapshot");
+                    Require(count.Succeeded && count.Value == expectedConnections, "the signed connection reader counts the real Mihomo connections");
                     return count.Value;
                 }), default);
-            Require(observed is { TunEnabled: false, ActiveConnections: 0 },
+            Require(!observed.TunEnabled && observed.ActiveConnections == expectedConnections,
                 "the joint-installed signed Proxy executor reports the real Mihomo overview");
         }
     }

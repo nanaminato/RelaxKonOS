@@ -842,3 +842,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含 Proxy Manager 签名双包复验通过。只提交一次签名模块安装，Core 重启后接续登记，已安装执行包使用测试宿主观察值返回 TUN 状态和连接数，卸载保留包。本地验收缓存未发现 Mihomo 二进制，真实运行时仍待验。
 - 已取得 Mihomo 官方 Linux x64 v1.19.32 兼容归档，SHA-256 与官方发布资产一致。在 WSL 独立网络命名空间临时启动，仅开放环回控制器并关闭 TUN，实际 /version 和 /connections 读取通过。进程退出后停止，尚未将此控制器接入签名 Proxy 双包宿主。
 - Linux x64 签名 Proxy 双包通过 RK_TEST_MIHOMO_CONTROLLER 接入隔离的真实 Mihomo v1.19.32。生产控制器适配器读取可达性和关闭的 TUN，签名连接解析器处理真实空连接快照，签名总览返回零连接。卸载桌面保留服务端包。真实运行时仅验证只读观察，未覆盖订阅发布和运行时变更。
+- Linux x64 签名 Proxy 双包在独立网络命名空间连接真实 Mihomo v1.19.32。保持一个经环回代理送往临时后端的连接，设置 RK_TEST_MIHOMO_CONNECTIONS=1，生产适配器及签名解析器均返回一个活动连接，TUN 仍关闭。进程和连接在测试退出后清理。
