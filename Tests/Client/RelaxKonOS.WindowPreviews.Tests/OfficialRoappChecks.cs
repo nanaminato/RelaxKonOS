@@ -383,6 +383,22 @@ internal static class OfficialRoappChecks
                         await files.DownloadFileAsync(connection, "/upload.txt", roundTrip, _ => { });
                         Check(roundTrip.ToArray().AsSpan().SequenceEqual(uploadedBytes),
                             "An upload must preserve the original bytes after a rejected overwrite.");
+                        Check(!await files.RenamePathAsync(connection, "/upload.txt", "/fixture.txt"),
+                            "Rename must refuse an existing destination.");
+                        Check(await files.RenamePathAsync(connection, "/upload.txt", "/renamed.txt"),
+                            "The uploaded file must be renamed.");
+                        var renamed = await files.ReadDirectoryAsync(connection, "/");
+                        Check(renamed.Items.Any(item => item.Name == "renamed.txt")
+                            && renamed.Items.All(item => item.Name != "upload.txt"),
+                            "Rename must replace the old directory entry.");
+                        using var renamedFile = new MemoryStream();
+                        await files.DownloadFileAsync(connection, "/renamed.txt", renamedFile, _ => { });
+                        Check(renamedFile.ToArray().AsSpan().SequenceEqual(uploadedBytes),
+                            "Rename must preserve the file contents.");
+                        await files.DeletePathsAsync(connection, [("/renamed.txt", false)]);
+                        var remaining = await files.ReadDirectoryAsync(connection, "/");
+                        Check(remaining.Items is [{ Name: "fixture.txt" }],
+                            "Delete must remove only the selected file.");
 
                         var pin = typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!;
                         var expected = pin.GetValue(sshFixture);
@@ -401,7 +417,7 @@ internal static class OfficialRoappChecks
                             }
                         }
                         finally { pin.SetValue(sshFixture, expected); }
-                        Console.WriteLine("SSH Files listed, downloaded and uploaded over loopback SFTP, refused overwrite and rejected a mismatched host key.");
+                        Console.WriteLine("SSH Files verified listing, download, upload, rename, delete, overwrite protection and host-key rejection over loopback SFTP.");
                     }
                 }
                 if (isDatabase)

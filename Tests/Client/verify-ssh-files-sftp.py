@@ -76,6 +76,25 @@ class Directory(paramiko.SFTPServerInterface):
         file.st_mtime = 1
         return file
 
+    def rename(self, oldpath, newpath):
+        oldpath, newpath = map(self.canonicalize, (oldpath, newpath))
+        if (oldpath, newpath) != ("/upload.txt", "/renamed.txt"):
+            return paramiko.SFTP_PERMISSION_DENIED
+        if oldpath not in self.files:
+            return paramiko.SFTP_NO_SUCH_FILE
+        if newpath in self.files:
+            return paramiko.SFTP_FAILURE
+        self.files[newpath] = self.files.pop(oldpath)
+        return paramiko.SFTP_OK
+
+    def remove(self, path):
+        path = self.canonicalize(path)
+        if path != "/renamed.txt":
+            return paramiko.SFTP_PERMISSION_DENIED
+        if self.files.pop(path, None) is None:
+            return paramiko.SFTP_NO_SUCH_FILE
+        return paramiko.SFTP_OK
+
 
 class Server(paramiko.ServerInterface):
     def __init__(self, password):
