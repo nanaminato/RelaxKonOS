@@ -856,3 +856,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Proxy 联合验收通过生产 SquidGatewayService 和隔离状态目录执行发布及恢复。测试 Helper 返回不一致摘要时保持未发布，错误操作回执不能完成恢复，正确回执持久提交原版本，随后验证回滚保留上一个发布版本。真实 Squid 守护进程仍待验。
 - Squid 生命周期和账户恢复沿用签名 Proxy 模块中的统一回执校验器。Linux x64 双包联调通过生产服务和测试 Helper，确认生命周期回执必须匹配原动作，账户回执必须匹配原请求身份。发布与回滚用例同轮通过。此前构建的 Proxy 包须以新入口重新构建并签名。
 - Linux x64 签名 Proxy 联合验收使用 Ubuntu Noble 官方 Squid 6.14 原生解析器检查发布候选。RK_TEST_SQUID 指向二进制，解包环境可用 RK_TEST_SQUID_ROOT 指向 MIME 表、unlinkd 与图标资源。验收拒绝致命诊断，即使原生解析进程返回零。Squid 守护进程和真实特权 Helper 发布仍待验。
+- Ubuntu Noble Squid 6.14 守护进程在独立 WSL 网络命名空间启动并降权到 nobody，使用临时目录和与生成配置相同的环回目标拒绝规则。绕过客户端的 NO_PROXY 后，经 Squid 请求环回 HTTP 目标返回 403 和 ERR_ACCESS_DENIED 测试响应，随后停止进程。本次为独立守护进程验收，签名包通过生产 Helper 发布到真实 Squid 仍待验。
