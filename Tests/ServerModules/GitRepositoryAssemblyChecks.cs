@@ -26,28 +26,15 @@ internal static class GitRepositoryAssemblyChecks
         try
         {
             var owner = Guid.NewGuid();
-            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
-            builder.Logging.ClearProviders();
             var database = new Database(new DbContextOptionsBuilder<RelaxKonOSDbContext>()
                 .UseSqlite($"Data Source={Path.Combine(root, "repositories.sqlite")};Pooling=False").Options);
             await using (var db = database.CreateDbContext()) await db.Database.EnsureCreatedAsync();
-            builder.Services.AddSingleton<IDbContextFactory<RelaxKonOSDbContext>>(database);
-            builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+            var protection = new EphemeralDataProtectionProvider();
             var mode = new UserMode(database);
-            builder.Services.AddSingleton<IServerModeResolver>(mode);
-            builder.Services.AddSingleton(new UserExecutionBackendSelection(UserExecutionBackend.Helper));
-            builder.Services.AddSingleton(DispatchProxy.Create<IUserExecutionTransport, RejectTransport>());
-            builder.Services.AddSingleton<IHttpContextAccessor>(new HttpContextAccessor
-            {
-                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", owner.ToString())], "test")) },
-            });
-            var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite");
-            var installed = await InstallExecutionPackageAsync(root);
+            await InstallExecutionPackageAsync(root, "1.0.0");
+            var (host, modules, context, installed) = BuildHost();
             var factory = (GitModuleRuntimeFactory)installed.RuntimeFactory;
-            var ids = new HashSet<string> { ServerModules.GitId };
-            var modules = ServerModules.CreateManaged(ids, [installed]);
-            modules.ConfigureServices(builder, context);
-            await using var app = builder.Build();
+            await using var app = host;
             var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
             var proxy = app.Services.GetRequiredService<IGitRepositoryService>();
             var inventory = await modules.DescribeAsync(app.Services, context, default);
@@ -112,10 +99,54 @@ internal static class GitRepositoryAssemblyChecks
             }
             await using (var next = await storage.BeginCredentialUpdateAsync(owner, null, default).WaitAsync(TimeSpan.FromSeconds(5)))
                 check(next.Settings.Count == 1, "credential cancellation and rejected writes release the gate without changing saved accounts");
-            check(await proxy.UnregisterRepositoryAsync(id, owner) && Directory.Exists(repository),
+            await InstallExecutionPackageAsync(root, "2.0.0");
+            var pending = (await modules.DescribeAsync(app.Services, context, default)).Single(module => module.Id == ServerModules.GitId);
+            check(pending is { EffectiveVersion: "1.0.0", DesiredVersion: "2.0.0", RestartRequired: true },
+                "the existing Git host reports that the installed update needs a restart");
+            var updated = BuildHost();
+            await using (var nextHost = updated.App)
+            {
+                var nextProxy = nextHost.Services.GetRequiredService<IGitRepositoryService>();
+                check(updated.Installed.InstalledVersion == "2.0.0"
+                    && (await nextProxy.ListRepositoriesAsync(owner)).Single().Id == id.ToString()
+                    && (await nextProxy.GetStatusAsync(id, owner)).Staged.Any(file => file.Path == "tracked.txt"),
+                    "the updated Git host reads the original repository registration and index");
+                await File.WriteAllTextAsync(Path.Combine(repository, "updated.txt"), "staged by the updated Git package");
+                check((await nextProxy.StageAsync(id, owner, new(["updated.txt"]))).Success,
+                    "the updated package stages a real file in the existing worktree");
+            }
+            await InstalledModuleInstaller.RollbackAsync(root, app.Configuration, ServerModules.GitId, "1.0.0");
+            var restored = BuildHost();
+            await using var restoredHost = restored.App;
+            var restoredProxy = restoredHost.Services.GetRequiredService<IGitRepositoryService>();
+            check(restored.Installed.InstalledVersion == "1.0.0"
+                && (await restoredProxy.GetStatusAsync(id, owner)).Staged.Select(file => file.Path).ToHashSet()
+                    .SetEquals(["tracked.txt", "updated.txt"]),
+                "the rolled-back Git host reads both original and updated index entries");
+            check(await restoredProxy.UnregisterRepositoryAsync(id, owner) && Directory.Exists(repository),
                 "unregistering through the Host port preserves the user's actual worktree");
             GC.KeepAlive(retainedTasks);
             GC.KeepAlive(proxy);
+
+            (WebApplication App, ServerModules Modules, ServerModuleContext Context, InstalledGitModule Installed) BuildHost()
+            {
+                var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                builder.Logging.ClearProviders();
+                builder.Services.AddSingleton<IDbContextFactory<RelaxKonOSDbContext>>(database);
+                builder.Services.AddSingleton<IDataProtectionProvider>(protection);
+                builder.Services.AddSingleton<IServerModeResolver>(mode);
+                builder.Services.AddSingleton(new UserExecutionBackendSelection(UserExecutionBackend.Helper));
+                builder.Services.AddSingleton(DispatchProxy.Create<IUserExecutionTransport, RejectTransport>());
+                builder.Services.AddSingleton<IHttpContextAccessor>(new HttpContextAccessor
+                {
+                    HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", owner.ToString())], "test")) },
+                });
+                var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite");
+                var installed = InstalledModuleCatalog.Load(root).OfType<InstalledGitModule>().Single();
+                var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.GitId }, [installed]);
+                modules.ConfigureServices(builder, context);
+                return (builder.Build(), modules, context, installed);
+            }
         }
         finally
         {
@@ -128,7 +159,7 @@ internal static class GitRepositoryAssemblyChecks
         }
     }
 
-    private static async Task<InstalledGitModule> InstallExecutionPackageAsync(string root)
+    private static async Task InstallExecutionPackageAsync(string root, string version)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var keyPath = Path.Combine(root, "signing.pem");
@@ -137,10 +168,10 @@ internal static class GitRepositoryAssemblyChecks
         var now = DateTimeOffset.UtcNow;
         const string source = "git-repository-acceptance";
         const string origin = "https://modules.example/";
-        var release = source + "-" + rid;
+        var release = $"{source}-{version}-{rid}";
         var package = await ModulePackageBuilder.BuildAsync(new(
             Path.GetDirectoryName(CollectibleGitExecution.ResolveBundledPath())!, Path.Combine(root, "package"),
-            ServerModules.GitId, "1.0.0", release, source, "official", rid, CollectibleGitExecution.AssemblyFile,
+            ServerModules.GitId, version, release, source, "official", rid, CollectibleGitExecution.AssemblyFile,
             CollectibleGitExecution.EntryType, source, new string('a', 40), source, 1, origin, keyPath, source, 3600,
             Capabilities: [ServerCapabilities.Git], CapabilityContractVersions: new Dictionary<string, string>
             { [ServerCapabilities.Git] = GitApiRoutes.CapabilityContractVersion }), now);
@@ -153,7 +184,6 @@ internal static class GitRepositoryAssemblyChecks
         archive.Position = 0;
         await InstalledModuleInstaller.InstallVerifiedAsync(root, source, verified.Manifest, package.ManifestSha256,
             verified.ArchiveSha256, archive, now);
-        return InstalledModuleCatalog.Load(root).OfType<InstalledGitModule>().Single();
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
