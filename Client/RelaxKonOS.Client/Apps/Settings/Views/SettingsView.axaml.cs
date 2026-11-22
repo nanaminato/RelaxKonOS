@@ -7,7 +7,7 @@ public sealed class SettingsView : SettingsWorkspaceView
 {
     public SettingsView()
     {
-        var templates = new SettingsPageTemplates(NavigateTo);
+        var templates = new SettingsPageTemplates();
         foreach (var template in templates.DataTemplates)
             DataTemplates.Add(template);
     }
@@ -15,11 +15,5 @@ public sealed class SettingsView : SettingsWorkspaceView
 
 public partial class SettingsPageTemplates : UserControl
 {
-    private readonly Action<string>? _navigate;
-
     public SettingsPageTemplates() => InitializeComponent();
-
-    public SettingsPageTemplates(Action<string> navigate) : this() => _navigate = navigate;
-
-    private void OnHomeRouteRequested(object? sender, string route) => _navigate?.Invoke(route);
 }

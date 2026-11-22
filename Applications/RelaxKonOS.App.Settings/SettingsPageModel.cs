@@ -7,6 +7,8 @@ public abstract class SettingsPageModel(Func<string, string, string> localize) :
 {
     public abstract string Route { get; }
 
+    public virtual object? Presentation => this;
+
     // Shared monochrome geometry is drawn on a fixed 24×24 canvas in every theme.
     public Avalonia.Media.Geometry Icon => Avalonia.Media.Geometry.Parse(Route switch
     {

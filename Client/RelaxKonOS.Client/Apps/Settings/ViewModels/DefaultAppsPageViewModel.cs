@@ -23,6 +23,7 @@ public sealed class DefaultAppsPageViewModel : SettingsPageViewModel
     public override string DisplayNameKey => "settings.page.default_apps";
     public override string DisplayName => "Default apps";
     public DefaultAppsPageContent Content { get; }
+    public override object Presentation => Content;
 
     public void SetMappings(IEnumerable<DefaultAppMappingDto>? mappings) =>
         Content.SetMappings(mappings?.Select(mapping => (mapping.Scheme, mapping.AppId)));

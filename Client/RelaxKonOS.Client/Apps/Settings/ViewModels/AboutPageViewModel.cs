@@ -12,6 +12,7 @@ public sealed class AboutPageViewModel(ShellSettings settings, LocalizationServi
     public override string DisplayName => "About RelaxKonOS";
 
     public AboutPageContent Content { get; } = new(key => localization.Get(key, key));
+    public override object Presentation => Content;
 
     protected override void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
     {

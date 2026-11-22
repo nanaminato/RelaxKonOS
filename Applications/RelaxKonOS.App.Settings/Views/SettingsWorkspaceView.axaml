@@ -13,6 +13,27 @@
             <Setter Property="BorderThickness" Value="2" />
         </Style>
     </UserControl.Styles>
+    <UserControl.DataTemplates>
+        <DataTemplate DataType="vm:SettingsHomePageContent">
+            <settingsApp:SettingsHomePageView VerticalAlignment="Top" RouteRequested="OnHomeRouteRequested" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:DefaultAppsPageContent">
+            <settingsApp:DefaultAppsPageView VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:AccessibilityPageContent">
+            <settingsApp:AccessibilityPageView VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:DailySettingsPageContent">
+            <settingsApp:DailySettingsPageView VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:AboutPageContent">
+            <settingsApp:AboutPageView VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="settingsApp:AppPermissionEditor">
+            <settingsApp:AppPermissionDialogView VerticalAlignment="Top" />
+        </DataTemplate>
+    </UserControl.DataTemplates>
+
 
 
     <Grid RowDefinitions="Auto,*">
@@ -92,7 +113,7 @@
 
             </StackPanel>
 
-                    <ContentControl x:Name="PageContent" Content="{Binding SelectedPage}" />
+                    <ContentControl x:Name="PageContent" Content="{Binding SelectedPage.Presentation}" />
                 </StackPanel>
             </ScrollViewer>
             <settingsApp:SettingsSearchResultsView Grid.Row="1" IsVisible="{Binding HasSearch}"

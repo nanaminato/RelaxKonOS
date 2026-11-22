@@ -27,6 +27,7 @@ public sealed class ApplicationPermissionsPageViewModel : SettingsPageViewModel
     public override string DisplayNameKey => "settings.app_permissions";
     public override string DisplayName => "Application permissions";
     public AppPermissionDialogViewModel? Editor => _editor;
+    public override object? Presentation => Editor;
     public Func<ApplicationInfo, Action<bool>, AppPermissionDialogViewModel>? CreateEditor { get; set; }
     public Action? ReturnToApplication { get; set; }
     public void Open()
@@ -35,8 +36,19 @@ public sealed class ApplicationPermissionsPageViewModel : SettingsPageViewModel
         if (_editor?.AppId == app.Id.Value) return;
         ClearEditor();
         _editor = CreateEditor(app, _ => { ClearEditor(); ReturnToApplication?.Invoke(); });
-        OnPropertyChanged(nameof(Editor));
+        NotifyEditorChanged();
     }
-    internal void ClearEditor() { _editor?.Dispose(); _editor = null; OnPropertyChanged(nameof(Editor)); }
+    internal void ClearEditor()
+    {
+        _editor?.Dispose();
+        _editor = null;
+        NotifyEditorChanged();
+    }
+
+    private void NotifyEditorChanged()
+    {
+        OnPropertyChanged(nameof(Editor));
+        OnPropertyChanged(nameof(Presentation));
+    }
     protected override void DisposeCore() => ClearEditor();
 }

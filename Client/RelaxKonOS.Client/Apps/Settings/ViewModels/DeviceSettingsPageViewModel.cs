@@ -15,6 +15,7 @@ public sealed class AccessibilityPageViewModel : SettingsPageViewModel
     public override string DisplayNameKey => "settings.page.accessibility";
     public override string DisplayName => "Accessibility";
     public AccessibilityPageContent Content { get; }
+    public override object Presentation => Content;
 
     protected override void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
     {
@@ -37,6 +38,7 @@ public sealed class DailySettingsPageViewModel : SettingsPageViewModel
     public override string DisplayNameKey => "settings.page.daily";
     public override string DisplayName => "Notifications and startup";
     public DailySettingsPageContent Content { get; }
+    public override object Presentation => Content;
 
     protected override void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
     {

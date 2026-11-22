@@ -93,7 +93,9 @@ public partial class SettingsWorkspaceView : UserControl
             NavigateTo(route);
     }
 
-    public void NavigateTo(string route)
+    private void OnHomeRouteRequested(object? sender, string route) => NavigateTo(route);
+
+    private void NavigateTo(string route)
     {
         if (DataContext is ISettingsWorkspace model)
         {

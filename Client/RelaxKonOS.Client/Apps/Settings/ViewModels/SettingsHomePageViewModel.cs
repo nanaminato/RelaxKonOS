@@ -21,6 +21,7 @@ public sealed class SettingsHomePageViewModel : SettingsPageViewModel
     public override string DisplayNameKey => "settings.page.home";
     public override string DisplayName => "Home";
     public SettingsHomePageContent Content { get; }
+    public override object Presentation => Content;
 
     private void OnPinnedChanged(object? sender, EventArgs e) => Content.RefreshPinnedRoutes();
 
