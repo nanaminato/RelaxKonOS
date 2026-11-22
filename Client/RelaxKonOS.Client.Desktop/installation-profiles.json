@@ -22,7 +22,7 @@
       { "appId": "relaxkonos.tunnels", "minimumVersion": "1.1.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.squid", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.proxy", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
-      { "appId": "relaxkonos.database", "minimumVersion": "0.2.0", "installPolicy": "interactive" },
+      { "appId": "relaxkonos.database", "minimumVersion": "0.3.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.tailscale", "minimumVersion": "0.1.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.proxy-server", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.git", "minimumVersion": "0.3.0", "installPolicy": "interactive" },
