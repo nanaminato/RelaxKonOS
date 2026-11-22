@@ -1,7 +1,7 @@
 using System.Globalization;
 using RelaxKonOS.AppSDK;
 
-namespace RelaxKonOS.App.SshFiles.Views;
+namespace RelaxKonOS.UI.SshFiles;
 
 internal readonly struct SshStatus
 {

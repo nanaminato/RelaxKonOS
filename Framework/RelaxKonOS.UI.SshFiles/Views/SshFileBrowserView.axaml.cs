@@ -12,7 +12,7 @@ using Avalonia.VisualTree;
 using Avalonia.Threading;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.App.SshFiles.Views;
+namespace RelaxKonOS.UI.SshFiles;
 
 internal partial class SshFileBrowserView : UserControl
 {

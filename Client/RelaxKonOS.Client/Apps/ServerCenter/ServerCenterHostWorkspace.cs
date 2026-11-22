@@ -1,5 +1,5 @@
 using RelaxKonOS.UI.ServerInstallation;
-using RelaxKonOS.App.SshFiles.Views;
+using RelaxKonOS.UI.SshFiles;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;

@@ -217,7 +217,8 @@ for source in (*notepad.glob("*.axaml"), *notepad.glob("*.cs")):
             errors.append(f"{source.name}: Notepad resource {literal} is missing from en-US")
 
 ssh_english = package_english.get(ssh_files / "Localization", {})
-for source in (*ssh_files.glob("*.cs"), *ssh_files.glob("Views/*.cs"), *ssh_files.glob("Views/*.axaml")):
+ssh_browser_views = repo / "Framework" / "RelaxKonOS.UI.SshFiles" / "Views"
+for source in (*ssh_files.glob("*.cs"), *ssh_browser_views.glob("*.cs"), *ssh_browser_views.glob("*.axaml")):
     text = source.read_text(encoding="utf-8")
     keys = set(re.findall(r'"((?:ssh_files|explorer|common|server_center|application)\.[a-z0-9_.-]+)"', text))
     keys.update(xaml_key.findall(text))

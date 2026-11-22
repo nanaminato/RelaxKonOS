@@ -8,6 +8,8 @@
   <ItemGroup>
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Settings/RelaxKonOS.App.Settings.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.SshFiles/RelaxKonOS.App.SshFiles.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.Terminal/RelaxKonOS.App.Terminal.csproj" />
+    <ProjectReference Include="../../../Framework/RelaxKonOS.UI.SshFiles/RelaxKonOS.UI.SshFiles.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyManager/RelaxKonOS.App.ProxyManager.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyServer/RelaxKonOS.App.ProxyServer.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Squid/RelaxKonOS.App.Squid.csproj" />

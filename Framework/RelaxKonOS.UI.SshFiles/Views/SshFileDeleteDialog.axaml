@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:loc="clr-namespace:RelaxKonOS.App.SshFiles.Views"
-        x:Class="RelaxKonOS.App.SshFiles.Views.SshFileDeleteDialog"
+        xmlns:loc="clr-namespace:RelaxKonOS.UI.SshFiles"
+        x:Class="RelaxKonOS.UI.SshFiles.SshFileDeleteDialog"
         Width="430" Height="160" WindowStartupLocation="CenterOwner">
     <StackPanel Margin="14" Spacing="16">
         <TextBlock x:Name="PromptText" TextWrapping="Wrap" />

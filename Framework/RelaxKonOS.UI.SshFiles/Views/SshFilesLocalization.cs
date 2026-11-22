@@ -5,7 +5,7 @@ using Avalonia.Data.Converters;
 using Avalonia.Markup.Xaml;
 using RelaxKonOS.AppSDK;
 
-namespace RelaxKonOS.App.SshFiles.Views;
+namespace RelaxKonOS.UI.SshFiles;
 
 internal static class SshFilesLocalization
 {

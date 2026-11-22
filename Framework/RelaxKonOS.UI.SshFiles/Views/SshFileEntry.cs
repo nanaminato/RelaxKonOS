@@ -2,7 +2,7 @@ using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.App.SshFiles.Views;
+namespace RelaxKonOS.UI.SshFiles;
 
 internal sealed class SshFileEntry(string name, string path, bool isDirectory, bool isLink, long size, DateTime modified, ISystemLanguage? language = null) : ObservableObject
 {

@@ -4,7 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Threading;
 
-namespace RelaxKonOS.App.SshFiles.Views;
+namespace RelaxKonOS.UI.SshFiles;
 
 internal sealed class SshTransferProgressWindow : Window, IDisposable
 {

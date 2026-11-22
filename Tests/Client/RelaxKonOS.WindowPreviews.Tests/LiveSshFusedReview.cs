@@ -45,7 +45,7 @@ internal static class LiveSshFusedReview
             await Task.Delay(100, ct);
         var view = (Control)fileWindow.View.Content!;
         var viewType = view.GetType();
-        Require(viewType.FullName == "RelaxKonOS.App.SshFiles.Views.SshFileBrowserView"
+        Require(viewType.FullName == "RelaxKonOS.UI.SshFiles.SshFileBrowserView"
             && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(viewType.Assembly)?.IsCollectible == true,
             "SSH Files must launch its installed official package.");
         const BindingFlags internalMember = BindingFlags.Instance | BindingFlags.NonPublic;

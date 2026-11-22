@@ -95,10 +95,9 @@ internal static class OfficialRoappChecks
         var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
         EventAlertsAuthFixture? browserAuth = null;
         DatabasePackageAuthFixture? databaseAuth = null;
-        SshDesktopSession? sshFixture = null;
         try
         {
-            var (packages, applications, windows) = CreateRuntime();
+            var (packages, applications, windows, sshFixture) = CreateRuntime();
             var installer = new AppPackageInstallerService(packages, null!, catalog);
             if (applicationId == "relaxkonos.welcome")
             {
@@ -410,7 +409,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.taskmanager" => "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView",
                     "relaxkonos.browser" => typeof(TextBlock).FullName,
                     "relaxkonos.terminal" => "RelaxKonOS.App.Terminal.TerminalWorkspaceView",
-                    "relaxkonos.ssh-files" => "RelaxKonOS.App.SshFiles.Views.SshFileBrowserView",
+                    "relaxkonos.ssh-files" => "RelaxKonOS.UI.SshFiles.SshFileBrowserView",
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
                     "relaxkonos.git" => "RelaxKonOS.App.Git.Views.GitClientWorkspace",
@@ -708,7 +707,7 @@ internal static class OfficialRoappChecks
 
             var receipt = Path.Combine(upgraded.InstallationPath, OfficialDesktopPackages.OriginFileName);
             await File.WriteAllTextAsync(receipt, "\"directDeploy\"");
-            var (releaseReader, releaseApplications, _) = CreateRuntime();
+            var (releaseReader, releaseApplications, _, _) = CreateRuntime();
             await releaseReader.LoadInstalledAsync();
             Check(!releaseApplications.IsRegistered(id), "Release must reject a Direct Deploy receipt in its VSD.");
             await File.WriteAllTextAsync(receipt, "\"officialDistribution\"");
@@ -757,7 +756,7 @@ internal static class OfficialRoappChecks
                 downloads++;
                 return new ByteArrayContent(corruptDownload ? broken : archive);
             }));
-            var (onlinePackages, onlineApplications, _) = CreateRuntime(onlineDirectory, online);
+            var (onlinePackages, onlineApplications, _, _) = CreateRuntime(onlineDirectory, online);
             var onlineInstaller = new AppPackageInstallerService(onlinePackages, null!, catalog);
             var onlineJournalPath = Path.Combine(root, "resume-online-catalog");
             var onlineJournal = new FileDeploymentJournal(onlineJournalPath);
@@ -773,7 +772,7 @@ internal static class OfficialRoappChecks
             finally { onlineInstaller.Discard(staged); }
             Check(!File.Exists(staged.LocalPath), "The original downloaded archive must be gone before recovery.");
 
-            var (reopenedPackages, reopenedApplications, _) = CreateRuntime(onlineDirectory, online);
+            var (reopenedPackages, reopenedApplications, _, _) = CreateRuntime(onlineDirectory, online);
             var reopenedInstaller = new AppPackageInstallerService(reopenedPackages, null!, catalog);
             var reopened = new JointAppDeploymentService(null!, null!, reopenedInstaller, reopenedPackages, reopenedApplications,
                 new FileDeploymentJournal(onlineJournalPath));
@@ -793,7 +792,8 @@ internal static class OfficialRoappChecks
             finally { foreach (var candidate in recovered) reopenedInstaller.Discard(candidate); }
         }
 
-        (DeveloperPackageManager, ApplicationManager, WindowManager) CreateRuntime(string? officialDirectory = null, HttpClient? officialHttp = null)
+        (DeveloperPackageManager, ApplicationManager, WindowManager, SshDesktopSession) CreateRuntime(
+            string? officialDirectory = null, HttpClient? officialHttp = null)
         {
             var windows = new WindowManager();
             var apps = new ApplicationManager(windows, services);
@@ -858,7 +858,6 @@ internal static class OfficialRoappChecks
                         : ServerCenterSshEndpoint.Create("127.0.0.1", int.Parse(sftpPort), "preview"));
                 if (sftpPort is not null)
                 {
-                    sshFixture = ssh;
                     typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Password))!
                         .SetValue(ssh, Environment.GetEnvironmentVariable("RK_TEST_SFTP_PASSWORD"));
                     typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!
@@ -876,7 +875,7 @@ internal static class OfficialRoappChecks
                 createProxyClient: proxyManager is null ? null : () => proxyManager, tailscale: tailscale,
                 createPostgreSqlClient: postgres is null ? null : () => postgres);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(),
-                drive, officialDirectory ?? source, officialHttp), apps, windows);
+                drive, officialDirectory ?? source, officialHttp), apps, windows, ssh);
         }
 
         async Task PublishCandidateAsync(Action<JsonObject> editManifest, Action<ZipArchive>? editArchive = null)
@@ -899,7 +898,7 @@ internal static class OfficialRoappChecks
 
         // This fixture isolates the client package lifecycle from the server module executor.
         Task<DeveloperAppInfo> InstallForLifecycleCheckAsync(AppPackageInstallerService installer, AppPackageCandidate candidate) => requiresModule
-            ? installer.InstallAsync(candidate, default, (_, _) => Task.FromResult(Guid.NewGuid()))
+            ? installer.InstallAsync(candidate, default, (_, _) => Task.FromResult(new AppDeploymentReceipt(Guid.NewGuid(), null)))
             : installer.InstallAsync(candidate);
 
         Task WriteProfileAsync(string policy, string? minimum = null)

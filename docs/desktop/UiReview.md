@@ -675,10 +675,10 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 | UI-090 [ServerCenterManagementDialog](../../Client/RelaxKonOS.Client/Apps/ServerCenter/Views/ServerCenterManagementDialog.axaml) | ScrollViewer；TextBox；入口：RepairCommand、UninstallCommand、Close_Click | 忙碌关闭和修改确认已修复；继续目标/事实/未知写入及真实业务 | 关闭保护实际视图 headless 回归通过，完整验收待完成 |
 | UI-091 [ServerCenterWorkspace](../../Client/RelaxKonOS.Client/Apps/ServerCenter/Views/ServerCenterWorkspace.axaml) | ContentControl；入口：NavigationButton_Click | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
 | UI-092 [ServerInstallationWizardView](../../Client/RelaxKonOS.Client/Apps/ServerCenter/Views/ServerInstallationWizardView.axaml) | ScrollViewer；TextBox；入口：ChooseBundle_Click、ChooseServerBundleCommand、ShowHostAddressesCommand | 选择器恢复、远端草稿关闭及密码保留已修复；继续原生本地窗口/提交恢复 | 远端关闭保护实际视图 headless 回归通过，完整验收待完成 |
-| UI-093 [SshFileBrowserView](../../Applications/RelaxKonOS.App.SshFiles/Views/SshFileBrowserView.axaml) | DataGrid；TreeView；ScrollViewer；TextBox；ContextMenu；入口：Back_Click、Forward_Click、Up_Click | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
-| UI-094 [SshFileDeleteDialog](../../Applications/RelaxKonOS.App.SshFiles/Views/SshFileDeleteDialog.axaml) | 入口：Cancel_Click、Delete_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-095 [SshFileNameDialog](../../Applications/RelaxKonOS.App.SshFiles/Views/SshFileNameDialog.axaml) | TextBox；入口：Cancel_Click、Save_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-096 [SshFilePropertiesDialog](../../Applications/RelaxKonOS.App.SshFiles/Views/SshFilePropertiesDialog.axaml) | 入口：Close_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-093 [SshFileBrowserView](../../Framework/RelaxKonOS.UI.SshFiles/Views/SshFileBrowserView.axaml) | DataGrid；TreeView；ScrollViewer；TextBox；ContextMenu；入口：Back_Click、Forward_Click、Up_Click | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
+| UI-094 [SshFileDeleteDialog](../../Framework/RelaxKonOS.UI.SshFiles/Views/SshFileDeleteDialog.axaml) | 入口：Cancel_Click、Delete_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-095 [SshFileNameDialog](../../Framework/RelaxKonOS.UI.SshFiles/Views/SshFileNameDialog.axaml) | TextBox；入口：Cancel_Click、Save_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-096 [SshFilePropertiesDialog](../../Framework/RelaxKonOS.UI.SshFiles/Views/SshFilePropertiesDialog.axaml) | 入口：Close_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
 
 ### Settings
 

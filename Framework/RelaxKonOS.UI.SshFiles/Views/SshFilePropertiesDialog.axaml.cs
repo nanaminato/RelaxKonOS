@@ -2,7 +2,7 @@ using RelaxKonOS.AppSDK;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.App.SshFiles.Views;
+namespace RelaxKonOS.UI.SshFiles;
 
 internal partial class SshFilePropertiesDialog : Window
 {

@@ -422,6 +422,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - `relaxkonos.ssh-files` 加入官方目录及桌面发布打包清单。DevCli 生成 Release `.roapp`，官方包专项通过来源与完整性校验、安装和更新、失败回滚、重启及卸载。测试以模拟 SSH 会话启动已安装的包，并确认窗口来自独立加载上下文。默认安装配置切换、移除内置启动注册及真实 SFTP 联调待完成。
 - SSH 文件浏览器已移除内置启动注册，标准与开发者配置通过离线官方包安装。SSH 桌面缺少该包时，文件入口打开应用安装器。同一包生命周期内、连接到同一 SSH 会话的窗口共享剪贴板和拖放状态。Windows Release 构建、官方包专项和 fused-apps 专项通过。真实 SFTP 复验需要配置 SSH 测试会话。
 - Windows Release 已安装的 SSH Files 官方包通过真实环回 SFTP 读取根目录，宿主使用测试服务器的已知主机密钥指纹。可用 `Tests/Client/verify-ssh-files-sftp.py` 搭配 Paramiko、窗口预览测试 DLL 与已生成的官方包及其校验文件复验。真实远端桌面与写操作未在本次验收执行。
+- SSH Files 与 Server Center 共用 `RelaxKonOS.UI.SshFiles` 的文件浏览组件。SSH Files 官方包携带该组件，应用入口由包加载。Windows Release 发行校验确认宿主依赖清单和发布根目录均无 SSH Files 应用程序集，29 个官方包校验通过。SSH 浏览器布局、文件选择隔离、重命名和传输约束通过窗口预览专项。实际官方包通过环回 SFTP 复验文件读写、复制和移动、嵌套目录往返、覆盖保护及错误主机密钥拒绝，并通过安装、更新、失败保留、重启和卸载检查。
 - 环回 SFTP 验收补充逐字节下载校验。测试修改宿主保存的主机密钥指纹后，确认下一次下载被拒绝且没有收到文件字节。Windows Release 官方包专项通过。
 - Windows Release 环回 SFTP 验收通过单文件上传、拒绝覆盖及下载回读。测试服务只将新文件保存在内存中。远端桌面及目录传输、重命名、删除等操作仍待验收。
 - Windows Release 环回 SFTP 验收通过单文件重命名、同名拒绝和删除。测试核对旧目录项消失、重命名后内容保持一致，以及删除后原始测试文件仍存在。目录传输与远端桌面待验收。

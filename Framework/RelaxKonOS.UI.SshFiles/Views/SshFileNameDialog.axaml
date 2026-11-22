@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:loc="clr-namespace:RelaxKonOS.App.SshFiles.Views"
-        x:Class="RelaxKonOS.App.SshFiles.Views.SshFileNameDialog"
+        xmlns:loc="clr-namespace:RelaxKonOS.UI.SshFiles"
+        x:Class="RelaxKonOS.UI.SshFiles.SshFileNameDialog"
         Width="390" Height="145" WindowStartupLocation="CenterOwner">
     <StackPanel Margin="12" Spacing="12">
         <TextBox x:Name="NameEditor" KeyDown="NameEditor_KeyDown" />

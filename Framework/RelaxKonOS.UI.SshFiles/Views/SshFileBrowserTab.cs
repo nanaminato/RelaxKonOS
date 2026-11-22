@@ -2,7 +2,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.UI.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace RelaxKonOS.App.SshFiles.Views;
+namespace RelaxKonOS.UI.SshFiles;
 
 /// <summary>Window-local SFTP directory snapshot and independent navigation state.</summary>
 internal sealed partial class SshFileBrowserTab(ISystemLanguage language) : ObservableObject

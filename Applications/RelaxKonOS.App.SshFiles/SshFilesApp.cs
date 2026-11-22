@@ -1,5 +1,5 @@
 using Avalonia.Threading;
-using RelaxKonOS.App.SshFiles.Views;
+using RelaxKonOS.UI.SshFiles;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;

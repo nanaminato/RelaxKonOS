@@ -1,4 +1,4 @@
-using RelaxKonOS.App.SshFiles.Views;
+using RelaxKonOS.UI.SshFiles;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using Avalonia;

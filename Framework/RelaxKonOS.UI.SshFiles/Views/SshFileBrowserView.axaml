@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:fileIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.App.SshFiles.Views"
+             xmlns:loc="clr-namespace:RelaxKonOS.UI.SshFiles"
              xmlns:fileBrowser="clr-namespace:RelaxKonOS.UI.FileBrowser;assembly=RelaxKonOS.UI"
-             xmlns:ssh="clr-namespace:RelaxKonOS.App.SshFiles.Views"
-             x:Class="RelaxKonOS.App.SshFiles.Views.SshFileBrowserView"
+             xmlns:ssh="clr-namespace:RelaxKonOS.UI.SshFiles"
+             x:Class="RelaxKonOS.UI.SshFiles.SshFileBrowserView"
              x:Name="Root"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <UserControl.Styles>
