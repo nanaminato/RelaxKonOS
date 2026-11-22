@@ -7,6 +7,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 
 namespace RelaxKonOS.Client.Services.AppPackages;
@@ -91,30 +92,24 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
         bool localOnly = false)
     {
-        var login = !localOnly && session?.State == AuthSessionState.Authenticated ? session.CurrentSession : null;
+        var scope = CaptureRecoveryScope();
         var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
         var key = App(candidate.Manifest.Id);
         var componentRelease = ComponentReleaseOf(candidate);
         var plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
             digest, Guid.Empty, "", cancellationToken, componentRelease, candidate.ServerArchive);
-        if (plan is null && HasOriginalLogin() && session.CurrentUser is { } user && session.ServiceId is { } connection)
-        {
+        if (plan is null && !localOnly && scope is { } remote && IsCurrent(remote))
             plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
-                digest, user.Id, connection, cancellationToken, componentRelease, candidate.ServerArchive);
-            if (!HasOriginalLogin() || session.CurrentUser?.Id != user.Id || session.ServiceId != connection) return null;
-        }
+                digest, remote.AccountId, remote.ConnectionIdentity, cancellationToken, componentRelease, candidate.ServerArchive);
         if (plan?.ClientBinding is not { } binding) return null;
-        if (!MatchesComponentRelease(binding, candidate, digest)) return null;
-        if (!MatchesServerArchive(binding, candidate, session)) return null;
+        if (!MatchesComponentRelease(binding, candidate, digest)
+            || binding.ServerArchive != candidate.ServerArchive || !CanRecover(binding, scope)) return null;
         return new(plan, candidate with
         {
             ExpectedSha256 = digest,
             InstalledVersion = plan.OrderedReleases[^1].CurrentVersion,
             ExpectedInstalledPath = binding.InstalledPath,
         });
-
-        bool HasOriginalLogin() => login is not null && session.State == AuthSessionState.Authenticated
-            && ReferenceEquals(login, session.CurrentSession);
     }
 
     private static DeploymentComponentRelease? ComponentReleaseOf(AppPackageCandidate candidate) =>
@@ -144,17 +139,17 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<IReadOnlyList<AppPackageCandidate>> RecoverArchivesAsync(
         IReadOnlyList<OfficialDesktopRelease> releases, CancellationToken cancellationToken)
     {
-        var login = session?.State == AuthSessionState.Authenticated ? session.CurrentSession : null;
+        var scope = CaptureRecoveryScope();
         var plans = await journal.ReadPendingPlansAsync(Guid.Empty, "", cancellationToken);
-        if (HasOriginalLogin() && session.CurrentUser is { } user && session.ServiceId is { } connection)
-            plans = [.. plans, .. await journal.ReadPendingPlansAsync(user.Id, connection, cancellationToken)];
+        if (scope is { } remote && IsCurrent(remote))
+            plans = [.. plans, .. await journal.ReadPendingPlansAsync(remote.AccountId, remote.ConnectionIdentity, cancellationToken)];
 
         var candidates = new List<AppPackageCandidate>();
         var recovered = new HashSet<(DeploymentPackageKey Package, string Digest, DeploymentComponentRelease? Source, DeploymentServerArchive? Server)>();
         foreach (var plan in plans)
         {
             if (cancellationToken.IsCancellationRequested) break;
-            if (plan.ClientBinding is not { } binding || !CanRecover(binding)) continue;
+            if (plan.ClientBinding is not { } binding || !CanRecover(binding, scope)) continue;
             var root = plan.OrderedReleases[^1];
             var identity = (root.Package, root.ArtifactIdentity, binding.ComponentRelease, binding.ServerArchive);
             if (recovered.Contains(identity)) continue;
@@ -175,7 +170,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 if (root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version) continue;
                 var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
                 if (digest == root.ArtifactIdentity && MatchesComponentRelease(binding, candidate, digest)
-                    && MatchesServerArchive(binding, candidate, session) && CanRecover(binding) && recovered.Add(identity))
+                    && binding.ServerArchive == candidate.ServerArchive && CanRecover(binding, scope) && recovered.Add(identity))
                 {
                     candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true });
                     candidate = null; // The installer queue now owns the staged archive.
@@ -186,16 +181,28 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             finally { if (candidate is not null) installer.Discard(candidate); }
         }
         return candidates;
+    }
 
-        bool CanRecover(DeploymentClientBinding binding) =>
-            (binding.ServerArchive is not { } archive
-                || HasOriginalLogin() && AppPackageInstallerService.MatchesServerArchive(session, archive))
-            && (binding.AccountId == Guid.Empty && binding.ConnectionIdentity == ""
-            || HasOriginalLogin() && binding.AccountId == session.CurrentUser?.Id
-                && binding.ConnectionIdentity == session.ServiceId);
+    private sealed record RecoveryScope(SessionDto Login, Guid AccountId, string ConnectionIdentity);
 
-        bool HasOriginalLogin() => login is not null && session.State == AuthSessionState.Authenticated
-            && ReferenceEquals(login, session.CurrentSession);
+    private RecoveryScope? CaptureRecoveryScope() =>
+        session is { State: AuthSessionState.Authenticated, CurrentSession: { } login }
+        && session.CurrentUser is { } user && session.ServiceId is { } connection
+            ? new(login, user.Id, connection) : null;
+
+    private bool IsCurrent(RecoveryScope scope) =>
+        session.CurrentUser?.Id == scope.AccountId && session.ServiceId == scope.ConnectionIdentity
+        && session.State == AuthSessionState.Authenticated && ReferenceEquals(session.CurrentSession, scope.Login);
+
+    private bool CanRecover(DeploymentClientBinding binding, RecoveryScope? scope)
+    {
+        var local = binding.AccountId == Guid.Empty && binding.ConnectionIdentity == "";
+        if (local && binding.ServerArchive is null) return true;
+        return scope is not null
+            && (local || binding.AccountId == scope.AccountId && binding.ConnectionIdentity == scope.ConnectionIdentity)
+            && (binding.ServerArchive is not { } archive
+                || archive.AccountId == scope.AccountId && archive.ConnectionIdentity == scope.ConnectionIdentity)
+            && IsCurrent(scope);
     }
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)

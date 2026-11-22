@@ -114,6 +114,10 @@ internal static class RoappCatalogChecks
                     "Reopening the journal must stage the server archive again without installing it.");
                 Check((await reopenedServer.FindPendingAsync(recoveredServer, CancellationToken.None, localOnly: true))?.Plan.Id == remoteReview.Plan.Id,
                     "A re-downloaded server archive must match the original pending plan.");
+                actor.DuringServiceIdRead = actor.ReplaceLogin;
+                Check(await reopenedServer.FindPendingAsync(recoveredServer, CancellationToken.None, localOnly: true) is null,
+                    "Replacing the login during lookup must invalidate even a local plan backed by a server archive.");
+                actor.DuringServiceIdRead = null;
             }
             finally { serverInstaller.Discard(recoveredServer); }
             transport.Bytes = [.. transport.Bytes, 0];
