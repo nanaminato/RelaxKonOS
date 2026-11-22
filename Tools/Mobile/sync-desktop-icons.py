@@ -6,6 +6,7 @@ of truth; this script derives the Android copies and is the only supported way t
 
 Source                                        Destination
   Assets/AppIcons/<name>.png                    res/drawable-nodpi/ic_app_<name>.png
+  Applications/<project>/Assets/<name>.png     migrated application icons under the same Android name
   Framework/RelaxKonOS.UI/Assets/Icons/Explorer/ res/drawable-nodpi/ic_sys_<name with '-' as '_'>.png
   Assets/Icons/Fluent/<name>.png                res/drawable-nodpi/ic_fluent_<name>.png
   Assets/RelaxKonOS-client-icon.png             res/drawable-nodpi/ic_app_brand.png
@@ -43,6 +44,7 @@ from PIL import Image, ImageDraw
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DESKTOP_ASSETS = REPO / "Client" / "RelaxKonOS.Client" / "Assets"
 EXPLORER_ASSETS = REPO / "Framework" / "RelaxKonOS.UI" / "Assets" / "Icons" / "Explorer"
+APPLICATIONS = REPO / "Applications"
 ANDROID_RES = REPO / "Client" / "RelaxKonOS.Client.Android" / "app" / "src" / "main" / "res"
 TARGET = ANDROID_RES / "drawable-nodpi"
 
@@ -50,6 +52,20 @@ SIZE = 128
 
 # `debug-grid.png` is a 2048x768 sprite sheet kept beside the app icons, not an icon itself.
 SKIP = {"debug-grid"}
+
+# Keep Android resource names stable when the desktop artwork is owned by its package.
+PACKAGE_APP_ICONS = {
+    "certificates": ("Certificates", "certificates.png"),
+    "docker": ("Docker", "docker.png"),
+    "imageviewer": ("ImageViewer", "imageviewer.png"),
+    "notepad": ("Notepad", "notepad.png"),
+    "proxy": ("ProxyManager", "proxy.png"),
+    "proxy_server": ("ProxyServer", "proxy-server.png"),
+    "registry": ("Registry", "registry.png"),
+    "squid": ("Squid", "squid.png"),
+    "taskmanager": ("TaskManager", "taskmanager.png"),
+    "webservers": ("WebServers", "webservers.png"),
+}
 
 # The product mark, the one desktop asset that also has to become the launcher icon.
 BRAND = DESKTOP_ASSETS / "RelaxKonOS-client-icon.png"
@@ -127,9 +143,13 @@ def sources() -> list[tuple[pathlib.Path, str]]:
     ]
 
     for path in sorted((DESKTOP_ASSETS / "AppIcons").glob("*.png")):
-        if path.stem in SKIP:
+        name = path.stem.replace("-", "_")
+        if path.stem in SKIP or name in PACKAGE_APP_ICONS:
             continue
-        found.append((path, f"ic_app_{path.stem.replace('-', '_')}"))
+        found.append((path, f"ic_app_{name}"))
+
+    for name, (project, filename) in PACKAGE_APP_ICONS.items():
+        found.append((APPLICATIONS / f"RelaxKonOS.App.{project}" / "Assets" / filename, f"ic_app_{name}"))
 
     for path in sorted(EXPLORER_ASSETS.glob("*.png")):
         found.append((path, f"ic_sys_{path.stem.replace('-', '_')}"))
@@ -263,10 +283,18 @@ def main() -> int:
     arguments = parser.parse_args()
 
     files = derived()
+    def matches(path: pathlib.Path, payload: bytes) -> bool:
+        if not path.exists():
+            return False
+        existing = path.read_bytes()
+        if path.suffix == ".xml":
+            existing = existing.replace(b"\r\n", b"\n")
+        return existing == payload
+
     stale = sorted(
         path
         for path, payload in files.items()
-        if not path.exists() or path.read_bytes() != payload
+        if not matches(path, payload)
     )
     removed = orphans(files)
 

@@ -195,7 +195,7 @@ Android 不提供 Git 操作与 Git 构建发布链路；应用的支持边界�
 - **状态不靠颜色单独表达**：`StatusChip` 始终携带文字，图标只是补充。主机指标的阈值只在一处定义（`loadTone`）：<70% 正常、70–90% 需要留意、≥90% 视为问题。
 - **指标文本完整可读**：共用 `MetricTile` 的标题、数值与容量说明允许完整换行，不以省略号隐藏长磁盘路径或大字体下的读数；页面通过滚动承载增加的高度。
 - **页面构成**：每个目的地以同一个 `ScreenHeader` 开头（标题 + 可选副标题 + 可选返回圆钮）；`onBack` 为 `null` 时是平板分栏形态，此时不渲染返回钮——分栏没有「返回」可退。设置类页面用「分组标题 + 分组卡」（`SectionLabel` + `SectionGroup`），页面标题不在卡内重复。列表项统一为「图标徽章 + 标题 + 两行细节 + 尾部动作」，不再把多个事实用分隔符拼成一行。
-- **图标与桌面端同源**：Android 不自绘图标集。桌面端 `Client/RelaxKonOS.Client/Assets` 是唯一来源，`Tools/Mobile/sync-desktop-icons.py` 把它镜像到 `res/drawable-nodpi/`，`ui/icons/DesktopIcons.kt` 是按语义寻址的唯一映射点。改图标必须走这个脚本，不得在 `res/drawable/` 里另画一套。
+- **图标与桌面端同源**。Android 使用桌面宿主、共享 UI 和独立应用包的原始图标。`Tools/Mobile/sync-desktop-icons.py` 把它们同步到 `res/drawable-nodpi/`，保留现有资源名。`ui/icons/DesktopIcons.kt` 负责按语义映射图标。
   - **启动图标也走这条链路**：`android:icon` / `android:roundIcon` 指向 `@mipmap/ic_launcher` / `@mipmap/ic_launcher_round`，由同一脚本从 `RelaxKonOS-client-icon.png` 派生——`mipmap-*dpi/` 是 API 25 及以下的整块位图（圆角方形与圆形各一套），`mipmap-anydpi-v26/` 是自适应图标。
   - **桌面端图标是透明背景的标记，自适应图标必须有一层背景**，因此背景取应用自己的背景渐变（`Palette.kt` 的 `backdropStart`/`backdropEnd`，即 `res/drawable/ic_launcher_background.xml`）：桌面端也把标记画在这层浅色表面上（标题栏、登录页横幅），两边因此是同一观感，而不是另起一个品牌底色。主色作底会让标记中段的深蓝糊进背景，这是刻意避开的。
   - 标记在自适应画布上占 0.48，使其墨迹落在 72dp 遮罩圆内约 1dp 处，圆形遮罩也不会裁到它；整块位图没有遮罩，方形取 0.70、圆形取 0.68。
