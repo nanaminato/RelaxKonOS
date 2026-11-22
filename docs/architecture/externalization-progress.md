@@ -836,3 +836,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Web Server 联合部署使用真实 Nginx，坏配置被拒后经同一签名重载入口提交修正配置，重载确认成功，同一 master 返回修正后的 HTTP 响应。系统服务 Helper 重载路径仍待验。
 - Windows Release 的 --signed-firewall-joint-acceptance 使用官方 Firewall Manager 归档测试副本提高模块最低版本，验证一次独立签名包安装与 Core 重启续跑。匿名状态读取被拒且未调用 Helper。认证请求经生产 HTTP 和签名执行模块，通过测试传输得到预期状态。桌面卸载后服务端包保留。真实防火墙尚未纳入本用例。
 - Firewall 签名双包在 Windows 使用 RK_TEST_FIREWALL_HOST_CONFIG，经现有 Helper 认证命名管道成功读取真实防火墙状态，未改写规则。Linux x64 同轮使用测试传输验证匿名请求不增加调用，认证请求恰增加一次读取。Linux 启动与联合管理阶段已存在 Helper 调用，测试按请求前后的差值断言。
+- Windows 签名 Firewall 双包通过写入授权拒绝。认证用户缺少 FirewallChange 提升授权时，生产路由返回 firewall.elevation_required。测试传输确认拒绝未产生额外调用，已有 Windows Helper 的真实读取模式也通过同一拒绝检查。

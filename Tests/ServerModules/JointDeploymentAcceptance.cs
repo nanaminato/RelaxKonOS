@@ -386,6 +386,14 @@ internal static class JointDeploymentAcceptance
         var status = await client.GetFromJsonAsync<FirewallStatusDto>(route, RelaxKonOSJsonOptions.Default);
         Require(status is { IsAvailable: true } && (fixture is null || status.IsEnabled && fixture.Calls == callsBeforeRead + 1),
             "the joint-installed signed Firewall module returns status through the production route and Helper adapter");
+        var callsAfterRead = fixture?.Calls;
+        using var denied = await client.PutAsJsonAsync("/api/v1.0/firewall/enabled",
+            new UpdateFirewallEnabledRequest(!status!.IsEnabled), RelaxKonOSJsonOptions.Default);
+        denied.EnsureSuccessStatusCode();
+        var result = await denied.Content.ReadFromJsonAsync<FirewallOperationResult>(RelaxKonOSJsonOptions.Default);
+        Require(result is { Success: false, ProblemCode: "firewall.elevation_required" }
+            && (fixture is null || fixture.Calls == callsAfterRead),
+            "the signed Firewall route declines a change without host firewall elevation");
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
