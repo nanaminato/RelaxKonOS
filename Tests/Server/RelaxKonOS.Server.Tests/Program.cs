@@ -3,6 +3,7 @@ if (args is ["--postgresql-only"]) { await PostgreSqlChecks.RunAsync(); await Po
 if (args is ["--firewall-boundary-only"])
 {
     await FirewallBoundaryChecks.RunAsync();
+    await FirewallBoundaryChecks.CheckInstalledPackageAsync();
     return;
 }
 if (args is ["--module-domain-boundaries-only"])

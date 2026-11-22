@@ -10,20 +10,20 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// runs through the Core-owned privileged Helper transport and the elevation grant check, so
 /// enabling or disabling it never widens the authorization surface.
 /// </summary>
-internal sealed class FirewallModule : IServerModule, IServerModuleResidency
+internal class FirewallModule : IServerModule, IServerModuleResidency
 {
     public string Id => ServerModules.FirewallId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Firewall];
-    public IReadOnlyList<string> Requires => [];
-    public IServerModuleRuntimeFactory RuntimeFactory { get; } = new FirewallModuleRuntimeFactory();
+    public virtual IReadOnlyList<string> Requires => [];
+    public virtual IServerModuleRuntimeFactory RuntimeFactory { get; } = new FirewallModuleRuntimeFactory();
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         builder.Services.AddSingleton<IHostFirewallService>(services => ModuleServiceProxy<IHostFirewallService>.Create(
             services.GetRequiredService<ModuleResidencyCoordinator>(), Id));
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         // The routes only exist on hosts with a firewall backend; the group additionally re-checks
         // the deployment mode on every request through RequireHostFeature.

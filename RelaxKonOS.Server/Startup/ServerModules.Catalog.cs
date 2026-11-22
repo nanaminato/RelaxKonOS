@@ -76,7 +76,9 @@ internal sealed partial class ServerModules
         if (installed is not { Count: > 0 }) return compiled;
         var packagedDatabase = installed.Any(module => module is InstalledIsolatedModule && module.Id == DatabaseId);
         var packagedTailscale = installed.Any(module => module is InstalledTailscaleModule);
+        var packagedFirewall = installed.Any(module => module is InstalledFirewallModule);
         return [.. compiled.Where(module => (!packagedDatabase || module.Id != DatabaseId)
-            && (!packagedTailscale || module.Id != Modules.TailscaleModule.ModuleId)), .. installed];
+            && (!packagedTailscale || module.Id != Modules.TailscaleModule.ModuleId)
+            && (!packagedFirewall || module.Id != FirewallId)), .. installed];
     }
 }

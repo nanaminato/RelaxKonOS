@@ -69,10 +69,11 @@ internal sealed partial class ServerModules
             var recoveryRequired = runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
             var installed = module as IInstalledModuleInfo;
             var host = hostStatuses?.GetValueOrDefault(module.Id);
-            var package = module is InstalledIsolatedModule || module.Id == Modules.TailscaleModule.ModuleId
+            var fixedExecutionPackage = module.Id is Modules.TailscaleModule.ModuleId or FirewallId;
+            var package = module is InstalledIsolatedModule || fixedExecutionPackage
                 ? currentPackages.GetValueOrDefault(module.Id) : null;
             var moduleVersion = package?.Version ?? installed?.InstalledVersion ?? version;
-            var tailscaleRestart = module.Id == Modules.TailscaleModule.ModuleId && package is not null
+            var executionRestart = fixedExecutionPackage && package is not null
                 && package.ArtifactSha256 != installed?.ArtifactDigest;
             var effectiveVersion = module is InstalledIsolatedModule
                 ? host is { Status: "running" } ? host.Version : null
@@ -84,11 +85,11 @@ internal sealed partial class ServerModules
                 InstalledVersion: moduleVersion, DesiredVersion: moduleVersion, EffectiveVersion: effectiveVersion,
                 ArtifactDigest: package?.ArtifactSha256 ?? installed?.ArtifactDigest ?? HostDigest.Value,
                 SourceId: package?.SourceId ?? installed?.SourceId ?? "server-release",
-                TrustState: module.Id == Modules.TailscaleModule.ModuleId && package is not null
+                TrustState: fixedExecutionPackage && package is not null
                     ? package.Quarantined ? "quarantined" : "installed" : installed?.TrustState ?? "host",
                 ServiceId: management?.ServiceId, ProcessGeneration: management?.ProcessGeneration,
                 DesiredRevision: managementState?.Revision, EffectiveRevision: management?.EffectiveRevision,
-                RestartRequired: tailscaleRestart || desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
+                RestartRequired: executionRestart || desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
                 PendingOperationId: managementState?.PendingOperations.TryGetValue(module.Id, out var pendingId) == true ? pendingId : null,
                 RecoveryState: management?.RecoveryMode == true ? "host-recovery" : recoveryRequired ? "required" : "none",
                 ConfigurationOwner: management?.Writable == true ? "managed" : "deployment",

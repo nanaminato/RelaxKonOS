@@ -1,6 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Builder;
+using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Firewall;
 using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
@@ -86,13 +89,48 @@ internal static class FirewallBoundaryChecks
         catch (InvalidDataException error)
         {
             retained.Add(error); retained.Add(failedActivation);
-            Check(error.InnerException is null && error.Message == "Bundled Firewall execution could not be activated.",
+            Check(error.InnerException is null && error.Message == "Firewall execution could not be activated.",
                 "Constructor failure is reconstructed in Host rather than exporting TargetInvocationException or private metadata");
         }
         await CollectAsync(failedCode!);
         Check(failedCode is { IsAlive: false }, "Retaining a failed activation task and exception does not pin its execution context");
         GC.KeepAlive(retained);
         Console.WriteLine($"Firewall boundary checks passed: {count}");
+    }
+
+    internal static async Task CheckInstalledPackageAsync()
+    {
+        await using var fixture = new Fixture(OperatingSystem.IsWindows() ? HostPlatformKind.Windows : HostPlatformKind.Linux);
+        var root = fixture.Context.ContentRootPath;
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var keyPath = Path.Combine(root, "signing.pem");
+        await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
+        var entry = CollectibleFirewallExecution.ResolveBundledPath();
+        var rid = ModulePackagePlatform.CurrentRid;
+        var now = DateTimeOffset.UtcNow;
+        var options = new ModulePackageBuildOptions(Path.GetDirectoryName(entry)!, Path.Combine(root, "package"),
+            ServerModules.FirewallId, "1.0.0", "firewall-boundary-" + rid, "fixture", "official", rid,
+            CollectibleFirewallExecution.AssemblyFile, CollectibleFirewallExecution.EntryType, "firewall-boundary", new string('a', 40),
+            "fixture", 1, "https://modules.example/", keyPath, "fixture-key", 3600, Capabilities: [ServerCapabilities.Firewall]);
+        var package = await ModulePackageBuilder.BuildAsync(options, now);
+        var policy = new ModulePackageTrustPolicy(1, "fixture", 1, true, "fixture", "official", options.ArtifactOrigin,
+            [ServerModules.FirewallId], new Dictionary<string, string> { [options.KeyId] = package.PublicKeySpkiBase64 }, 3600);
+        var context = new ModulePackageContext("firewall-boundary", rid, "1.0.0", false);
+        await using var archive = File.OpenRead(package.ArchivePath);
+        var accepted = await ModulePackageVerifier.VerifyCandidateAsync(archive, await File.ReadAllBytesAsync(package.CatalogPath),
+            policy, context, ModulePackageTrustHistory.Empty(policy, context), options.ReleaseId, now);
+        archive.Position = 0;
+        await InstalledModuleInstaller.InstallVerifiedAsync(root, options.SourceId, accepted.Manifest, package.ManifestSha256,
+            accepted.ArchiveSha256, archive, now);
+        var modules = InstalledModuleCatalog.Load(root);
+        var installed = (InstalledFirewallModule)modules.Single();
+        _ = ServerModules.CreateManaged(new HashSet<string> { ServerModules.FirewallId }, modules);
+        await using var runtime = await installed.RuntimeFactory.CreateAsync(fixture.App.Services, fixture.Context, default);
+        var service = (IHostFirewallService)runtime.Resolve(typeof(IHostFirewallService));
+        await service.ListRulesAsync(default);
+        if (fixture.Transport.Calls != 1 || installed.ArtifactDigest != accepted.ArchiveSha256)
+            throw new InvalidOperationException("The installed Firewall package did not serve through the Core Helper port.");
+        Console.WriteLine("PASS FIREWALL BOUNDARY: verified and loaded the signed Firewall package, then read through the unchanged Core port");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

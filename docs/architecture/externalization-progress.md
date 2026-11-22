@@ -742,3 +742,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows 本机 Tailscale 服务处于 Running。Release 的 --tailscale-live-status 通过 Helper 的生产只读处理器运行受保护的固定命令，确认真实 daemon 返回可解析的后端状态。探针只输出状态读取结果。常规 Tailscale 专项通过。该探针直接调用 Helper 处理器，真实 IPC、网络变更、登录及多设备验收仍待完成。
 - Windows Release 的 --tailscale-live-pipe 通过。生产 Core 状态适配器经受 ACL 和消息认证保护的一次性命名管道调用生产 Helper 处理器，获得真实 Tailscale daemon 的后端状态。测试宿主在同一进程启动管道两端，未安装系统服务也未修改网络配置。独立服务进程、网络变更、登录及多设备验收待完成。
 - Windows Release 的 --tailscale-live-pipe 改用独立 Helper 测试子进程并通过。Core 状态适配器通过生产认证协议跨进程读取真实 daemon，子进程经匿名标准输入接收一次性配置并在测试后退出。已安装的 LocalSystem 服务模式、网络变更、登录及多设备验收仍待完成。
+- Firewall 执行程序集可通过官方进程内 .rkmodule 安装，Core 按固定能力、入口和 RID 复验包文件，并在请求代次加载已安装执行代码。现有路由授权与 Helper 端口继续工作。Windows Release 的 31 项驻留边界断言及签名包安装、加载、受控 Helper 只读转发检查通过。管理 HTTP 流程和真实防火墙验收待完成。
