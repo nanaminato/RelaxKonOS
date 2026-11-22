@@ -463,3 +463,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Linux 原生桌面启动与退出复验可使用 `Tests/Client/verify-linux-desktop-startup.py <publish-directory>`。脚本需要 Python、Linux .NET、X11 图形会话以及 xwininfo 和 xprop，使用临时 HOME，确认可见窗口 PID 属于测试进程后发送关闭请求。专用 WSL 上复验通过，退出码为 0。
 - Windows x64 复跑与 Linux 相同的 Release 双包验收输入。Welcome 与签名测试模块通过安装和恢复，Databases、Web Server Manager、Docker Manager 官方包通过仅启用、重启、复用和卸载，且证书传递依赖保护通过。测试使用环回宿主及空闲数据库 Helper 夹具。
 - 全发行配置切换验收在 Windows x64 与 Linux x64 WSL 均通过。Developer 切至 Minimal 保留已登记的十个包及安装记录，用户随后卸载 Welcome，再切回 Developer 不会重新安装 Welcome，也不会替换其余包。回归使用发布归档、实际安装器和隔离 VSD。
+- 当前 Release 桌面可移植发行完整构建成功。25 个官方 `.roapp` 的 SHA-256、ZIP 完整性及清单 ID 全部通过，发布的安装配置与源码逐字节一致。Linux x64 WSL 直接使用这套发行产物复验 X11 Minimal 启动和退出、三种配置分别安装 0/9/10 个离线包，以及配置切换保留主动卸载。该发行由 Linux .NET 运行时启动，未构建独立 Linux RID 应用宿主。
