@@ -480,7 +480,8 @@ internal static class ModulePackageHttpChecks
                         && mirrorResolver.Resolve(mirrorOwner, "ghcr.io/example/app:tag") == "ghcr.io/example/app:tag"
                         && mirrorResolver.Resolve(Guid.NewGuid(), "nginx:alpine") == "nginx:alpine",
                         "the restored signed Docker package rewrites only the owner's eligible Docker Hub reference");
-                    if (liveDocker) await VerifyLiveComposeAsync(compose, check);
+                    if (liveDocker)
+                        await VerifyLiveComposeAsync(compose, composeScope.ServiceProvider.GetRequiredService<DockerComposeExecution>(), check);
                 }
                 using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "2.0.0"), RelaxKonOSJsonOptions.Default);
@@ -508,7 +509,7 @@ internal static class ModulePackageHttpChecks
         }
     }
 
-    private static async Task VerifyLiveComposeAsync(IDockerComposeService compose, Action<bool, string> check)
+    private static async Task VerifyLiveComposeAsync(IDockerComposeService compose, DockerComposeExecution execution, Action<bool, string> check)
     {
         var project = "rk-signed-" + Guid.NewGuid().ToString("N");
         const string definition = """
@@ -519,6 +520,7 @@ internal static class ModulePackageHttpChecks
                 command: ["sleep", "120"]
             """;
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        using var policy = execution.Acquire<IDockerStackOutcomePolicy>(DockerComposeExecution.StackOutcomeEntryType);
         try
         {
             var result = await compose.DeployAsync(new(project, definition), budget.Token);
@@ -526,14 +528,22 @@ internal static class ModulePackageHttpChecks
             var services = await compose.ListServicesAsync(project, budget.Token);
             check(services is [{ Service: "probe", State: "running" }],
                 "the actual Docker Engine reports the signed package's probe container running");
+            check(policy.Executor.Classify(DockerStackOperationKind.Deploy, result, ["probe"], services)
+                    == (DockerStackOperationState.Succeeded, null, null)
+                && policy.Executor.RecoveryCode(DockerStackOperationKind.Delete, services) == DockerStackProblem.PartialFailure,
+                "the restored package classifies the live deployment as successful and detects unfinished deletion");
         }
         finally
         {
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(45));
             var result = await compose.ApplyActionAsync(project, DockerStackOperationKind.Delete, confirmed: true, cleanup.Token);
-            check((result.Success || result.ProblemCode == DockerStackProblem.NotFound)
-                && (await compose.ListServicesAsync(project, cleanup.Token)).Count == 0,
+            var remaining = await compose.ListServicesAsync(project, cleanup.Token);
+            check((result.Success || result.ProblemCode == DockerStackProblem.NotFound) && remaining.Count == 0,
                 "the live signed-package test removes its isolated project containers");
+            if (result.Success)
+                check(policy.Executor.Classify(DockerStackOperationKind.Delete, result, [], remaining)
+                        == (DockerStackOperationState.Succeeded, null, null),
+                    "the restored package classifies the observed cleanup as successful");
         }
     }
 

@@ -759,3 +759,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Docker 代理的构建层与 Engine 层状态判定进入签名执行程序集。Core 保留偏好验证、加密存储、平台配置写入和实际状态采集。Windows Release 代理专项覆盖凭据保护、Docker Desktop 上游识别、逐层结果和失败关闭，签名模块包 HTTP 回归通过。未对真实 Docker 宿主写入代理配置。
 - Docker 代理保存时的 Engine 变更决策进入签名执行程序集。Core 继续核对已确认且解析有效的安装条件，以及停用时的清理条件，再调用原配置器与结果记录。Windows Release 代理专项通过，真实宿主代理配置写入未纳入本轮。
 - Compose 操作终态分类和恢复提示进入 Docker 签名执行包。Core 继续负责实际执行、观察、操作台账和重启恢复。Windows Release 首次堆栈专项遇到台账暂时不可用，重新运行通过，覆盖部分失败、取消、幂等及重启对账。签名包 HTTP 回归通过。
+- Windows Release 的 --docker-signed-package-live 通过真实 Engine 的观测结果验证回滚后的终态决策入口。运行中的探针容器证明部署成功且删除尚未完成，删除后再次读取空项目并判为成功。测试使用原先的隔离 Compose 项目，直接调用已安装模块的决策入口。
