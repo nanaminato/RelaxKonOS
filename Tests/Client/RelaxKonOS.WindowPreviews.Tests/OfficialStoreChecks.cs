@@ -112,6 +112,14 @@ internal static class OfficialStoreChecks
                 Check(applications.SupportsFile(id, "/files/README"), "Install registers the Notepad file association.");
                 Check(!File.Exists(firstReview!.LocalPath), "Install removes the downloaded artifact.");
 
+                var document = drive.ResolveRootChild($"Users/{drive.LocalProfileId}/Documents/repair-check.txt");
+                const string documentContents = "Keep this document when repairing Notepad.";
+                drive.EnsureCreated();
+                await File.WriteAllTextAsync(document, documentContents);
+                var installedIcon = Path.Combine(first!.InstallationPath, "Assets", "notepad.png");
+                var originalIcon = await File.ReadAllBytesAsync(installedIcon);
+                File.Delete(installedIcon);
+
                 Check(model.DownloadOfficialCommand.CanExecute(null)
                     && model.OfficialActionLabel == LocalizedText.Get("app_installer.action.repair"),
                     "The trusted installed version is available for repair.");
@@ -122,6 +130,9 @@ internal static class OfficialStoreChecks
                 Check(repaired is { Version: "1.0.0" } && repaired.InstallationPath != first!.InstallationPath
                     && Directory.Exists(first.InstallationPath) && applications.IsRegistered(id),
                     "Repair verifies and promotes a fresh version directory while preserving the version and registration.");
+                Check((await File.ReadAllBytesAsync(Path.Combine(repaired!.InstallationPath, "Assets", "notepad.png")))
+                        .SequenceEqual(originalIcon) && await File.ReadAllTextAsync(document) == documentContents,
+                    "Repair restores the missing installed asset and preserves the user's document.");
 
                 releases = [Release("1.0.0", v1), Release("1.1.0", v2)];
                 await model.RefreshOfficialCommand.ExecuteAsync(null);

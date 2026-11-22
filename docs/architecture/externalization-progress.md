@@ -467,3 +467,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Linux x64 RID 发行入口首次启动问题已修复。用户应用数据目录尚未创建时，桌面在初始化前创建并验证绝对路径，防止虚拟系统盘回退到发行目录。专用 WSL 使用临时且不存在的 XDG 数据目录，通过独立 `RelaxKonOS` 应用宿主和托管入口两次复验，系统盘均创建在隔离用户数据目录内，X11 窗口正常打开并以 0 退出。RID 宿主采用框架依赖发布并复用已校验的 25 个官方归档。
 - Linux x64 发行的独立应用宿主在专用 WSL 中通过三种配置的原生首次启动。每个测试使用全新的用户数据目录，启动脚本核对系统盘的实际已安装包记录。Minimal、未提供配置参数的默认 Standard 和 Developer 分别登记 0、9、10 个离线包，X11 窗口均可见并正常退出。脚本使用 `--apphost --profile minimal|standard|developer` 复现。
 - 用户数据目录初始化改动在 Windows x64 Release 应用宿主通过原生回归。使用已校验的 25 个归档组装测试发行目录，运行 `verify-windows-desktop-startup.ps1` 在应用数据沙箱启动 Minimal，确认主窗口响应并正常关闭，退出码为 0。本次 Windows 图形测试覆盖 Minimal，三档预装和切换由独立发行测试验证。
+- Windows Release 官方商店 HTTPS 环回复验使用 Notepad 发行归档。删除已安装版本的图标资源后，通过原官方来源审阅并执行同版本修复。新安装目录恢复原图标字节并保留应用登记，虚拟系统盘中的用户文档内容保持一致。目录端点和证书由隔离夹具提供。
