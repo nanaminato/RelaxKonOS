@@ -25,10 +25,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         if (supported.Count > 0 && !supported.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
             throw new InvalidOperationException("deployment-client-platform-unsupported");
 
-        await using var stream = File.OpenRead(candidate.LocalPath);
-        var digest = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
-        if (candidate.ExpectedSha256 is { } expected && digest != expected)
-            throw new InvalidOperationException("component.package_expectation_changed");
+        var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
         var current = packages.FindInstalled(candidate.Manifest.Id);
         if (current?.Version != candidate.InstalledVersion
             || candidate.OfficialRelease is not null && current?.InstallationPath != candidate.ExpectedInstalledPath)
@@ -79,7 +76,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
         bool localOnly = false)
     {
-        if (candidate.ExpectedSha256 is not { } digest) return null;
+        var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
         var key = App(candidate.Manifest.Id);
         var plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
             digest, Guid.Empty, "", cancellationToken);
@@ -89,9 +86,19 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         if (plan?.ClientBinding is not { } binding) return null;
         return new(plan, candidate with
         {
+            ExpectedSha256 = digest,
             InstalledVersion = plan.OrderedReleases[^1].CurrentVersion,
             ExpectedInstalledPath = binding.InstalledPath,
         });
+    }
+
+    private static async Task<string> ReadArtifactIdentityAsync(AppPackageCandidate candidate, CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(candidate.LocalPath);
+        var digest = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
+        if (candidate.ExpectedSha256 is { } expected && digest != expected)
+            throw new InvalidOperationException("component.package_expectation_changed");
+        return digest;
     }
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)

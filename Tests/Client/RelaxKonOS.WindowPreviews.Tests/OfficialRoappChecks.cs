@@ -139,6 +139,25 @@ internal static class OfficialRoappChecks
             var candidate = await installer.InspectLocalAsync(path);
             Check((isEventAlerts || isSshFiles || candidate.IconData is { Length: > 0 }) && candidate.ExpectedSha256 is not null,
                 "Review should freeze the digest and load any packaged icon.");
+            if (isSshFiles)
+            {
+                var resumeJournal = new FileDeploymentJournal(Path.Combine(root, "resume-package-digest"));
+                var deployment = new JointAppDeploymentService(null!, null!, installer, packages, applications, resumeJournal);
+                var review = await deployment.PrepareAsync(candidate, [], CancellationToken.None);
+                await using (var lease = await resumeJournal.OpenAsync(review.Plan, CancellationToken.None))
+                    await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
+                var unhashed = candidate with { ExpectedSha256 = null };
+                var resumed = await deployment.FindPendingAsync(unhashed, CancellationToken.None, localOnly: true);
+                Check(resumed?.Plan.Id == review.Plan.Id && resumed?.Candidate.ExpectedSha256 == candidate.ExpectedSha256,
+                    "Selecting the same bytes without a catalog hash must recover the pending plan and freeze its digest.");
+                var otherPath = Path.Combine(root, "different-package-bytes.roapp");
+                File.Copy(candidate.LocalPath, otherPath);
+                await using (var other = new FileStream(otherPath, FileMode.Append))
+                    other.WriteByte(0);
+                Check(await deployment.FindPendingAsync(unhashed with { LocalPath = otherPath },
+                    CancellationToken.None, localOnly: true) is null,
+                    "Archive bytes that differ from the reviewed digest must not resume a pending plan.");
+            }
             if (isEventAlerts)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerEventAlertsRead],
                     "The official alert package must request only permission to read alerts.");
