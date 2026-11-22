@@ -73,10 +73,17 @@ async Task Reject(DeploymentPlan candidate, string message)
 var expired = plan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) };
 backend.Offline = true;
 await Reject(expired, "deployment-plan-expired");
-Check(await journal.FindStartedPlanAsync(expired.Id) is null);
+Check(backend.Applied.Count == 0 && await journal.FindStartedPlanAsync(expired.Id) is null);
 backend.Offline = false;
 backend.Target = backend.Target with { ServerIdentity = "other" };
 await Reject(plan, "deployment-server-changed");
+Check(backend.Applied.Count == 0 && await journal.FindStartedPlanAsync(plan.Id) is null);
+foreach (var changed in new[] { plan.Target with { StateRevision = "changed" }, plan.Target with { CatalogRevision = "changed" } })
+{
+    backend.Target = changed;
+    await Reject(plan, "deployment-snapshot-changed");
+    Check(backend.Applied.Count == 0 && await journal.FindStartedPlanAsync(plan.Id) is null);
+}
 backend.Target = plan.Target;
 try { await coordinator.ExecuteAsync(plan); throw new Exception("Expected interruption."); }
 catch (IOException) { }
