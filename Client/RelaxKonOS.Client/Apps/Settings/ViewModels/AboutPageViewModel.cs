@@ -1,8 +1,6 @@
-using Avalonia.Platform;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
-using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.Settings;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
@@ -41,24 +39,4 @@ public sealed partial class AboutPageViewModel : SettingsPageViewModel
     [RelayCommand] private Task CopySourceRepositoryAsync() => RequestCopyTextAsync?.Invoke(SourceRepository) ?? Task.CompletedTask;
     [RelayCommand] private Task ViewProjectLicenseAsync() => RequestLegalDocumentAsync?.Invoke(ProjectLicense) ?? Task.CompletedTask;
     [RelayCommand] private Task ViewThirdPartyNoticesAsync() => RequestLegalDocumentAsync?.Invoke(ThirdPartyNotices) ?? Task.CompletedTask;
-}
-
-/// <summary>Legal text embedded in the application so users can inspect it without a network connection.</summary>
-public sealed class LegalTextDocument(string titleKey, string assetPath)
-{
-    public string LocalizedTitle => App.Services.GetRequiredService<LocalizationService>().Get(titleKey, titleKey);
-
-    public async Task<string> LoadAsync()
-    {
-        await using var stream = AssetLoader.Open(new Uri($"avares://RelaxKonOS.Client/{assetPath}"));
-        using var reader = new StreamReader(stream);
-        return await reader.ReadToEndAsync();
-    }
-}
-
-public sealed class LegalTextDialogViewModel(string title, string text, Action close)
-{
-    public string Title { get; } = title;
-    public string Text { get; } = text;
-    public IRelayCommand CloseCommand { get; } = new RelayCommand(close);
 }

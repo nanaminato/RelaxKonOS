@@ -6,6 +6,9 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <AvaloniaResource Include="../../LICENSE" Link="Assets/Legal/LICENSE.txt" />
+    <AvaloniaResource Include="../../THIRD_PARTY_NOTICES.md" Link="Assets/Legal/THIRD_PARTY_NOTICES.md" />
     <EmbeddedResource Include="Localization/*.json" LogicalName="Settings.Localization.%(Filename).json" />
   </ItemGroup>
 </Project>

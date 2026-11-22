@@ -72,6 +72,10 @@ internal static class SettingsWindowChecks
         {
             settings.Language = "zh-CN";
             model.InitializeAsync().GetAwaiter().GetResult(); // Offline: no real host calls.
+            var about = model.Pages.OfType<AboutPageViewModel>().Single();
+            Check(about.ProjectLicense.LoadAsync().GetAwaiter().GetResult().Contains(about.LicenseName, StringComparison.Ordinal)
+                && about.ThirdPartyNotices.LoadAsync().GetAwaiter().GetResult().StartsWith("# Third-Party Notices", StringComparison.Ordinal),
+                "The Settings assembly must provide both legal documents offline.");
             window.Show(); Pump();
             var menu = view.FindControl<Button>("NavigationMenuButton")!;
             var drawer = view.FindControl<Grid>("NavigationDrawer")!;

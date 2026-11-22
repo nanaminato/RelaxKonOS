@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Settings.Views;
+namespace RelaxKonOS.App.Settings.Views;
 
 public partial class LegalTextDialogView : UserControl
 {

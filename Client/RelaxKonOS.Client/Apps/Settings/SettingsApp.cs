@@ -1,4 +1,5 @@
 using RelaxKonOS.Client.Services.WorkspaceSettings;
+using RelaxKonOS.App.Settings.Views;
 using Avalonia.Threading;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
@@ -272,9 +273,10 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         aboutPage.RequestLegalDocumentAsync = async document =>
         {
             var text = await document.LoadAsync();
-            await context.ShowDialogAsync<bool>(window, document.LocalizedTitle, dialog => new LegalTextDialogView
+            var title = localization.Get(document.TitleKey, document.TitleKey);
+            await context.ShowDialogAsync<bool>(window, title, dialog => new LegalTextDialogView
             {
-                DataContext = new LegalTextDialogViewModel(document.LocalizedTitle, text, () => dialog.Close(true)),
+                DataContext = new LegalTextDialogViewModel(title, text, LocalizedText.Get("common.close"), () => dialog.Close(true)),
             }, new Size(760, 620));
         };
         systemPage.RequestWorkspaceEnvironmentAsync = async () =>
