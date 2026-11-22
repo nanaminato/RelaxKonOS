@@ -1,6 +1,5 @@
 using RelaxKonOS.UI.ServerInstallation;
 using RelaxKonOS.UI.SshFiles;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Threading;
@@ -21,7 +20,8 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
 {
     public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
         Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation,
-        ServerCenterManagementViewFactory createManagementView)
+        ServerCenterManagementViewFactory createManagementView,
+        Func<string, string, Action, Control> createHostAddressesView)
     {
         var sshSession = services.GetRequiredService<SshDesktopSession>();
         var language = services.GetRequiredService<ISystemLanguage>();
@@ -59,25 +59,11 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
                         if (addresses is null) return;
                         await dialog.ShowDialogAsync<bool>(
                             viewModel.Text("server_center.host_addresses_title", "Host IP addresses"),
-                            addressDialog =>
-                            {
-                                var close = new Button { Content = viewModel.CloseText, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
-                                close.Click += (_, _) => addressDialog.Close(true);
-                                var content = new StackPanel { Spacing = 14 };
-                                content.Children.Add(new TextBlock
-                                {
-                                    Text = addresses.Count == 0
-                                        ? viewModel.Text("server_center.host_addresses_empty", "No IP addresses were reported by this host.")
-                                        : string.Join(Environment.NewLine, addresses),
-                                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
-                                });
-                                content.Children.Add(close);
-                                return new Border
-                                {
-                                    Padding = new Thickness(22),
-                                    Child = content
-                                };
-                            }, new Size(440, 280));
+                            addressDialog => createHostAddressesView(
+                                addresses.Count == 0
+                                    ? viewModel.Text("server_center.host_addresses_empty", "No IP addresses were reported by this host.")
+                                    : string.Join(Environment.NewLine, addresses),
+                                viewModel.CloseText, () => addressDialog.Close(true)), new Size(440, 280));
                     }), (storage, options, purpose) => UsageFilePicker.OpenFilePickerAsync(storage, options, CapturePickerMemory(), purpose)),
             new Size(620, 480));
         _ = viewModel.LoadAsync();

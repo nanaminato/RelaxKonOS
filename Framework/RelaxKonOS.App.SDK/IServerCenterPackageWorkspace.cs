@@ -14,7 +14,8 @@ public interface IServerCenterPackageWorkspace
 {
     void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
         Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation,
-        ServerCenterManagementViewFactory createManagementView);
+        ServerCenterManagementViewFactory createManagementView,
+        Func<string, string, Action, Control> createHostAddressesView);
 }
 
 public interface IServerCenterPackageContext

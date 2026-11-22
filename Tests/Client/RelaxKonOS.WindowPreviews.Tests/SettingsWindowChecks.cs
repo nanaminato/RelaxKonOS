@@ -114,7 +114,8 @@ internal static class SettingsWindowChecks
         {
             serverCenter!.Open(_ => throw new Exception("A retired Server Center package opened a window."),
                 (_, _, _) => throw new Exception("A retired Server Center package opened a rollback dialog."),
-                (_, _, _, _) => throw new Exception("A retired Server Center package opened a management dialog."));
+                (_, _, _, _) => throw new Exception("A retired Server Center package opened a management dialog."),
+                (_, _, _) => throw new Exception("A retired Server Center package opened a host address dialog."));
             throw new Exception("A retired Server Center package retained its workspace.");
         }
         catch (OperationCanceledException) { }

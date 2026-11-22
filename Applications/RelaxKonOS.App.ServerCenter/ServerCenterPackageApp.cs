@@ -27,7 +27,8 @@ public sealed class ServerCenterPackageApp : IExternalRemoteApplication
             content.AttachWindowHeader(window);
             return window;
         }, (review, dialog, localize) => new ServerRollbackConfirmationView(review, dialog, localize),
-            (presentation, section, close, browse) => new ServerCenterManagementDialog(presentation, section, close, browse));
+            (presentation, section, close, browse) => new ServerCenterManagementDialog(presentation, section, close, browse),
+            (addresses, closeText, close) => new ServerHostAddressesView(addresses, closeText, close));
         return Task.CompletedTask;
     }
 }
