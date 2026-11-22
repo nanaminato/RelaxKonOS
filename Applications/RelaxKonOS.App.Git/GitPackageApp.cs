@@ -15,7 +15,7 @@ namespace RelaxKonOS.App.Git;
 
 public sealed class GitPackageApp : IExternalRemoteApplication
 {
-    public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.git"), "Project Editor", "0.3.0", "💻",
+    public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.git"), "Project Editor", "0.3.1", "💻",
         "Edit project files and manage Git repositories on the RelaxKonOS Server",
         [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage, AppPermissions.ServerFilesRead,
             AppPermissions.ServerFilesWrite, AppPermissions.ServerComponentsRead],

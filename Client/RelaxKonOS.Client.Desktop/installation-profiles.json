@@ -30,7 +30,7 @@
       { "appId": "relaxkonos.database", "minimumVersion": "0.3.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.tailscale", "minimumVersion": "0.1.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.proxy-server", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
-      { "appId": "relaxkonos.git", "minimumVersion": "0.3.0", "installPolicy": "interactive" },
+      { "appId": "relaxkonos.git", "minimumVersion": "0.3.1", "installPolicy": "interactive" },
       { "appId": "relaxkonos.webservers", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.certificates", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.codeeditor", "minimumVersion": "1.0.0", "installPolicy": "offline" },

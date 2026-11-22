@@ -6,7 +6,7 @@
 
 - 多 Git 主机与账号管理已接入项目选择页、Git 菜单和远程页；克隆、推送、拉取、逐远程抓取及非当前分支更新统一使用服务端受保护账号存储。协议、保存选择及当前支持边界见 [Git 客户端](RelaxKonOS.GitClient.md#多-git-主机与账号)。
 
-- 原 `relaxkonos.git` 直接演进为“项目编辑器”，App ID 不变，Manifest 版本为 `0.3.0`，声明文件读写和 Git 权限。
+- 原 `relaxkonos.git` 直接演进为“项目编辑器”，App ID 不变。官方包 `0.3.1` 声明文件读写和 Git 权限，并要求 `server.git` 契约 `1.0`。Windows 隔离宿主已验证实际归档的联合启用、重启恢复与复用。
 - `ProjectEditorViewModel` 协调一个窗口的项目、文档会话与 Git；使用原 `CodeEditorViewModel`、可嵌入的 `CodeEditorView.UseProjectLayout()` 和共享 `CodeEditorSessionDialogs`。独立 Code Editor 仍使用同一编辑面板与文件对话框。
 - 普通文件夹直接打开，不强制初始化 Git；仓库打开后可浏览完整文件树。项目树双击/Enter 打开文件；多标签保留独立文本缓冲区、撤销栈、光标和滚动位置。图片、SVG、二进制分类沿用原实现。
 - 顶部改用文件、编辑、视图、Git 菜单及项目/分支入口，仅保留刷新快捷按钮；普通目录在 Git 菜单提供显式初始化。左侧活动条切换 Project/Commit，底部打开 Git；项目工具区与 Commit 工具区互斥。

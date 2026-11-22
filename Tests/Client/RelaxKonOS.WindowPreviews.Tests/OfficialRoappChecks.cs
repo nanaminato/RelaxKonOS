@@ -220,8 +220,9 @@ internal static class OfficialRoappChecks
                     AppPermissions.ServerFilesRead, AppPermissions.ServerFilesWrite, AppPermissions.ServerComponentsRead]
                     && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.git"]
                     && candidate.Manifest.Dependencies?.Required is
-                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.git" }, Capability: "server.git" }],
-                    "Git review exposes the Git module, capability and scoped grants.");
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.git" }, Capability: "server.git",
+                            ContractVersion: RelaxKonOS.Protocol.Git.GitApiRoutes.CapabilityContractVersion }],
+                    "Git review exposes the versioned Git capability and scoped grants.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Git without joint deployment");
             }
             if (isFirewall)
@@ -903,7 +904,7 @@ internal static class OfficialRoappChecks
 
         Task WriteProfileAsync(string policy, string? minimum = null)
         {
-            var entry = new[] { new { appId = applicationId, minimumVersion = minimum ?? (isDocker || isGit ? "0.3.0" : "1.0.0"), installPolicy = policy } };
+            var entry = new[] { new { appId = applicationId, minimumVersion = minimum ?? (isGit ? "0.3.1" : isDocker ? "0.3.0" : "1.0.0"), installPolicy = policy } };
             return File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
                 System.Text.Json.JsonSerializer.Serialize(new
                 {

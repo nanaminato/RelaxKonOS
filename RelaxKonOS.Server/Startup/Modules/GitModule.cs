@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Git;
@@ -28,6 +30,8 @@ internal sealed class GitModule : IServerModule, IServerModuleResidency, IServer
 {
     public string Id => ServerModules.GitId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Git];
+    public IReadOnlyDictionary<string, string> CapabilityContractVersions { get; } =
+        ImmutableDictionary<string, string>.Empty.Add(ServerCapabilities.Git, GitApiRoutes.CapabilityContractVersion);
     public IReadOnlyList<string> Requires => [];
 
     public IServerModuleRuntimeFactory RuntimeFactory { get; } = new GitModuleRuntimeFactory();

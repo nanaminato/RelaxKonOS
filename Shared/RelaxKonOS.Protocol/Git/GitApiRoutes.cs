@@ -5,6 +5,8 @@ namespace RelaxKonOS.Protocol.Git;
 /// <summary>Routes for the server-side Git repository integration. Shared by server endpoint registration and client URL composition.</summary>
 public static class GitApiRoutes
 {
+    public const string CapabilityContractVersion = "1.0";
+
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Graph = $"/{V1}/git/repositories/{{id}}/graph";
     public const string Console = $"/{V1}/git/repositories/{{id}}/console";

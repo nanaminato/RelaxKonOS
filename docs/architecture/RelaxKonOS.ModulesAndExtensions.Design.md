@@ -300,7 +300,7 @@ Windows 开发机验证：`Tests/ServerModules` 39 项通过（默认集合、�
 
 - 新增 `IDeploymentImageBuildSource`（`ApplicationDeployments/IDeploymentImageBuildSource.cs`），返回 `Available/NotFound/NotReady/Unavailable` 与构建操作（保留 revision 需要的构建溯源字段）。部署域不再引用 `RelaxKonOS.Server.Git` 的任何服务类型。
 - 注册顺序即语义：Host 先注册 `UnavailableDeploymentImageBuildSource`，`relaxkonos.git` 模块随后注册 `GitDeploymentImageBuildSource` 覆盖它。禁用 Git 时部署给出 `application-deployment.git_build_unavailable`(503)，不再退化成 `image_not_found`(409)，也不会静默改用归档来源；客户端已补三种语言的该错误码文案。
-- `relaxkonos.git` 拥有 `IHostGitCli`、`IGitRepositoryService`、`GitTextEditor`、`GitBuildOptions`/`GitBuildService` 与 `/api/v1.0/git/*`（含 workspace、build 路由），并公布 `server.git`；桌面 Project Editor 声明该能力。构建产物与引擎侧 image id 的比对保持不变（`image_reference_invalid`）。
+- `relaxkonos.git` 拥有 `IHostGitCli`、`IGitRepositoryService`、`GitTextEditor`、`GitBuildOptions`/`GitBuildService` 与 `/api/v1.0/git/*`（含 workspace、build 路由），并公布 `server.git` 契约版本 `1.0`。桌面 Project Editor 0.3.1 在联合部署清单中要求该契约，服务端模块的发行版本独立记录。构建产物与引擎侧 image id 的比对保持不变（`image_reference_invalid`）。
 
 命令行验证：`Tests/ServerModules` 78 项通过（新增 Git 注册、能力一致性、部署端口实现选择与「未知构建从不返回可部署产物」，以及 `/git/repositories`、`/git/builds/resolve` 的 401/404）。`RelaxKonOS.Server.Tests` 的 `--git-conflicts-only`、`--push-preview-only`、`--alias-only`、`--squid-only` 通过。真实进程：默认配置 `git/repositories` 401 且启动日志列出四个模块；`Modules:Git:Enabled=false` 时 `/git/repositories`、`/git/builds`、`/git/builds/resolve` 全部 404，而 `healthz` 200、`system/performance/info` 与 `server/capabilities` 仍 401。
 

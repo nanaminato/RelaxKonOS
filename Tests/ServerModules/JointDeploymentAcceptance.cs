@@ -563,6 +563,14 @@ internal static class JointDeploymentAcceptance
                         item.Package.Kind == DeploymentPackageKind.ServerModule && item.Satisfied)
                     && releases.Take(expectedModules.Length).Select(item => item.Package.Id).SequenceEqual(expectedModules),
                     $"{appId} reuses every effective server dependency in dependency order");
+                if (appId == "relaxkonos.git")
+                {
+                    const string version = RelaxKonOS.Protocol.Git.GitApiRoutes.CapabilityContractVersion;
+                    Require(bundledCandidate.Manifest.Dependencies?.Required.Any(requirement =>
+                            requirement.Capability == ServerCapabilities.Git && requirement.ContractVersion == version) == true
+                        && releases[0].Capabilities.GetValueOrDefault(ServerCapabilities.Git) == version,
+                        "the official Project Editor archive resolves the bundled Git capability contract");
+                }
                 var operationsBefore = ModulePackageOperationStore.Read(serverRoot).Count;
                 var installedBundled = await joint.ExecuteAsync(bundledReview, default);
                 Require(installedBundled.Id == appId && applications.IsRegistered(new AppId(appId))
