@@ -19,6 +19,7 @@ public sealed class LocalServerInstallationWindow : Window
 {
     private ServerInstallationWizardViewModel _wizard;
     private readonly Func<ServerInstallationWizardViewModel> _wizardFactory;
+    private readonly Func<UsageMemoryScope> _capturePickerMemory;
     private readonly NativeDraftCloseGuard _closeGuard;
     private string? _endpoint;
     private readonly LocalWindowsServerInstaller _installer;
@@ -30,9 +31,11 @@ public sealed class LocalServerInstallationWindow : Window
 
     public LocalServerInstallationWindow()
     {
-        var progress = App.Services.GetRequiredService<ServerCenterViewModel>();
-        var localization = App.Services.GetRequiredService<LoginLocalizationService>();
-        var installer = App.Services.GetRequiredService<LocalWindowsServerInstaller>();
+        var services = App.Services;
+        _capturePickerMemory = () => UsageMemoryStore.CaptureServices(services);
+        var progress = services.GetRequiredService<ServerCenterViewModel>();
+        var localization = services.GetRequiredService<LoginLocalizationService>();
+        var installer = services.GetRequiredService<LocalWindowsServerInstaller>();
         _installer = installer;
         _installer.Mode = ServerInstallMode.WindowsUser;
         _localization = localization;
@@ -183,7 +186,7 @@ public sealed class LocalServerInstallationWindow : Window
                     (installedUrl.Scheme == Uri.UriSchemeHttps ? ServerCertificateMode.SelfSigned : ServerCertificateMode.None));
             }
             _wizard.ResetDraftBaseline();
-            Content = new ServerInstallationWizardView(_wizard, null);
+            Content = new ServerInstallationWizardView(_wizard, null, _capturePickerMemory);
         });
         var installed = _snapshot is { Installed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser } && ServerInstallationId.IsValid(_snapshot.InstallationId);
         Add(T("settings", "Installation settings / components"), T("settings_hint", "Change the port, network access and optional components"), "host_settings", () => _ = ReviewAsync(ServerDeploymentKind.Configure), installed && _snapshot?.GuardianEnabled is not null);

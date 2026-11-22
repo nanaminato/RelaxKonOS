@@ -12,11 +12,14 @@ namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
 public partial class ServerInstallationWizardView : UserControl
 {
     private readonly ServerInstallationWizardViewModel _viewModel;
+    private readonly Func<UsageMemoryScope> _capturePickerMemory;
     private long _pickerVersion;
 
-    public ServerInstallationWizardView(ServerInstallationWizardViewModel viewModel, ModalDialog<bool>? dialog)
+    public ServerInstallationWizardView(ServerInstallationWizardViewModel viewModel, ModalDialog<bool>? dialog,
+        Func<UsageMemoryScope> capturePickerMemory)
     {
         _viewModel = viewModel;
+        _capturePickerMemory = capturePickerMemory;
         InitializeComponent();
         DataContext = viewModel;
         DetachedFromVisualTree += (_, _) => _pickerVersion++;
@@ -46,7 +49,7 @@ public partial class ServerInstallationWizardView : UserControl
             Title = _viewModel.ChooseBundleText,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType(_viewModel.BundleFileTypeText) { Patterns = ["*.zip"] }]
-        }, UsageMemoryStore.CaptureServices(App.Services), "ServerInstallationWizardView.axaml.0");
+        }, _capturePickerMemory(), "ServerInstallationWizardView.axaml.0");
         var path = selected.FirstOrDefault()?.TryGetLocalPath();
         if (!string.IsNullOrWhiteSpace(path) && CanAcceptSelection(topLevel, version) && _viewModel.SelectedSource == source)
             _viewModel.SetLocalBundle(path);
@@ -66,7 +69,7 @@ public partial class ServerInstallationWizardView : UserControl
             FileTypeFilter = _viewModel.IsPemCertificate
                 ? [new FilePickerFileType("PEM certificate") { Patterns = ["*.pem", "*.crt", "*.cer"] }]
                 : [new FilePickerFileType("PFX certificate") { Patterns = ["*.pfx", "*.p12"] }]
-        }, UsageMemoryStore.CaptureServices(App.Services), "ServerInstallationWizardView.axaml.1");
+        }, _capturePickerMemory(), "ServerInstallationWizardView.axaml.1");
         var path = selected.FirstOrDefault()?.TryGetLocalPath();
         if (!string.IsNullOrWhiteSpace(path) && CanAcceptSelection(topLevel, version) && _viewModel.SelectedCertificateFormat == format)
             _viewModel.SetCertificate(path);
@@ -83,7 +86,7 @@ public partial class ServerInstallationWizardView : UserControl
             Title = _viewModel.ChoosePrivateKeyText,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType("PEM private key") { Patterns = ["*.key", "*.pem"] }]
-        }, UsageMemoryStore.CaptureServices(App.Services), "ServerInstallationWizardView.axaml.2");
+        }, _capturePickerMemory(), "ServerInstallationWizardView.axaml.2");
         var path = selected.FirstOrDefault()?.TryGetLocalPath();
         if (!string.IsNullOrWhiteSpace(path) && CanAcceptSelection(topLevel, version) && _viewModel.IsPemCertificate)
             _viewModel.SetCertificatePrivateKey(path);

@@ -277,6 +277,13 @@ if (args.Contains("--host-titlebar-only"))
     HostTitleBarChecks.Run(settings, localization);
     return;
 }
+if (args.Contains("--server-installation-dialogs-only"))
+{
+    ServerCenterDialogChecks.Run();
+    InstallationWizardDialogChecks.Run();
+    LocalInstallationCloseChecks.Run();
+    return;
+}
 if (args.Contains("--forward-submission-only")) { PortForwardSubmissionChecks.Run(); return; }
 if (args.Contains("--forward-runtime-only"))
 {

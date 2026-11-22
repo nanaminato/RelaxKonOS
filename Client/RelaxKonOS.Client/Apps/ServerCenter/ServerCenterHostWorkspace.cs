@@ -72,7 +72,7 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
                                     Child = content
                                 };
                             }, new Size(440, 280));
-                    }), dialog),
+                    }), dialog, CapturePickerMemory),
             new Size(620, 480));
         _ = viewModel.LoadAsync();
     }

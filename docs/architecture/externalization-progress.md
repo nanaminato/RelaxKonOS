@@ -597,3 +597,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 
 - Server Center 的应用入口及窗口登记切换至官方 .roapp。SSH 会话、部署和对话框仍通过受包生命周期约束的桌面工作区提供。Windows Release 隔离发行目录校验 29 个归档，三档预装数量为 0、13、14，Minimal 离线安装和修复 Server Center 通过。
 - 完整 Windows Release 桌面发布重新生成并核对 29 个官方归档的摘要、清单和入口程序集。用该发行验证三档预装数量 0、13、14，配置切换保留已安装和用户主动移除的状态。实际发行包验收使用生产 Server Center 工作区和空的本地主机清单，验证首次启动、重复启动复用窗口、打开并取消安装向导及卸载关闭窗口。Explorer 实际发行包的未登录深链接回归通过。Server Center 工作区视图迁移、真实 SSH 和 Explorer 登录后目录导航待验。
+- Server Center 安装向导由调用方提供文件选择记忆回调，在打开 ZIP、证书或私钥选择器时才捕获当前作用域。官方包工作区和登录前本机安装窗口均使用此接口。Windows Release 安装对话框专项及实际发行包开窗、向导取消和卸载专项通过。
