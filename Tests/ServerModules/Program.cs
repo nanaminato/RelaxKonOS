@@ -20,6 +20,13 @@ using RoyalTerminal.Terminal;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
+if (args is ["--module-recovery-checks", var serverExecutable])
+{
+    await ModuleRecoveryChecks.RunAsync(Check, Path.GetFullPath(serverExecutable));
+    await ModuleRecoveryHostChecks.RunAsync(Check);
+    return;
+}
+
 if (args is ["--database-endpoint-boundary"])
 {
     await DatabaseEndpointBoundaryChecks.CheckDisabledModuleDoesNotLoadExecutionAsync();

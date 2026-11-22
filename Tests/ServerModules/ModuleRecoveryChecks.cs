@@ -12,7 +12,7 @@ internal static class ModuleRecoveryChecks
         await Task.CompletedTask;
     }
 
-    internal static async Task RunAsync(Action<bool, string> check)
+    internal static async Task RunAsync(Action<bool, string> check, string? serverExecutable = null)
     {
         var root = Path.Combine(AppContext.BaseDirectory, "test-data", "module-recovery-" + Guid.NewGuid().ToString("N"));
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ModuleManagement:Authority"] = "managed" }).Build();
@@ -46,8 +46,12 @@ internal static class ModuleRecoveryChecks
             check(exit == 0 && parsed?.ServiceId == store.ServiceId && before.SequenceEqual(File.ReadAllBytes(path)),
                 "maintenance diagnose command is a read-only entry independent of the web host");
             var serverAssembly = typeof(ModuleMaintenanceCommand).Assembly.Location;
-            var serverHost = Path.Combine(Path.GetDirectoryName(serverAssembly)!, OperatingSystem.IsWindows() ? "RelaxKonOS.Server.exe" : "RelaxKonOS.Server");
-            var useAppHost = File.Exists(serverHost) && File.Exists(Path.ChangeExtension(serverAssembly, ".deps.json"));
+            var serverHost = serverExecutable ?? Path.Combine(Path.GetDirectoryName(serverAssembly)!,
+                OperatingSystem.IsWindows() ? "RelaxKonOS.Server.exe" : "RelaxKonOS.Server");
+            if (serverExecutable is not null && !File.Exists(serverHost))
+                throw new FileNotFoundException("The published Server executable was not found.", serverHost);
+            var useAppHost = serverExecutable is not null
+                || (File.Exists(serverHost) && File.Exists(Path.ChangeExtension(serverAssembly, ".deps.json")));
             var start = new System.Diagnostics.ProcessStartInfo(useAppHost ? serverHost : "dotnet")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             if (!useAppHost) start.ArgumentList.Add(serverAssembly);
