@@ -405,7 +405,23 @@ internal static class JointDeploymentAcceptance
             factory.BlockDependencyRelease = false;
             await packages.LoadInstalledAsync();
             Require(!File.Exists(abandonedRelease), "startup reconciles the uncommitted dependency before retry");
+            factory.BlockHealthWhen = () => applications.IsRegistered(new AppId(AppIdText));
+            try
+            {
+                await joint.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected final module health to prevent deployment completion.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-module-unhealthy") { }
+            finally { factory.BlockHealthWhen = null; }
+            var committedPath = packages.FindInstalled(AppIdText)?.InstallationPath;
+            await using (var lease = await new FileDeploymentJournal(journalPath).OpenAsync(review.Plan, default))
+                Require(committedPath is not null && lease.Checkpoint is { Verified: false, RequiresReview: false } pending
+                    && pending.CompletedSteps == review.Plan.OrderedReleases.Length,
+                    "failed final health leaves the committed application awaiting verification");
+            joint = Service();
             var installed = await joint.ExecuteAsync(review, default);
+            Require(installed.InstallationPath == committedPath,
+                "retry after final health recovers the committed application without reinstalling");
             var executor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
             var moduleRelease = review.Plan.OrderedReleases.Single(item => item.Package.Id == ModuleId);
             factory.FaultedModule = ModuleId;
@@ -957,6 +973,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteReceiptRelease { get => handler.SubstituteReceiptRelease; set => handler.SubstituteReceiptRelease = value; }
         public bool SubstituteHealthVersion { get => handler.SubstituteHealthVersion; set => handler.SubstituteHealthVersion = value; }
         public bool SubstituteBlockedHealth { get => handler.SubstituteBlockedHealth; set => handler.SubstituteBlockedHealth = value; }
+        public Func<bool>? BlockHealthWhen { set => handler.BlockHealthWhen = value; }
         public bool HideEffectiveVersion { get => handler.HideEffectiveVersion; set => handler.HideEffectiveVersion = value; }
         public bool SubstituteInventoryDigest { get => handler.SubstituteInventoryDigest; set => handler.SubstituteInventoryDigest = value; }
         public bool SubstituteFailedPackage { get => handler.SubstituteFailedPackage; set => handler.SubstituteFailedPackage = value; }
@@ -996,6 +1013,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteReceiptRelease { get; set; }
         public bool SubstituteHealthVersion { get; set; }
         public bool SubstituteBlockedHealth { get; set; }
+        public Func<bool>? BlockHealthWhen { get; set; }
         public bool HideEffectiveVersion { get; set; }
         public bool SubstituteInventoryDigest { get; set; }
         public bool SubstituteFailedPackage { get; set; }
@@ -1043,7 +1061,9 @@ internal static class JointDeploymentAcceptance
                     }, options: RelaxKonOSJsonOptions.Default),
                 };
             }
-            if ((SubstituteHealthVersion || SubstituteBlockedHealth)
+            var blockedHealth = request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleHealth
+                && (SubstituteBlockedHealth || BlockHealthWhen?.Invoke() == true);
+            if ((SubstituteHealthVersion || blockedHealth)
                 && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleHealth)
             {
                 using var response = await base.SendAsync(request, cancellationToken);
@@ -1054,9 +1074,9 @@ internal static class JointDeploymentAcceptance
                 {
                     Content = JsonContent.Create(report with
                     {
-                        Healthy = report.Healthy && !SubstituteBlockedHealth,
+                        Healthy = report.Healthy && !blockedHealth,
                         Modules = report.Modules.Select(item => item.ModuleId != ModuleId ? item
-                            : SubstituteBlockedHealth ? item with
+                            : blockedHealth ? item with
                             {
                                 Status = "blocked", ProblemCode = "module-host-code-trust-required", Version = null,
                             }
