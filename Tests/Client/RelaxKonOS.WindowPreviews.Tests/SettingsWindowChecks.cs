@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.App.Settings.Views;
@@ -7,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
@@ -547,9 +549,16 @@ internal static class SettingsWindowChecks
             Check(first.Status == AppActivationStatus.Activated, "The installed Component Center did not claim its route.");
             PumpUntil(() => windows.Windows.Count > 0);
             var window = windows.Windows.Single();
-            var model = (window.View.Content as ComponentCenterWorkspace)?.DataContext as ComponentCenterViewModel;
+            var workspace = window.View.Content as ComponentCenterWorkspace;
+            var model = workspace?.DataContext as ComponentCenterViewModel;
             Check(window.Info.OwnerAppId.Value == id && model?.SelectedPage == ComponentCenterPage.Updates,
                 "The installed package did not open the production workspace and dispatch navigation.");
+            var controls = workspace!.GetLogicalDescendants().ToArray();
+            Check(controls.OfType<ComponentCenterHeaderActions>().Any()
+                && controls.OfType<ComponentCenterNavigationView>().Any()
+                && controls.OfType<CatalogSourcesView>().Any()
+                && controls.OfType<ServerModuleSecurityView>().Any(),
+                "The installed package workspace is missing a migrated Component Center view.");
             var secondUri = ComponentCenterNavigation.Component("test-service", "relaxkonos.proxy-server", "sing-box", ComponentCenterPage.Installed);
             var second = applications.Activate(new AppActivationRequest(secondUri));
             Pump();
