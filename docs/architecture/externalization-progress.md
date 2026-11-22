@@ -44,12 +44,12 @@
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows Release 包生命周期及授权验证通过，实机待验 |
 | ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 已验，远端桌面待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前桌面发行清单包含 25 个官方 `.roapp`，宿主仍注册应用安装器、设置、Explorer、服务器中心和组件中心。Standard 离线安装 Browser、Event & Alert Center、Image Viewer、Notepad、Registry、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 跳过应用包预装并保留应用安装器入口。Developer 额外离线预装 Code Editor，其余 15 个应用包列为交互式安装项。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前桌面发行包含 27 个官方 `.roapp`，桌面宿主登记应用安装器、Explorer 和服务器中心。Standard 离线安装 Browser、Component Center、Event & Alert Center、Image Viewer、Notepad、Registry、Settings、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 保留核心安装入口，可通过发行归档离线安装和修复 Settings 与 Component Center。Developer 额外离线预装 Code Editor，另有 15 个交互式安装项。
 
 首次可用 `--installation-profile=minimal|standard|developer` 与可重复的 `--exclude-bundled-app=<id>` 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖的包须经交互部署。随包提供的 Task Manager 和 Terminal 在启动时检查所需服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 `python Tests/Client/verify-desktop-distribution.py` 检查官方目录、桌面发布项和包清单的应用 ID 是否一致，核对配置集版本下限，并拒绝把声明必需依赖的包列为离线预装。
-完整 Windows Release 发布通过。`verify-desktop-distribution.py --publish-dir` 核对了实际生成的 25 个归档、摘要、入口程序集和配置文件。窗口预览测试的 `--desktop-distribution-only` 在独立 VSD 上使用真实发布配置验证 Minimal、默认 Standard 和 Developer 分别登记 0、9、10 个包；Developer 的 15 个交互项未被自动安装。三个配置均通过生产扫描器登记内置应用安装器及其 `.roapp` 文件入口。发行输出中的 SSH Files 归档另通过官方包生命周期专项。
+完整 Windows Release 发布通过。`verify-desktop-distribution.py --publish-dir` 核对了实际生成的 27 个归档、摘要、入口程序集和配置文件。窗口预览测试的 `--desktop-distribution-only` 在独立 VSD 上使用真实发布配置验证 Minimal、默认 Standard 和 Developer 分别登记 0、11、12 个包；Developer 的 15 个交互项未被自动安装。三个配置均通过生产扫描器登记内置应用安装器及其 `.roapp` 文件入口。发行输出中的 SSH Files 归档另通过官方包生命周期专项。
 
 Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-profile=minimal` 打开了可响应窗口，窗口关闭后进程以状态 0 退出。可在隔离的 Windows 应用数据沙箱内运行 `Tests/Client/verify-windows-desktop-startup.ps1`。窗口测试未能从调用进程读取子进程的 VSD 配置文件，预装与恢复入口由独立无头宿主验证。
 
@@ -587,3 +587,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 当前 Windows Release 联合部署环回验收通过，使用发行目录的 Welcome 和 Firewall 归档。覆盖本地依赖变化要求重新审核、启用响应丢失后的恢复、重启后注册应用、有效模块复用、卸载保留共享模块、纯客户端依赖离线安装与不兼容替换保护。环回使用隔离服务器状态和测试鉴权。
 - 部署台账在已取消时拒绝打开且不创建目录。独立部署套件验证并发执行者在拿到计划锁之前不执行复核。
 - 联合部署台账写入前校验检查点范围和状态流转，拒绝进度倒退或覆盖已验证、待重新审核记录。Windows Release 部署套件验证重开后保留已验证记录。
+- 检查点状态流转校验提交后，Windows Release Welcome 与 Firewall 联合部署环回复验通过，覆盖中断续跑、重新审核、模块复用及卸载后共享模块保留。
