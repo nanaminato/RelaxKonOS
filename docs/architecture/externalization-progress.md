@@ -791,3 +791,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Tunnel Manager 的官方 .roapp 声明必需的 relaxkonos.tunnels 服务端模块及 server.tunnels 能力。Windows Release 使用 DevCli 生产归档及摘要验证绕过协调器的安装被拒绝，官方包生命周期通过。联合专项在环回宿主验证已停用随附模块只生成启用步骤，重启后登记应用，已启用模块直接复用，桌面卸载只清除依赖登记。期间出现一次模块状态暂不可用，重新运行通过。签名 Tunnels 双包和真实 FRP 业务仍待验。
 - Windows Release 的 --signed-tunnels-joint-acceptance 使用官方 .roapp 的测试副本，仅把模块最低版本提高到 99.0.0，验证签名执行包选择、单次安装提交、Core 重启续跑、隧道定义校验和桌面卸载保留服务端包。隧道校验通过新宿主 DI 直接调用执行契约。共用验收流程的 Git 真实仓库回归通过。真实 FRP 进程联调仍待验。
 - Linux x64 自包含宿主在 WSL 复验 Tunnels 签名双包。使用同一 DevCli 发行归档的测试副本，仅提高模块最低版本。安装只提交一次，Core 重启后接续登记、调用签名包校验隧道定义、卸载桌面后保留服务端包均通过。模块 HTTP 专项 133 条 PASS，含 Tunnels 双版本安装、回滚并从恢复版本执行业务校验。真实 FRP 进程联调仍待验。
+- Windows Release Tunnels 签名双包验收改走生产隧道路由。重启后的隔离宿主拒绝未认证请求，认证后可创建档案；缺少域名返回 tunnel.domain_required，补齐后仅有效定义进入 SQLite。使用真实签名执行程序集和测试鉴权，FRP 运行时端口由拒绝执行的夹具提供，真实进程仍待验。

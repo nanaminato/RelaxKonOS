@@ -27,6 +27,12 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ServerCenter;
+using RelaxKonOS.Protocol.Tunnels;
+using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Runtimes;
+using RelaxKonOS.Server.Secrets;
+using RelaxKonOS.Server.Tunnels;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Server.Endpoints;
@@ -162,15 +168,33 @@ internal static class JointDeploymentAcceptance
             && worktreeStatus?.Staged is [{ Path: "joint.txt" }], "the joint-installed Git package stages and reads the real Git index");
     }
 
-    private static Task VerifySignedTunnelsAsync(TestHost host, string _)
+    private static async Task VerifySignedTunnelsAsync(TestHost host, string _)
     {
-        var execution = host.Services.GetRequiredService<RelaxKonOS.ServerModule.Tunnels.ITunnelExecution>();
-        var request = new RelaxKonOS.Protocol.Tunnels.UpsertTunnelDefinitionRequest(Guid.Empty, "app",
-            RelaxKonOS.Protocol.Tunnels.TunnelProtocol.Http, "127.0.0.1", 8080, null, null, true, false, false);
-        Require(execution.ValidateDefinition(request) == "tunnel.domain_required"
-            && execution.ValidateDefinition(request with { Domain = "app.example.test" }) is null,
-            "the restarted host validates tunnel definitions through the joint-installed signed execution package");
-        return Task.CompletedTask;
+        using var client = new HttpClient { BaseAddress = new Uri(host.Url) };
+        using var anonymous = await client.GetAsync(TunnelApiRoutes.Profiles);
+        Require(anonymous.StatusCode == System.Net.HttpStatusCode.Unauthorized, "the signed Tunnels routes require authentication");
+        client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+        using var profileResponse = await client.PostAsJsonAsync(TunnelApiRoutes.Profiles,
+            new UpsertTunnelServerProfileRequest("edge", "frps.example.test", 7000, TunnelAuthKind.None,
+                TunnelTlsMode.Default, TunnelRuntimeMode.Managed, null), RelaxKonOSJsonOptions.Default);
+        profileResponse.EnsureSuccessStatusCode();
+        var profile = (await profileResponse.Content.ReadFromJsonAsync<TunnelServerProfileDto>(RelaxKonOSJsonOptions.Default))!;
+        var request = new UpsertTunnelDefinitionRequest(profile.Id, "app",
+            TunnelProtocol.Http, "127.0.0.1", 8080, null, null, true, false, false);
+        using var rejected = await client.PostAsJsonAsync(TunnelApiRoutes.Tunnels, request, RelaxKonOSJsonOptions.Default);
+        using var problem = JsonDocument.Parse(await rejected.Content.ReadAsStringAsync());
+        Require(rejected.StatusCode == System.Net.HttpStatusCode.BadRequest
+            && problem.RootElement.GetProperty("problemCode").GetString() == "tunnel.domain_required",
+            "the joint-installed signed Tunnels executor rejects a missing domain through authenticated HTTP");
+        using var accepted = await client.PostAsJsonAsync(TunnelApiRoutes.Tunnels,
+            request with { Domain = "app.example.test" }, RelaxKonOSJsonOptions.Default);
+        accepted.EnsureSuccessStatusCode();
+        var saved = (await accepted.Content.ReadFromJsonAsync<TunnelDefinitionDto>(RelaxKonOSJsonOptions.Default))!;
+        await using var scope = host.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
+        Require(await db.TunnelDefinitions.AnyAsync(row => row.Id == saved.Id && row.Domain == "app.example.test")
+            && await db.TunnelDefinitions.CountAsync() == 1,
+            "the signed Tunnels path saves only the valid definition to SQLite");
     }
 
     public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
@@ -1126,7 +1150,26 @@ internal static class JointDeploymentAcceptance
             var store = new ModuleManagementStore(builder.Configuration, root, installed);
             var modules = ServerModules.CreateManaged(store.DesiredIds, installed);
             var online = installed.Where(module => modules.IsEnabled(module.Id)).ToArray();
-            var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+            var hasTunnels = online.Any(module => module.Id == "relaxkonos.tunnels");
+            var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, hasTunnels ? "sqlite" : "memory");
+            if (hasTunnels)
+            {
+                builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(
+                    new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+                builder.Services.AddSingleton<IServerModeResolver>(new ServerModeResolver(builder.Configuration,
+                    RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
+                builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
+                    new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+                builder.Services.AddDbContext<RelaxKonOSDbContext>(options =>
+                    options.UseSqlite($"Data Source={Path.Combine(root, "tunnels-test.sqlite")};Pooling=False"));
+                builder.Services.AddScoped<ISecretStore, DataProtectionSecretStore>();
+                builder.Services.AddScoped<ITunnelAudit, TunnelAudit>();
+                builder.Services.AddScoped<ITunnelService, TunnelService>();
+                builder.Services.AddSingleton(DispatchProxy.Create<ITunnelProvider, GitRepositoryAssemblyChecks.RejectTransport>());
+                builder.Services.AddSingleton(DispatchProxy.Create<IManagedFrpsService, GitRepositoryAssemblyChecks.RejectTransport>());
+                builder.Services.AddSingleton(DispatchProxy.Create<IRuntimeManager, GitRepositoryAssemblyChecks.RejectTransport>());
+                builder.Services.AddSingleton(DispatchProxy.Create<IHostElevationSessionStore, GitRepositoryAssemblyChecks.RejectTransport>());
+            }
             if (online.Any(module => module.Id == ServerModules.GitId))
             {
                 builder.Services.AddSingleton(DispatchProxy.Create<RelaxKonOS.Server.Files.IFileService, GitRepositoryAssemblyChecks.RejectTransport>());
@@ -1148,8 +1191,14 @@ internal static class JointDeploymentAcceptance
             builder.Services.AddSingleton<ModuleManagementExecutor>();
             builder.Services.AddHostedService(services => services.GetRequiredService<ModuleManagementExecutor>());
             builder.Services.AddAuthentication("module-test").AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
-            builder.Services.AddAuthorization(options => options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
-                policy => policy.RequireAuthenticatedUser().RequireAssertion(user => ServerModuleManagementEndpoints.CanManage(user.User))));
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
+                    policy => policy.RequireAuthenticatedUser().RequireAssertion(user => ServerModuleManagementEndpoints.CanManage(user.User)));
+                options.AddPolicy("TunnelsRead", policy => policy.RequireAuthenticatedUser());
+                options.AddPolicy("TunnelsManage", policy => policy.RequireAuthenticatedUser()
+                    .RequireAssertion(user => ServerModuleManagementEndpoints.CanManage(user.User)));
+            });
             WebApplication? app = null;
             try
             {
@@ -1158,6 +1207,11 @@ internal static class JointDeploymentAcceptance
                 {
                     await using var database = await app.Services.GetRequiredService<IDbContextFactory<RelaxKonOSDbContext>>().CreateDbContextAsync();
                     await database.Database.EnsureCreatedAsync();
+                }
+                if (hasTunnels)
+                {
+                    await using var scope = app.Services.CreateAsyncScope();
+                    await scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>().Database.EnsureCreatedAsync();
                 }
                 app.UseAuthentication();
                 app.UseAuthorization();
