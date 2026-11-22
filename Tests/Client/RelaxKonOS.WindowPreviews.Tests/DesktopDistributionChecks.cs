@@ -78,6 +78,22 @@ internal static class DesktopDistributionChecks
                             || applications.GetManifest(new AppId(id))?.Version != actual[id].Version)
                             throw new InvalidOperationException($"{profile} did not register the published package {id}.");
                     Console.WriteLine($"{profile}: provisioned {actual.Count} official packages from the published distribution.");
+                    if (profile == "developer")
+                    {
+                        await provisioner.RunAsync(["--installation-profile=minimal"], cancellationToken);
+                        if (packages.Installed.Count != actual.Count
+                            || actual.Any(pair => packages.FindInstalled(pair.Key) != pair.Value))
+                            throw new InvalidOperationException("Switching to Minimal replaced or removed a registered package.");
+
+                        const string removed = "relaxkonos.welcome";
+                        if (!actual.ContainsKey(removed) || !await packages.UninstallAsync(removed))
+                            throw new InvalidOperationException("Developer profile did not allow removing Welcome.");
+                        await provisioner.RunAsync(["--installation-profile=developer"], cancellationToken);
+                        if (packages.FindInstalled(removed) is not null || packages.Installed.Count != actual.Count - 1
+                            || actual.Any(pair => pair.Key != removed && packages.FindInstalled(pair.Key) != pair.Value))
+                            throw new InvalidOperationException("Returning to Developer restored a removed package or replaced a remaining one.");
+                        Console.WriteLine("Profile switching preserved installed packages and the user's removal.");
+                    }
                 }
                 finally
                 {
