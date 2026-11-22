@@ -165,6 +165,12 @@ if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundled
     return;
 }
 
+if (args is ["--live-databases-joint-deployment", var liveServer, var liveArchive, var liveState, var livePhase])
+{
+    JointDeploymentAcceptance.RunLiveDatabases(liveServer, liveArchive, liveState, livePhase);
+    return;
+}
+
 if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"])
 {
     void VerifyLifecycle(bool passed, string message)

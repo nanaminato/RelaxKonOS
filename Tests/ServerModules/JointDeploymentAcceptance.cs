@@ -23,6 +23,7 @@ using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Server.Endpoints;
@@ -33,10 +34,16 @@ internal static class JointDeploymentAcceptance
     private const string ModuleId = "fixture-module";
     private const string AppIdText = "relaxkonos.welcome";
 
-    public static void Run(string archive, IReadOnlyList<string> bundledModuleArchives)
+    public static void Run(string archive, IReadOnlyList<string> bundledModuleArchives) =>
+        RunWithDispatcher(() => RunAsync(Path.GetFullPath(archive), bundledModuleArchives.Select(Path.GetFullPath).ToArray()));
+
+    public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
+        RunWithDispatcher(() => RunLiveDatabasesAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase));
+
+    private static void RunWithDispatcher(Func<Task> run)
     {
         AppBuilder.Configure<Application>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
-        var task = RunAsync(Path.GetFullPath(archive), bundledModuleArchives.Select(Path.GetFullPath).ToArray());
+        var task = run();
         var deadline = DateTime.UtcNow.AddMinutes(2);
         while (!task.IsCompleted && DateTime.UtcNow < deadline)
         {
@@ -45,6 +52,66 @@ internal static class JointDeploymentAcceptance
         }
         if (!task.IsCompleted) throw new TimeoutException("Joint deployment acceptance did not finish.");
         task.GetAwaiter().GetResult();
+    }
+
+    private static async Task RunLiveDatabasesAsync(Uri server, string archive, string state, string phase)
+    {
+        if (server.Scheme != "http" || server.Host != "127.0.0.1" || server.PathAndQuery != "/"
+            || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "resume" or "reuse"))
+            throw new ArgumentException("Expected a loopback Server and a start, resume or reuse phase.");
+        var username = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_USER");
+        var password = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_PASSWORD");
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            throw new InvalidOperationException("Provide the dedicated fixture login.");
+        using var loginHttp = new HttpClient(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false });
+        var auth = new AuthSession(new RelaxKonOSClient(loginHttp), null!, null!);
+        await auth.LoginAsync(ServerConnectionIdentityRules.Direct(server.AbsoluteUri),
+            new(username, password, ClientPlatformKind.Linux, "databases-joint-acceptance", "0.3.0"), false, false);
+        using var moduleHttp = new HttpClient(new AuthenticatedHttpHandler(auth)
+        {
+            InnerHandler = new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false },
+        });
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var trust = new ComponentCatalogSourceStore(Path.Combine(state, "trust"), "live-databases-fixture");
+        var windows = new RelaxKonOS.WindowManager.WindowManager();
+        var applications = new ApplicationManager(windows, services);
+        var drive = new VirtualSystemDrive(Path.Combine(state, "drive"));
+        var permissions = DispatchProxy.Create<IAppPermissionManager, PermissionProxy>();
+        var packages = new DeveloperPackageManager(applications, null!, windows, permissions, new Diagnostics(), drive,
+            Path.GetDirectoryName(archive)!);
+        await packages.LoadInstalledAsync();
+        var installer = new AppPackageInstallerService(packages, null!, trust);
+        var deployment = new JointAppDeploymentService(new LiveHttpFactory(moduleHttp), auth, installer, packages,
+            applications, new FileDeploymentJournal(Path.Combine(state, "journal")));
+        var candidate = await installer.InspectLocalAsync(archive);
+        Require(candidate.Manifest.Id == ServerModules.DatabaseId, "the fixture uses the official Databases desktop package");
+        if (phase == "start")
+        {
+            var review = await deployment.PrepareAsync(candidate, [], default);
+            Require(review.Plan.PreparedSteps is [{ Package.Id: ServerModules.DatabaseId }],
+                "the desktop prepares a signed Databases server package before installation");
+            await ExpectRestartAsync(deployment, review);
+            Require(!applications.IsRegistered(new AppId(ServerModules.DatabaseId)),
+                "the desktop waits for the server module before registering Databases");
+            return;
+        }
+        var resumed = phase == "reuse" ? await deployment.PrepareAsync(candidate, [], default)
+            : await deployment.FindPendingAsync(candidate, default)
+            ?? throw new InvalidOperationException("The desktop could not recover its original Databases deployment.");
+        if (phase == "reuse")
+            Require(resumed.Plan.PreparedSteps.IsEmpty
+                && resumed.Plan.OrderedReleases.Any(release => release.Package.Kind == DeploymentPackageKind.ServerModule
+                    && release.Package.Id == ServerModules.DatabaseId && release.Satisfied
+                    && release.ArtifactIdentity.Split('/').Length == 3),
+                "the desktop reuses the running signed Databases module");
+        var installed = await deployment.ExecuteAsync(resumed, default);
+        Require(installed.Id == ServerModules.DatabaseId && applications.IsRegistered(new AppId(installed.Id)),
+            "the recovered desktop plan registers Databases after verifying the running module");
+    }
+
+    private sealed class LiveHttpFactory(HttpClient http) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => http;
     }
 
     private static async Task RunAsync(string archive, IReadOnlyList<string> bundledModuleArchives)
