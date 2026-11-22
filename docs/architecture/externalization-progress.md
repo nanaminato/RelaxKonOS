@@ -491,6 +491,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Ubuntu Databases 双包端到端再次通过，并补验桌面启动守卫。登记应用后，守卫接受实际运行的独立签名模块，随后进入单独的组件读取权限检查。验收夹具未授权该权限，因此验证范围止于此检查，未打开业务窗口。
 - 当前 Windows Debug 桌面、DevCli 和测试宿主重新构建后，全量 Direct Deploy 验收通过。真实桌面登录界面通过 --no-launch 安装并重启后回退；两个隔离配置验证项目与包直传、监视更新、失败保留窗口、串行操作及配置隔离。Notepad 和 Image Viewer 通过直传生命周期，Release 安装指针保持不变。
 - Windows Debug 使用真实 Docker `.roapp` 内容复跑 Direct Deploy 必需依赖专项。候选首次启动被拒绝时不登记，--no-launch 登记并保留依赖。再次部署并启动被拒绝时，先前安装路径、应用登记和依赖仍保持一致。测试使用启动守卫夹具，未启动真实 Docker Engine。
+- 桌面宿主完成官方应用程序集隔离后，重新构建 Windows Debug 桌面、DevCli 和预览测试。Direct Deploy 全量通过，复用了登录界面安装、失败保留、回滚、监听、双配置隔离和 Release 指针核对。保留 ID 回归改为验证拒绝内置安装器和未登记的 `relaxkonos.*` ID。真实 Docker 发行归档的候选启动依赖检查复验通过。
 - Windows Release 组件中心专项验证模块移除预览后新增本机应用依赖。直接调用提交命令时仍会报告依赖应用，服务端未收到提交，旧预览保留供取消。验收覆盖本机安装状态，跨设备依赖声明仍待实现。
 - Windows Release 隔离双包回归模拟同一连接地址和登录下服务端实例标识变化。旧计划返回 `deployment-server-changed`，未创建执行检查点，未增加模块操作，也未登记桌面应用。恢复原标识后，原计划通过正常安装和恢复流程。
 - Settings 外置拆分开始。Workspace 壁纸传输接口及 HTTP 实现迁至宿主 WorkspaceSettings 服务，Shell 壁纸服务不再引用 Settings 应用命名空间。Windows Release 壁纸与工作区设置专项通过。Settings 界面、独立包和恢复入口迁移仍待完成。

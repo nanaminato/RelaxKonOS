@@ -277,8 +277,11 @@ def main():
         assert cli(env_a, "rollback", APP_ID)["currentVersionId"] == (versions - {last}).pop()
 
         reserved = root / "official-id.json"
-        reserved.write_text((app / "manifest.json").read_text(encoding="utf-8").replace(APP_ID, "relaxkonos.explorer"), encoding="utf-8")
-        cli(env_a, "deploy", compiled, "--manifest", reserved, code="invalid_manifest")
+        # Debug Direct Deploy can update published official apps. The embedded installer
+        # and IDs outside the official catalog are still reserved.
+        for reserved_id in ("relaxkonos.appinstaller", "relaxkonos.direct-deploy-fixture"):
+            reserved.write_text((app / "manifest.json").read_text(encoding="utf-8").replace(APP_ID, reserved_id), encoding="utf-8")
+            cli(env_a, "deploy", compiled, "--manifest", reserved, code="invalid_manifest")
 
         for app_id, project_name in OFFICIAL_APPS.items():
             official_project = REPO / "Applications" / project_name
