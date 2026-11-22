@@ -843,3 +843,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 已取得 Mihomo 官方 Linux x64 v1.19.32 兼容归档，SHA-256 与官方发布资产一致。在 WSL 独立网络命名空间临时启动，仅开放环回控制器并关闭 TUN，实际 /version 和 /connections 读取通过。进程退出后停止，尚未将此控制器接入签名 Proxy 双包宿主。
 - Linux x64 签名 Proxy 双包通过 RK_TEST_MIHOMO_CONTROLLER 接入隔离的真实 Mihomo v1.19.32。生产控制器适配器读取可达性和关闭的 TUN，签名连接解析器处理真实空连接快照，签名总览返回零连接。卸载桌面保留服务端包。真实运行时仅验证只读观察，未覆盖订阅发布和运行时变更。
 - Linux x64 签名 Proxy 双包在独立网络命名空间连接真实 Mihomo v1.19.32。保持一个经环回代理送往临时后端的连接，设置 RK_TEST_MIHOMO_CONNECTIONS=1，生产适配器及签名解析器均返回一个活动连接，TUN 仍关闭。进程和连接在测试退出后清理。
+- Linux x64 签名 Proxy 双包复验从已安装且复验摘要的包加载订阅解析入口，Base64 YAML 解码保留原文与原始字节数，非法 UTF-8 被拒。同轮真实 Mihomo 活动连接读取通过。用例直接提供已授权响应体，订阅下载与发布未纳入本次。

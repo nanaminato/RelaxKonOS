@@ -417,6 +417,17 @@ internal static class JointDeploymentAcceptance
         Require(!ReferenceEquals(execution, ProxyConnectionExecutionGate.Shared)
             && await overview.ReadAsync(reads, default) is { TunEnabled: true, ActiveConnections: 3 },
             "the joint-installed signed Proxy package computes an overview from host observations");
+
+        var installed = InstalledModuleStore.Read(serverRoot).Single(record => record.ModuleId == ServerModules.ProxyId);
+        var manifest = InstalledModuleStore.VerifyPackage(serverRoot, installed);
+        var packageRoot = InstalledModuleStore.ResolvePackageRoot(serverRoot, installed.PackagePath);
+        var subscriptions = new ProxyExecutionCodeGate("joint-subscription", () => Path.Combine(packageRoot, manifest.EntryAssembly));
+        const string yaml = "proxies: []\nrules: [MATCH,DIRECT]\n";
+        var encoded = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(yaml)));
+        var normalized = await subscriptions.ReadAsync(new MemoryStream(encoded), default);
+        var invalid = await subscriptions.ReadAsync(new MemoryStream([0xff]), default);
+        Require(normalized.Content == yaml && normalized.Bytes == encoded.Length && invalid.Content is null,
+            "the joint-installed signed Proxy parser decodes an authorized subscription body and rejects malformed UTF-8");
         if (Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONTROLLER") is { Length: > 0 } endpoint)
         {
             var expectedConnections = int.Parse(Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONNECTIONS") ?? "0",
