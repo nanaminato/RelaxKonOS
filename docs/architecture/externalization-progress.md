@@ -834,3 +834,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Web Server 双包通过 RK_TEST_NGINX 调用真实 Nginx 1.24.0。临时环回实例先返回旧响应，联合安装的签名执行包经测试直连端口发起重载，同一 master 返回新配置响应。测试结束清理该进程，桌面卸载仍保留签名包。生产 Helper 和系统服务重载路径未纳入这次验收。
 - Linux x64 签名 Web Server 双包通过真实 Nginx 无效配置验收。签名执行包返回 RecoveryRequired，未确认重载；原 master 继续返回此前有效配置的响应。
 - Linux x64 签名 Web Server 联合部署使用真实 Nginx，坏配置被拒后经同一签名重载入口提交修正配置，重载确认成功，同一 master 返回修正后的 HTTP 响应。系统服务 Helper 重载路径仍待验。
+- Windows Release 的 --signed-firewall-joint-acceptance 使用官方 Firewall Manager 归档测试副本提高模块最低版本，验证一次独立签名包安装与 Core 重启续跑。匿名状态读取被拒且未调用 Helper。认证请求经生产 HTTP 和签名执行模块，通过测试传输得到预期状态。桌面卸载后服务端包保留。真实防火墙尚未纳入本用例。

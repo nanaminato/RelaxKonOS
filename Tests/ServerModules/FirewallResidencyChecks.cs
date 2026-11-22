@@ -116,7 +116,7 @@ internal static class FirewallResidencyChecks
             "a failed module container cannot create another generation or retry partially completed resource disposal");
     }
 
-    private sealed class FirewallTransport : IPrivilegedOperationTransport, IDisposable
+    internal sealed class FirewallTransport : IPrivilegedOperationTransport, IDisposable
     {
         internal int Calls;
         internal bool Disposed;

@@ -29,6 +29,7 @@ using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.Protocol.Firewall;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Tunnels;
@@ -44,6 +45,7 @@ using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Git;
+using RelaxKonOS.Server.Firewall;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Storage.Sqlite;
@@ -365,6 +367,24 @@ internal static class JointDeploymentAcceptance
                 start.ArgumentList.Add(argument);
             return System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Nginx did not start.");
         }
+    }
+
+    public static void RunSignedFirewall(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        ServerModules.FirewallId, ServerCapabilities.Firewall, "Firewall", CollectibleFirewallExecution.AssemblyFile,
+        CollectibleFirewallExecution.EntryType, null, VerifySignedFirewallAsync));
+
+    private static async Task VerifySignedFirewallAsync(TestHost host, string _)
+    {
+        const string route = "/api/v1.0/firewall/status";
+        using var client = new HttpClient { BaseAddress = new Uri(host.Url) };
+        var transport = (FirewallResidencyChecks.FirewallTransport)host.Services.GetRequiredService<IPrivilegedOperationTransport>();
+        using var anonymous = await client.GetAsync(route);
+        Require(anonymous.StatusCode == System.Net.HttpStatusCode.Unauthorized && transport.Calls == 0,
+            "anonymous firewall reads cannot reach the Helper transport");
+        client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+        var status = await client.GetFromJsonAsync<FirewallStatusDto>(route, RelaxKonOSJsonOptions.Default);
+        Require(status is { IsAvailable: true, IsEnabled: true } && transport.Calls == 1,
+            "the joint-installed signed Firewall module returns status through the production route and Helper adapter");
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
@@ -1714,7 +1734,15 @@ internal static class JointDeploymentAcceptance
                 if (!hasTunnels)
                     builder.Services.AddSingleton<IHostElevationSessionStore, NoElevation>();
             }
-            foreach (var module in online.Where(module => module.Id is not (ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId)))
+            var hasFirewall = online.Any(module => module.Id == ServerModules.FirewallId);
+            if (hasFirewall)
+            {
+                builder.Services.AddSingleton<IServerModeResolver>(new ServerModeResolver(builder.Configuration,
+                    RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
+                builder.Services.AddSingleton<IHostElevationSessionStore, NoElevation>();
+                ServerModules.CreateManaged(new HashSet<string> { ServerModules.FirewallId }, installed).ConfigureServices(builder, context);
+            }
+            foreach (var module in online.Where(module => module.Id is not (ServerModules.FirewallId or ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId)))
                 module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
@@ -1733,6 +1761,8 @@ internal static class JointDeploymentAcceptance
             }
             else if (hasTailscale)
                 builder.Services.AddSingleton<IPrivilegedOperationTransport, TailscaleReadHelper>();
+            else if (hasFirewall)
+                builder.Services.AddSingleton<IPrivilegedOperationTransport, FirewallResidencyChecks.FirewallTransport>();
             else
                 builder.Services.AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>();
             builder.Services.AddSingleton(store);

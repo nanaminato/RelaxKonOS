@@ -173,6 +173,12 @@ if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundled
     return;
 }
 
+if (args is ["--signed-firewall-joint-acceptance", var signedFirewallApp])
+{
+    JointDeploymentAcceptance.RunSignedFirewall(signedFirewallApp);
+    return;
+}
+
 if (args is ["--signed-webserver-joint-acceptance", var signedWebServerApp])
 {
     JointDeploymentAcceptance.RunSignedWebServer(signedWebServerApp);
