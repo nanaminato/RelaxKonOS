@@ -830,3 +830,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 的 Docker Manager 独立签名双包验收通过一次安装、重启续跑、生产 Compose 预览和桌面卸载保留模块。Windows Release 同一双包用 RK_TEST_DOCKER_ENGINE=1 通过真实 Engine 临时项目验收，回执确认容器运行，幂等重放返回原回执，删除后观测为空且清理通过。
 - Linux x64 自包含 Docker Manager 签名双包在 WSL 使用 RK_TEST_DOCKER_ENGINE=1 及已有 Docker Desktop Unix 套接字，完成真实 Compose 项目部署、原回执重放、删除及空观测。同轮桌面重启续跑和卸载保留模块通过。Windows 和 WSL 使用同一 Docker Desktop Engine。
 - Windows Release 的 --signed-webserver-joint-acceptance 使用官方 Web Server Manager 归档测试副本提高模块最低版本。计划复用生效的随附 Certificates，只提交一次 Web Server 独立签名包安装，Core 重启续跑后登记桌面应用。已安装执行包通过受控端口确认重载，桌面卸载保留服务端包。真实 Nginx 尚待验。
+- Linux x64 自包含 Web Server Manager 签名双包通过。在一个安装回执和 Core 重启后登记应用，复用随附 Certificates，并通过受控重载端口调用已安装签名执行包。卸载桌面保留模块。另从 Ubuntu Noble 基础仓库把 Nginx 1.24.0 解包至 WSL 临时目录，实际二进制已通过版本检查，尚待接到签名联合部署重载用例。
