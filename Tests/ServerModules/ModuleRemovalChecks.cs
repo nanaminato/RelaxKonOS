@@ -103,6 +103,34 @@ internal static class ModuleRemovalChecks
             using var restartedFailure = new ModuleManagementStore(configuration, failureRoot);
             check(restartedFailure.CaptureInventory().PendingOperations.ContainsKey("sample"),
                 "pre-unregister recovery guard survives host restart");
+
+            var replacementRoot = Path.Combine(root, "bundled-replacement");
+            var git = new InstalledModuleRecord(ServerModules.GitId, "1.0.0", "git-1", "official", "publisher",
+                new string('a', 64), new string('b', 64), "packages/relaxkonos.git/1.0.0", "server/git.dll",
+                "Git.Executor", [ServerCapabilities.Git], [], "in-process", DateTimeOffset.UtcNow);
+            InstalledModuleStore.Write(replacementRoot, [git]);
+            var replacementCatalog = InstalledModuleCatalog.Load(replacementRoot);
+            using (var initial = new ModuleManagementStore(configuration, replacementRoot, replacementCatalog))
+            {
+                var enabled = initial.DesiredIds;
+                var disable = initial.Preview("owner", new(initial.ServiceId, ServerModuleAction.Disable, [ServerModules.GitId],
+                    enabled.Where(id => id != ServerModules.GitId).ToArray(), initial.Revision, "disable-replacement"),
+                    enabled.Select(id => new ServerModuleDto(id, true, [], [], [], [])).ToArray());
+                initial.Apply("owner", disable.PlanId, enabled.Select(id => new ServerModuleDto(id, true, [], [], [], [])).ToArray());
+                initial.VerifyStartup(initial.DesiredIds);
+                var snapshot = ServerModules.CreateManaged(initial.DesiredIds, replacementCatalog);
+                var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = replacementRoot });
+                var context = ServerModuleContext.Create(configuration, builder.Environment, "memory");
+                using var services = new ServiceCollection().AddSingleton(initial).BuildServiceProvider();
+                var before = snapshot.DescribeAsync(services, context, default).GetAwaiter().GetResult();
+                var plan = initial.Preview("owner", new(initial.ServiceId, ServerModuleAction.Remove, [ServerModules.GitId],
+                    initial.DesiredIds.ToArray(), initial.Revision, "remove-replacement"), before);
+                var removed = initial.Apply("owner", plan.PlanId, before);
+                var after = snapshot.DescribeAsync(services, context, default).GetAwaiter().GetResult().Single(item => item.Id == ServerModules.GitId);
+                check(removed.State == ServerModuleOperationState.Succeeded && after is
+                    { Packaging: "bundled", EffectiveEnabled: false, DesiredEnabled: false, TrustState: "host", SourceId: "server-release" },
+                    "removing an independent replacement immediately reveals the disabled bundled module in the deployment inventory");
+            }
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

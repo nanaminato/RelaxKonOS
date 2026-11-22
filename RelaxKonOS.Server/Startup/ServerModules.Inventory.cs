@@ -37,7 +37,13 @@ internal sealed partial class ServerModules
         var hostStatuses = hosts?.Snapshot().ToDictionary(host => host.ModuleId, StringComparer.Ordinal);
         var currentPackages = InstalledModuleStore.Read(context.ContentRootPath)
             .ToDictionary(record => record.ModuleId, StringComparer.Ordinal);
-        all = all.Where(module => module is not IInstalledModuleInfo || currentPackages.ContainsKey(module.Id)).ToArray();
+        if (all.Any(module => module is IInstalledModuleInfo && !currentPackages.ContainsKey(module.Id)))
+        {
+            var bundled = Catalog().ToDictionary(module => module.Id, StringComparer.Ordinal);
+            all = all.Select(module => module is IInstalledModuleInfo && !currentPackages.ContainsKey(module.Id)
+                    ? bundled.GetValueOrDefault(module.Id) : module)
+                .OfType<IServerModule>().ToArray();
+        }
         foreach (var module in all)
         {
             var isEnabled = enabled.Contains(module);
