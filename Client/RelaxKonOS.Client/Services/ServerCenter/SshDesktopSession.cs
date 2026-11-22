@@ -6,7 +6,7 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 internal sealed record SshDirectoryItem(string Name, string Path, bool IsDirectory, bool IsLink, long Size, DateTime Modified);
 
 /// <summary>The SSH desktop's in-memory connection identity. Each terminal opens its own SSH channel.</summary>
-public sealed class SshDesktopSession(IServerCenterConnectionResolver connections, ShellSettings settings, string? preferencesDirectory = null)
+public sealed partial class SshDesktopSession(IServerCenterConnectionResolver connections, ShellSettings settings, string? preferencesDirectory = null)
 {
     private readonly object _gate = new();
     private RelaxKonOS.Protocol.Workspace.WorkspacePreferencesDto? _previousPreferences;

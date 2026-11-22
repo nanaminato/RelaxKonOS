@@ -1438,24 +1438,20 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task UploadFolderAsync()
     {
-        if (_busy || IsPackagePicker) return;
+        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        var directory = _path;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
         var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, _capturePickerMemory(), "SshFileBrowserView.axaml.1");
         var localPath = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (localPath is null) return;
+        if (localPath is null || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
         var folder = new DirectoryInfo(localPath);
         using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
         try
         {
             StatusMessage = LocalizedStatus.Key("ssh_files.uploading_folder", "Uploading folder {0}", folder.Name);
-            await ExecuteAsync(client =>
-            {
-                var target = Child(_path, folder.Name);
-                if (client.Exists(target)) throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {folder.Name}");
-                UploadTree(client, folder, target, progress);
-                return true;
-            });
+            if (!await _session.UploadDirectoryAsync(endpoint, folder, Child(directory, folder.Name), progress.Report, progress.Cancellation))
+                throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {folder.Name}");
             StatusMessage = LocalizedStatus.Key("ssh_files.uploaded_folder", "Uploaded folder {0}", folder.Name);
         }
         catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.upload_failed", "Upload failed"), LocalizedStatus.Literal(ex.Message)]); }
@@ -1463,25 +1459,6 @@ internal partial class SshFileBrowserView : UserControl
         var message = StatusMessage;
         await NavigateAsync(_path, false);
         if (!string.IsNullOrEmpty(message)) StatusMessage = message;
-    }
-
-    private static void UploadTree(SftpClient client, DirectoryInfo directory, string target, SshTransferProgressWindow progress)
-    {
-        if (directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            throw new IOException($"{directory.FullName}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
-        progress.Cancellation.ThrowIfCancellationRequested();
-        client.CreateDirectory(target);
-        foreach (var file in directory.EnumerateFiles())
-        {
-            if (file.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                throw new IOException($"{file.FullName}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
-            using var input = file.OpenRead();
-            progress.Report(file.FullName, 0, input.Length);
-            client.UploadFile(input, Child(target, file.Name), canOverride: false,
-                uploaded => progress.Report(file.FullName, (long)uploaded, input.Length));
-        }
-        foreach (var child in directory.EnumerateDirectories())
-            UploadTree(client, child, Child(target, child.Name), progress);
     }
 
     private async Task DownloadAsync()
@@ -1509,12 +1486,9 @@ internal partial class SshFileBrowserView : UserControl
         try
         {
             StatusMessage = LocalizedStatus.Key("ssh_files.downloading", "Downloading {0}", string.Join(", ", selected.Select(file => file.Name)));
-            await ExecuteAsync(client =>
-            {
-                foreach (var entry in selected)
-                    DownloadTree(client, entry.Path, SafeLocalChild(folder, entry.Name), entry.IsDirectory && !entry.IsLink, progress);
-                return true;
-            });
+            await _session.DownloadPathsAsync(endpoint, folder,
+                selected.Select(entry => (entry.Path, entry.Name, entry.IsDirectory)).ToArray(),
+                progress.Report, progress.Cancellation);
             StatusMessage = LocalizedStatus.Key("ssh_files.downloaded", "Downloaded {0} items", selected.Length);
         }
         catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }
@@ -1535,34 +1509,6 @@ internal partial class SshFileBrowserView : UserControl
         }
         catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
-    }
-
-    private static void DownloadTree(SftpClient client, string source, string destination, bool directory, SshTransferProgressWindow progress)
-    {
-        if (!directory)
-        {
-            var size = client.GetAttributes(source).Size;
-            progress.Report(source, 0, size);
-            using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write);
-            client.DownloadFile(source, output, downloaded => progress.Report(source, (long)downloaded, size));
-            return;
-        }
-        if (Directory.Exists(destination) || File.Exists(destination))
-            throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {destination}");
-        Directory.CreateDirectory(destination);
-        foreach (var child in client.ListDirectory(source).Where(file => file.Name is not ("." or "..")))
-        {
-            if (child.IsSymbolicLink) throw new IOException($"{child.FullName}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
-            DownloadTree(client, child.FullName, SafeLocalChild(destination, child.Name), child.IsDirectory, progress);
-        }
-    }
-
-    private static string SafeLocalChild(string directory, string name)
-    {
-        if (name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
-            || name.Contains('/') || name.Contains('\\') || Path.GetFileName(name) != name)
-            throw new IOException($"{T("ssh_files.invalid_local_name", "File name is not valid on this device")}: {name}");
-        return Path.Combine(directory, name);
     }
 
     private Task<bool> ChangeAsync(Action<SftpClient> action) =>
