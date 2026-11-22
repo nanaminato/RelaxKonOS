@@ -310,6 +310,23 @@ internal static class JointDeploymentAcceptance
                 "a disconnected client cannot recover a server plan using cached account and service IDs");
             session.KeepDisconnectedIdentity = false;
             session.Online = true;
+            var originalAccount = session.AccountId;
+            var requestsBeforeAccountChange = factory.Requests;
+            session.AccountId = Guid.NewGuid();
+            try
+            {
+                Require(await joint.FindPendingAsync(candidate, default) is null,
+                    "a different account on the same connection cannot find the original pending plan");
+                try
+                {
+                    await joint.ExecuteAsync(review, default);
+                    throw new InvalidOperationException("Expected the other account to be unable to execute the original review.");
+                }
+                catch (InvalidOperationException error) when (error.Message == "deployment-account-changed") { }
+                Require(factory.Requests == requestsBeforeAccountChange,
+                    "the rejected account does not send any module requests");
+            }
+            finally { session.AccountId = originalAccount; }
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing pending deployment.");
             using (var cancellation = new CancellationTokenSource())
             {
@@ -1051,7 +1068,7 @@ internal static class JointDeploymentAcceptance
 
     public class SessionProxy : DispatchProxy
     {
-        private readonly Guid actor = Guid.Parse(ModuleTestAuthentication.Admin);
+        public Guid AccountId { get; set; } = Guid.Parse(ModuleTestAuthentication.Admin);
         private SessionDto login = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), default, default,
             SessionStatus.Active, Guid.Parse(ModuleTestAuthentication.Admin), "test", default);
         private string url = "";
@@ -1074,7 +1091,7 @@ internal static class JointDeploymentAcceptance
             "get_EffectiveBaseUrl" => Url,
             "get_CurrentSession" => Online || KeepDisconnectedIdentity ? login : null,
             "get_CurrentUser" => Online || KeepDisconnectedIdentity
-                ? new UserDto(actor, "controller", HostPlatformKind.Windows, "fixture", default, null) : null,
+                ? new UserDto(AccountId, "controller", HostPlatformKind.Windows, "fixture", default, null) : null,
             "get_CurrentServer" => null,
             "add_StateChanged" or "remove_StateChanged" => null,
             _ => throw new NotSupportedException(method?.Name),
