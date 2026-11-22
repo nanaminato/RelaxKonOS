@@ -744,3 +744,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的 --tailscale-live-pipe 改用独立 Helper 测试子进程并通过。Core 状态适配器通过生产认证协议跨进程读取真实 daemon，子进程经匿名标准输入接收一次性配置并在测试后退出。已安装的 LocalSystem 服务模式、网络变更、登录及多设备验收仍待完成。
 - Firewall 执行程序集可通过官方进程内 .rkmodule 安装，Core 按固定能力、入口和 RID 复验包文件，并在请求代次加载已安装执行代码。现有路由授权与 Helper 端口继续工作。Windows Release 的 31 项驻留边界断言及签名包安装、加载、受控 Helper 只读转发检查通过。管理 HTTP 流程和真实防火墙验收待完成。
 - Windows Release 的模块包管理 HTTP 验收新增两个实际 Firewall 执行包版本。通过签名目录验证商店的能力展示、两个版本的上传与计划应用、待重启回执，以及按原摘要选择回滚版本。Tailscale 和现有第三方包的 HTTP 回归同期通过。真实防火墙及回滚后原生规则读取待验。
+- Windows Release 的 --firewall-live-package 通过。使用两个独立签名包版本，在新建 Core 宿主中依次加载 1.0.0、2.0.0、回滚后的 1.0.0，并经独立 Helper 测试进程的认证管道读取真实 Windows Defender Firewall 状态及托管规则列表。本机列表为空，验收仅执行读取，真实规则写入和 Linux UFW 仍待验。

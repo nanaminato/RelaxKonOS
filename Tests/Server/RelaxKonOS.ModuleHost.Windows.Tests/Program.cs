@@ -16,6 +16,11 @@ using RelaxKonOS.Protocol.Privileged;
 using Microsoft.Extensions.Logging.Abstractions;
 
 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows native acceptance requires Windows.");
+if (args is ["--firewall-live-package"])
+{
+    await WindowsTailscalePipeAcceptance.WithHelperAsync(WindowsFirewallPackageAcceptance.RunAsync);
+    return;
+}
 if (args is ["--tailscale-live-pipe"])
 {
     await WindowsTailscalePipeAcceptance.RunAsync();

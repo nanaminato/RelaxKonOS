@@ -11,7 +11,15 @@ internal static class WindowsTailscalePipeAcceptance
 {
     private const string PipePrefix = "RelaxKonOS.Tailscale.Acceptance.";
 
-    internal static async Task RunAsync()
+    internal static Task RunAsync() => WithHelperAsync(async transport =>
+    {
+        var status = await new HelperTailscaleManager(transport).GetStatusAsync(default);
+        Console.WriteLine($"Tailscale cross-process authenticated pipe status: {status.State}");
+        if (status is not { State: "observed", BackendState.Length: > 0 })
+            throw new InvalidOperationException("The production pipe did not return a live Tailscale backend state.");
+    });
+
+    internal static async Task WithHelperAsync(Func<IPrivilegedOperationTransport, Task> probe)
     {
         var pipe = PipePrefix + Guid.NewGuid().ToString("N");
         var secret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
@@ -34,10 +42,7 @@ internal static class WindowsTailscalePipeAcceptance
 
             var transport = new WindowsNamedPipePrivilegedOperationTransport(new PrivilegedHelperOptions
             { PipeName = pipe, SharedSecret = secret }, NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance);
-            var status = await new HelperTailscaleManager(transport).GetStatusAsync(default);
-            Console.WriteLine($"Tailscale cross-process authenticated pipe status: {status.State}");
-            if (status is not { State: "observed", BackendState.Length: > 0 })
-                throw new InvalidOperationException("The production pipe did not return a live Tailscale backend state.");
+            await probe(transport);
         }
         finally
         {
