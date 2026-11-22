@@ -52,9 +52,10 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
             return entry.IsDirectory && !entry.IsSymbolicLink ? ToDirectoryEntry(entry) : ToFileSystemEntry(entry);
         }, ct);
 
-    public Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default) =>
+    public Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default, Func<bool>? isCurrent = null) =>
         ExecuteAsync<(Stream Stream, string FileName)?>(client =>
         {
+            if (isCurrent?.Invoke() == false) throw new InvalidOperationException("SSH session ended.");
             if (!client.Exists(path)) return null;
             var stream = new MemoryStream();
             client.DownloadFile(path, stream);

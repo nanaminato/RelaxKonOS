@@ -121,6 +121,12 @@ internal static class RoappCatalogChecks
             dispatch.BeforeAuthentication = () => actor.ServiceId = "http://another-fixture.invalid";
             Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 3,
                 "A login switch between URI construction and authentication must not send an archive request.");
+            actor.ServiceId = reviewedServer;
+            var originCurrent = true;
+            dispatch.BeforeAuthentication = () => originCurrent = false;
+            await RejectAsync(() => files.DownloadAsync("/archives/example.roapp", isCurrent: () => originCurrent),
+                "a download whose calling operation lost its original login");
+            Check(transport.Downloads == 3, "The download must enforce the caller's login guard at dispatch.");
             var plan = await provider.PlanAsync(source, id);
             using (var review = new AppInstallerViewModel(installer) { AllowPackageSelection = false })
             {

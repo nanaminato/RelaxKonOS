@@ -73,9 +73,10 @@ public sealed partial class ExplorerClient : IExplorerClient, IArchiveClient, IE
         return await ReadAsync<FileSystemEntryDto>(resp, ct);
     }
 
-    public async Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default)
+    public async Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default, Func<bool>? isCurrent = null)
     {
-        var resp = await SendRawAsync(HttpMethod.Get, FileApiRoutes.Download, query: ("path", path), ct: ct, completion: HttpCompletionOption.ResponseHeadersRead);
+        var resp = await SendRawAsync(HttpMethod.Get, FileApiRoutes.Download, query: ("path", path), ct: ct,
+            completion: HttpCompletionOption.ResponseHeadersRead, isCurrent: isCurrent);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             resp.Dispose();
@@ -251,10 +252,12 @@ public sealed partial class ExplorerClient : IExplorerClient, IArchiveClient, IE
 
     private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string route,
         (string Key, string? Value)? query = null, object? body = null, CancellationToken ct = default,
-        HttpCompletionOption completion = HttpCompletionOption.ResponseContentRead)
+        HttpCompletionOption completion = HttpCompletionOption.ResponseContentRead, Func<bool>? isCurrent = null)
     {
+        if (isCurrent?.Invoke() == false)
+            throw new InvalidOperationException("deployment-account-changed");
         using var req = new HttpRequestMessage(method, (Uri?)null);
-        AuthenticatedHttpHandler.BindLogin(req, _session);
+        AuthenticatedHttpHandler.BindLogin(req, _session, isCurrent);
         req.RequestUri = BuildUri(RequireSession(), route, query);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.Tokens!.AccessToken);
         if (body is not null)

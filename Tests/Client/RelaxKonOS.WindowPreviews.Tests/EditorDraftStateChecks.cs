@@ -321,7 +321,7 @@ internal static class EditorDraftStateChecks
             => throw new NotSupportedException();
         public Task<FileSystemEntryDto?> GetInfoAsync(string path, CancellationToken ct = default)
             => throw new NotSupportedException();
-        public Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default)
+        public Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default, Func<bool>? isCurrent = null)
             => throw new NotSupportedException();
         public Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null,
             string? administratorUsername = null, CancellationToken ct = default)

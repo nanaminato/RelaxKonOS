@@ -13,14 +13,14 @@ public sealed class AuthenticatedHttpHandler(IAuthSession session) : DelegatingH
     private static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(1);
     private static readonly HttpRequestOptionsKey<Func<bool>> LoginGuard = new("RelaxKonOS.LoginGuard");
 
-    public static void BindLogin(HttpRequestMessage request, IAuthSession session)
+    public static void BindLogin(HttpRequestMessage request, IAuthSession session, Func<bool>? isCurrent = null)
     {
         var service = session.ServiceId;
         var user = session.CurrentUser;
         var login = session.CurrentSession;
         request.Options.Set(LoginGuard, () => session.State == AuthSessionState.Authenticated
             && session.ServiceId == service && ReferenceEquals(session.CurrentUser, user)
-            && ReferenceEquals(session.CurrentSession, login));
+            && ReferenceEquals(session.CurrentSession, login) && (isCurrent?.Invoke() ?? true));
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

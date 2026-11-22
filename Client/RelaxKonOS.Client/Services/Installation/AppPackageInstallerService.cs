@@ -64,17 +64,18 @@ public sealed class AppPackageInstallerService
             || _session.ServiceId is not { } connection || _session.CurrentSession is not { } login)
             throw new InvalidOperationException("deployment-account-changed");
         var origin = new DeploymentServerArchive(actor.Id, connection, serverPath);
-        var download = await _files.DownloadAsync(serverPath, cancellationToken)
+        bool IsCurrent() => ReferenceEquals(login, _session.CurrentSession) && MatchesServerArchive(_session, origin);
+        var download = await _files.DownloadAsync(serverPath, cancellationToken, IsCurrent)
             ?? throw new FileNotFoundException("The selected server package no longer exists.", serverPath);
+        await using var stream = download.Stream;
         var temporaryPath = NewStagingPath();
         try
         {
-            await using (download.Stream)
             await using (var destination = File.Create(temporaryPath))
-                await download.Stream.CopyToAsync(destination, cancellationToken);
+                await stream.CopyToAsync(destination, cancellationToken);
             var candidate = await InspectLocalAsync(temporaryPath, Path.GetFileName(serverPath), deleteWhenFinished: true,
                 cancellationToken: cancellationToken);
-            if (!ReferenceEquals(login, _session.CurrentSession) || !MatchesServerArchive(_session, origin))
+            if (!IsCurrent())
                 throw new InvalidOperationException("deployment-account-changed");
             return candidate with { ServerArchive = origin };
         }

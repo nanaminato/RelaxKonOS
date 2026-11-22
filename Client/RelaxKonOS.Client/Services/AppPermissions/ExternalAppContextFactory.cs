@@ -250,7 +250,7 @@ public sealed class ExternalAppContextFactory
         ComponentCatalog.LaunchGate(appId.Value) is null ? null
             : new ExternalComponentDependencies(appId, fileSession, _componentLifecycle, _permissionRequests, _activations, _windowManager),
         new ServerFilesCapability(appId, _permissions,
-            (sshFiles as IExplorerClient ?? _files).DownloadAsync,
+            (path, ct) => (sshFiles as IExplorerClient ?? _files).DownloadAsync(path, ct),
             sshEndpoint is not null, sshEndpoint is not null || _session.CurrentServer?.Platform != RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
             openedFile, sshEditor ? sshFiles! : _files, fileSession, _windowManager,
             () => sshEditor && ReferenceEquals(_sshSession.Endpoint, sshEndpoint)),

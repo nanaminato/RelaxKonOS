@@ -27,7 +27,7 @@ public interface IExplorerClient
     Task<FileSystemEntryDto?> GetInfoAsync(string path, CancellationToken ct = default);
 
     /// <summary>下载文件（GET /files/download）。返回字节流；调用方负责释放。</summary>
-    Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default);
+    Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default, Func<bool>? isCurrent = null);
 
     /// <summary>读取远程文件的原始字节；文件不存在时返回 null。</summary>
     Task<byte[]?> ReadFileAsync(string path, CancellationToken ct = default);
