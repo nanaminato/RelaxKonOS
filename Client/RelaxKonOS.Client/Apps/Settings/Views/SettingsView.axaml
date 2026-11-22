@@ -55,7 +55,7 @@
         </DataTemplate>
         <DataTemplate DataType="vm:ApplicationPermissionsPageViewModel">
             <ContentControl Content="{Binding Editor}"><ContentControl.DataTemplates>
-                <DataTemplate DataType="vm:AppPermissionDialogViewModel"><views:AppPermissionDialogView /></DataTemplate>
+                <DataTemplate DataType="vm:AppPermissionDialogViewModel"><settingsApp:AppPermissionDialogView /></DataTemplate>
             </ContentControl.DataTemplates></ContentControl>
         </DataTemplate>
         <DataTemplate DataType="vm:AppsPageViewModel">
