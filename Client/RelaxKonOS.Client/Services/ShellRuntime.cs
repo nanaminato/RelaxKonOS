@@ -523,7 +523,7 @@ public sealed class DesktopShellOverlayService : IShellOverlayService
             try { return await save(); }
             catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
             {
-                if (!await ExplorerApp.RequestOperationElevationAsync(metadataContext, metadataClient, [path], FileElevationCapability.Write))
+                if (!await ExplorerHostWorkspace.RequestOperationElevationAsync(metadataContext, metadataClient, [path], FileElevationCapability.Write))
                     throw new OperationCanceledException();
                 return await save();
             }

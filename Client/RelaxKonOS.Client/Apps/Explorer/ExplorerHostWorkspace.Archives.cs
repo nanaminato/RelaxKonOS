@@ -16,7 +16,7 @@ using Size = RelaxKonOS.Core.Primitives.Size;
 
 namespace RelaxKonOS.Client.Apps.Explorer;
 
-public sealed partial class ExplorerApp
+internal sealed partial class ExplorerHostWorkspace
 {
     private static void OpenArchiveWindow(AppContext context, IArchiveClient client, string path, string name)
     {

@@ -128,7 +128,7 @@ public partial class MainWindow : Window
         {
             QueueUpload = App.Services.GetRequiredService<ExplorerOperationCenter>().QueueUpload,
             LargeFileUploader = App.Services.GetRequiredService<ILargeFileUploader>(),
-            RequestFileOperationElevationAsync = (paths, capability) => ExplorerApp.RequestOperationElevationAsync(context, client, paths, capability),
+            RequestFileOperationElevationAsync = (paths, capability) => ExplorerHostWorkspace.RequestOperationElevationAsync(context, client, paths, capability),
         };
         await transfer.PasteHostFilesAsync(targetDirectory, sources);
     }
@@ -154,7 +154,7 @@ public partial class MainWindow : Window
         shell.PublishRemoteFilesAsync = PublishDesktopFilesAsync;
         shell.PasteHostFilesAsync = PasteDesktopHostFilesAsync;
         var fileOperations = App.Services.GetRequiredService<ExplorerOperationCenter>();
-        ExplorerApp.ConfigureOperationsWindow(App.Services.GetRequiredService<IWindowManager>(), fileOperations);
+        ExplorerHostWorkspace.ConfigureOperationsWindow(App.Services.GetRequiredService<IWindowManager>(), fileOperations);
         fileOperations.Completed -= OnDesktopFileOperationCompleted;
         fileOperations.Completed += OnDesktopFileOperationCompleted;
         shell.IsHostFullScreen = _isFullScreen;

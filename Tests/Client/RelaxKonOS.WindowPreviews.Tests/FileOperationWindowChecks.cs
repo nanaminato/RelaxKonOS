@@ -89,7 +89,7 @@ internal static class FileOperationWindowChecks
             _manager = new WindowManagerService();
             _host.Show();
             Pump(); _manager.Attach(canvas); _manager.SetHostBounds(new CoreRect(0, 0, 640, 560));
-            // Same bounds as ExplorerApp.ConfigureOperationsWindow, so the preview is the real dialog.
+            // Same bounds as ExplorerHostWorkspace.ConfigureOperationsWindow, so the preview is the real dialog.
             _window = _manager.Create(new WindowCreateOptions(new AppId("relaxkonos.explorer"),
                 LocalizedText.Get("explorer.operations.title"), view, new CoreRect(20, 20, 520, 400), IconGlyph: "📁"));
             View = view;
