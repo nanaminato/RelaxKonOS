@@ -279,6 +279,11 @@ internal static class SettingsWindowChecks
             Check(developerPage.GetVisualDescendants().OfType<TextBox>()
                     .Any(box => box.IsReadOnly && box.Text == developer.Endpoint),
                 "The developer page failed to show the local endpoint as read-only.");
+            model.OpenPageCommand.Execute("account-security"); Pump();
+            var accountPage = view.GetVisualDescendants()
+                .OfType<RelaxKonOS.App.Settings.Views.AccountSecurityPageView>().Single();
+            Check(RelaxKonOS.App.Settings.Views.SettingsSearchTarget.Find(accountPage, "account.alias") is not null,
+                "The account security page lost its alias search target.");
 
             // The same window under every window-chrome recipe. The Settings view names no column and
             // no inset, so this is the assertion that the host's role slots really do the placing -

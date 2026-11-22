@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using Avalonia.Threading;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,7 +12,7 @@ using QRCoder;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
+public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel, IAccountSecurityPage
 {
     private readonly AccountSecurityClient client;
     private readonly IAuthSession session;
@@ -24,6 +26,18 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
         this.client = client; this.session = session; this.remembered = remembered; this.pairingEndpoints = pairingEndpoints;
         session.StateChanged += OnSessionChanged;
     }
+    protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
+    {
+        base.OnLanguageChanged(sender, e);
+        OnPropertyChanged(nameof(Labels));
+    }
+
+    public Func<string, string> Labels => key => T(key, key);
+    object? IAccountSecurityPage.Status => Status;
+    ICommand IAccountSecurityPage.CreateOwnerDevicePairingCommand => CreateOwnerDevicePairingCommand;
+    ICommand IAccountSecurityPage.LoadCommand => LoadCommand;
+    ICommand IAccountSecurityPage.OperateCommand => OperateCommand;
+
     public override string Route => "account-security";
     public override string DisplayNameKey => "settings.account.title";
     public override string DisplayName => T("settings.account.title", "Account & Security");

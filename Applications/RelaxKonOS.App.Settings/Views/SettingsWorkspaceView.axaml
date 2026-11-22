@@ -56,6 +56,9 @@
         <DataTemplate DataType="settingsApp:ISystemPage">
             <settingsApp:SystemPageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:IAccountSecurityPage">
+            <settingsApp:AccountSecurityPageView VerticalAlignment="Top" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 
