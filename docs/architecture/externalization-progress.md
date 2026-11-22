@@ -91,6 +91,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows Release 发行校验覆盖全部 29 个官方应用入口程序集，确认宿主依赖清单和发布根目录均无这些程序集。发布过程部分归档在摘要生成前丢失，补打受影响的归档并单独恢复宿主输出后，发行目录和 Web Server Manager 官方包生命周期均通过校验。
 - 发行校验沿 Windows Release 的实际运行时依赖图检查 Shell 和联合部署协调层的传递依赖。协调层仅依赖协议程序集，Shell 的 RelaxKonOS 依赖仅有 Core。分别注入对 Avalonia 和桌面 Client 的错误依赖，均被校验拒绝。生产扫描器复验 Minimal、Standard 和 Developer 分别预装 0、13、14 个应用，Minimal 从发行归档安装并修复 Settings、Component Center、Explorer、Server Center，切换配置保留用户卸载决定。本轮专用 WSL 缺少可用的 .NET 和 X11 命令，未复验最新发行的 Linux 可见窗口启动。
 - Linux 客户端打包脚本在生成 ZIP 前自动执行同一发行校验。Bash 语法检查和 Windows Release 的实际 29 个归档校验通过。本轮未生成完整 Linux 客户端发行 ZIP。
+- Android 离线 Gradle 检查通过，当前缓存报告包含 1,906 项通过、无跳过。Debug 与测试 APK 已装入本机只读模拟器。Server Center 维护恢复的 9 项设备测试全部通过，覆盖活动重建、旧确认失效、草稿保留，以及读取原回执而不重复提交。此轮未连接真实远端服务。
 - Windows Release 使用实际发行归档复验 Standard 列出的全部 13 个基础应用。Minimal 对每个应用先恢复缺失安装，再删除已装版本的图标或应用依赖清单，通过同版本修复核对文件字节和应用登记。Standard / Developer 预装和配置切换回归通过。
 - Windows Release 使用 Standard 实际预装的 Terminal 和 Task Manager 验证启动要求。无服务端及逐项缺失终端、指标或进程能力时均在激活前阻断，服务端能力恢复后观察回调执行一次。独立应用可用性专项也复验 URI、已有窗口、文件打开、文本回退和终端路径均受启动守卫约束。
 
