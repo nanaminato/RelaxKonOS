@@ -373,3 +373,4 @@
 - 联合部署确认独立模块时，健康报告的运行版本必须与模块清单的生效版本一致。Windows 本机 HTTP 验收拒绝了版本不一致的健康报告，并通过恢复报告后的验证及 Databases 打包应用联合部署回归。
 - 应用启动检查区分服务端依赖缺失、等待模块操作或重启、以及已启用独立模块尚无运行版本。Windows 联合部署 HTTP 验收确认尚无运行版本时拒绝启动且不误报缺失。
 - 两个完整发行入口统一以 MSBuild 全局属性传递 RuntimeIdentifier。此前 Linux x64 ModuleHost 使用 dotnet publish --runtime 时，Packaging 项目的资产缺少目标 RID；使用全局属性后 ModuleHost 和 Core 自包含发布成功。PowerShell 和 Bash 发行脚本语法已核对。本地 WSL 预览实例未配置 ModuleHost 隔离启动所需的系统文件，暂用于临时目录及进程验收。
+- 当前 PowerShell 发行入口完成完整 Linux x64 服务端 ZIP，包含 Core、Helper、Guardian 和 ModuleHost。归档 SHA-256 与随包摘要一致，解包后通过 server/linux-x64 发行文件清单逐项校验。制品保留在本地验收目录。
