@@ -794,3 +794,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release Tunnels 签名双包验收改走生产隧道路由。重启后的隔离宿主拒绝未认证请求，认证后可创建档案；缺少域名返回 tunnel.domain_required，补齐后仅有效定义进入 SQLite。使用真实签名执行程序集和测试鉴权，FRP 运行时端口由拒绝执行的夹具提供，真实进程仍待验。
 - Linux x64 自包含测试在 WSL 复验 Tunnels 签名包重启后的生产 HTTP 路由。匿名请求被拒绝，认证后创建档案，缺少域名得到稳定错误，仅合法定义持久化到 SQLite。重启续跑和桌面卸载保留模块通过，同轮模块 HTTP 专项 133 条 PASS。FRP 进程联调仍待完成。
 - Windows Release 签名 Tunnels 双包验收复用生产 TunnelsRead/TunnelsManage 策略。档案所有者可读取自己的数据，观察者可以访问列表但看不到他人档案，且写入被拒绝；另一控制者按 ID 读取他人的定义得到 404。SQLite 仅包含合法定义。工作区及本地验收缓存未找到真实 frpc/frps 发布二进制，本轮未启动 FRP 进程。
+- Linux x64 自包含签名 Tunnels 双包回归通过生产授权策略检查。所有者可读，观察者只读且看不到他人数据，另一控制者按 ID 无法读取他人定义。重启续跑、SQLite 记录和卸载保留签名包均通过，同轮模块 HTTP 专项 133 条 PASS。Windows 和 WSL 的 PATH 均未找到 frpc/frps。
