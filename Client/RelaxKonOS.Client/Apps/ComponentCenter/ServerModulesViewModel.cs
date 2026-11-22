@@ -79,8 +79,11 @@ public sealed record ServerPackageOperationRow(ServerPackageOperationDto Fact)
     public bool ToneBad => HasProblem || Fact.State is "failed" or "interrupted";
 }
 
-public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
+public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact) : IServerModuleStoreSourceRow
 {
+    string IServerModuleStoreSourceRow.StatusText => StatusText.Resolve();
+    string IServerModuleStoreSourceRow.CountText => CountText.Resolve();
+    string IServerModuleStoreSourceRow.ProblemText => ProblemText.Resolve();
     public string SourceId => Fact.SourceId;
     public LocalizedStatus StatusText => ServerModulesViewModel.StoreSourceStatus(Fact.Status);
     public LocalizedStatus CountText => LocalizedStatus.Format("server_modules.store.releases",
@@ -96,8 +99,17 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity, IServerModulesHeader
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity, IServerModulesHeader, IServerModuleStore
 {
+    ICommand IServerModuleStore.RefreshCatalogsCommand => RefreshCatalogsCommand;
+    IReadOnlyList<IServerModuleStoreSourceRow> IServerModuleStore.StoreSourceRows => StoreSourceRows;
+    ICommand IServerModuleStore.SearchStoreCommand => SearchStoreCommand;
+    string IServerModuleStore.StoreStatusText => StoreStatusText.Resolve();
+    string IServerModuleStore.SelectedStoreTrustText => SelectedStoreTrustText.Resolve();
+    string IServerModuleStore.SelectedStoreCompatibilityText => SelectedStoreCompatibilityText.Resolve();
+    string IServerModuleStore.SelectedStoreBlockedText => SelectedStoreBlockedText.Resolve();
+    ICommand IServerModuleStore.InstallStoreItemCommand => InstallStoreItemCommand;
+
     ICommand IServerModulesHeader.RefreshCommand => RefreshCommand;
     ICommand IServerModulesHeader.RestoreAllCommand => RestoreAllCommand;
     string IServerModulesHeader.StatusText => StatusText.Resolve();

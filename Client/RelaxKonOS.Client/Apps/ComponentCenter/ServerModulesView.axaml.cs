@@ -12,12 +12,13 @@ public partial class ServerModulesView : UserControl
     private bool _compact;
     private bool _layoutApplied;
 
-    public ServerModulesView() : this(new ServerModulesHeaderView(), new ServerModuleSecurityView()) { }
+    public ServerModulesView() : this(new ServerModulesHeaderView(), new ServerModuleStoreView(), new ServerModuleSecurityView()) { }
 
-    internal ServerModulesView(Control headerView, Control securityView)
+    internal ServerModulesView(Control headerView, Control storeView, Control securityView)
     {
         InitializeComponent();
         PageHeader.Content = headerView;
+        Store.Content = storeView;
         Security.Content = securityView;
     }
 

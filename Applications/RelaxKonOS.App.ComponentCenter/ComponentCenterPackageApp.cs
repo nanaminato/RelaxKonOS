@@ -24,6 +24,7 @@ public sealed class ComponentCenterPackageApp : IExternalRemoteApplication, IExt
         var views = new ComponentCenterViewFactories(
             ComponentCenterLayout.Create,
             () => new ServerModulesHeaderView(),
+            () => new ServerModuleStoreView(),
             () => new ServerModuleSecurityView(),
             dialog => new ServerModulePlanReviewView(dialog),
             dialog => new ServerModulePolicyEditorView(dialog),

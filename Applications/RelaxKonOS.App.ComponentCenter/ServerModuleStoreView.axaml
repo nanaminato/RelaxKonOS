@@ -1,0 +1,167 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
+ xmlns:p="using:RelaxKonOS.Protocol.Common"
+ x:Class="RelaxKonOS.App.ComponentCenter.ServerModuleStoreView" x:DataType="sdk:IServerModuleStore">
+  <StackPanel Spacing="16">
+   <!-- First visit: say what the page needs. The search field is always present, so this is
+        guidance rather than an empty state that hides the controls. -->
+   <Border Classes="notice" IsVisible="{Binding ShowStoreFirstRun}">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+     <Path Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Top" Margin="0,1,0,0"
+           Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" StrokeLineCap="Round" StrokeJoin="Round"
+           Data="M4 7 H20 L18 20 H6 Z M8 7 V5 A4 4 0 0 1 16 5 V7" />
+     <TextBlock Grid.Column="1" Text="{local:Loc server_modules.store_first_run}" TextWrapping="Wrap" FontSize="12"
+                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+     <Button Grid.Column="2" Classes="on-notice" Content="{local:Loc server_modules.store_refresh}"
+             Command="{Binding RefreshCatalogsCommand}" IsEnabled="{Binding CanManage}" VerticalAlignment="Center" />
+    </Grid>
+   </Border>
+   <Border Classes="panel-card">
+    <StackPanel Spacing="12">
+     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel Spacing="3">
+       <TextBlock Classes="section-title" Text="{local:Loc server_modules.store}" />
+       <TextBlock Classes="section-hint" Text="{local:Loc server_modules.store_hint}" />
+      </StackPanel>
+      <Border Grid.Column="1" Classes="pill" VerticalAlignment="Center" IsVisible="{Binding HasCatalogRevision}">
+       <TextBlock Classes="mono" Text="{Binding CatalogRevision}" FontSize="10" MaxWidth="180"
+                  TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding CatalogRevision}" />
+      </Border>
+     </Grid>
+
+     <ItemsControl ItemsSource="{Binding StoreSourceRows}" IsVisible="{Binding HasStoreSources}">
+      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="8" LineSpacing="8" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+       <DataTemplate x:DataType="sdk:IServerModuleStoreSourceRow">
+        <Border Classes="inset-block" Padding="10,8">
+         <StackPanel Spacing="2">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+           <TextBlock Text="{Binding SourceId}" FontSize="12" FontWeight="SemiBold" />
+           <Border Classes="pill" Classes.warn="{Binding HasProblem}">
+            <TextBlock Text="{Binding StatusText}" />
+           </Border>
+          </StackPanel>
+          <TextBlock Text="{Binding CountText}" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" />
+          <TextBlock Text="{Binding ProblemText}" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}"
+                     IsVisible="{Binding HasProblem}" TextWrapping="Wrap" />
+         </StackPanel>
+        </Border>
+       </DataTemplate>
+      </ItemsControl.ItemTemplate>
+     </ItemsControl>
+     <TextBlock Text="{local:Loc server_modules.store_no_sources}" FontSize="11" IsVisible="{Binding ShowStoreSourcesEmpty}"
+                Foreground="{DynamicResource TextTertiaryBrush}" />
+
+     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBox Text="{Binding StoreQuery, Mode=TwoWay}" PlaceholderText="{local:Loc server_modules.store_query}" />
+      <Button Grid.Column="1" Classes="ghost-action" Content="{local:Loc server_modules.store_search}"
+              Command="{Binding SearchStoreCommand}" IsEnabled="{Binding CanManage}" />
+      <Button Grid.Column="2" Classes="ghost-action" Content="{local:Loc server_modules.store_refresh}"
+              Command="{Binding RefreshCatalogsCommand}" IsEnabled="{Binding CanManage}" />
+     </Grid>
+
+     <TextBlock Text="{Binding StoreStatusText}" TextWrapping="Wrap" FontSize="12" IsVisible="{Binding HasStoreStatus}"
+                Foreground="{DynamicResource TextSecondaryBrush}" />
+
+     <TextBlock Text="{local:Loc server_modules.store_search_hint}" TextWrapping="Wrap" FontSize="12"
+                IsVisible="{Binding ShowStoreSearchHint}" Foreground="{DynamicResource TextTertiaryBrush}" />
+
+     <Grid RowDefinitions="Auto,Auto" RowSpacing="12">
+      <ListBox Grid.Row="0" Classes="compact-list" ItemsSource="{Binding StoreItems}" SelectedItem="{Binding SelectedStoreItem, Mode=TwoWay}"
+               MaxHeight="360" IsVisible="{Binding HasStoreItems}">
+       <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="p:ServerModuleStoreItemDto">
+         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <StackPanel Spacing="2">
+           <TextBlock Text="{Binding ModuleId}" FontSize="12" FontWeight="SemiBold" />
+           <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{Binding Version}" Classes="mono" FontSize="10"
+                       Foreground="{DynamicResource TextTertiaryBrush}" />
+            <TextBlock Text="·" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" />
+            <TextBlock Text="{Binding SourceId}" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" />
+           </StackPanel>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+           <Border Classes="pill bad" IsVisible="{Binding Revoked}">
+            <TextBlock Text="{local:Loc server_modules.store_revoked}" />
+           </Border>
+           <Border Classes="pill warn" IsVisible="{Binding !RidCompatible}">
+            <TextBlock Text="{local:Loc server_modules.store_incompatible}" />
+           </Border>
+          </StackPanel>
+         </Grid>
+        </DataTemplate>
+       </ListBox.ItemTemplate>
+      </ListBox>
+      <TextBlock Grid.Row="0" Text="{local:Loc server_modules.store_empty}" FontSize="12" IsVisible="{Binding ShowStoreEmpty}"
+                 Foreground="{DynamicResource TextTertiaryBrush}" />
+      <Border Grid.Row="1" Classes="inset-block" IsVisible="{Binding HasSelectedStoreItem}">
+       <StackPanel Spacing="10">
+        <StackPanel Spacing="2">
+         <TextBlock Classes="field-label" Text="{local:Loc server_modules.store_details}" />
+         <TextBlock Text="{Binding SelectedStoreModuleText}" FontSize="14" FontWeight="SemiBold" />
+        </StackPanel>
+        <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="8">
+         <StackPanel Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.package_plan.version}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedStoreVersionText}" />
+         </StackPanel>
+         <StackPanel Grid.Column="1" Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.store.publisher}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedStorePublisherText}" TextWrapping="Wrap" />
+         </StackPanel>
+         <StackPanel Grid.Column="2" Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.field.source}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedStoreSourceText}" />
+         </StackPanel>
+         <StackPanel Grid.Row="1" Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.store.rid}" />
+          <TextBlock Classes="field-value mono" FontSize="11" Text="{Binding SelectedStoreRidText}" TextWrapping="Wrap" />
+         </StackPanel>
+         <StackPanel Grid.Row="1" Grid.Column="1" Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.package_plan.digest}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedStoreDigestText}" />
+         </StackPanel>
+         <StackPanel Grid.Row="1" Grid.Column="2" Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.store.archive}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedStoreArchiveText}" />
+         </StackPanel>
+         <StackPanel Grid.Row="2" Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.field.trust}" />
+          <TextBlock Classes="field-value" Text="{Binding SelectedStoreTrustText}" />
+         </StackPanel>
+        </Grid>
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+         <StackPanel Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.store.dependencies}" />
+          <TextBlock Text="{Binding SelectedStoreDependenciesText}" TextWrapping="Wrap" FontSize="11" Classes="mono" />
+         </StackPanel>
+         <StackPanel Grid.Column="1" Spacing="2">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.store.capabilities}" />
+          <TextBlock Text="{Binding SelectedStoreCapabilitiesText}" TextWrapping="Wrap" FontSize="11" Classes="mono" />
+         </StackPanel>
+        </Grid>
+        <WrapPanel ItemSpacing="8" LineSpacing="6">
+         <Border Classes="pill" Classes.ok="{Binding CanInstallStoreItem}">
+          <TextBlock Text="{Binding SelectedStoreCompatibilityText}" />
+         </Border>
+        </WrapPanel>
+        <Border Classes="notice bad" IsVisible="{Binding HasSelectedStoreBlockers}">
+         <StackPanel Spacing="4">
+          <TextBlock Classes="field-label" Text="{local:Loc server_modules.store.blocked}" />
+          <TextBlock Text="{Binding SelectedStoreBlockedText}" TextWrapping="Wrap" FontSize="11" />
+         </StackPanel>
+        </Border>
+        <!-- The install action belongs to the release being read, not to the search row. -->
+        <Border Classes="rule" />
+        <Button Classes="primary" Content="{local:Loc server_modules.store_install}"
+                Command="{Binding InstallStoreItemCommand}" HorizontalAlignment="Right" />
+       </StackPanel>
+      </Border>
+     </Grid>
+    </StackPanel>
+   </Border>
+  </StackPanel>
+</UserControl>
