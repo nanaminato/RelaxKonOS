@@ -533,3 +533,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 移除未注册的旧 Settings 内置入口，窗口创建和路由分发由包入口直接处理。Windows Release 工作区偏好及重建归档的隔离安装和深链接回归均通过。
 - Windows Release 安装包启动专项改用生产 SettingsWindow，通过隔离服务容器提供各宿主依赖。实际包打开生产宿主工作区、分发关于与首页深链接并复用窗口，未连接真实服务器。
 - Settings 宿主在显示主窗口前解析必需服务，并在窗口打开后立即登记清理回调。Windows Release 从官方归档安装后验证关闭和重新打开会创建新的宿主工作区，深链接仍正确分发。
+- 桌面宿主移除对 Settings 实现项目的引用。Settings 包提供对话框与法律资源读取工厂，宿主只引用共享契约和语言资源。Windows Release 隔离发布确认根目录没有 Settings 实现 DLL；重建归档的包启动专项验证真实宿主窗口、两份离线法律文档及深链接。

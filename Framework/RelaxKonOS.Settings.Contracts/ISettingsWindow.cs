@@ -5,7 +5,7 @@ namespace RelaxKonOS.App.Settings;
 
 public interface ISettingsWindow
 {
-    void Open(Func<ISettingsWorkspace, ManagedWindow> showWorkspace);
+    void Open(ISettingsDialogs dialogs, Func<ISettingsWorkspace, ManagedWindow> showWorkspace);
     void Navigate(string route);
     void OpenEnvironment();
     void OpenApplicationPermissions(string appId);

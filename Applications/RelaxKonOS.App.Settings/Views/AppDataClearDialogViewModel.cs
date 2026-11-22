@@ -26,5 +26,3 @@ public sealed partial class AppDataClearDialogViewModel : ObservableObject
     [RelayCommand]
     private void Cancel() => _complete(null);
 }
-
-public sealed record AppDataClearSelection(bool ClearPermissionDecisions, bool ClearServerData);

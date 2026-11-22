@@ -273,7 +273,8 @@ public class SettingsPackageContextProbe : DispatchProxy
 sealed class SettingsWindowProbe : RelaxKonOS.App.Settings.ISettingsWindow
 {
     public string? Target { get; private set; }
-    public void Open(Func<RelaxKonOS.App.Settings.Views.ISettingsWorkspace, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
+    public void Open(RelaxKonOS.App.Settings.Views.ISettingsDialogs dialogs,
+        Func<RelaxKonOS.App.Settings.Views.ISettingsWorkspace, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
         Target = "window";
     public void Navigate(string route) => Target = route;
     public void OpenEnvironment() => Target = "environment dialog";

@@ -296,10 +296,10 @@ public sealed class ExternalAppContextFactory
 
     private sealed class SettingsPackageWindow(ISettingsWindow workspace, CancellationToken lifetime) : ISettingsWindow
     {
-        public void Open(Func<RelaxKonOS.App.Settings.Views.ISettingsWorkspace, ManagedWindow> showWorkspace)
+        public void Open(RelaxKonOS.App.Settings.Views.ISettingsDialogs dialogs, Func<RelaxKonOS.App.Settings.Views.ISettingsWorkspace, ManagedWindow> showWorkspace)
         {
             lifetime.ThrowIfCancellationRequested();
-            workspace.Open(showWorkspace);
+            workspace.Open(dialogs, showWorkspace);
         }
 
         public void Navigate(string route)

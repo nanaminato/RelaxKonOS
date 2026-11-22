@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
+    <EmbeddedResource Include="../../Applications/RelaxKonOS.App.Settings/Localization/*.json" LogicalName="Settings.Localization.%(Filename).json" />
     <PackageReference Include="Avalonia" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>

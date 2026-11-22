@@ -45,9 +45,9 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
 {
     private SettingsViewModel? _viewModel;
     private ManagedWindow? _window;
-    public void Open(Func<ISettingsWorkspace, ManagedWindow> showWorkspace)
+    public void Open(ISettingsDialogs dialogs, Func<ISettingsWorkspace, ManagedWindow> showWorkspace)
     {
-        var context = new AppContext(SettingsPackageApp.Id, services.GetRequiredService<IWindowManager>(), services);
+        var context = new AppContext(new AppId(ISettingsPackageContext.ApplicationId), services.GetRequiredService<IWindowManager>(), services);
         var settings = context.Services.GetRequiredService<ShellSettings>();
         var session = context.Services.GetRequiredService<IAuthSession>();
         var settingsClient = context.Services.GetRequiredService<IWorkspaceSettingsService>();
@@ -282,12 +282,10 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
         };
         aboutPage.RequestLegalDocumentAsync = async document =>
         {
-            var text = await document.LoadAsync();
+            var text = await dialogs.LoadLegalTextAsync(document);
             var title = localization.Get(document.TitleKey, document.TitleKey);
-            await context.ShowDialogAsync<bool>(window, title, dialog => new LegalTextDialogView
-            {
-                DataContext = new LegalTextDialogViewModel(title, text, LocalizedText.Get("common.close"), () => dialog.Close(true)),
-            }, new Size(760, 620));
+            await context.ShowDialogAsync<bool>(window, title, dialog =>
+                dialogs.CreateLegalText(title, text, LocalizedText.Get("common.close"), () => dialog.Close(true)), new Size(760, 620));
         };
         systemPage.RequestWorkspaceEnvironmentAsync = async () =>
         {
@@ -327,7 +325,7 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
                                 ? "settings.environment.system_variables" : "settings.environment.user_variables");
                             await environmentDialog.ShowDialogAsync<bool>(title, dialog =>
                             {
-                                return EnvironmentVariableEditor.Create(existing, windows, key => LocalizedText.Get(key),
+                                return dialogs.CreateEnvironmentEditor(existing, windows, key => LocalizedText.Get(key),
                                     async () =>
                                     {
                                         if (explorer is null) return null;
@@ -365,9 +363,8 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
             finally { editor?.Dispose(); }
         };
         systemPage.RequestPerformanceOptionsAsync = () =>
-            context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.performance.title"), dialog => new PerformanceOptionsDialogView
-            {
-                DataContext = new PerformanceOptionsDialogViewModel(
+            context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.performance.title"), dialog =>
+                dialogs.CreatePerformanceOptions(
                     () => new WindowEffects(settings.ShowWindowShadows, settings.ShowWindowContentsWhileDragging, settings.ShowTaskbarWindowPreviews),
                     effects =>
                     {
@@ -377,8 +374,7 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
                         viewModel.Save();
                     },
                     () => dialog.Close(true),
-                    key => LocalizedText.Get(key)),
-            }, new Size(560, 610));
+                    key => LocalizedText.Get(key)), new Size(560, 610));
         var appsPage = viewModel.Pages.OfType<AppsPageViewModel>().Single();
         var personalizationPage = viewModel.Pages.OfType<PersonalizationPageViewModel>().Single();
         personalizationPage.RequestCustomWallpaperAsync = async () =>
@@ -527,10 +523,7 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
         {
             var title = LocalizedText.Format("settings.apps.clear_data_title", app.DisplayName);
             var selection = await context.ShowDialogAsync<AppDataClearSelection?>(window,
-                title, dialog => new AppDataClearDialogView
-                {
-                    DataContext = new AppDataClearDialogViewModel(title, key => LocalizedText.Get(key), dialog.Close),
-                }, new Size(520, 390));
+                title, dialog => dialogs.CreateClearData(title, key => LocalizedText.Get(key), dialog.Close), new Size(520, 390));
             return selection is null ? null : await appData.ClearAsync(app.Id,
                 new AppDataClearOptions(selection.ClearPermissionDecisions, selection.ClearServerData));
         };

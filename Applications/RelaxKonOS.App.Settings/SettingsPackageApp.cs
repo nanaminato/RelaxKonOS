@@ -7,7 +7,7 @@ namespace RelaxKonOS.App.Settings;
 
 public sealed class SettingsPackageApp : IExternalRemoteApplication, IExternalAppActivationHandler
 {
-    public static AppId Id { get; } = new("relaxkonos.settings");
+    public static AppId Id { get; } = new(ISettingsPackageContext.ApplicationId);
 
     public ApplicationManifest Manifest { get; } = new(
         Id: Id,
@@ -21,7 +21,7 @@ public sealed class SettingsPackageApp : IExternalRemoteApplication, IExternalAp
     public Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        RequireWorkspace(context).Open(workspace =>
+        RequireWorkspace(context).Open(new SettingsDialogs(), workspace =>
         {
             var view = new SettingsWorkspaceView { DataContext = workspace };
             var window = context.Windows.ShowWindow(workspace.Labels("settings.title"), view,

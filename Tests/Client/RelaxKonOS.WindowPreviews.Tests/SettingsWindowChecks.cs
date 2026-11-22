@@ -118,10 +118,6 @@ internal static class SettingsWindowChecks
         {
             settings.Language = "zh-CN";
             model.InitializeAsync().GetAwaiter().GetResult(); // Offline: no real host calls.
-            var about = model.Pages.OfType<AboutPageViewModel>().Single().Content;
-            Check(about.ProjectLicense.LoadAsync().GetAwaiter().GetResult().Contains(about.LicenseName, StringComparison.Ordinal)
-                && about.ThirdPartyNotices.LoadAsync().GetAwaiter().GetResult().StartsWith("# Third-Party Notices", StringComparison.Ordinal),
-                "The Settings assembly must provide both legal documents offline.");
             window.Show(); Pump();
             var menu = view.FindControl<Button>("NavigationMenuButton")!;
             var drawer = view.FindControl<Grid>("NavigationDrawer")!;
@@ -526,6 +522,24 @@ internal static class SettingsWindowChecks
                 && workspace.SelectedPage?.Route == "about"
                 && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(content.GetType().Assembly)?.IsCollectible == true,
                 "The installed package did not open its own workspace or receive the About route.");
+            var about = ((SettingsViewModel)((Control)opened.View.Content!).DataContext!)
+                .Pages.OfType<AboutPageViewModel>().Single().Content;
+            foreach (var (document, marker) in new[]
+            {
+                (about.ProjectLicense, about.LicenseName),
+                (about.ThirdPartyNotices, "# Third-Party Notices"),
+            })
+            {
+                var legal = about.RequestLegalDocumentAsync!(document);
+                PumpUntil(() => windows.Windows.Count == 2 || legal.IsCompleted);
+                Check(windows.Windows.Count == 2 && windows.Windows.Last().View.Content is Control legalView
+                    && legalView.GetVisualDescendants().OfType<TextBox>()
+                        .Any(text => text.Text?.Contains(marker, StringComparison.Ordinal) == true),
+                    "The installed Settings package did not render its embedded legal text.");
+                windows.Close(windows.Windows.Last());
+                PumpUntil(() => legal.IsCompleted);
+                legal.GetAwaiter().GetResult();
+            }
             var home = applications.Activate(new AppActivationRequest(new Uri("relaxkonos://settings/home")));
             Pump();
             Check(home.Status == AppActivationStatus.Activated && windows.Windows.Single() == opened

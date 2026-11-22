@@ -107,7 +107,6 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
     private void Cancel() => _close();
 }
 
-public readonly record struct WindowEffects(bool ShowShadows, bool ShowWindowContents, bool ShowThumbnails);
 
 public enum PerformancePreset
 {

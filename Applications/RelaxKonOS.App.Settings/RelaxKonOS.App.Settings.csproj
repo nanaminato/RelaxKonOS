@@ -9,8 +9,7 @@
     <ProjectReference Include="../../Framework/RelaxKonOS.Settings.Contracts/RelaxKonOS.Settings.Contracts.csproj" />
     <PackageReference Include="Avalonia" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
-    <AvaloniaResource Include="../../LICENSE" Link="Assets/Legal/LICENSE.txt" />
-    <AvaloniaResource Include="../../THIRD_PARTY_NOTICES.md" Link="Assets/Legal/THIRD_PARTY_NOTICES.md" />
-    <EmbeddedResource Include="Localization/*.json" LogicalName="Settings.Localization.%(Filename).json" />
+    <EmbeddedResource Include="../../LICENSE" LogicalName="Assets/Legal/LICENSE.txt" />
+    <EmbeddedResource Include="../../THIRD_PARTY_NOTICES.md" LogicalName="Assets/Legal/THIRD_PARTY_NOTICES.md" />
   </ItemGroup>
 </Project>
