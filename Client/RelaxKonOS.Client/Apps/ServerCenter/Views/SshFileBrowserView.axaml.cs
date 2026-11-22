@@ -1407,10 +1407,11 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task UploadAsync()
     {
-        if (_busy || IsPackagePicker) return;
+        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
+        var directory = _path;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
         var picked = await UsageFilePicker.OpenFilePickerAsync(storage, new FilePickerOpenOptions { AllowMultiple = true }, _capturePickerMemory(), "SshFileBrowserView.axaml.0");
-        if (picked.Count == 0 || _busy) return;
+        if (picked.Count == 0 || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
         using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
         var uploaded = 0;
@@ -1421,14 +1422,9 @@ internal partial class SshFileBrowserView : UserControl
                 StatusMessage = LocalizedStatus.Key("ssh_files.uploading", "Uploading {0} of {1}: {2}", uploaded + 1, picked.Count, file.Name);
                 await using var input = await file.OpenReadAsync();
                 progress.Report(file.Name, 0, input.CanSeek ? input.Length : null);
-                await ExecuteAsync(client =>
-                {
-                    var target = Child(_path, file.Name);
-                    if (client.Exists(target)) throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {file.Name}");
-                    client.UploadFile(input, target, canOverride: false,
-                        uploaded => progress.Report(file.Name, (long)uploaded, input.CanSeek ? input.Length : null));
-                    return true;
-                });
+                if (!await _session.UploadFileAsync(endpoint, input, Child(directory, file.Name),
+                    bytes => progress.Report(file.Name, (long)bytes, input.CanSeek ? input.Length : null)))
+                    throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {file.Name}");
                 uploaded++;
             }
         }
@@ -1490,7 +1486,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task DownloadAsync()
     {
-        if (_busy || IsPackagePicker) return;
+        if (_busy || IsPackagePicker || _session.Endpoint is not { } endpoint) return;
         var selected = Selection();
         if (selected.Length == 0 || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
         if (selected.FirstOrDefault(file => file.IsLink) is { } link)
@@ -1501,13 +1497,13 @@ internal partial class SshFileBrowserView : UserControl
         if (selected.Length == 1 && !selected[0].IsDirectory)
         {
             var file = await UsageFilePicker.SaveFilePickerAsync(storage, new FilePickerSaveOptions { SuggestedFileName = selected[0].Name }, _capturePickerMemory(), "SshFileBrowserView.axaml.2");
-            if (file is null) return;
-            await RunDownloadAsync(selected[0], file);
+            if (file is null || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+            await RunDownloadAsync(endpoint, selected[0], file);
             return;
         }
         var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, _capturePickerMemory(), "SshFileBrowserView.axaml.3");
         var folder = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (folder is null) return;
+        if (folder is null || _busy || !ReferenceEquals(endpoint, _session.Endpoint)) return;
         using var progress = new SshTransferProgressWindow(this, uploading: false);
         _busy = true; UpdateControls();
         try
@@ -1525,7 +1521,7 @@ internal partial class SshFileBrowserView : UserControl
         finally { _busy = false; UpdateControls(); }
     }
 
-    private async Task RunDownloadAsync(SshFileEntry entry, IStorageFile file)
+    private async Task RunDownloadAsync(ServerCenterSshEndpoint endpoint, SshFileEntry entry, IStorageFile file)
     {
         using var progress = new SshTransferProgressWindow(this, uploading: false);
         progress.Report(entry.Name, 0, entry.Size);
@@ -1533,8 +1529,8 @@ internal partial class SshFileBrowserView : UserControl
         try
         {
             await using var output = await file.OpenWriteAsync();
-            await ExecuteAsync(client => { client.DownloadFile(entry.Path, output,
-                downloaded => progress.Report(entry.Name, (long)downloaded, entry.Size)); return true; });
+            await _session.DownloadFileAsync(endpoint, entry.Path, output,
+                downloaded => progress.Report(entry.Name, (long)downloaded, entry.Size));
             StatusMessage = LocalizedStatus.Key("ssh_files.downloaded", "Downloaded {0} items", 1);
         }
         catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }

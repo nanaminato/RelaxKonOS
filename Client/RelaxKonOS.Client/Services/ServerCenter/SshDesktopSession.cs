@@ -127,6 +127,22 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
         return true;
     });
 
+    internal Task<bool> UploadFileAsync(ServerCenterSshEndpoint endpoint, Stream input, string target,
+        Action<ulong> progress) => Task.Run(() =>
+    {
+        using var client = OpenFileClient(endpoint);
+        if (client.Exists(target)) return false;
+        client.UploadFile(input, target, canOverride: false, progress);
+        return true;
+    });
+
+    internal Task DownloadFileAsync(ServerCenterSshEndpoint endpoint, string path, Stream output,
+        Action<ulong> progress) => Task.Run(() =>
+    {
+        using var client = OpenFileClient(endpoint);
+        client.DownloadFile(path, output, progress);
+    });
+
     internal Task DeletePathsAsync(ServerCenterSshEndpoint endpoint, IReadOnlyList<(string Path, bool Directory)> paths) => Task.Run(() =>
     {
         using var client = OpenFileClient(endpoint);
