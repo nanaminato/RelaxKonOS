@@ -818,3 +818,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含签名 Tailscale 验收通过控制授权边界。无主机网络提升授权的控制者收到 403 tailscale.elevation_required，测试传输仅收到此前的合法只读请求。同轮随附模块启用、重启续跑及复用通过。
 - Windows Release 的 --signed-certificates-joint-acceptance 使用实际官方归档的测试副本，仅提高 Certificates 最低模块版本。独立签名包只提交一次安装，重启后接续登记，卸载桌面不移除服务端包。以同一已安装来源配置生产 ACME 服务，执行包成功加载，观察无效 CA 目录返回 unavailable。真实 CA 签发仍待验。
 - Linux x64 自包含 Certificates 签名双包在 WSL 复验通过。一次安装提交，Core 重启续跑，生产 ACME 观察入口加载已安装签名程序集，对无效 CA 目录返回 unavailable，卸载桌面保留签名包。真实 CA 签发仍待验。
+- WSL 使用官方 Pebble 与挑战 DNS 2.10.1 镜像中的二进制，在独立网络命名空间执行仓库 run-acme-live.sh。Linux 自包含服务测试通过，测试 CA 记录 7 个订单及 4 次成功 finalization。该轮验证随附 ACME 执行程序集与真实测试 CA；同一签名联合安装后执行真实签发仍待验。
