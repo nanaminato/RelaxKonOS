@@ -9,19 +9,8 @@ public sealed partial class AboutPageContent(Func<string, string> localize) : Ob
     private static readonly Uri AllProductsWebsiteUri = new("https://relaxkon.com/");
     private static readonly Uri SourceRepositoryUri = new("https://github.com/nanaminato/RelaxKonOS");
 
-    public string Description => localize("settings.about_page.description");
-    public string Tagline => localize("settings.about_page.tagline");
-    public string VersionLabel => localize("settings.version");
-    public string LinksLabel => localize("settings.about_page.links");
-    public string WebsiteLabel => localize("settings.about_page.website");
-    public string AllProductsLabel => localize("settings.about_page.all_products");
-    public string SourceLabel => localize("settings.about_page.source");
-    public string CopyLabel => localize("settings.about_page.copy_link");
-    public string OpenLabel => localize("settings.about_page.open_link");
-    public string LegalLabel => localize("settings.about_page.legal");
-    public string LicenseHint => localize("settings.about_page.license_hint");
-    public string ViewLicenseLabel => localize("settings.about_page.view_license");
-    public string ViewThirdPartyLabel => localize("settings.about_page.view_third_party");
+
+    public Func<string, string> Labels => localize;
 
     public void RefreshLanguage() => OnPropertyChanged(string.Empty);
 

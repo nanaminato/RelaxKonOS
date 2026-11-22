@@ -47,14 +47,8 @@ public sealed partial class AccessibilityPageContent : ObservableObject, IDispos
 
     public bool SaveFailed => _preferences.SaveFailed;
     public string SaveStatus => _localize(SaveFailed ? "settings.device.save_failed" : "settings.device.saved", "Saved on this device");
-    public string ScaleLabel => Text("settings.device.scale");
-    public string ScaleHint => Text("settings.device.scale_hint");
-    public string MotionLabel => Text("settings.device.motion");
-    public string MotionHint => Text("settings.device.motion_hint");
-    public string ContrastLabel => Text("settings.device.contrast");
-    public string ContrastHint => Text("settings.device.contrast_hint");
-    public string ResetLabel => Text("settings.device.reset_accessibility");
-    public string RetryLabel => Text("settings.save.retry");
+
+    public Func<string, string> Labels => Text;
 
     [RelayCommand] private void ResetAccessibility() => _preferences.Accessibility = new(100, false, false);
     [RelayCommand] private void RetrySave() => _preferences.Save();

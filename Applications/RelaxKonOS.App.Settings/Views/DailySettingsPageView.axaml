@@ -1,44 +1,45 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views"
              xmlns:vm="clr-namespace:RelaxKonOS.App.Settings"
              x:Class="RelaxKonOS.App.Settings.Views.DailySettingsPageView"
              x:DataType="vm:DailySettingsPageContent" Classes="builtin-app">
     <StackPanel Spacing="16">
         <Border Classes="card"><StackPanel Spacing="12">
-            <TextBlock Text="{Binding NotificationsLabel}" Classes="title" />
-            <TextBlock Text="{Binding NotificationsHint}" TextWrapping="Wrap" Classes="subtle" />
+            <TextBlock Text="{loc:Loc settings.device.notifications}" Classes="title" />
+            <TextBlock Text="{loc:Loc settings.device.notifications_hint}" TextWrapping="Wrap" Classes="subtle" />
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{Binding NotificationsLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding NotificationsLabel}" nav:SettingsSearchTarget.Id="client.notifications" IsChecked="{Binding NotificationsEnabled, Mode=TwoWay}" />
+                <TextBlock Text="{loc:Loc settings.device.notifications}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.notifications}" nav:SettingsSearchTarget.Id="client.notifications" IsChecked="{Binding NotificationsEnabled, Mode=TwoWay}" />
             </Grid>
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{Binding DoNotDisturbLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding DoNotDisturbLabel}" nav:SettingsSearchTarget.Id="client.doNotDisturb" IsChecked="{Binding DoNotDisturb, Mode=TwoWay}" IsEnabled="{Binding NotificationsEnabled}" />
+                <TextBlock Text="{loc:Loc settings.device.dnd}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.dnd}" nav:SettingsSearchTarget.Id="client.doNotDisturb" IsChecked="{Binding DoNotDisturb, Mode=TwoWay}" IsEnabled="{Binding NotificationsEnabled}" />
             </Grid>
-            <TextBlock Text="{Binding DoNotDisturbHint}" TextWrapping="Wrap" Classes="subtle" />
+            <TextBlock Text="{loc:Loc settings.device.dnd_hint}" TextWrapping="Wrap" Classes="subtle" />
         </StackPanel></Border>
         <Border Classes="card"><StackPanel Spacing="12">
-            <TextBlock Text="{Binding StartupLabel}" Classes="title" />
+            <TextBlock Text="{loc:Loc settings.device.startup}" Classes="title" />
             <StackPanel IsVisible="{Binding IsSshDesktop}" Spacing="8">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                    <TextBlock Text="{Binding SshTerminalLabel}" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                    <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding SshTerminalLabel}" nav:SettingsSearchTarget.Id="client.sshTerminal" IsChecked="{Binding OpenTerminalOnSshLogin, Mode=TwoWay}"/>
+                    <TextBlock Text="{loc:Loc settings.device.ssh_terminal}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.ssh_terminal}" nav:SettingsSearchTarget.Id="client.sshTerminal" IsChecked="{Binding OpenTerminalOnSshLogin, Mode=TwoWay}"/>
                 </Grid>
-                <TextBlock Text="{Binding SshTerminalHint}" TextWrapping="Wrap" Classes="subtle"/>
+                <TextBlock Text="{loc:Loc settings.device.ssh_terminal_hint}" TextWrapping="Wrap" Classes="subtle"/>
             </StackPanel>
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{Binding RestoreLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <ToggleSwitch IsEnabled="{Binding !IsSshDesktop}" Grid.Column="1" AutomationProperties.Name="{Binding RestoreLabel}" nav:SettingsSearchTarget.Id="client.restoreTerminals" IsChecked="{Binding RestoreTerminals, Mode=TwoWay}" />
+                <TextBlock Text="{loc:Loc settings.device.restore}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch IsEnabled="{Binding !IsSshDesktop}" Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.restore}" nav:SettingsSearchTarget.Id="client.restoreTerminals" IsChecked="{Binding RestoreTerminals, Mode=TwoWay}" />
             </Grid>
-            <TextBlock Text="{Binding RestoreHint}" TextWrapping="Wrap" Classes="subtle" />
+            <TextBlock Text="{loc:Loc settings.device.restore_hint}" TextWrapping="Wrap" Classes="subtle" />
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{Binding ConnectionBarLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding ConnectionBarLabel}" nav:SettingsSearchTarget.Id="client.connectionBar" IsChecked="{Binding KeepConnectionBarVisible, Mode=TwoWay}" />
+                <TextBlock Text="{loc:Loc settings.device.connection_bar}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.connection_bar}" nav:SettingsSearchTarget.Id="client.connectionBar" IsChecked="{Binding KeepConnectionBarVisible, Mode=TwoWay}" />
             </Grid>
-            <TextBlock Text="{Binding ConnectionBarHint}" TextWrapping="Wrap" Classes="subtle" />
+            <TextBlock Text="{loc:Loc settings.device.connection_bar_hint}" TextWrapping="Wrap" Classes="subtle" />
         </StackPanel></Border>
-        <Button Content="{Binding ResetLabel}" Command="{Binding ResetDailySettingsCommand}" />
+        <Button Content="{loc:Loc settings.device.reset_daily}" Command="{Binding ResetDailySettingsCommand}" />
         <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
-        <Button IsVisible="{Binding SaveFailed}" Content="{Binding RetryLabel}" Command="{Binding RetrySaveCommand}" />
+        <Button IsVisible="{Binding SaveFailed}" Content="{loc:Loc settings.save.retry}" Command="{Binding RetrySaveCommand}" />
     </StackPanel>
 </UserControl>

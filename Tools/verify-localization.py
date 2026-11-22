@@ -19,6 +19,7 @@ language_dir = root / "Localization"
 image_viewer = repo / "Applications" / "RelaxKonOS.App.ImageViewer"
 notepad = repo / "Applications" / "RelaxKonOS.App.Notepad"
 ssh_files = repo / "Applications" / "RelaxKonOS.App.SshFiles"
+settings_app = repo / "Applications" / "RelaxKonOS.App.Settings"
 # LocalizationService merges these embedded resource sets. The Proxy Server and
 # Databases shared sets are linked into the host's published Localization directory.
 host_embedded_apps = ("CodeEditor", "Git", "FileServices", "Certificates", "WebServers", "Terminal", "Settings")
@@ -134,7 +135,7 @@ def collect_requested_keys() -> tuple[dict[str, str], dict[str, str]]:
     sources = sorted(
         path
         for pattern in ("*.cs", "*.axaml")
-        for source_root in (root, image_viewer)
+        for source_root in (root, image_viewer, settings_app)
         for path in source_root.rglob(pattern)
         if not {"bin", "obj"} & set(path.parts)
     )

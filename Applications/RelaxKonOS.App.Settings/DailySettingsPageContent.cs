@@ -64,19 +64,8 @@ public sealed partial class DailySettingsPageContent : ObservableObject, IDispos
 
     public bool SaveFailed => _preferences.SaveFailed || _sshPreferences?.SaveFailed == true;
     public string SaveStatus => _localize(SaveFailed ? "settings.device.save_failed" : "settings.device.saved", "Saved on this device");
-    public string NotificationsLabel => Text("settings.device.notifications");
-    public string NotificationsHint => Text("settings.device.notifications_hint");
-    public string DoNotDisturbLabel => Text("settings.device.dnd");
-    public string DoNotDisturbHint => Text("settings.device.dnd_hint");
-    public string StartupLabel => Text("settings.device.startup");
-    public string SshTerminalLabel => Text("settings.device.ssh_terminal");
-    public string SshTerminalHint => Text("settings.device.ssh_terminal_hint");
-    public string RestoreLabel => Text("settings.device.restore");
-    public string RestoreHint => Text("settings.device.restore_hint");
-    public string ConnectionBarLabel => Text("settings.device.connection_bar");
-    public string ConnectionBarHint => Text("settings.device.connection_bar_hint");
-    public string ResetLabel => Text("settings.device.reset_daily");
-    public string RetryLabel => Text("settings.save.retry");
+
+    public Func<string, string> Labels => Text;
 
     [RelayCommand]
     private void ResetDailySettings()

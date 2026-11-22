@@ -95,6 +95,11 @@ internal static class SettingsWindowChecks
             Check(aboutView.GetVisualDescendants().OfType<TextBlock>().Any(label =>
                     label.Text == localization.Get("settings.about_page.description", "")),
                 "The detached About page must render the current language.");
+            settings.Language = "ja-JP"; Pump();
+            Check(aboutView.GetVisualDescendants().OfType<TextBlock>().Any(label =>
+                    label.Text == localization.Get("settings.about_page.description", "")),
+                "An open About page must refresh its markup-based labels after a language change.");
+            settings.Language = "zh-CN"; Pump();
             model.BackCommand.Execute(null); Pump();
             Check(Math.Abs(scroll.Offset.Y - rememberedOffset) < 1, "Returning to a page lost its scroll offset.");
             model.SearchQuery = "region"; Pump();
