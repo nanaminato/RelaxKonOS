@@ -141,12 +141,12 @@ internal static class OfficialRoappChecks
         var isProxyServer = applicationId == "relaxkonos.proxy-server";
         var isDatabase = applicationId == "relaxkonos.database";
         var isTailscale = applicationId == "relaxkonos.tailscale";
-        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale || isDatabase;
+        var isTunnels = applicationId == "relaxkonos.tunnels";
+        var requiresModule = isTunnels || isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale || isDatabase;
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
         var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
-        var isTunnels = applicationId == "relaxkonos.tunnels";
-        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels;
+        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -350,11 +350,15 @@ internal static class OfficialRoappChecks
                 await RejectAsync(() => installer.InstallAsync(candidate), "Squid without joint deployment");
             }
             if (isTunnels)
+            {
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerTunnelsRead,
                     AppPermissions.ServerTunnelsManage, AppPermissions.ServerComponentsRead]
                     && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.tunnels"]
-                    && candidate.Manifest.Dependencies?.Required is null or [],
-                    "Tunnel Manager review exposes the host capability and scoped grants.");
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.tunnels" }, Capability: "server.tunnels" }],
+                    "Tunnel Manager review exposes its required module, capability and scoped grants.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Tunnel Manager without joint deployment");
+            }
             if (isPortForwarding)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.DesktopPortForwardingManage]
                     && candidate.Manifest.Dependencies?.Required is null or [],

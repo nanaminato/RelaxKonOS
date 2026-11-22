@@ -788,3 +788,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含 FRP 生命周期夹具已复跑通过。失败来自测试仍期待 Starting，而模拟 Helper 的启动回执已确认 Connected。断言按实际回执修正，随后通过重新打开 provider、已应用版本对账、秘密生命周期以及夹具运行时安装、回滚与卸载检查。
 - Tunnels 已注册为可选服务端模块，SQLite 路由与能力由启用状态决定。Core 保留 FRP 运行时和 Helper 管理。默认官方来源策略修订升至 7 并授权 Tunnels 签名执行包。Windows Release HTTP 验收安装 1.0.0、升级 2.0.0 和回滚，随后新 Core 宿主通过恢复后的签名执行包校验隧道定义。Windows FRP 专项通过。桌面包联合选择及真实 FRP 服务联调仍待验。
 - Tunnels 签名执行包接入后，Windows Release 完整模块回归通过（1498 条 PASS 记录），覆盖禁用后的能力撤回和官方来源授权。
+- Tunnel Manager 的官方 .roapp 声明必需的 relaxkonos.tunnels 服务端模块及 server.tunnels 能力。Windows Release 使用 DevCli 生产归档及摘要验证绕过协调器的安装被拒绝，官方包生命周期通过。联合专项在环回宿主验证已停用随附模块只生成启用步骤，重启后登记应用，已启用模块直接复用，桌面卸载只清除依赖登记。期间出现一次模块状态暂不可用，重新运行通过。签名 Tunnels 双包和真实 FRP 业务仍待验。

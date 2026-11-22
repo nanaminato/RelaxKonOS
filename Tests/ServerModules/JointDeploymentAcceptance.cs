@@ -807,11 +807,11 @@ internal static class JointDeploymentAcceptance
 
             var activationArchives = bundledModuleArchives.Where(path =>
                 Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId
-                    or ServerModules.DatabaseId or ServerModules.DockerId or "relaxkonos.webservers")
+                    or ServerModules.DatabaseId or ServerModules.DockerId or "relaxkonos.webservers" or "relaxkonos.tunnels")
                 .ToDictionary(path => Path.GetFileNameWithoutExtension(path) == "relaxkonos.webservers"
                     ? ServerModules.WebServerId : Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal);
             var activationDependencies = new[] { ServerModules.FirewallId, ModuleId }
-                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId, ServerModules.DockerId, ServerModules.WebServerId }
+                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId, ServerModules.DockerId, ServerModules.WebServerId, "relaxkonos.tunnels" }
                     .Where(activationArchives.ContainsKey));
             foreach (var dependencyId in activationDependencies)
             {
@@ -896,6 +896,7 @@ internal static class JointDeploymentAcceptance
                     "relaxkonos.firewall" => [ServerModules.FirewallId],
                     "relaxkonos.database" => [ServerModules.DatabaseId],
                     "relaxkonos.docker" => [ServerModules.DockerId],
+                    "relaxkonos.tunnels" => ["relaxkonos.tunnels"],
                     "relaxkonos.proxy" or "relaxkonos.proxy-server" or "relaxkonos.squid" => [ServerModules.ProxyId],
                     _ => throw new ArgumentException($"Unrecognized bundled-module test package: {appId}"),
                 };

@@ -11,6 +11,11 @@
   "instancePolicy": "SingleWindow",
   "requestedPermissions": ["server.tunnels.read", "server.tunnels.manage", "server.components.read"],
   "serverRequirements": { "capabilities": ["server.tunnels"] },
+  "dependencies": {
+    "required": [
+      { "package": { "kind": 1, "id": "relaxkonos.tunnels" }, "capability": "server.tunnels" }
+    ]
+  },
   "localizedMetadata": {
     "zh-CN": { "displayName": "隧道管理器", "description": "管理 FRP 隧道的期望状态和运行状态" },
     "ja-JP": { "displayName": "トンネルマネージャー", "description": "FRP トンネルの構成と稼働状態を管理します" }
