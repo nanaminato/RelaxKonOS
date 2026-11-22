@@ -7,6 +7,13 @@ pebble=$3
 dns=$4
 server=${5:-}
 schedule=${7:-}
+signed_app=${RK_TEST_ACME_APP:-}
+if [ -n "$signed_app" ]; then
+    if [ -n "$server" ] || [ ! -x "$assembly" ] || [ ! -f "$signed_app" ]; then
+        printf '%s\n' 'Signed ACME mode requires the executable ServerModules test host and a desktop .roapp, with no Server argument.' >&2
+        exit 2
+    fi
+fi
 case "$schedule" in
     revocation|revocation-configured) revocation=1 ;;
     *) revocation=0 ;;
@@ -158,6 +165,11 @@ if [ -n "$server" ]; then
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 2 ]
     fi
     grep -q 'GET /.well-known/acme-challenge/.*HTTP/1.1" 200 ' "$fixture/nginx-access.log"
+elif [ -n "$signed_app" ]; then
+    SSL_CERT_FILE="$fixture/https.pem" RK_TEST_ACME_FIXTURE="$fixture" \
+        "$assembly" --signed-certificates-joint-acceptance "$signed_app"
+    [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 1 ]
+    [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 1 ]
 else
     SSL_CERT_FILE="$fixture/https.pem" dotnet "$assembly" --acme-live-only "$fixture"
     [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 7 ]

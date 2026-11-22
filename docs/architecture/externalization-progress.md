@@ -823,3 +823,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名联合部署后真实 Pebble 签发通过生产 FileCertificateStore 保存。重新创建存储实例从磁盘取得部署链，核对叶证书与签发结果一致，并用隔离测试 CA 根验证完整链。测试 CA 仍只记录一个订单及一次 finalization。管理 HTTP 签发入口仍待验。
 - Linux x64 签名证书双包的真实 Pebble 验收改走生产证书管理 HTTP。观察者缺少签发授权时返回 403，具备夹具签发授权的控制者提交请求，轮询台账至 Succeeded。生产存储写入证书，重新打开后以测试根校验部署链。CA 仅收到一个订单及一次 finalization，测试宿主正常关闭。
 - Linux x64 签名 Certificates 双包真实 HTTP 签发完成后复用同一幂等键和请求。返回原 Succeeded 回执、操作 ID 与证书 ID，Pebble 仍仅有一个订单及一次 finalization。
+- 仓库 run-acme-live.sh 可在隔离网络命名空间直接复跑签名 Certificates 真实签发。将 RK_TEST_ACME_APP 指向实际桌面归档，第二参数传 Linux 自包含 ServerModules 测试宿主，第三和第四参数传 Pebble 与挑战 DNS 二进制。签名模式校验一个订单和一次 finalization；本轮 HTTP 授权、签发回执、重放、链校验及卸载全部通过。
