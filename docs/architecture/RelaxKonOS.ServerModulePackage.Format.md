@@ -129,6 +129,7 @@ Proxy 包解包并验证文件摘要后，宿主检查总览、连接快照、�
 
 Firewall 包在相同的安装、暂存复用和回退边界校验 `IFirewallExecutionModule` 接口及接收 `FirewallExecutionContext` 的公开构造函数。
 Tailscale 包在这些边界校验 `ITailscaleExecution` 接口及公开无参构造函数。
+Tunnels 包在这些边界校验 `ITunnelExecution` 接口及公开无参构造函数。
 
 ## 在线上传与安装 API
 

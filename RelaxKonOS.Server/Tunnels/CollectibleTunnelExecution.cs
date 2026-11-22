@@ -29,9 +29,7 @@ internal sealed class CollectibleTunnelExecution : IDisposable
         var context = new ExecutionLoadContext();
         try
         {
-            using var stream = File.OpenRead(path);
-            var assembly = context.LoadFromStream(stream);
-            var entry = assembly.GetType(EntryType, throwOnError: true)!;
+            var entry = ReadEntryType(context, path);
             _module = (ITunnelExecution)Activator.CreateInstance(entry)!;
             _context = context;
         }
@@ -40,6 +38,24 @@ internal sealed class CollectibleTunnelExecution : IDisposable
             context.Unload();
             throw;
         }
+    }
+
+    internal static void VerifyStagedExecution(string path)
+    {
+        var context = new ExecutionLoadContext();
+        try { ReadEntryType(context, path); }
+        catch { throw new InvalidDataException("Tunnels execution entry does not match its host contract."); }
+        finally { context.Unload(); }
+    }
+
+    private static Type ReadEntryType(ExecutionLoadContext context, string path)
+    {
+        using var stream = File.OpenRead(path);
+        var entry = context.LoadFromStream(stream).GetType(EntryType, throwOnError: true)!;
+        if (entry.IsAbstract || !typeof(ITunnelExecution).IsAssignableFrom(entry)
+            || entry.GetConstructor(Type.EmptyTypes) is null)
+            throw new InvalidDataException("Tunnels execution entry does not match its host contract.");
+        return entry;
     }
 
     public void Dispose()

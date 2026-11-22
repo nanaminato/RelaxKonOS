@@ -893,3 +893,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Firewall 签名执行包在提交版本目录、复用暂存版本及回退之前核对执行接口与构造签名。Windows Release 使用保留主入口但缺少合同接口的签名测试包验证三个边界均拒绝，现有版本保持生效。兼容 Firewall 仍通过联合安装、重启和授权回归，Proxy 专项同轮通过。
 - Linux x64 自包含 Firewall 双包复验不兼容签名版本，在首次安装、暂存复用和历史回退均拒绝，不会换掉活动版本。兼容签名包仍通过重启续跑。生产路由拒绝缺少防火墙提升授权的写入，测试传输没有执行该操作。Linux 真实 UFW Helper 仍待验。
 - Tailscale 签名执行包接入安装、暂存复用和回退的契约校验。Windows Release 使用主入口完整但执行接口无法加载的签名测试包，三个边界均拒绝，当前归档摘要不变。兼容官方包同轮通过联合安装、Core 重启和业务读取回归。
+- Tunnels 签名包在安装提交、暂存复用和回退前校验执行接口与公开无参构造。Windows Release 和 Linux x64 均拒绝主入口完整但接口不兼容的测试包，保留活动版本。Linux 使用实际 frpc 和 frps 复验兼容签名包生成配置、环回双向传输和停止后释放监听。
