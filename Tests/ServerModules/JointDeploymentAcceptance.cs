@@ -676,12 +676,16 @@ internal static class JointDeploymentAcceptance
                 "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability, .. additionalCapabilities ?? []],
                 Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
             ModulePackageBuildResult? incompatible = null;
-            if (moduleId is ServerModules.ProxyId or ServerModules.FirewallId)
+            if (moduleId is ServerModules.ProxyId or ServerModules.FirewallId or "relaxkonos.tailscale")
             {
                 var incompatibleSource = Directory.CreateDirectory(Path.Combine(root, "incompatible-execution")).FullName;
                 var bytes = await File.ReadAllBytesAsync(Path.Combine(executionDirectory, entryAssembly));
-                var name = bytes.AsSpan().IndexOf(moduleId == ServerModules.ProxyId
-                    ? "ProxyQueuedSubscriptionExecutor\0"u8 : "IFirewallExecutionModule\0"u8);
+                var name = bytes.AsSpan().IndexOf(moduleId switch
+                {
+                    ServerModules.ProxyId => "ProxyQueuedSubscriptionExecutor\0"u8,
+                    ServerModules.FirewallId => "IFirewallExecutionModule\0"u8,
+                    _ => "ITailscaleExecution\0"u8,
+                });
                 if (name < 0) throw new InvalidOperationException("The fixture could not find the incompatible execution type name.");
                 bytes[name] = (byte)'X';
                 await File.WriteAllBytesAsync(Path.Combine(incompatibleSource, entryAssembly), bytes);

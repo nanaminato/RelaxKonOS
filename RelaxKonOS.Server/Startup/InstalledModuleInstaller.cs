@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Server.Firewall;
+using RelaxKonOS.Server.Tailscale;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -250,6 +251,7 @@ internal static class InstalledModuleInstaller
         {
             if (InstalledProxyModule.MatchesManifest(manifest)) InstalledProxyModule.VerifyStagedExecution(entry);
             else if (InstalledFirewallModule.MatchesManifest(manifest)) CollectibleFirewallExecution.VerifyStagedExecution(entry);
+            else if (InstalledTailscaleModule.MatchesManifest(manifest)) CollectibleTailscaleExecution.VerifyStagedExecution(entry);
         }
         catch (InvalidDataException) { throw new ModulePackageException("module-package-execution-contract"); }
     }
