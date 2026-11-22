@@ -562,6 +562,15 @@ internal static class ModulePackageHttpChecks
                     && revokedProblem.RootElement.GetProperty("problemCode").GetString() == "module-package-release-revoked"
                     && InstalledModuleCatalog.Load(root).OfType<InstalledGitModule>().Single().InstalledVersion == "2.0.0",
                     "HTTP rollback rejects a revoked archived digest and preserves the current installed target");
+                var selected = (await selectSecond.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
+                ModulePackageStartupGuard.Begin(root, builder.Configuration, "failed-signed-startup");
+                ModulePackageStartupGuard.Begin(root, builder.Configuration, "recover-signed-startup");
+                check(InstalledModuleStore.Read(root).Single(record => record.ModuleId == ServerModules.GitId) is
+                    { Version: "2.0.0", Quarantined: true }
+                    && ModulePackageOperationStore.Read(root).Single(operation => operation.OperationId == selected.OperationId)
+                        .ProblemCode == "module-package-operation-startup-rollback-failed-quarantined",
+                    "startup recovery quarantines the failed target instead of restoring the revoked prior release");
+                ModulePackageStartupGuard.Complete(root);
             }
             await app.StopAsync();
             management.Dispose();

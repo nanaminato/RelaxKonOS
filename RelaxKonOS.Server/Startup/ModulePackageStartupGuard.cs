@@ -49,8 +49,19 @@ internal static class ModulePackageStartupGuard
         var operations = ModulePackageOperationStore.Read(contentRoot)
             .Where(operation => operation.State == ModulePackageOperationState.AwaitingRestart)
             .ToArray();
+        var latest = operations.GroupBy(operation => operation.ModuleId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().OperationId, StringComparer.Ordinal);
         foreach (var operation in operations)
         {
+            var current = InstalledModuleStore.Read(contentRoot).SingleOrDefault(module => module.ModuleId == operation.ModuleId);
+            if (latest[operation.ModuleId] != operation.OperationId || current is null
+                || current.Version != operation.Version || current.ReleaseId != operation.ReleaseId
+                || current.ArtifactSha256 != operation.ArtifactSha256)
+            {
+                ModulePackageOperationStore.Update(contentRoot, operation.OperationId, ModulePackageOperationState.Failed,
+                    "module-package-operation-target-mismatch", processGeneration, DateTimeOffset.UtcNow);
+                continue;
+            }
             if (operation.PreviousVersion is null)
             {
                 Quarantine(contentRoot, operation, "module-package-operation-startup-quarantined", processGeneration);
@@ -62,6 +73,7 @@ internal static class ModulePackageStartupGuard
                     "packages/" + operation.ModuleId + "/" + operation.PreviousVersion);
                 if (previous.ModuleId != operation.ModuleId || previous.Version != operation.PreviousVersion)
                     throw new ModulePackageException("module-package-operation-startup-rollback-failed");
+                ModulePackageCatalogStore.EnsureInstalledReleaseNotRevoked(contentRoot, previous);
                 var manifest = InstalledModuleStore.VerifyPackage(contentRoot, previous);
                 InstalledModuleInstaller.ValidateDependencies(contentRoot, configuration, manifest);
                 var modules = InstalledModuleStore.Read(contentRoot).ToList();

@@ -202,6 +202,7 @@ internal static class InstalledModuleChecks
             var currentModules = InstalledModuleStore.Read(root).ToList();
             currentModules[currentModules.FindIndex(module => module.ModuleId == "fixture-module")] = newerRecord;
             InstalledModuleStore.Write(root, currentModules);
+            var superseded = ModulePackageOperationStore.Record(root, "install", fixtureRecord, null, now);
             var failedUpdate = ModulePackageOperationStore.Record(root, "install", newerRecord, "1.0.0", now);
             ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "startup-attempt-a");
             ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "startup-attempt-b");
@@ -210,6 +211,9 @@ internal static class InstalledModuleChecks
             check(restored.Version == "1.0.0" && recovered.State == ModulePackageOperationState.Failed
                 && recovered.ProblemCode == "module-package-operation-startup-rollback",
                 "a surviving startup marker restores the previous version and records the failed update");
+            check(!restored.Quarantined && ModulePackageOperationStore.Read(root)
+                    .Single(operation => operation.OperationId == superseded.OperationId).ProblemCode == "module-package-operation-target-mismatch",
+                "startup recovery does not quarantine the active target on behalf of a superseded install");
             ModulePackageStartupGuard.Complete(root);
 
             var quarantineOperation = ModulePackageOperationStore.Record(root, "install", fixtureRecord, null, now);
