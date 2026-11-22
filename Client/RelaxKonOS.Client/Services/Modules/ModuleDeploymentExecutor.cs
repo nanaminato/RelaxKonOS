@@ -58,7 +58,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             if (operationId is null)
             {
                 if (DateTimeOffset.UtcNow >= serverPlan.ExpiresAt)
-                    throw new InvalidOperationException("deployment-module-plan-expired");
+                    throw new DeploymentPlanReviewRequiredException("deployment-module-plan-expired");
                 var result = await client.ApplyPackagePlanAsync(serverPlan.PlanId, cancellationToken);
                 operationId = result.OperationId;
             }

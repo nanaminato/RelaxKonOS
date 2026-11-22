@@ -114,6 +114,22 @@ Check(backend.Verifications == 1);
 backend.AfterStep = null;
 await coordinator.ExecuteAsync(interruptedPlan);
 Check(backend.Applied.Skip(5).SequenceEqual(new[] {0, 1, 2, 3}) && backend.Verifications == 2);
+var expiredStepPlan = plan with { Id = Guid.NewGuid(), ExpiresAt = plan.ExpiresAt.AddMinutes(1) };
+backend.ReviewRequiredAt = 1;
+await Reject(expiredStepPlan, "deployment-module-plan-expired");
+var attempts = backend.Applied.Count;
+await using (var lease = await reopenedJournal.OpenAsync(expiredStepPlan, CancellationToken.None))
+    Check(lease.Checkpoint is { CompletedSteps: 1, RequiresReview: true, Verified: false });
+Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
+    binding.AccountId, binding.ConnectionIdentity) is null);
+Check((await reopenedJournal.ReadPendingPlansAsync(binding.AccountId, binding.ConnectionIdentity))
+    .Any(pending => pending.Id == expiredStepPlan.Id));
+backend.ReviewRequiredAt = null;
+await Reject(expiredStepPlan, "deployment-module-plan-expired");
+Check(backend.Applied.Count == attempts);
+var replacement = plan with { Id = Guid.NewGuid(), ExpiresAt = expiredStepPlan.ExpiresAt.AddMinutes(1) };
+await coordinator.ExecuteAsync(replacement);
+Check((await reopenedJournal.ReadPendingPlansAsync(binding.AccountId, binding.ConnectionIdentity)).Count == 0);
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
@@ -122,11 +138,13 @@ sealed class Backend : IDeploymentBackend
     public List<int> Applied = [];
     public int Verifications;
     public Action AfterStep;
+    public int? ReviewRequiredAt;
     public Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken) => Task.FromResult(Target);
     public Task ApplyOrReconcileAsync(DeploymentPlan plan, int index, CancellationToken cancellationToken)
     {
         Applied.Add(index);
         if (Applied.Count == 2) throw new IOException("Interrupted");
+        if (ReviewRequiredAt == index) throw new DeploymentPlanReviewRequiredException("deployment-module-plan-expired");
         AfterStep?.Invoke();
         return Task.CompletedTask;
     }

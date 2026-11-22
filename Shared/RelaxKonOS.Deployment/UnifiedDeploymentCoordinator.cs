@@ -30,7 +30,12 @@ public sealed record DeploymentPlan(Guid Id, DeploymentTarget Target, DateTimeOf
     public DeploymentClientBinding? ClientBinding { get; init; }
 }
 
-public sealed record DeploymentCheckpoint(int CompletedSteps, bool Verified);
+public sealed record DeploymentCheckpoint(int CompletedSteps, bool Verified)
+{
+    public bool RequiresReview { get; init; }
+}
+
+public sealed class DeploymentPlanReviewRequiredException(string problem) : InvalidOperationException(problem);
 
 /// <summary>A backend must use the plan ID and step index to reconcile retries with durable installer receipts.</summary>
 public interface IDeploymentBackend
@@ -72,6 +77,8 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
     {
         await using var lease = await journal.OpenAsync(plan, cancellationToken);
         var checkpoint = lease.Checkpoint;
+        if (checkpoint?.RequiresReview == true)
+            throw new DeploymentPlanReviewRequiredException("deployment-module-plan-expired");
         var current = await backend.ObserveAsync(cancellationToken);
         if (current.ServerIdentity != plan.Target.ServerIdentity)
             throw new InvalidOperationException("deployment-server-changed");
@@ -95,7 +102,12 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
         for (var index = checkpoint.CompletedSteps; index < plan.OrderedReleases.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await backend.ApplyOrReconcileAsync(plan, index, cancellationToken);
+            try { await backend.ApplyOrReconcileAsync(plan, index, cancellationToken); }
+            catch (DeploymentPlanReviewRequiredException)
+            {
+                await lease.SaveAsync(new(index, false) { RequiresReview = true }, CancellationToken.None);
+                throw;
+            }
             // A completed backend step must be recorded before honoring cancellation.
             await lease.SaveAsync(new(index + 1, false), CancellationToken.None);
         }

@@ -9,16 +9,21 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
     public async Task<DeploymentPlan?> FindPendingPlanAsync(DeploymentPackageKey package, string version,
         string artifactIdentity, Guid accountId, string connectionIdentity, CancellationToken cancellationToken = default)
     {
-        var plans = await ReadPendingPlansAsync(accountId, connectionIdentity, cancellationToken);
-        return plans.FirstOrDefault(plan => plan.OrderedReleases[^1] is var root
+        var entries = await ReadPendingEntriesAsync(accountId, connectionIdentity, cancellationToken);
+        var match = entries.FirstOrDefault(entry => entry.Plan.OrderedReleases[^1] is var root
             && root.Package == package && root.Version == version && root.ArtifactIdentity == artifactIdentity);
+        return match?.Checkpoint.RequiresReview == false ? match.Plan : null;
     }
 
     public async Task<IReadOnlyList<DeploymentPlan>> ReadPendingPlansAsync(Guid accountId, string connectionIdentity,
+        CancellationToken cancellationToken = default) =>
+        (await ReadPendingEntriesAsync(accountId, connectionIdentity, cancellationToken)).Select(entry => entry.Plan).ToArray();
+
+    private async Task<IReadOnlyList<Entry>> ReadPendingEntriesAsync(Guid accountId, string connectionIdentity,
         CancellationToken cancellationToken = default)
     {
         if (!Directory.Exists(directory)) return [];
-        var plans = new List<DeploymentPlan>();
+        var entries = new List<Entry>();
         foreach (var path in Directory.EnumerateFiles(directory))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -29,12 +34,16 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             catch (JsonException) { continue; }
             catch (InvalidDataException) { continue; }
             var plan = entry.Plan;
-            if (entry.Checkpoint.Verified
-                || plan.ClientBinding is not { } client || client.AccountId != accountId
+            if (plan.ClientBinding is not { } client || client.AccountId != accountId
                 || client.ConnectionIdentity != connectionIdentity) continue;
-            plans.Add(plan);
+            entries.Add(entry);
         }
-        return plans.OrderByDescending(plan => plan.ExpiresAt).ThenBy(plan => plan.Id).ToArray();
+        return entries.OrderByDescending(entry => entry.Plan.ExpiresAt)
+            .ThenByDescending(entry => entry.Checkpoint.Verified)
+            .ThenBy(entry => entry.Plan.Id)
+            .DistinctBy(entry => (entry.Plan.OrderedReleases[^1].Package, entry.Plan.OrderedReleases[^1].Version,
+                entry.Plan.OrderedReleases[^1].ArtifactIdentity, entry.Plan.ClientBinding?.ComponentRelease))
+            .Where(entry => !entry.Checkpoint.Verified).ToArray();
     }
 
     public async Task<DeploymentPlan?> FindStartedPlanAsync(Guid planId, CancellationToken cancellationToken = default)
@@ -103,6 +112,8 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             || entry.Plan.PreparedSteps.IsDefault
             || entry.Checkpoint.CompletedSteps < 0 || entry.Checkpoint.CompletedSteps > entry.Plan.OrderedReleases.Length
             || entry.Checkpoint.Verified && entry.Checkpoint.CompletedSteps != entry.Plan.OrderedReleases.Length
+            || entry.Checkpoint.RequiresReview && (entry.Checkpoint.Verified
+                || entry.Checkpoint.CompletedSteps == entry.Plan.OrderedReleases.Length)
             || entry.Plan.OrderedReleases.Any(release => release is null || release.Capabilities is null || release.Requires.IsDefault))
             throw new InvalidDataException("Invalid deployment checkpoint.");
         if (!string.Equals(entry.Identity, ComputeIdentity(entry.Plan), StringComparison.Ordinal))
