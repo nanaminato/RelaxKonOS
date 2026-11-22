@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:model="clr-namespace:RelaxKonOS.App.Settings"
+             xmlns:model="clr-namespace:RelaxKonOS.App.Settings;assembly=RelaxKonOS.Settings.Contracts"
              x:Class="RelaxKonOS.App.Settings.Views.SettingsSearchResultsView"
              x:Name="ResultsView">
     <Grid RowDefinitions="Auto,Auto,*">

@@ -7,14 +7,6 @@ using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.App.Settings;
 
-public interface ISettingsWindow
-{
-    void Open(Func<ISettingsWorkspace, ManagedWindow> showWorkspace);
-    void Navigate(string route);
-    void OpenEnvironment();
-    void OpenApplicationPermissions(string appId);
-}
-
 public sealed class SettingsApp(ISettingsWindow window) : RemoteApplicationBase, IAppActivationHandler
 {
     public static AppId Id { get; } = new("relaxkonos.settings");

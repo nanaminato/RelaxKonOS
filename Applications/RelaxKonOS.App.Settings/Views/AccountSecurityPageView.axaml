@@ -1,7 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
-             x:Class="RelaxKonOS.App.Settings.Views.AccountSecurityPageView" x:DataType="loc:IAccountSecurityPage" Classes="builtin-app">
+             x:Class="RelaxKonOS.App.Settings.Views.AccountSecurityPageView" x:DataType="contracts:IAccountSecurityPage" Classes="builtin-app">
   <StackPanel loc:SettingsSearchTarget.Id="account.alias" Spacing="16" Margin="8">
     <TextBlock Text="{loc:Loc settings.account.description}" TextWrapping="Wrap" />
     <Grid ColumnDefinitions="210,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">

@@ -1,13 +1,14 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.NetworkPageView"
-             x:DataType="loc:INetworkPage" Classes="builtin-app">
+             x:DataType="contracts:INetworkPage" Classes="builtin-app">
     <StackPanel Spacing="16">
     <loc:HostNetworkView DataContext="{Binding HostNetwork}" />
 
         <Border Classes="card" DataContext="{Binding OutboundProxy}">
-            <StackPanel Spacing="12" x:DataType="loc:IOutboundProxyEditor">
+            <StackPanel Spacing="12" x:DataType="contracts:IOutboundProxyEditor">
                 <StackPanel Spacing="3">
                     <TextBlock Text="{loc:Loc settings.outbound_proxy.title}" Classes="title" />
                     <TextBlock Text="{loc:Loc settings.outbound_proxy.description}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />

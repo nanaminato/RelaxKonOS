@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.DeveloperPageView"
-             x:DataType="loc:IDeveloperPage" Classes="builtin-app">
+             x:DataType="contracts:IDeveloperPage" Classes="builtin-app">
     <StackPanel Spacing="16">
         <Border Classes="card">
             <StackPanel Spacing="10">

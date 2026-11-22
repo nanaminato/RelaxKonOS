@@ -1,9 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
+             xmlns:models="clr-namespace:RelaxKonOS.App.Settings;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:settingsApp="clr-namespace:RelaxKonOS.App.Settings.Views"
              xmlns:vm="clr-namespace:RelaxKonOS.App.Settings"
              x:Class="RelaxKonOS.App.Settings.Views.SettingsWorkspaceView"
-             x:DataType="settingsApp:ISettingsWorkspace"
+             x:DataType="contracts:ISettingsWorkspace"
              x:CompileBindings="True"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
@@ -32,43 +34,43 @@
         <DataTemplate DataType="settingsApp:AppPermissionEditor">
             <settingsApp:AppPermissionDialogView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:ITimeLanguagePage">
+        <DataTemplate DataType="contracts:ITimeLanguagePage">
             <settingsApp:TimeLanguagePageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IPersonalizationOverview">
+        <DataTemplate DataType="contracts:IPersonalizationOverview">
             <settingsApp:PersonalizationPageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IPersonalizationBackgroundPage">
+        <DataTemplate DataType="contracts:IPersonalizationBackgroundPage">
             <settingsApp:PersonalizationBackgroundView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IPersonalizationLayoutPage">
+        <DataTemplate DataType="contracts:IPersonalizationLayoutPage">
             <settingsApp:PersonalizationLayoutView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IPersonalizationStylePage">
+        <DataTemplate DataType="contracts:IPersonalizationStylePage">
             <settingsApp:PersonalizationStyleView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IPersonalizationColorsPage">
+        <DataTemplate DataType="contracts:IPersonalizationColorsPage">
             <settingsApp:PersonalizationColorsView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IDeveloperPage">
+        <DataTemplate DataType="contracts:IDeveloperPage">
             <settingsApp:DeveloperPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:ISystemPage">
+        <DataTemplate DataType="contracts:ISystemPage">
             <settingsApp:SystemPageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IAccountSecurityPage">
+        <DataTemplate DataType="contracts:IAccountSecurityPage">
             <settingsApp:AccountSecurityPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:INetworkPage">
+        <DataTemplate DataType="contracts:INetworkPage">
             <settingsApp:NetworkPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:INetworkAdapterPage">
+        <DataTemplate DataType="contracts:INetworkAdapterPage">
             <settingsApp:HostNetworkView DataContext="{Binding Editor}" IsAdapterDetailPage="True" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IAppsPage">
+        <DataTemplate DataType="contracts:IAppsPage">
             <settingsApp:AppsPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:IApplicationDetailPage">
+        <DataTemplate DataType="contracts:IApplicationDetailPage">
             <settingsApp:AppsPageView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
     </UserControl.DataTemplates>
@@ -101,7 +103,7 @@
                          AutomationProperties.Name="{settingsApp:Loc settings.search.category}"
                          ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:SettingsPageModel">
+                        <DataTemplate x:DataType="models:SettingsPageModel">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="4,6">
                                 <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
                                     <Canvas Width="24" Height="24">
@@ -193,7 +195,7 @@
                              Background="Transparent" BorderThickness="0" AutomationProperties.Name="{settingsApp:Loc settings.search.category}"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SettingsPageModel">
+                            <DataTemplate x:DataType="models:SettingsPageModel">
                                 <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="40" Tag="{Binding Route}" Click="OnQuickLinkClick">
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                                         <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">

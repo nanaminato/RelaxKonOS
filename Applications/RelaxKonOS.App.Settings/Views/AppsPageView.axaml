@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.AppsPageView"
-             x:DataType="loc:IAppsPage"
+             x:DataType="contracts:IAppsPage"
              x:Name="Root" Classes="builtin-app">
     <StackPanel Spacing="16">
         <StackPanel IsVisible="{Binding IsInstalledApps}" Spacing="16">
@@ -17,7 +18,7 @@
                         </Style>
                     </ItemsControl.Styles>
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="loc:ISettingsAppEntry">
+                        <DataTemplate x:DataType="contracts:ISettingsAppEntry">
                             <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                     Command="{Binding DataContext.ShowAppDetailsCommand, ElementName=Root}" CommandParameter="{Binding App}">
                                 <Grid Height="56" ColumnDefinitions="36,*,Auto" Margin="2" ColumnSpacing="8">

@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.HostNetworkView" x:Name="NetworkView"
-             x:DataType="loc:IHostNetworkEditor" Classes="builtin-app">
+             x:DataType="contracts:IHostNetworkEditor" Classes="builtin-app">
     <StackPanel Spacing="16">
         <StackPanel Spacing="16" IsVisible="{Binding !IsAdapterDetailPage, ElementName=NetworkView}">
         <Border CornerRadius="16" Padding="24">
@@ -31,7 +32,7 @@
                  >
 
             <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="loc:INetworkAdapterItem">
+                <DataTemplate x:DataType="contracts:INetworkAdapterItem">
                     <Button Click="OnAdapterClick" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,4" Padding="16"
                             Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">

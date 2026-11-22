@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.PersonalizationStyleView"
-             x:DataType="loc:IPersonalizationStyle" Classes="builtin-app">
+             x:DataType="contracts:IPersonalizationStyle" Classes="builtin-app">
     <StackPanel Spacing="16">
 <Border Classes="card">
             <StackPanel Spacing="10">
@@ -11,7 +12,7 @@
                           SelectedValue="{Binding SelectedSystemStyleId, Mode=TwoWay}"
                           SelectedValueBinding="{Binding Id}">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="loc:PersonalizationOption">
+                        <DataTemplate x:DataType="contracts:PersonalizationOption">
                             <StackPanel Spacing="1">
                                 <TextBlock Text="{Binding SelectionDisplayName}" />
                                 <TextBlock Text="{Binding UnavailableReason}" IsVisible="{Binding HasUnavailableReason}"

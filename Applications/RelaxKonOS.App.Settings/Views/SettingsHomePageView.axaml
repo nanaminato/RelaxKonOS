@@ -1,4 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:models="clr-namespace:RelaxKonOS.App.Settings;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:settings="clr-namespace:RelaxKonOS.App.Settings"
              xmlns:local="clr-namespace:RelaxKonOS.App.Settings.Views"
@@ -20,7 +21,7 @@
         </Style>
     </UserControl.Styles>
     <UserControl.Resources>
-        <DataTemplate x:Key="RouteTemplate" x:DataType="settings:SettingsPageModel">
+        <DataTemplate x:Key="RouteTemplate" x:DataType="models:SettingsPageModel">
             <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnRouteClick">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
                     <Viewbox Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center">

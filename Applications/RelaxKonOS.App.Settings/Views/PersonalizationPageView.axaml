@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.PersonalizationPageView"
-             x:DataType="loc:IPersonalizationOverview" Classes="builtin-app">
+             x:DataType="contracts:IPersonalizationOverview" Classes="builtin-app">
     <UserControl.Styles>
     <Style Selector="Button.personalization-section">
         <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />

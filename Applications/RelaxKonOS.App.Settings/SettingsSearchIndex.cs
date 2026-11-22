@@ -1,8 +1,5 @@
 namespace RelaxKonOS.App.Settings;
 
-public sealed record SettingsSearchEntry(string SettingId, string Route, string Title, string Category,
-    string Scope, string Reason, string SearchText);
-
 /// <summary>Immutable local index. Queries never perform network I/O and include unavailable entries.</summary>
 public sealed class SettingsSearchIndex(IEnumerable<SettingsSearchEntry> entries)
 {

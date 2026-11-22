@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.SystemPageView"
-             x:DataType="loc:ISystemPage" Classes="builtin-app">
+             x:DataType="contracts:ISystemPage" Classes="builtin-app">
     <StackPanel Spacing="16">
         <StackPanel Spacing="2">
             <TextBlock Text="{loc:Loc settings.system_properties.title}" FontSize="24" FontWeight="SemiBold" />
@@ -131,7 +132,7 @@
                 <TextBlock Text="{Binding ServerModulesStatus}" IsVisible="{Binding HasServerModulesStatus}" Opacity="0.7" TextWrapping="Wrap" />
                 <ItemsControl ItemsSource="{Binding ServerModules}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="loc:ServerModuleRow">
+                        <DataTemplate x:DataType="contracts:ServerModuleRow">
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,6,0,0">
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />

@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.PersonalizationColorsView"
-             x:DataType="loc:IPersonalizationColors" Classes="builtin-app">
+             x:DataType="contracts:IPersonalizationColors" Classes="builtin-app">
     <StackPanel Spacing="16">
 <Border Classes="card" loc:SettingsSearchTarget.Id="workspace.colors">
             <StackPanel Spacing="10">
@@ -25,7 +26,7 @@
                           SelectedValue="{Binding PaletteId, Mode=TwoWay}"
                           SelectedValueBinding="{Binding Id}">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="loc:ThemePaletteChoice"><TextBlock Text="{Binding Name}" /></DataTemplate>
+                        <DataTemplate x:DataType="contracts:ThemePaletteChoice"><TextBlock Text="{Binding Name}" /></DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
                 <TextBlock Text="{loc:Loc settings.palette_scope_hint}" Classes="subtle" TextWrapping="Wrap" />

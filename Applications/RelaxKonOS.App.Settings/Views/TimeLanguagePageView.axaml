@@ -1,9 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              xmlns:sdk="clr-namespace:RelaxKonOS.AppSDK;assembly=RelaxKonOS.App.SDK"
              x:Class="RelaxKonOS.App.Settings.Views.TimeLanguagePageView"
-             x:DataType="loc:ITimeLanguagePage" Classes="builtin-app">
+             x:DataType="contracts:ITimeLanguagePage" Classes="builtin-app">
     <StackPanel Spacing="16">
 
         <Border Classes="card">

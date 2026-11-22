@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:contracts="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.PersonalizationBackgroundView"
-             x:DataType="loc:IPersonalizationBackground" Classes="builtin-app">
+             x:DataType="contracts:IPersonalizationBackground" Classes="builtin-app">
     <StackPanel Spacing="16">
 <Border Classes="card" loc:SettingsSearchTarget.Id="workspace.wallpaper">
             <StackPanel Spacing="10">
@@ -16,7 +17,7 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.VerticalScrollBarVisibility="Disabled">
                     <ListBox.Styles>
-                        <Style Selector="ListBoxItem" x:DataType="loc:WallpaperPreview">
+                        <Style Selector="ListBoxItem" x:DataType="contracts:WallpaperPreview">
                             <Setter Property="Padding" Value="6" />
                             <Setter Property="Margin" Value="3" />
                             <Setter Property="BorderThickness" Value="2" />
@@ -35,7 +36,7 @@
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="loc:WallpaperPreview">
+                        <DataTemplate x:DataType="contracts:WallpaperPreview">
                             <Border Width="128" Height="72" CornerRadius="4" Background="{Binding Brush}" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
