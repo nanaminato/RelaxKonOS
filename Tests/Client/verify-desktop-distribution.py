@@ -27,9 +27,34 @@ def require(condition, problem):
 def verify_published(publish_dir, manifests, profile_document):
     host_dependencies = publish_dir / "RelaxKonOS.deps.json"
     require(host_dependencies.is_file(), f"Desktop host dependency manifest is missing under {publish_dir}.")
+    dependency_document = read_json(host_dependencies)
+    runtime_target = dependency_document["runtimeTarget"]["name"]
+    graph = {
+        name.split("/", 1)[0]: set(entry.get("dependencies", {}))
+        for name, entry in dependency_document["targets"][runtime_target].items()
+    }
+
+    def reachable(root):
+        required = set()
+        pending = [root]
+        while pending:
+            name = pending.pop()
+            if name in required:
+                continue
+            require(name in graph, f"{name} is missing from the published desktop dependency graph.")
+            required.add(name)
+            pending.extend(graph[name] - required)
+        return required - {root}
+
+    coordinator_dependencies = reachable("RelaxKonOS.Deployment")
+    require(coordinator_dependencies <= {"RelaxKonOS.Protocol"},
+            f"The deployment coordinator has unexpected dependencies: {sorted(coordinator_dependencies - {'RelaxKonOS.Protocol'})}.")
+    shell_dependencies = {name for name in reachable("RelaxKonOS.Shell") if name.startswith("RelaxKonOS.")}
+    require(shell_dependencies <= {"RelaxKonOS.Core"},
+            f"The shell has unexpected RelaxKonOS dependencies: {sorted(shell_dependencies - {'RelaxKonOS.Core'})}.")
     host_libraries = {
         dependency.split("/", 1)[0]
-        for dependency in read_json(host_dependencies)["libraries"]
+        for dependency in dependency_document["libraries"]
     }
     for app_id, manifest in manifests.items():
         assembly_name = Path(manifest["entryAssembly"]).stem

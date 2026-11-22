@@ -89,6 +89,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Web Servers 的实例操作授权接口已迁入应用 SDK，桌面宿主从同源 JSON 嵌入中英日资源。Windows Release 实例选择回归覆盖两种宿主平台、候选实例授权、连接切换和 Component Center 卸载派发。Component Center 当前 Nginx 选择视图仍需解除对应用视图模型的引用。
 - Component Center 使用独立的 Nginx 实例选择模型，通过现有 SDK 读取、选择和集成实例，并通过原安装任务派发卸载。Web Server Manager 继续读取宿主选中的实例。Windows Release 专项验证了确认期间候选项或所选实例变更时阻止派发，以及更换当前实例时旧站点编辑目标失效。
 - Windows Release 发行校验覆盖全部 29 个官方应用入口程序集，确认宿主依赖清单和发布根目录均无这些程序集。发布过程部分归档在摘要生成前丢失，补打受影响的归档并单独恢复宿主输出后，发行目录和 Web Server Manager 官方包生命周期均通过校验。
+- 发行校验沿 Windows Release 的实际运行时依赖图检查 Shell 和联合部署协调层的传递依赖。协调层仅依赖协议程序集，Shell 的 RelaxKonOS 依赖仅有 Core。分别注入对 Avalonia 和桌面 Client 的错误依赖，均被校验拒绝。生产扫描器复验 Minimal、Standard 和 Developer 分别预装 0、13、14 个应用，Minimal 从发行归档安装并修复 Settings、Component Center、Explorer、Server Center，切换配置保留用户卸载决定。本轮专用 WSL 缺少可用的 .NET 和 X11 命令，未复验最新发行的 Linux 可见窗口启动。
 
 - Web Server Manager 的视图模型通过应用项目定义的实例授权接口调用宿主提权代理。Windows Release 网站专项验证提权后重新核对站点目标，以及连接变化时阻止保存。主视图模型仍由桌面宿主编译。
 
