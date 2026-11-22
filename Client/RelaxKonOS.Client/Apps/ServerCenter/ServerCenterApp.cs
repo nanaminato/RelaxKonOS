@@ -43,7 +43,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
             if (!context.WindowManager.Windows.Contains(window)) return;
             await context.ShowDialogAsync<bool>(window,
                 section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
-                dialog => new ServerCenterManagementDialog(viewModel, section, dialog), new Size(640, 600));
+                dialog => new ServerCenterManagementDialog(viewModel, section, dialog, context.Services), new Size(640, 600));
         };
         viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => new ServerInstallationWizardView(
@@ -51,7 +51,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
                     async () => { await dialog.CancelAsync(); return dialog.Result.IsCompleted; },
                     () => dialog.ShowDialogAsync<string?>(
                         viewModel.Text("server_center.wizard.choose_server_bundle", "Browse server files"),
-                        picker => new SshFileBrowserView(sshSession, selectPackage: path => picker.Close(path),
+                        picker => new SshFileBrowserView(sshSession, context.Services, selectPackage: path => picker.Close(path),
                             cancelPicker: picker.Cancel),
                         new Size(860, 580)),
                     async () =>

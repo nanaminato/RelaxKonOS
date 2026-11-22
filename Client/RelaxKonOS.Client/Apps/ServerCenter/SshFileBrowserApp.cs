@@ -33,7 +33,7 @@ public sealed class SshFileBrowserApp : RemoteApplicationBase
             return null;
         }
 
-        var view = new SshFileBrowserView(session,
+        var view = new SshFileBrowserView(session, context.Services,
             path => FindFileHandler(path) is not null,
             path => FindFileHandler(path) is { } handler
                 && context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(handler, path)).Succeeded);

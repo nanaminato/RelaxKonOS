@@ -41,7 +41,7 @@ internal static class ServerCenterDialogChecks
             var result = manager.ShowDialogAsync<bool>(owner, section, dialog =>
             {
                 handle = dialog;
-                return new ServerCenterManagementDialog(vm, section, dialog);
+                return new ServerCenterManagementDialog(vm, section, dialog, RelaxKonOS.Client.App.Services);
             }, new RelaxKonOS.Core.Primitives.Size(640, 600));
             Dispatcher.UIThread.RunJobs();
             var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "server-center");

@@ -397,3 +397,4 @@
 - 一次性 Ubuntu 使用同一签名目录内的 0.1.0 与 0.2.0 Databases 归档完成在线热更新。更新回执为 Succeeded，当前代次报告 0.2.0/running，Core 进程未重启，Core 健康和 Git 仓库枚举继续提供服务。更新后观察者经真实 Helper 的四条查询通过。
 - Ubuntu 在线回退验收在 Databases 0.2.0 运行时应用签名但入口缺失的 0.3.0 测试归档。更新回执为 Failed/module-host-update-rolled-back，监督器恢复 0.2.0/running。旧版本实际处理 PostgreSQL 请求，Core 健康和 Git 仓库枚举继续可用，观察者四条查询通过。
 - Ubuntu 在线生命周期验收通过冻结管理计划停止和重启 Databases 0.2.0。两次操作回执均为 Succeeded，停止后 PostgreSQL 查询返回 503，重启恢复原版本及观察者四条读取。Core 未重启，Core 健康和 Git 仓库枚举继续可用。
+- SSH 文件浏览和 Server Center 的安装、修复文件选择入口显式传入各自应用上下文。视图从传入上下文取得语言服务，并在打开选择器时捕获用量记忆作用域。Windows Release fused-apps 专项通过，覆盖 SSH 文件布局、会话隔离和传输保护。独立应用包仍待迁移。

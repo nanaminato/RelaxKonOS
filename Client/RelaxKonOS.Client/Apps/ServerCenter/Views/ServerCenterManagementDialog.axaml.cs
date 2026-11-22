@@ -10,13 +10,16 @@ public partial class ServerCenterManagementDialog : UserControl
 {
     private readonly Action _close;
     private readonly ModalDialog<bool> _dialog;
+    private readonly IServiceProvider _services;
 
-    public ServerCenterManagementDialog(ServerCenterViewModel viewModel, string section, ModalDialog<bool> dialog)
+    public ServerCenterManagementDialog(ServerCenterViewModel viewModel, string section, ModalDialog<bool> dialog,
+        IServiceProvider services)
     {
         InitializeComponent();
         DataContext = viewModel;
         _close = dialog.Cancel;
         _dialog = dialog;
+        _services = services;
         var configuration = (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian, viewModel.ConfigurationAutoStart, viewModel.ConfigurationFileAccess?.Scope, viewModel.ConfigurationFileRoots);
         void AcceptConfiguration()
         {
@@ -49,7 +52,7 @@ public partial class ServerCenterManagementDialog : UserControl
         if (DataContext is ServerCenterViewModel viewModel)
             await viewModel.BrowseRepairPackageAsync(session => _dialog.ShowDialogAsync<string?>(
                 viewModel.BrowseRepairPackageText,
-                picker => new SshFileBrowserView(session, selectPackage: path => picker.Close(path), cancelPicker: picker.Cancel),
+                picker => new SshFileBrowserView(session, _services, selectPackage: path => picker.Close(path), cancelPicker: picker.Cancel),
                 new RelaxKonOS.Core.Primitives.Size(860, 580)));
     }
 
