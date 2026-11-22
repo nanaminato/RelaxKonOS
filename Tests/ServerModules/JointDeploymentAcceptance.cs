@@ -36,6 +36,7 @@ using RelaxKonOS.Protocol.Tunnels;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Runtimes;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Tunnels;
@@ -416,6 +417,35 @@ internal static class JointDeploymentAcceptance
         Require(!ReferenceEquals(execution, ProxyConnectionExecutionGate.Shared)
             && await overview.ReadAsync(reads, default) is { TunEnabled: true, ActiveConnections: 3 },
             "the joint-installed signed Proxy package computes an overview from host observations");
+        if (Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONTROLLER") is { Length: > 0 } endpoint)
+        {
+            var secrets = new DataProtectionProxyControllerSecretStore(builder.Environment,
+                new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+            using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }),
+                secrets, new MihomoControllerOptions { Endpoint = new Uri(endpoint) }) { ConnectionExecution = execution };
+            var observed = await overview.ReadAsync(new ProxyOverviewReads(_ => Task.CompletedTask, _ => Task.FromResult(false),
+                _ => Task.FromResult<bool?>(null),
+                async ct =>
+                {
+                    var reachable = await controller.IsReachableAsync(ct);
+                    Require(reachable is { Succeeded: true, Value: true }, "the production Mihomo adapter reaches the real loopback controller");
+                    return reachable.Value;
+                },
+                async ct =>
+                {
+                    var tun = await controller.GetTunEnabledAsync(ct);
+                    Require(tun is { Succeeded: true, Value: false }, "the production Mihomo adapter reads the disabled TUN state");
+                    return tun.Value;
+                },
+                async ct =>
+                {
+                    var count = await controller.GetConnectionCountAsync(ct);
+                    Require(count is { Succeeded: true, Value: 0 }, "the signed connection reader decodes the real empty Mihomo snapshot");
+                    return count.Value;
+                }), default);
+            Require(observed is { TunEnabled: false, ActiveConnections: 0 },
+                "the joint-installed signed Proxy executor reports the real Mihomo overview");
+        }
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
