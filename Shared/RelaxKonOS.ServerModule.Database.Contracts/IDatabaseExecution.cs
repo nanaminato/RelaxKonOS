@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Databases;
-using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.ServerModule.Database.Contracts;
 
@@ -10,9 +8,6 @@ public interface IDatabaseExecution
 {
     void AddServices(IServiceCollection services);
     IDatabaseCredentialStore OpenCredentialStore(string root, IDataProtector protector);
-    ValueTask<IReadOnlyList<string>> InspectDeactivationAsync(
-        HostPlatformKind platform, Func<IEnumerable<InstallationOperationDto>> readOperations,
-        Func<IDatabaseQueryHost> queries, CancellationToken cancellationToken);
 }
 
 public interface IDatabaseCredentialStore

@@ -27,6 +27,27 @@ using RelaxKonOS.Server.Startup;
 
 internal static class DatabaseEndpointBoundaryChecks
 {
+    public static async Task CheckDisabledModuleDoesNotLoadExecutionAsync()
+    {
+        var root = Directory.CreateTempSubdirectory("rk-disabled-database-");
+        try
+        {
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root.FullName });
+            var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory")
+                with { Platform = HostPlatformKind.Linux };
+            using var services = new ServiceCollection()
+                .AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>().BuildServiceProvider();
+            var issues = await new DatabaseModule().InspectOrphanedWorkAsync(services, context, default);
+            if (issues.Count != 0 || AppDomain.CurrentDomain.GetAssemblies()
+                .Any(assembly => assembly.GetName().Name == "RelaxKonOS.ServerModule.Database"))
+                throw new InvalidOperationException("A disabled, idle database module must not load its execution assembly.");
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     public static async Task RunAsync()
     {
         var builder = WebApplication.CreateBuilder();

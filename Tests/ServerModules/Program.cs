@@ -22,6 +22,7 @@ using System.Text.Encodings.Web;
 
 if (args is ["--database-endpoint-boundary"])
 {
+    await DatabaseEndpointBoundaryChecks.CheckDisabledModuleDoesNotLoadExecutionAsync();
     await DatabaseEndpointBoundaryChecks.RunAsync();
     return;
 }

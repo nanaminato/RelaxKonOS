@@ -2,9 +2,9 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
-namespace RelaxKonOS.ServerModule.Database;
+namespace RelaxKonOS.Server.Databases;
 
-public static class DatabaseDeactivationInspection
+internal static class DatabaseDeactivationInspection
 {
     public static async ValueTask<IReadOnlyList<string>> InspectAsync(
         HostPlatformKind platform, Func<IEnumerable<InstallationOperationDto>> readOperations,

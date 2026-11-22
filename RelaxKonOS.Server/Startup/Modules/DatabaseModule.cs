@@ -24,12 +24,13 @@ internal sealed class DatabaseModule : IServerModule, IServerModuleDeactivationG
     public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
-        DatabaseQueryHost? host = null;
-        var issues = await BundledDatabaseExecution.Instance.InspectDeactivationAsync(
+        var host = new Lazy<DatabaseQueryHost>(() => new(services.GetRequiredService<IPrivilegedOperationTransport>()));
+        var issues = await DatabaseDeactivationInspection.InspectAsync(
             context.Platform,
             () => (services.GetService<InstallationOperationStore>() ?? new InstallationOperationStore(context.Environment))
                 .Read().Select(entry => entry.Operation),
-            () => host ??= new(services.GetRequiredService<IPrivilegedOperationTransport>()),
+            (instance, token) => host.Value.ReadPostgreSqlAsync(instance, token),
+            token => host.Value.ReadMySqlAsync(token),
             cancellationToken);
         return issues.Select(issue => new ServerModuleOrphanedWork(Id, issue)).ToArray();
     }
