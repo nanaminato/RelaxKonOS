@@ -231,6 +231,7 @@ internal static class InstalledModuleInstaller
         var target = InstalledModuleStore.ReadInstallMetadata(contentRoot, "packages/" + moduleId + "/" + version);
         if (target.ModuleId != moduleId || target.Version != version || target.InstalledAt == default)
             throw new ModulePackageException("module-package-install-metadata-invalid");
+        ModulePackageCatalogStore.EnsureInstalledReleaseNotRevoked(contentRoot, target);
         var manifest = InstalledModuleStore.VerifyPackage(contentRoot, target);
         ValidateDependencies(contentRoot, configuration, manifest);
         modules[index] = target;

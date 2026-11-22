@@ -430,6 +430,21 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledTailscaleModule>(client, root, tailscale, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledFirewallModule>(client, root, firewall, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
+                using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
+                    new ServerModulePackageRollbackRequest(ServerModules.GitId, "2.0.0"), RelaxKonOSJsonOptions.Default);
+                selectSecond.EnsureSuccessStatusCode();
+                var revocation = await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 2, now,
+                    now.AddHours(1), [Release(git[1])], [], [git[0].ArchiveSha256]), "builder-key", keyPath);
+                using (var catalogs = new ModulePackageCatalogStore(root, serviceId, takeHostLock: false))
+                    catalogs.Accept(revocation.Envelope, policy, context, ModulePackageCatalogStore.Read(root, serviceId).Revision,
+                        "package-http", "revoke-git-archive", now);
+                using var rejectRollback = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
+                    new ServerModulePackageRollbackRequest(ServerModules.GitId, "1.0.0"), RelaxKonOSJsonOptions.Default);
+                using var revokedProblem = JsonDocument.Parse(await rejectRollback.Content.ReadAsStringAsync());
+                check(!rejectRollback.IsSuccessStatusCode
+                    && revokedProblem.RootElement.GetProperty("problemCode").GetString() == "module-package-release-revoked"
+                    && InstalledModuleCatalog.Load(root).OfType<InstalledGitModule>().Single().InstalledVersion == "2.0.0",
+                    "HTTP rollback rejects a revoked archived digest and preserves the current installed target");
             }
             await app.StopAsync();
             management.Dispose();

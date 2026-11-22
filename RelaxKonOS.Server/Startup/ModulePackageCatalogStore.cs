@@ -66,6 +66,15 @@ internal sealed class ModulePackageCatalogStore : IDisposable
     }
 
     internal static Document Read(string contentRoot, string serviceId) => ReadSnapshot(contentRoot, serviceId).Document;
+
+    internal static void EnsureInstalledReleaseNotRevoked(string contentRoot, InstalledModuleRecord record)
+    {
+        var directory = Path.Combine(contentRoot, "data", "module-management");
+        if (!RegularFile(Path.Combine(directory, "package-catalogs.json"))
+            && !RegularFile(Path.Combine(directory, "package-catalogs.initialized"))) return;
+        var serviceId = ModuleManagementStore.ReadRecoveryReport(contentRoot).ServiceId;
+        EnsureNotRevoked(Read(contentRoot, serviceId), record.ReleaseId, record.ArtifactSha256);
+    }
     private static (Document Document, string? Hash) ReadSnapshot(string contentRoot, string serviceId)
     {
         var directory = Path.Combine(contentRoot, "data", "module-management");
