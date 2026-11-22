@@ -64,6 +64,7 @@ internal static class OfficialRoappChecks
         var isBrowser = applicationId == "relaxkonos.browser";
         var isTerminal = applicationId == "relaxkonos.terminal";
         var isSshFiles = applicationId == "relaxkonos.ssh-files";
+        var sftpPort = isSshFiles ? Environment.GetEnvironmentVariable("RK_TEST_SFTP_PORT") : null;
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -353,6 +354,18 @@ internal static class OfficialRoappChecks
                     Check(ReferenceEquals(sessionField.GetValue(workspace.View.Content), sessionField.GetValue(second.View.Content)),
                         "SSH Files windows from the same package and connection must share clipboard and drag state.");
                     windows.Close(second);
+                    if (sftpPort is not null)
+                    {
+                        var view = workspace.View.Content!;
+                        var viewType = view.GetType();
+                        const BindingFlags members = BindingFlags.Instance | BindingFlags.NonPublic;
+                        await (Task)viewType.GetMethod("NavigateAsync", members)!.Invoke(view, ["/", true, false])!;
+                        var entries = (Array)viewType.GetField("_entries", members)!.GetValue(view)!;
+                        Check(entries.Cast<object>().Any(entry =>
+                            Equals(entry.GetType().GetProperty("Name")!.GetValue(entry), "fixture.txt")),
+                            $"The official SSH Files window must list the loopback fixture. Status: {((Control)view).FindControl<TextBlock>("StatusText")?.Text}");
+                        Console.WriteLine("SSH Files package read the loopback SFTP directory using the pinned host key.");
+                    }
                 }
                 if (isDatabase)
                 {
@@ -597,8 +610,19 @@ internal static class OfficialRoappChecks
             var postgres = isDatabase ? new OfficialPostgreSqlFixture() : null;
             var ssh = new SshDesktopSession(null!, settings);
             if (isSshFiles)
+            {
                 typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Endpoint))!
-                    .SetValue(ssh, ServerCenterSshEndpoint.Create("example.test", 22, "preview"));
+                    .SetValue(ssh, sftpPort is null
+                        ? ServerCenterSshEndpoint.Create("example.test", 22, "preview")
+                        : ServerCenterSshEndpoint.Create("127.0.0.1", int.Parse(sftpPort), "preview"));
+                if (sftpPort is not null)
+                {
+                    typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Password))!
+                        .SetValue(ssh, Environment.GetEnvironmentVariable("RK_TEST_SFTP_PASSWORD"));
+                    typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!
+                        .SetValue(ssh, Environment.GetEnvironmentVariable("RK_TEST_SFTP_FINGERPRINT"));
+                }
+            }
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), ssh,

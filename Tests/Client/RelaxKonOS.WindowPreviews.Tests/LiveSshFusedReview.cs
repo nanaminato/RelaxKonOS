@@ -100,7 +100,7 @@ internal static class LiveSshFusedReview
             viewType.GetMethod(method, internalMember)!.Invoke(view, arguments);
         async Task Navigate(string path)
         {
-            await ((Task)Invoke("NavigateAsync", path, true)!).WaitAsync(ct);
+            await ((Task)Invoke("NavigateAsync", path, true, false)!).WaitAsync(ct);
         }
     }
 

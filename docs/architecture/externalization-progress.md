@@ -414,3 +414,4 @@
 - SSH 文件浏览器的外部入口、视图、对话框和中英日资源移至独立的 `RelaxKonOS.App.SshFiles` 项目。桌面宿主与服务器中心复用该项目的视图，目录缓存由 `RelaxKonOS.UI` 提供。Windows Release 构建、467 项 Explorer 回归检查及 fused-apps 专项通过，覆盖语言切换、工具栏提示和安装包选择器。全仓本地化检查仍报告迁移前已有的 60 项缺失。正式应用包接入和真实 SFTP 联调待完成。
 - `relaxkonos.ssh-files` 加入官方目录及桌面发布打包清单。DevCli 生成 Release `.roapp`，官方包专项通过来源与完整性校验、安装和更新、失败回滚、重启及卸载。测试以模拟 SSH 会话启动已安装的包，并确认窗口来自独立加载上下文。默认安装配置切换、移除内置启动注册及真实 SFTP 联调待完成。
 - SSH 文件浏览器已移除内置启动注册，标准与开发者配置通过离线官方包安装。SSH 桌面缺少该包时，文件入口打开应用安装器。同一包生命周期内、连接到同一 SSH 会话的窗口共享剪贴板和拖放状态。Windows Release 构建、官方包专项和 fused-apps 专项通过。真实 SFTP 复验需要配置 SSH 测试会话。
+- Windows Release 已安装的 SSH Files 官方包通过真实环回 SFTP 读取根目录，宿主使用测试服务器的已知主机密钥指纹。可用 `Tests/Client/verify-ssh-files-sftp.py` 搭配 Paramiko、窗口预览测试 DLL 与已生成的官方包及其校验文件复验。真实远端桌面与写操作未在本次验收执行。
