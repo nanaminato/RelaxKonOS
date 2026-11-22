@@ -887,3 +887,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 签名 Proxy 安装在解包和摘要验证后、提交版本目录前验证六个执行入口的接口和公开构造签名。Windows Release 使用主入口有效但缺少排队订阅入口的签名测试归档验证拒绝，未产生已安装记录或版本目录。兼容包同轮通过联合安装、重启恢复和共享依赖保护。
 - Linux x64 复验签名 Proxy 坏包提交前被拒。回退历史包和重用暂存版本也接入同一执行契约检查。构造含有效摘要但缺少排队订阅入口的历史版本，回退返回 module-package-execution-contract，活动归档摘要不变。正常版本的实际 Mihomo 发布补偿与三应用共享依赖验收同轮通过。
 - Windows Release 签名 Proxy 双包补验重用暂存版本。复用请求提供与历史包完全匹配的归档和摘要，但因缺少排队订阅入口被拒。暂存目录仍保留，活动归档摘要不变。回退拒绝、正常安装和共享依赖验收同轮通过。
+- 当前 Windows Debug 重建桌面、DevCli 与测试宿主后，完整 Direct Deploy 回归通过。原生登录窗口完成不启动应用的安装与重启回退；源代码监听、构建和激活失败保留窗口、串行部署、两配置隔离、Notepad 与 Image Viewer 生命周期均通过。Release 安装指针在测试前后一致。
