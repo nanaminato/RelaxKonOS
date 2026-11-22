@@ -848,3 +848,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 签名 Proxy 双包通过 RK_TEST_MIHOMO_CONFIG 接入隔离 Mihomo 的临时配置。已安装签名直连发布执行包调用生产控制器适配器重载，从控制器观察日志级别变更为 warning 后确认，清理时恢复并读回 info。用例使用测试文件与确认端口，未覆盖系统代理、TUN 或完整订阅持久化事务。
 - Linux x64 签名 Proxy 双包用真实 Mihomo 复验直连发布补偿。候选重载后的实际日志级别为 debug，测试健康条件未通过，已安装签名执行包恢复此前 warning 文件并再次重载。控制器实际读回 warning，补偿完成且发布返回 ConfigApplyFailed，最后恢复测试初始 info。
 - Windows Release 签名 Proxy 双包在 RK_TEST_PROXY_SHARED_APPS=1 时从同一发行目录安装实际 Proxy Server 和 Squid 归档。两者选中已生效的同一签名版本，三应用均登记依赖；逐个卸载保留 Proxy Manager 登记。服务端仅有一次原包安装回执，归档摘要不变。
+- Linux x64 同轮通过 Proxy Manager、Proxy Server 和 Squid 共享独立签名 Proxy 包的验收。后两款直接复用版本，逐个卸载保留 Proxy Manager 登记，服务端只产生一次安装回执且摘要不变。真实 Mihomo 只读观察、直连发布与失败补偿同轮通过；未在此运行 sing-box 或 Squid 守护进程。
