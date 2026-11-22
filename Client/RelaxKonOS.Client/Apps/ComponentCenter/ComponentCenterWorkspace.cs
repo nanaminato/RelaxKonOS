@@ -3,7 +3,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
-using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ProxyServer.Views;
 using RelaxKonOS.Client.Apps.WebServers.Views;
@@ -14,9 +13,6 @@ public sealed class ComponentCenterWorkspace : UserControl
 {
     /// <summary>Receives the owning application id of the selected component.</summary>
     public Action<string>? OpenApplication { get; set; }
-
-    public ComponentCenterWorkspace(ComponentCenterViewModel model)
-        : this(model, ComponentCenterLayout.Create, () => new ServerModulesView()) { }
 
     internal ComponentCenterWorkspace(ComponentCenterViewModel model, Func<ComponentCenterPresentation, Control> createView,
         Func<Control> createModulesView)

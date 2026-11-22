@@ -14,6 +14,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+    <EmbeddedResource Include="../../Applications/RelaxKonOS.App.ComponentCenter/Localization/*.json"
+                      LogicalName="ComponentCenter.Localization.%(Filename).json" />
+  </ItemGroup>
+
+  <ItemGroup>
         <EmbeddedResource Include="$(IntermediateOutputPath)deployment-launcher/RelaxKonOS-Deploy.ps1" LogicalName="RelaxKonOS.Deployment.RelaxKonOS-Deploy.ps1" />
         <EmbeddedResource Include="$(IntermediateOutputPath)deployment-launcher/relaxkonos-deploy.sh" LogicalName="RelaxKonOS.Deployment.relaxkonos-deploy.sh" />
         <AvaloniaResource Include="Assets\**"/>
@@ -55,7 +60,6 @@
 
     <ItemGroup>
     <ProjectReference Include="../../Applications/RelaxKonOS.App.SshFiles/RelaxKonOS.App.SshFiles.csproj" />
-    <ProjectReference Include="../../Applications/RelaxKonOS.App.ComponentCenter/RelaxKonOS.App.ComponentCenter.csproj" />
     <ProjectReference Include="../../Framework/RelaxKonOS.Settings.Contracts/RelaxKonOS.Settings.Contracts.csproj" />
     <ProjectReference Include="..\..\Framework\RelaxKonOS.Core\RelaxKonOS.Core.csproj" />
       <ProjectReference Include="..\..\Shared\RelaxKonOS.ModuleHost.Protocol\RelaxKonOS.ModuleHost.Protocol.csproj" />

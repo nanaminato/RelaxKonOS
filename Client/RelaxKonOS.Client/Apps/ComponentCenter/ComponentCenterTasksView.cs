@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Data;
-using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ProxyServer.Views;
 
@@ -9,9 +8,6 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
 public sealed class ComponentCenterTasksView : UserControl
 {
-    public ComponentCenterTasksView(ComponentCenterViewModel model, Action? requestClose = null)
-        : this(model, requestClose, ComponentTaskDialogLayout.Create) { }
-
     internal ComponentCenterTasksView(ComponentCenterViewModel model, Action? requestClose,
         Func<ComponentTaskDialogPresentation, Control> createLayout)
     {

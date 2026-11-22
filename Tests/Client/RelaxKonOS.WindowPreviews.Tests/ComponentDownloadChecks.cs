@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Reflection;
@@ -126,7 +127,7 @@ internal static class ComponentDownloadChecks
         model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "nginx");
         model.RefreshPackageInstallationAsync("nginx").GetAwaiter().GetResult();
         model.LoadOfficialReleasesAsync(false).GetAwaiter().GetResult();
-        var view = new ComponentCenterWorkspace(model);
+        var view = new ComponentCenterWorkspace(model, ComponentCenterLayout.Create, () => new ServerModulesView());
         var window = new Window { Width = 1060, Height = 800, Content = view };
         window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
         using var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800));

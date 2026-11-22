@@ -48,7 +48,7 @@ internal static class ComponentCenterWorkspaceChecks
                 using var runtime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>());
                 using var model = new ComponentCenterViewModel(runtime, new(), "https://host.example/", Guid.NewGuid());
                 model.Stage(new("sing-box", "sing-box", "host-a", Guid.NewGuid(), "source-a", "release-a", "1.14.3", RuntimeChange.Repair, true, false));
-                var view = new ComponentCenterWorkspace(model);
+                var view = new ComponentCenterWorkspace(model, ComponentCenterLayout.Create, () => new ServerModulesView());
                 var window = new Window { Width = 1060, Height = 800, Content = view };
                 window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
                 var header = view.GetVisualDescendants().OfType<ComponentCenterHeaderActions>().Single();
@@ -84,7 +84,7 @@ internal static class ComponentCenterWorkspaceChecks
                 }
                 model.Navigate(ComponentCenterPage.All);
                 Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
-                var selectionView = new ComponentCenterTasksView(model);
+                var selectionView = new ComponentCenterTasksView(model, null, ComponentTaskDialogLayout.Create);
                 var selectionWindow = new Window { Width = 840, Height = 720, Content = selectionView };
                 selectionWindow.Show(); Dispatcher.UIThread.RunJobs(); selectionWindow.UpdateLayout();
                 var taskCheckbox = selectionView.GetVisualDescendants().OfType<CheckBox>()
@@ -198,7 +198,7 @@ internal static class ComponentCenterWorkspaceChecks
                         && multiModel.HostObservationVersionText.Resolve().Contains("1.24.0", StringComparison.Ordinal)
                         && !multiModel.HostObservationManagementText.Resolve().StartsWith("component_center.", StringComparison.Ordinal),
                         "Reading the owning application's facts never claims a component-center install");
-                    var observationView = new ComponentCenterWorkspace(multiModel);
+                    var observationView = new ComponentCenterWorkspace(multiModel, ComponentCenterLayout.Create, () => new ServerModulesView());
                     var observationWindow = new Window { Width = 1060, Height = 800, Content = observationView };
                     observationWindow.Show(); Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
                     var unresolvedHostFacts = observationView.GetVisualDescendants().OfType<TextBlock>()
@@ -283,7 +283,7 @@ internal static class ComponentCenterWorkspaceChecks
                     Check(windowsModel.CanInstallPackage && windowsModel.HasPinnedArchiveCandidates
                         && !windowsModel.HasPackageManagerChoice,
                         "A Windows host freezes one pinned archive and enables exactly one install action in " + language);
-                    var windowsView = new ComponentCenterWorkspace(windowsModel);
+                    var windowsView = new ComponentCenterWorkspace(windowsModel, ComponentCenterLayout.Create, () => new ServerModulesView());
                     var windowsWindow = new Window { Width = 1060, Height = 800, Content = windowsView };
                     windowsWindow.Show(); Dispatcher.UIThread.RunJobs(); windowsWindow.UpdateLayout();
                     using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
@@ -337,7 +337,7 @@ internal static class ComponentCenterWorkspaceChecks
                         "The host's own refusal is named instead of reading as an unchecked form in " + language);
                     Check(!unreadableModel.HasPackageFreeze && !unreadableModel.CanInstallPackage,
                         "No install action is offered from a state the host could not report in " + language);
-                    var unreadableView = new ComponentCenterWorkspace(unreadableModel);
+                    var unreadableView = new ComponentCenterWorkspace(unreadableModel, ComponentCenterLayout.Create, () => new ServerModulesView());
                     var unreadableViewWindow = new Window { Width = 1060, Height = 800, Content = unreadableView };
                     unreadableViewWindow.Show(); Dispatcher.UIThread.RunJobs(); unreadableViewWindow.UpdateLayout();
                     using (var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800)))
@@ -374,7 +374,7 @@ internal static class ComponentCenterWorkspaceChecks
                 Check(details.IsVisible && !navigationPane.IsVisible && model.Drafts.Count == 1 && details.Bounds.Height >= 200
                     && navigationToggle.IsKeyboardFocusWithin,
                     "Narrow ordinary browsing retains body space without showing the saved task draft");
-                var popupView = new ComponentCenterTasksView(model);
+                var popupView = new ComponentCenterTasksView(model, null, ComponentTaskDialogLayout.Create);
                 var popupWindow = new Window { Width = 640, Height = 540, Content = popupView };
                 popupWindow.Show(); Dispatcher.UIThread.RunJobs(); popupWindow.UpdateLayout();
                 var popupLayout = (ComponentTaskDialogLayout)popupView.Content!;
@@ -412,7 +412,7 @@ internal static class ComponentCenterWorkspaceChecks
                 activeRuntime.LoadAsync().GetAwaiter().GetResult();
                 using var activeModel = new ComponentCenterViewModel(activeRuntime, new(), "https://host.example/", Guid.NewGuid(), new InspectionPreview());
                 activeModel.Navigate(ComponentCenterPage.Tasks);
-                var activeView = new ComponentCenterTasksView(activeModel);
+                var activeView = new ComponentCenterTasksView(activeModel, null, ComponentTaskDialogLayout.Create);
                 var activeWindow = new Window { Width = 1060, Height = 800, Content = activeView };
                 activeWindow.Show(); Dispatcher.UIThread.RunJobs(); activeWindow.UpdateLayout();
                 Check(activeRuntime.CanCancelDownload && activeRuntime.OperationProgress == 42,
@@ -429,7 +429,7 @@ internal static class ComponentCenterWorkspaceChecks
                 activeWindow.Close(); Dispatcher.UIThread.RunJobs();
                 activeModel.Locate(new("host-a", "relaxkonos.proxy-server", "sing-box", null, ComponentCenterPage.All));
                 activeModel.InspectCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-                var inspectionView = new ComponentCenterTasksView(activeModel);
+                var inspectionView = new ComponentCenterTasksView(activeModel, null, ComponentTaskDialogLayout.Create);
                 var inspectionWindow = new Window { Width = 1060, Height = 800, Content = inspectionView };
                 inspectionWindow.Show(); Dispatcher.UIThread.RunJobs(); inspectionWindow.UpdateLayout();
                 Check(activeModel.InspectionSteps.Count == 1 && activeModel.ShowInspection,
@@ -455,7 +455,7 @@ internal static class ComponentCenterWorkspaceChecks
                     [new("SingBoxInstall", "singbox")], TaskStepDisposition.Ready, [], "destructive", "domain-idempotent", "domain-transaction")));
                 activeModel.ChangePlanDigest = new string('a', 64);
                 activeModel.ChangePlanNotice = RelaxKonOS.Client.Localization.LocalizedStatus.Key("component_center.change_plan_ready");
-                var changeView = new ComponentCenterTasksView(activeModel);
+                var changeView = new ComponentCenterTasksView(activeModel, null, ComponentTaskDialogLayout.Create);
                 var changeWindow = new Window { Width = 1060, Height = 800, Content = changeView };
                 changeWindow.Show(); Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
                 ((ComponentTaskDialogLayout)changeView.Content!).FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 420);
@@ -482,7 +482,7 @@ internal static class ComponentCenterWorkspaceChecks
                     "layout-session", state.HostId, "layout-policy", TaskRunState.Cancelling, 4, true, DateTimeOffset.UtcNow,
                     [new(semantics.Steps[0].StepId, TaskStepRunState.Running, new string('a', 64), new string('b', 64), activeRuntime.Installation.PendingOperationId, null)], null);
                 taskModel.Navigate(ComponentCenterPage.All);
-                var ordinaryTaskView = new ComponentCenterWorkspace(taskModel);
+                var ordinaryTaskView = new ComponentCenterWorkspace(taskModel, ComponentCenterLayout.Create, () => new ServerModulesView());
                 var ordinaryTaskWindow = new Window { Width = 1060, Height = 800, Content = ordinaryTaskView };
                 ordinaryTaskWindow.Show(); Dispatcher.UIThread.RunJobs(); ordinaryTaskWindow.UpdateLayout();
                 Check(taskModel.ShowTasks && !ordinaryTaskView.GetVisualDescendants().OfType<ComboBox>()
@@ -491,7 +491,7 @@ internal static class ComponentCenterWorkspaceChecks
                 ordinaryTaskWindow.Close(); Dispatcher.UIThread.RunJobs();
                 taskModel.Navigate(ComponentCenterPage.Tasks);
                 var requestedClose = 0;
-                var taskView = new ComponentCenterTasksView(taskModel, () => requestedClose++); var taskWindow = new Window { Width = 1060, Height = 800, Content = taskView };
+                var taskView = new ComponentCenterTasksView(taskModel, () => requestedClose++, ComponentTaskDialogLayout.Create); var taskWindow = new Window { Width = 1060, Height = 800, Content = taskView };
                 taskWindow.Show(); Dispatcher.UIThread.RunJobs(); taskWindow.UpdateLayout();
                 var closeTaskDialog = taskView.GetVisualDescendants().OfType<Button>().Single(button =>
                     button.Content?.ToString() == RelaxKonOS.Client.Localization.LocalizedText.Get("common.close"));
@@ -518,7 +518,7 @@ internal static class ComponentCenterWorkspaceChecks
                     [new(Guid.NewGuid(), recoveryRun.RunId, recoveryRun.Steps[0].StepId, recoveryRun.Steps[0].DomainOperationId!.Value,
                         recoveryRun.Revision, TaskRecoveryAction.EmergencyStop, recoveryRun.CanonicalSubject, "recovery-session", recoveryRun.HostId,
                         "policy", "linux:0", "fixture", recoveryRun.CreatedAt.AddSeconds(1), recoveryRun.CreatedAt.AddMinutes(1), false, null)]);
-                var recoveryView = new ComponentCenterTasksView(taskModel); var recoveryWindow = new Window { Width = 1060, Height = 800, Content = recoveryView };
+                var recoveryView = new ComponentCenterTasksView(taskModel, null, ComponentTaskDialogLayout.Create); var recoveryWindow = new Window { Width = 1060, Height = 800, Content = recoveryView };
                 recoveryWindow.Show(); Dispatcher.UIThread.RunJobs(); recoveryWindow.UpdateLayout();
                 Check(taskModel.CanRecheckTaskRecovery && !taskModel.ShowTaskDomainProgress && !recoveryView.GetVisualDescendants().OfType<TextBlock>().Any(text =>
                     text.Text?.Contains("component_center.", StringComparison.Ordinal) == true), "Recovery recheck and guidance resolve in " + language);
@@ -539,7 +539,7 @@ internal static class ComponentCenterWorkspaceChecks
                     taskModel.TaskEvidence.Add(new(new(recoveryRun.Steps[0].StepId, recoveryRun.Steps[0].DomainOperationId!.Value,
                         InstallationOperationState.Interrupted, true, activeRuntime.Installation with
                         { Receipt = new(recoveryRun.Steps[0].DomainOperationId!.Value, RuntimeSwitchOutcome.Succeeded, null) })));
-                    var resultView = new ComponentCenterTasksView(taskModel);
+                    var resultView = new ComponentCenterTasksView(taskModel, null, ComponentTaskDialogLayout.Create);
                     var resultWindow = new Window { Width = 1060, Height = 800, Content = resultView };
                     resultWindow.Show(); Dispatcher.UIThread.RunJobs(); resultWindow.UpdateLayout();
                     Check(taskModel.ShowTaskResult && !resultView.GetVisualDescendants().OfType<TextBlock>().Any(text =>

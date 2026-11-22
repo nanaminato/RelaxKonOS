@@ -80,7 +80,7 @@ internal static class ComponentInstallEntryChecks
             windowsGit.SelectedNode = windowsGit.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
             Check(!windowsGit.ShowPackageFreeze && windowsGit.ShowGitInstallation,
                 "A Windows host reports the existing Git program instead of the Linux package plan.");
-            var workspace = new ComponentCenterWorkspace(windowsGit);
+            var workspace = new ComponentCenterWorkspace(windowsGit, ComponentCenterLayout.Create, () => new ServerModulesView());
             var window = new Window { Width = 1060, Height = 800, Content = workspace };
             try
             {
@@ -98,7 +98,7 @@ internal static class ComponentInstallEntryChecks
         }
         foreach (var width in new[] { 1060, 640 })
         {
-            var view = new ComponentCenterWorkspace(gitCenter);
+            var view = new ComponentCenterWorkspace(gitCenter, ComponentCenterLayout.Create, () => new ServerModulesView());
             var window = new Avalonia.Controls.Window { Width = width, Height = 800, Content = view };
             try
             {

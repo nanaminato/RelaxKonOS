@@ -151,9 +151,12 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 
-        foreach (var resource in RelaxKonOS.App.ComponentCenter.ComponentCenterLocalization.ResourceNames)
+        var assembly = typeof(LocalizationService).Assembly;
+        foreach (var resource in assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith("ComponentCenter.Localization.", StringComparison.Ordinal)))
         {
-            using var source = RelaxKonOS.App.ComponentCenter.ComponentCenterLocalization.Open(resource);
+            using var source = assembly.GetManifestResourceStream(resource)
+                ?? throw new InvalidDataException($"Missing localization resource '{resource}'.");
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 

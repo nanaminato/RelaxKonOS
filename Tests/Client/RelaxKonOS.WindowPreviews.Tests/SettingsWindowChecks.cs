@@ -107,7 +107,9 @@ internal static class SettingsWindowChecks
         }
         catch (OperationCanceledException) { }
 
-        var centerManifest = new RelaxKonOS.App.ComponentCenter.ComponentCenterPackageApp().Manifest;
+        var centerManifest = new ApplicationManifest(new AppId("relaxkonos.component-center"),
+            "Component Center", "1.0.0", "open", "Component Center fixture", [],
+            InstancePolicy: ApplicationInstancePolicy.SingleWindow);
         var centerUri = new Uri("relaxkonos://components/server-modules?hostId=fixture");
         using var centerLifetime = new CancellationTokenSource();
         var center = ((IComponentCenterPackageContext)factory.CreateForInstalledPackage(
@@ -541,6 +543,13 @@ internal static class SettingsWindowChecks
         var packages = new DeveloperPackageManager(applications, factory, windows, new RoappCatalogChecks.Permissions(),
             new RoappCatalogChecks.Diagnostics(), drive, source);
         const string id = "relaxkonos.component-center";
+        Check(!typeof(ComponentCenterHostWorkspace).Assembly.GetReferencedAssemblies()
+            .Any(reference => reference.Name == "RelaxKonOS.App.ComponentCenter"),
+            "The desktop host must not compile against the Component Center implementation.");
+        Check(!System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies
+            .Any(assembly => assembly.GetName().Name == "RelaxKonOS.App.ComponentCenter"),
+            "The package acceptance process must start without an embedded Component Center assembly.");
+
         var path = Path.Combine(source, id + ".roapp");
         var install = InstallAsync();
         PumpUntil(() => install.IsCompleted);
@@ -637,6 +646,9 @@ internal static class SettingsWindowChecks
                 Check(confirmation.GetAwaiter().GetResult() == accept,
                     "The dialog must return approval only for explicit confirmation.");
             }
+            Check(!System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies
+                .Any(assembly => assembly.GetName().Name == "RelaxKonOS.App.ComponentCenter"),
+                "Opening the installed package must not load the implementation into the default context.");
             Console.WriteLine("PASS: installed Component Center opens its production workspace and dispatches validated deep links.");
         }
         finally

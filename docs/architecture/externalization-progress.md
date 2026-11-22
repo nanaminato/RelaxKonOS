@@ -576,3 +576,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 模块商店的来源状态、搜索结果和安装入口由已安装 .roapp 创建。宿主继续管理目录校验与安装审批。Windows Release 模块管理及新归档隔离安装通过。
 - Component Center 模块软件包页从 .roapp 创建，包括文件选择、已装版本、回滚入口与操作结果；宿主继续验证包并执行审批及变更。Windows Release 模块专项与新归档隔离安装通过。
 - Component Center 模块目录、筛选、详情及操作展示迁入 .roapp。应用包直接编排模块管理的目录、软件包、商店和安全页面，宿主提供模型和操作。Windows Release 模块专项与新归档隔离安装通过。
+- 桌面宿主移除对 Component Center 应用程序集的项目及运行时引用。宿主与包共用源码文案资源，发布仍通过 .roapp。Windows Release 三语双主题、模块管理和独立归档隔离安装通过，验证默认程序集加载上下文在包启动前后均未加载应用实现。

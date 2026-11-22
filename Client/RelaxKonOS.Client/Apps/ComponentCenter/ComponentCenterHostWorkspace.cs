@@ -1,4 +1,3 @@
-using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Client.Apps.WebServers;
 using Size = RelaxKonOS.Core.Primitives.Size;
@@ -56,7 +55,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
 
     public void Open(ComponentCenterViewFactories views, Func<string, Control, ManagedWindow> showWorkspace)
     {
-        var context = new AppContext(ComponentCenterPackageApp.Id, services.GetRequiredService<IWindowManager>(), services);
+        var context = new AppContext(new AppId("relaxkonos.component-center"), services.GetRequiredService<IWindowManager>(), services);
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
         if (session?.State != AuthSessionState.Authenticated) return;
         if (context.Services.GetService(typeof(IRuntimeCatalogClient)) is not IRuntimeCatalogClient catalog) return;
