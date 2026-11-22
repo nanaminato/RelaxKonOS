@@ -49,7 +49,7 @@
 首次可用 `--installation-profile=minimal|standard|developer` 与可重复的 `--exclude-bundled-app=<id>` 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖的包须经交互部署。随包提供的 Task Manager 和 Terminal 在启动时检查所需服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 `python Tests/Client/verify-desktop-distribution.py` 检查官方目录、桌面发布项和包清单的应用 ID 是否一致，核对配置集版本下限，并拒绝把声明必需依赖的包列为离线预装。
-完整 Windows Release 发布通过。`verify-desktop-distribution.py --publish-dir` 核对了实际生成的 27 个归档、摘要、入口程序集和配置文件。窗口预览测试的 `--desktop-distribution-only` 在独立 VSD 上使用真实发布配置验证 Minimal、默认 Standard 和 Developer 分别登记 0、11、12 个包；Developer 的 15 个交互项未被自动安装。三个配置均通过生产扫描器登记内置应用安装器及其 `.roapp` 文件入口。发行输出中的 SSH Files 归档另通过官方包生命周期专项。
+当前 Windows 与 Linux x64 发行验收均核对 29 个归档及宿主依赖边界。生产扫描器在隔离 VSD 上验证 Minimal、Standard 和 Developer 分别离线登记 0、13、14 个应用。Developer 另保留 15 个交互安装项。三个配置均登记内置应用安装器及其 .roapp 文件入口。
 
 Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-profile=minimal` 打开了可响应窗口，窗口关闭后进程以状态 0 退出。可在隔离的 Windows 应用数据沙箱内运行 `Tests/Client/verify-windows-desktop-startup.ps1`。窗口测试未能从调用进程读取子进程的 VSD 配置文件，预装与恢复入口由独立无头宿主验证。
 
@@ -86,7 +86,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 | 20 | 真实双包部署 | Ubuntu 发行 Core 从无独立包记录开始，经 HTTPS 下载签名 `.rkmodule`，重启后由桌面协调器登记 `.roapp`。桌面测试副本仅提高模块最低版本；四条观察者查询经真实 Helper 通过。 |
 | 21 | Windows 与 Linux 构建、可执行测试 | Windows Release 完整模块 1,433 项检查，Linux x64 自包含完整模块 1,445 项检查。两平台桌面配置与发行归档已验。 |
 | 22 | Android 回归 | 离线 Debug 及测试 APK 构建，1,906 项 JVM 测试和 11 项模拟器测试通过。设备测试覆盖应用目录与服务维护恢复，使用只读模拟器。 |
-| 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,372 个桌面宿主键和 39 套独立应用资源。 |
+| 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,373 个桌面宿主键和 39 套独立应用资源。 |
 
 原任务还要求持续迁移可拆分的业务功能。服务端矩阵中仍有随 Core 发行的模块，Databases 目前独立监督的是观察入口。其余未覆盖的业务环境和多台物理设备联调见应用矩阵及测试记录。
 
