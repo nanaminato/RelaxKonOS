@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia;
@@ -408,10 +409,27 @@ internal static class JointDeploymentAcceptance
     {
         var serverRoot = Path.Combine(root, "server");
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
+        builder.Services.AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>();
+        builder.Services.AddSingleton<IProxyPlatformPaths, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths>();
         var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }, InstalledModuleCatalog.Load(serverRoot));
         modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
         await using var host = builder.Build();
         var execution = host.Services.GetRequiredService<ProxyConnectionExecutionGate>();
+        await using var squidScope = host.Services.CreateAsyncScope();
+        var squid = squidScope.ServiceProvider.GetRequiredService<RelaxKonOS.Server.GatewayProxy.SquidGatewayService>();
+        using var squidCode = squid.ReceiptExecution.Acquire();
+        var verifier = squidCode.Create<ISquidPublicationReceiptVerifier>(
+            RelaxKonOS.Server.GatewayProxy.SquidGatewayService.ReceiptVerifierEntryType);
+        const string renderedConfiguration = "test fixture\n";
+        var configurationDigest = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(renderedConfiguration)));
+        var operationId = Guid.NewGuid();
+        var previousDigest = new string('a', 64);
+        Require(!ReferenceEquals(squid.ReceiptExecution, RelaxKonOS.Server.GatewayProxy.SquidGatewayService.BundledReceiptExecution)
+            && verifier.Matches(operationId, renderedConfiguration, operationId, configurationDigest, configurationDigest, true)
+            && verifier.Matches(operationId, renderedConfiguration, operationId, configurationDigest, previousDigest, false)
+            && !verifier.Matches(operationId, renderedConfiguration, operationId, configurationDigest, previousDigest, true)
+            && !verifier.Matches(operationId, renderedConfiguration, Guid.NewGuid(), configurationDigest, configurationDigest, true),
+            "the joint-installed signed Proxy package verifies Squid publication receipts");
         using var overview = execution.AcquireOverview();
         var reads = new ProxyOverviewReads(_ => Task.CompletedTask, _ => Task.FromResult(false), _ => Task.FromResult<bool?>(true),
             _ => throw new InvalidOperationException("Runtime observation must take precedence."), _ => Task.FromResult(true), _ => Task.FromResult(3));

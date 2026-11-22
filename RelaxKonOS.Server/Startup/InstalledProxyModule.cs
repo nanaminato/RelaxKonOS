@@ -1,5 +1,6 @@
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Startup.Modules;
@@ -15,6 +16,8 @@ internal sealed class InstalledProxyModule(InstalledModuleRecord record, string 
         new("subscription", () => ResolveEntry(record, contentRoot));
     private protected override ProxyExecutionCodeGate DirectPublication { get; } =
         new("direct-publication", () => ResolveEntry(record, contentRoot));
+    private protected override ProxyExecutionCodeGate SquidReceiptExecution { get; } =
+        new("squid-receipts", () => ResolveEntry(record, contentRoot));
     public string InstalledVersion => record.Version;
     public string ArtifactDigest => record.ArtifactSha256;
     public string SourceId => record.SourceId;
@@ -37,6 +40,8 @@ internal sealed class InstalledProxyModule(InstalledModuleRecord record, string 
         using var subscription = SubscriptionExecution.Acquire();
         _ = subscription.Create<IProxySubscriptionNormalizer>("RelaxKonOS.Server.Proxy.ProxySubscriptionNormalizer");
         using var publication = MihomoDirectPublicationCode.Acquire(DirectPublication);
+        using var squid = SquidReceiptExecution.Acquire();
+        _ = squid.Create<ISquidPublicationReceiptVerifier>(SquidGatewayService.ReceiptVerifierEntryType);
         base.ConfigureServices(builder, context);
     }
 

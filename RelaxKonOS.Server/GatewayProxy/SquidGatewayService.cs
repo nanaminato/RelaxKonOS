@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text;
-using System.Security.Cryptography;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
@@ -10,6 +9,10 @@ namespace RelaxKonOS.Server.GatewayProxy;
 
 public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, SquidConfigurationStore configurations)
 {
+    internal const string ReceiptVerifierEntryType = "RelaxKonOS.Server.Proxy.SquidPublicationReceiptVerifier";
+    internal static ProxyExecutionCodeGate BundledReceiptExecution { get; } = new("squid-receipts");
+    internal ProxyExecutionCodeGate ReceiptExecution { get; init; } = BundledReceiptExecution;
+
     internal const string PublicationPending = "squid_publication";
     internal const string PublicationKind = "squid.configuration.apply";
     internal const string LifecyclePending = "squid_lifecycle";
@@ -97,13 +100,14 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         finally { configurations.Gate.Release(); }
     }
 
-    private static bool Matches(SquidConfigurationState state, SquidPublicationReceipt receipt)
+    private bool Matches(SquidConfigurationState state, SquidPublicationReceipt receipt)
     {
         var preview = SquidConfigurationRenderer.Preview(state.Configuration);
-        return receipt.OperationId != Guid.Empty && receipt.OperationId == state.PublicationOperationId && preview.Valid
-            && receipt.CandidateHash == Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(preview.Configuration!)))
-            && receipt.ObservedHash is { Length: 64 } hash && hash.All(Uri.IsHexDigit)
-            && (!receipt.Applied || receipt.ObservedHash == receipt.CandidateHash);
+        if (!preview.Valid) return false;
+        using var code = ReceiptExecution.Acquire();
+        return code.Create<ISquidPublicationReceiptVerifier>(ReceiptVerifierEntryType).Matches(
+            state.PublicationOperationId, preview.Configuration!, receipt.OperationId, receipt.CandidateHash,
+            receipt.ObservedHash, receipt.Applied);
     }
 
     private async Task ConfirmAsync(SquidConfigurationState state, SquidPublicationReceipt receipt)

@@ -3,6 +3,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.GatewayProxy;
+using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Proxy;
@@ -53,6 +54,7 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
     private protected virtual ProxyConnectionExecutionGate Execution => ProxyConnectionExecutionGate.Shared;
     private protected virtual ProxyExecutionCodeGate SubscriptionExecution => ProxySubscriptionContentNormalizer.BundledGate;
     private protected virtual ProxyExecutionCodeGate DirectPublication => MihomoDirectPublicationCode.BundledGate;
+    private protected virtual ProxyExecutionCodeGate SquidReceiptExecution => SquidGatewayService.BundledReceiptExecution;
 
     public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
@@ -113,7 +115,9 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
 
         // Squid gateway: configuration plus lifecycle through the privileged Helper.
         builder.Services.AddSingleton<SquidConfigurationStore>();
-        builder.Services.AddScoped<SquidGatewayService>();
+        builder.Services.AddScoped(services => new SquidGatewayService(
+            services.GetRequiredService<IPrivilegedOperationTransport>(), services.GetRequiredService<SquidConfigurationStore>())
+            { ReceiptExecution = SquidReceiptExecution });
 
         // Profile/subscription/configuration services. Their repositories are registered with the
         // storage provider (SQLite only today), so a memory-storage host keeps exactly the state it
