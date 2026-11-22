@@ -31,7 +31,7 @@
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows 和 Linux 签名双包、生产路由授权拒绝及 Windows 真实 Helper 状态读取已验 |
 | proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows、Linux 签名双包已验，Linux 真实 Mihomo 总览、直连重载和补偿已验 |
-| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows Release 包生命周期、Linux x64 签名 Proxy 复用与就绪检查已验，真实 sing-box 待验 |
+| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows 包生命周期、Linux 签名 Proxy 复用和两平台 sing-box 1.14.3 原生配置检查已验，真实服务发布和流量转发待验 |
 | squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows 包生命周期、Linux 签名回执和原生 Squid 单独运行已验，生产 Helper 发布与重载待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
@@ -877,3 +877,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 当前 Windows Release 服务端模块完整套件通过 1,498 项检查。Windows x64 自包含桌面完整重发全部 29 个官方归档，验证摘要、清单、入口程序集及宿主边界，并用同一发行目录通过原生首次启动到登录和 Server Center 包工作区、主机地址弹窗及卸载回归。
 - Linux x64 自包含桌面从当前源码完整重建 29 个官方归档，摘要、清单、入口程序集及宿主依赖图通过。相同发行目录在 WSL X11 验证原生首启选择窗口，关闭后保存 Minimal、零预装并进入登录。显式 Standard 启动实测预装 13 项。Server Center 实际归档加载、主机地址弹窗、向导取消与卸载也通过，地址查询使用测试 SSH 响应。
 - 当前源码离线验证 Android Debug 与测试 APK，强制重新运行 JVM 任务，1,906 项通过且无失败或跳过。将匹配的两个 APK 安装到只读 Medium_Phone 模拟器，应用目录与 Server Center 维护恢复 11 项设备测试通过，随后关闭模拟器。未连接真实远端服务。
+- 从 SagerNet 官方 1.14.3 发行下载 Windows 和 Linux amd64 归档，两者 SHA-256 均与 SingBoxManifest 固定值一致。Tests/ProxyServer 在两平台使用真实二进制验证 REALITY、VLESS TLS、VLESS WebSocket、Trojan 和 Hysteria2 的服务端配置及 sing-box 客户端导出可通过原生 check。HTTP 回执与进程恢复同轮通过。服务生命周期和流量转发未覆盖，Linux 回归在独立网络命名空间执行。
