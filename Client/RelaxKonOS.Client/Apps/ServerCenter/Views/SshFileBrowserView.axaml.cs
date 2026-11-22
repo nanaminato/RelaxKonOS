@@ -848,11 +848,11 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task NavigateAsync(string path, bool addHistory = true, bool forceRefresh = false)
     {
-        if (_busy || !_session.IsConnected) return;
-        if (!ReferenceEquals(_cacheEndpoint, _session.Endpoint))
-        { _cacheEndpoint = _session.Endpoint; _listingCache.Clear(); }
-        var generation = ++_listingGeneration;
         var endpoint = _session.Endpoint;
+        if (_busy || endpoint is null) return;
+        if (!ReferenceEquals(_cacheEndpoint, endpoint))
+        { _cacheEndpoint = endpoint; _listingCache.Clear(); }
+        var generation = ++_listingGeneration;
         var cachePath = path.StartsWith('/') ? path : path == "." ? _path : Child(_path, path);
         if (CacheListingsMenu.IsChecked == true && !forceRefresh && _listingCache.TryGet(cachePath, out var cached))
         {
@@ -869,26 +869,19 @@ internal partial class SshFileBrowserView : UserControl
         StatusMessage = LocalizedStatus.Key("ssh_files.loading", "Loading…");
         try
         {
-            var result = await ExecuteAsync(client =>
-            {
-                var requested = path == "." || path.StartsWith('/') ? path : Child(_path, path);
-                client.ChangeDirectory(requested);
-                var absolute = client.WorkingDirectory;
-                var entries = client.ListDirectory(absolute)
-                    .Where(file => file.Name is not ("." or ".."))
-                    .Select(file => new SshFileEntry(file.Name, file.FullName, file.IsDirectory,
-                        file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray();
-                return (absolute, entries);
-            });
+            var requested = path == "." || path.StartsWith('/') ? path : Child(_path, path);
+            var (absolute, items) = await _session.ReadDirectoryAsync(endpoint, requested, resolvePath: true);
             if (!ReferenceEquals(endpoint, _session.Endpoint)) return;
-            if (CacheListingsMenu.IsChecked == true) _listingCache.Put(result.absolute, CloneEntries(result.entries), result.entries.Length);
-            CommitListing(result.absolute, result.entries, addHistory);
+            var entries = ToEntries(items);
+            if (CacheListingsMenu.IsChecked == true) _listingCache.Put(absolute, CloneEntries(entries), entries.Length);
+            CommitListing(absolute, entries, addHistory);
             InitializeNavigationTree();
             await SyncNavigationTreeAsync();
             StatusMessage = "";
         }
         catch (Exception ex)
         {
+            if (!ReferenceEquals(endpoint, _session.Endpoint)) return;
             AddressBox.Text = _path;
             StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.open_failed", "Unable to open folder"), LocalizedStatus.Literal(ex.Message)]);
         }
@@ -918,15 +911,18 @@ internal partial class SshFileBrowserView : UserControl
     private static SshFileEntry[] CloneEntries(IEnumerable<SshFileEntry> entries) => entries
         .Select(entry => new SshFileEntry(entry.Name, entry.Path, entry.IsDirectory, entry.IsLink, entry.Size, entry.Modified)).ToArray();
 
+    private static SshFileEntry[] ToEntries(IEnumerable<SshDirectoryItem> items) => items
+        .Select(item => new SshFileEntry(item.Name, item.Path, item.IsDirectory, item.IsLink, item.Size, item.Modified)).ToArray();
+
     private async Task RevalidateDirectoryAsync(string path, long generation)
     {
         var endpoint = _session.Endpoint;
         try
         {
-            var entries = await ExecuteAsync(client => client.ListDirectory(path)
-                .Where(file => file.Name is not ("." or ".."))
-                .Select(file => new SshFileEntry(file.Name, file.FullName, file.IsDirectory, file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray());
+            if (endpoint is null) throw new InvalidOperationException("SSH session ended.");
+            var (_, items) = await _session.ReadDirectoryAsync(endpoint, path);
             if (generation != _listingGeneration || _busy || _editingEntry is not null || !ReferenceEquals(endpoint, _session.Endpoint) || CacheListingsMenu.IsChecked != true) return;
+            var entries = ToEntries(items);
             _listingCache.Put(path, CloneEntries(entries), entries.Length);
             CommitListing(path, entries, false); _showingCachedFiles = false; StatusMessage = "";
         }
@@ -1062,17 +1058,17 @@ internal partial class SshFileBrowserView : UserControl
         node.IsLoading = true;
         try
         {
-            var directories = await ExecuteAsync(client => client.ListDirectory(node.Path!)
-                .Where(file => file.Name is not ("." or "..") && file.IsDirectory && !file.IsSymbolicLink
+            var endpoint = _session.Endpoint ?? throw new InvalidOperationException("SSH session ended.");
+            var (_, items) = await _session.ReadDirectoryAsync(endpoint, node.Path!);
+            if (revision != _treeRevision || !ReferenceEquals(endpoint, _session.Endpoint)) return;
+            var directories = items
+                .Where(file => file.IsDirectory && !file.IsLink
                     && (_showHidden || !file.Name.StartsWith('.')))
-                .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(file => (file.Name, file.FullName))
-                .ToArray());
-            if (revision != _treeRevision) return;
+                .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase);
 
             node.MarkChildrenLoaded();
             foreach (var directory in directories)
-                node.Children.Add(CreateTreeNode(directory.Name, directory.FullName, TreeNodeIconKind.Folder));
+                node.Children.Add(CreateTreeNode(directory.Name, directory.Path, TreeNodeIconKind.Folder));
         }
         catch (Exception ex)
         {

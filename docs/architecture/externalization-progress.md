@@ -400,3 +400,4 @@
 - SSH 文件浏览和 Server Center 的安装、修复文件选择入口显式传入各自应用上下文。视图从传入上下文取得语言服务，并在打开选择器时捕获用量记忆作用域。Windows Release fused-apps 专项通过，覆盖 SSH 文件布局、会话隔离和传输保护。独立应用包仍待迁移。
 - SSH 文件浏览器与 Server Center 选择器改用 SDK ISystemLanguage 和按需捕获的选择器记忆回调，视图无需访问宿主服务容器。Windows Release fused-apps 专项通过。SSH 传输和界面仍在桌面宿主项目。
 - SSH 文件浏览器和编辑器文件适配器共用宿主 SFTP 建连，视图不再读取密码或指纹。建连前后核对同一会话端点，继续校验已接受的主机密钥。Windows Release fused-apps 专项通过；真实 SFTP 切换和独立包待验。
+- SSH 文件浏览器三条目录读取路径（导航、缓存刷新、目录树）经宿主会话读取目录项，视图只处理显示、过滤和缓存。目录导航和树加载拒绝连接切换后的旧结果。Windows Release fused-apps 专项通过，真实 SFTP 和独立包待验。
