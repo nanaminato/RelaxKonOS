@@ -6,6 +6,7 @@ using RelaxKonOS.App.Certificates.Views;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -69,6 +70,35 @@ internal static class CertificateCapabilityChecks
         catch (CertificateApiException error) when (error.StatusCode == HttpStatusCode.NotFound
             && error.ProblemCode == "certificate.fixture_missing") { }
         Console.WriteLine("Certificate SDK used the authenticated HTTP collection route and preserved structured errors.");
+
+        var certificateId = Guid.NewGuid();
+        calls.Deployment = new(Guid.NewGuid(), certificateId, "deploy-kestrel", CertificateOperationState.Succeeded,
+            "completed", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var https = new ServerHttpsViewModel(factory.Create(entry.Manifest).Certificates,
+            new SettingsCertificatePermissions(permissions.Granted));
+        await https.StartAsync();
+        https.SelectedCertificate = new(certificateId, "server.example.test", ["server.example.test"], "CN=server.example.test",
+            "123", "123", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1), CertificateStatus.Active,
+            CertificateChallengeType.Dns01, CertificateKeyAlgorithm.EcdsaP256, null, null, null, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        permissions.Granted.Remove(AppPermissions.ServerCertificatesManage);
+        if (https.DeployCommand.CanExecute(null))
+            throw new InvalidOperationException("Settings must require certificate management permission before replacing HTTPS.");
+        permissions.Granted.Add(AppPermissions.ServerCertificatesManage);
+        await https.DeployCommand.ExecuteAsync(null);
+        if (calls.DeployedCertificate != certificateId || string.IsNullOrWhiteSpace(https.OperationLog) || https.IsOperationRunning)
+            throw new InvalidOperationException("Settings did not deploy the selected certificate and finish observation.");
+        Console.WriteLine("Settings HTTPS replacement uses the selected certificate and requires management permission.");
+    }
+
+    private sealed class SettingsCertificatePermissions(HashSet<string> granted) : IAppPermissionScope
+    {
+        public bool IsGranted(string permissionId) => granted.Contains(permissionId);
+        public AppPermissionStatus GetStatus(string permissionId) =>
+            IsGranted(permissionId) ? AppPermissionStatus.Granted : AppPermissionStatus.Denied;
+        public Task<AppPermissionStatus> RequestAsync(string permissionId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+        public Task OpenSettingsAsync() => throw new NotSupportedException();
     }
 
     private static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
@@ -116,11 +146,18 @@ public class CertificateCapabilityClient : DispatchProxy
 {
     public int Count { get; private set; }
     public Action? BeforeResponse { get; set; }
+    public CertificateOperationDto? Deployment { get; set; }
+    public Guid? DeployedCertificate { get; private set; }
 
     protected override object Invoke(MethodInfo? method, object?[]? args)
     {
         Count++;
         BeforeResponse?.Invoke();
+        if (method?.Name == nameof(IServerCertificates.DeployKestrelAsync))
+        {
+            DeployedCertificate = (Guid)args![0]!;
+            return Task.FromResult(Deployment!);
+        }
         return method?.Name switch
         {
             nameof(IServerCertificates.ListAsync) => Task.FromResult<IReadOnlyList<CertificateDto>>([]),

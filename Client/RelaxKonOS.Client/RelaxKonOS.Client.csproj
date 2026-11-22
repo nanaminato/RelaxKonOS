@@ -24,6 +24,8 @@
                       LogicalName="Git.Localization.%(Filename).json" />
     <EmbeddedResource Include="../../Applications/RelaxKonOS.App.FileServices/Localization/*.json"
                       LogicalName="FileServices.Localization.%(Filename).json" />
+    <EmbeddedResource Include="../../Applications/RelaxKonOS.App.Certificates/Localization/*.json"
+                      LogicalName="Certificates.Localization.%(Filename).json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -77,7 +79,6 @@
       <ProjectReference Include="..\..\Framework\RelaxKonOS.App.SDK\RelaxKonOS.App.SDK.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.Runtime\RelaxKonOS.Runtime.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.UI\RelaxKonOS.UI.csproj" />
-      <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Certificates\RelaxKonOS.App.Certificates.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.WebServers\RelaxKonOS.App.WebServers.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.WindowManager\RelaxKonOS.WindowManager.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.Shell\RelaxKonOS.Shell.csproj" />

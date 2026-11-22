@@ -246,12 +246,16 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
         };
         systemPage.RequestServerHttpsAsync = async () =>
         {
-            var certificates = new RelaxKonOS.App.Certificates.CertificateManagerViewModel(
-                context.Services.GetRequiredService<RelaxKonOS.AppSDK.IServerCertificates>(), context.Permissions,
-                context.Services.GetRequiredService<ISystemLanguage>());
+            using var observation = new CancellationTokenSource();
+            var certificates = new ServerHttpsViewModel(
+                context.Services.GetRequiredService<IServerCertificates>(), context.Permissions, observation.Token);
             await certificates.StartAsync();
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.server_https.title"),
-                dialog => new ServerHttpsDialogView { DataContext = certificates }, new Size(660, 480));
+            try
+            {
+                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.server_https.title"),
+                    dialog => new ServerHttpsDialogView { DataContext = certificates }, new Size(660, 480));
+            }
+            finally { observation.Cancel(); }
         };
         systemPage.ClearUsageMemoryAction = () => context.Services.GetRequiredService<UsageMemoryStore>().Clear(session);
         systemPage.HostIdentity.RequestAuthorizationAsync = connection =>

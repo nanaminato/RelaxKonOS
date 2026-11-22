@@ -319,15 +319,18 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
     certificateVm.SelectedCertificate = certificate with { Status = RelaxKonOS.Protocol.Certificates.CertificateStatus.Revoked };
     Check(!certificateVm.RenewCommand.CanExecute(null) && !certificateVm.RevokeCommand.CanExecute(null), "Revoked certificates cannot repeat ACME lifecycle actions.");
     certificateVm.SelectedCertificate = certificate;
-    var httpsView = new RelaxKonOS.Client.Apps.Settings.Views.ServerHttpsDialogView { DataContext = certificateVm };
+    var httpsVm = new RelaxKonOS.Client.Apps.Settings.ViewModels.ServerHttpsViewModel(null!, new LayoutCertificatePermissions());
+    httpsVm.Certificates.Add(certificate);
+    httpsVm.SelectedCertificate = certificate;
+    var httpsView = new RelaxKonOS.Client.Apps.Settings.Views.ServerHttpsDialogView { DataContext = httpsVm };
     host.Width = 660; host.Height = 480; host.Content = httpsView;
     Dispatcher.UIThread.RunJobs();
     Check(ReferenceEquals(httpsView.GetVisualDescendants().OfType<ComboBox>().Single().SelectedItem, certificate), "HTTPS selection uses the managed certificate.");
     var replace = httpsView.GetVisualDescendants().OfType<Button>().Single(button => button.Classes.Contains("primary"));
     Check(replace.TranslatePoint(default, httpsView) is { } point && point.Y >= 0 && point.Y + replace.Bounds.Height <= httpsView.Bounds.Height, "HTTPS replacement action fits the dialog.");
-    Check(certificateVm.SelectedCertificateDomains.Contains("192.168.1.2") && certificateVm.SelectedCertificateDomains.Contains("server.example.test"), "HTTPS replacement presents all certificate names.");
+    Check(httpsVm.SelectedCertificateDomains.Contains("192.168.1.2") && httpsVm.SelectedCertificateDomains.Contains("server.example.test"), "HTTPS replacement presents all certificate names.");
     Check(!httpsView.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("[missing:") == true), "HTTPS labels resolve in every language.");
-    Check(!certificateVm.HasOperationActivity, "Opening HTTPS settings does not change the server certificate.");
+    Check(string.IsNullOrEmpty(httpsVm.OperationLog), "Opening HTTPS settings does not change the server certificate.");
     var failure = new RelaxKonOS.Protocol.Certificates.CertificateOperationDto(Guid.NewGuid(), certificate.Id, "renew",
         RelaxKonOS.Protocol.Certificates.CertificateOperationState.Failed, "failed", "certificate.validation_failed", now.AddMinutes(-2), now);
     var renewed = certificate with { Renewal = new(true, 1, now.AddDays(1), false, [new(true, failure)]) };

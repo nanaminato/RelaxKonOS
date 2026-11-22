@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 // that a Linux write actually round-trips instead of degrading.
 [assembly: InternalsVisibleTo("RelaxKonOS.ServerCenter.Tests")]
 [assembly: InternalsVisibleTo("RelaxKonOS.WindowPreviews.Tests")]
+[assembly: InternalsVisibleTo("RelaxKonOS.ApplicationLayout.Tests")]
 [assembly: InternalsVisibleTo("RelaxKonOS.ServerModules.Tests")]
 
 // The diff view is internal, and it can only be proven by rendering it: a row band that stops at
