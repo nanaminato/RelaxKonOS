@@ -2,6 +2,8 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using RelaxKonOS.WindowManager;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +17,7 @@ using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
+using RelaxKonOS.Client.Apps.AppInstaller;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
@@ -28,6 +31,62 @@ using WindowManager = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class OfficialRoappChecks
 {
+    private static async Task<IReadOnlyList<DeploymentRequirement>?> DeselectOptionalInDialogAsync(
+        IReadOnlyList<DeploymentRequirement> requirements)
+    {
+        var (windows, owner) = OpenReviewOwner();
+        try
+        {
+            Control? view = null;
+            var result = windows.ShowDialogAsync<IReadOnlyList<DeploymentRequirement>>(owner, "Optional",
+                dialog => view = AppInstallerApp.CreateOptionalSelection(dialog, requirements));
+            var choices = view!.GetLogicalDescendants().OfType<ItemsControl>().Single().ItemsSource!
+                .Cast<CheckBox>().ToArray();
+            Check(choices.Length == requirements.Count && choices.All(choice => choice.IsChecked == true),
+                "The production optional dependency dialog checks each option by default.");
+            foreach (var choice in choices) choice.IsChecked = false;
+            ClickReview(view, "common.ok");
+            return await result;
+        }
+        finally { windows.ForceClose(owner); }
+    }
+
+    private static async Task<bool> ConfirmReadOnlyDeploymentAsync(DeploymentPlan plan, bool approved)
+    {
+        var (windows, owner) = OpenReviewOwner();
+        try
+        {
+            var required = new DeploymentRelease(new(DeploymentPackageKind.ServerModule, "fixture.required"),
+                "1.0.0", "fixture-artifact", false, [], System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
+            var display = plan with { OrderedReleases = [required, .. plan.OrderedReleases] };
+            Control? view = null;
+            var result = windows.ShowDialogAsync<bool>(owner, "Review",
+                dialog => view = AppInstallerApp.CreateDeploymentReview(dialog, display));
+            var descendants = view!.GetLogicalDescendants().ToArray();
+            Check(descendants.OfType<TextBlock>().Any(text => text.Text?.Contains(required.Package.Id, StringComparison.Ordinal) == true)
+                && !descendants.OfType<CheckBox>().Any(), "The production review lists required modules without a deselection control.");
+            ClickReview(view, approved ? "common.install" : "common.cancel");
+            return await result;
+        }
+        finally { windows.ForceClose(owner); }
+    }
+
+    private static (WindowManager Windows, ManagedWindow Owner) OpenReviewOwner()
+    {
+        var windows = new WindowManager();
+        windows.Attach(new Canvas { Width = 960, Height = 720 });
+        var owner = windows.Create(new WindowCreateOptions(new("fixture.deployment"), "Test", new TextBlock(),
+            new RelaxKonOS.Core.Primitives.Rect(0, 0, 800, 600)));
+        return (windows, owner);
+    }
+
+    private static void ClickReview(Control view, string label)
+    {
+        var text = RelaxKonOS.Client.Localization.LocalizedText.Get(label);
+        view.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, text))
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    }
+
     private sealed class OfficialRecoveryTransport(Func<HttpRequestMessage, HttpContent> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -120,7 +179,7 @@ internal static class OfficialRoappChecks
                     SelectOptionalAsync = optional =>
                     {
                         Check(optional.Count == 1 && optional[0].Package.Id == "fixture.optional", "The optional module is offered.");
-                        return Task.FromResult<IReadOnlyList<DeploymentRequirement>?>([]);
+                        return DeselectOptionalInDialogAsync(optional);
                     },
                     CurrentPackage = await installer.InspectLocalAsync(path),
                 };
@@ -131,7 +190,7 @@ internal static class OfficialRoappChecks
                     confirmations++;
                     Check(plan.OrderedReleases.Length == 1 && plan.OrderedReleases[0].Package.Id == applicationId,
                         "Unchecking the optional module leaves a local application-only plan.");
-                    return Task.FromResult(approved);
+                    return ConfirmReadOnlyDeploymentAsync(plan, approved);
                 };
                 await review.InstallCommand.ExecuteAsync(null);
                 Check(confirmations == 1 && packages.FindInstalled(applicationId) is null,

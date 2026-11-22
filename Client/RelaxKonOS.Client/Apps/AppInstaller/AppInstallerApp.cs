@@ -108,7 +108,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
         ? desktop.MainWindow
         : null;
 
-    private static Control CreateOptionalSelection(ModalDialog<IReadOnlyList<DeploymentRequirement>> dialog,
+    internal static Control CreateOptionalSelection(ModalDialog<IReadOnlyList<DeploymentRequirement>> dialog,
         IReadOnlyList<DeploymentRequirement> requirements)
     {
         var choices = requirements.Select(requirement => new CheckBox
@@ -121,7 +121,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
             dialog.Cancel);
     }
 
-    private static Control CreateDeploymentReview(ModalDialog<bool> dialog, DeploymentPlan plan)
+    internal static Control CreateDeploymentReview(ModalDialog<bool> dialog, DeploymentPlan plan)
     {
         var content = new StackPanel { Spacing = 8 };
         if (plan.PreparedSteps.Length > 0 || plan.OrderedReleases.Any(release => release.ActivationOnly))
