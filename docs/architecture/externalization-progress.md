@@ -487,3 +487,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Settings 搜索栏已迁入独立 `RelaxKonOS.App.Settings` 程序集，只依赖 Avalonia。宿主工作区通过双向查询属性和本地化提示属性接线。Windows Release `--settings-window-only` 通过，覆盖键盘焦点、搜索、导航、缩放和三语界面。完整 Settings 应用仍由宿主登记，独立 `.roapp` 待完成。
 - Settings 的搜索目标附加属性和高亮焦点逻辑已迁入独立程序集。14 个设置页直接使用新程序集的附加属性。Windows Release 设置交互和完整窗口专项均通过，覆盖隐藏控件、只读控件、任意远程目标拒绝、导航与三语。
 - Settings 中英日资源已原样迁入独立程序集。宿主合并同一份嵌入文案，发布输出不再单独复制 Settings 语言文件。Windows Release 设置交互及完整窗口专项在无旧文案输出的环境通过，资源校验通过 4,364 个宿主键及 38 组应用资源。
+- Settings 标题区已迁入独立程序集，现有工作区通过属性提供返回命令、无障碍标签和本地化标题。Windows Release 完整设置窗口和融合标题栏专项通过。完整 Settings 工作区和独立安装包尚待迁移。

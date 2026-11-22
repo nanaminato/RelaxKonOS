@@ -132,7 +132,10 @@
              this row collapses. Nothing here states a height or an inset for the fused bar: those
              belong to the host template and follow the active window-chrome recipe. -->
         <Grid x:Name="HeaderHost" ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="12,4">
-            <views:SettingsHeaderView x:Name="SettingsHeader" VerticalAlignment="Center" />
+            <settingsApp:SettingsHeaderView x:Name="SettingsHeader" VerticalAlignment="Center"
+                                            BackCommand="{Binding BackCommand}"
+                                            BackLabel="{loc:Loc settings.navigation.back}"
+                                            Title="{loc:Loc settings.title}" />
             <settingsApp:SettingsSearchBarView x:Name="SettingsSearchBar" Grid.Column="1"
                                                Query="{Binding SearchQuery, Mode=TwoWay}"
                                                Prompt="{loc:Loc settings.search.placeholder}" />
