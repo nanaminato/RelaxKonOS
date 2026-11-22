@@ -746,3 +746,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的模块包管理 HTTP 验收新增两个实际 Firewall 执行包版本。通过签名目录验证商店的能力展示、两个版本的上传与计划应用、待重启回执，以及按原摘要选择回滚版本。Tailscale 和现有第三方包的 HTTP 回归同期通过。真实防火墙及回滚后原生规则读取待验。
 - Windows Release 的 --firewall-live-package 通过。使用两个独立签名包版本，在新建 Core 宿主中依次加载 1.0.0、2.0.0、回滚后的 1.0.0，并经独立 Helper 测试进程的认证管道读取真实 Windows Defender Firewall 状态及托管规则列表。本机列表为空，验收仅执行读取，真实规则写入和 Linux UFW 仍待验。
 - Git 官方签名 .rkmodule 已接入 Core 的固定入口与可卸载请求代次。仅接受声明当前 Git 能力契约版本的官方包。Windows Release 管理 HTTP 验收通过，覆盖两个签名版本的商店展示、安装、更新回执与回滚选择。已安装执行程序集的真实仓库读写和重启后版本切换仍待验。
+- Windows Release 驻留回归改用实际安装并校验的 Git 签名包运行仓库套件。Core 清单报告独立包 1.0.0，真实临时仓库初始化、登记、暂存和状态读取通过。100 次唤醒和休眠后仍可读取原仓库登记及受保护账户，执行上下文均回收。跨安装版本重启后的真实 Git 读写仍待验。
