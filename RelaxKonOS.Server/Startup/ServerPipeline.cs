@@ -114,7 +114,7 @@ internal static class ServerPipeline
         app.MapInstallationEndpoints();
         app.MapApplicationDeploymentEndpoints();
         app.MapBackupRecoveryEndpoints();
-        app.MapTunnelEndpoints();
+        if (moduleContext.StorageProvider == "sqlite") app.MapTunnelEndpoints();
         if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
