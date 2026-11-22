@@ -67,6 +67,27 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 4. 启动守卫、本机共享依赖保护、基础包预装与同版本修复已有验收。Windows 与 Linux 通过三档配置安装及切换，Linux 原生入口逐档核对首次预装。Ubuntu 通过桌面发起的 Databases 独立模块 HTTPS 联合安装及重启恢复。后续仍包括其余业务模块迁移，以及矩阵中待验的真实业务链路和多设备实机验收。
 5. 恢复时从本分支运行 `dotnet build Shared/RelaxKonOS.Deployment -m:1`，查看当前差异与最新提交，再从第 3 项继续。部署存续期间须先观察现有服务端回执，再决定是否重试，保留共享依赖。
 
+### 复跑 Databases 双包验收
+
+1. 从同一提交发布 Linux Core、PrivilegedHelper、ServerModuleHost 和 Databases 观察模块。用 [离线打包命令](RelaxKonOS.ServerModulePackage.Format.md#离线打包命令)为观察模块生成 Linux x64 签名候选。包使用官方 Databases 模块 ID、`module-host` 运行方式及项目的 `module-release.json` 入口。包内能力列表留空，由 Core 为该官方模块发布 `server.database`。
+2. 在隔离 Linux 服务目录初始化 Core，使用临时 PAM 账户、真实 Unix socket Helper 和正式 sudo launcher。停止 Core 后，只在此测试实例配置临时签名源并接纳目录。用受测试实例信任的 HTTPS 来源提供目录中指定的归档。开始联调前确认服务端尚无该独立版本的安装记录或代码信任。
+3. 将 Databases 发行 `.roapp` 复制到测试目录 `OfficialApps`。为测试副本的必需模块依赖指定高于随附版本的最低版本，并与签名候选的版本一致。重新生成 `.roapp.sha256`，文件只包含 64 位十六进制 SHA-256。保留原发行归档。
+4. 在 Linux 与 Windows 各编译或发布 `Tests/ServerModules`。验收入口通过 `RK_JOINT_FIXTURE_USER` 和 `RK_JOINT_FIXTURE_PASSWORD` 接收临时 PAM 凭据。每端把测试服务转发到自己的 `http://127.0.0.1:<port>/`。同一端的各阶段使用相同回环端口、归档路径和桌面状态目录，两端的桌面状态目录须独立。
+
+```text
+RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> <roapp> <desktop-state> <phase>
+```
+
+| 顺序 | 客户端与阶段 | 通过条件 |
+| --- | --- | --- |
+| 1 | Linux `start` | 从 HTTPS 下载签名包，保留 `AwaitingRestart` 回执，桌面应用尚未登记。 |
+| 2 | 重启 Core，Linux `resume` | 监督器运行签名版本，原回执转为 `Succeeded`。从原桌面状态续跑并登记应用。 |
+| 3 | Windows `reuse` | 独立登记桌面应用和依赖，复用同一运行模块，包操作历史保持一致。 |
+| 4 | Linux `uninstall` | Windows 端仍可使用模块，停用预览返回 `module-desktop-dependency-blocked`。 |
+| 5 | Windows `uninstall` | 停用预览解除桌面依赖阻止，ModuleHost 仍运行。 |
+
+在步骤 2 后，用临时 PAM 账户登录两个设备，刷新首设备令牌并确认其角色为观察者。用该令牌查询 PostgreSQL 状态、维护计划、迁移计划和 MySQL 状态。核对四条公开 HTTP 查询均返回 200 和 JSON，真实 Helper 日志记录对应请求完成。记录客户端和 Core 的宿主分布、候选摘要、运行版本及原回执最终状态。
+
 ## 测试证据
 
 - Windows 完整桌面 Release 发布通过。核对 `OfficialApps` 的全部 12 个归档及其 SHA-256，确认 Developer 保留 Web Server Manager 的交互安装条目。使用完整发行产出的 Web Server Manager 归档再次通过官方来源、安装、启动、更新、失败保留、重启发现与卸载。
