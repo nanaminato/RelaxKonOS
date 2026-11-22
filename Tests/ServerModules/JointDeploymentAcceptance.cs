@@ -265,6 +265,11 @@ internal static class JointDeploymentAcceptance
             using (var readiness = new ApplicationAvailabilityService(auth, readinessServices, null!))
             {
                 var manifest = applications.GetManifest(new AppId(AppIdText))!;
+                var requestsBeforeReadiness = factory.Requests;
+                factory.BeforeNextClient = () => session.Url = host.Url;
+                await readiness.RefreshAsync(manifest);
+                Require(factory.Requests == requestsBeforeReadiness,
+                    "launch readiness does not query modules using a replacement login");
                 Require(await readiness.RefreshAsync(manifest) is { CanOpen: true }, "a healthy module satisfies launch readiness");
                 factory.HideEffectiveVersion = true;
                 Require(await readiness.RefreshAsync(manifest) is

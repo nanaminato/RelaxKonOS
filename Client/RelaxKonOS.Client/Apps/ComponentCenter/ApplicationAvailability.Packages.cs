@@ -50,11 +50,12 @@ public sealed partial class ApplicationAvailabilityService
                 return new(id, server, missing.Id, ComponentAvailabilityKind.Unknown, PackageKind: missing.Kind);
             var http = services.GetRequiredService<IHttpClientFactory>();
             var client = new ServerModuleManagementClient(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
+            if (!HasOriginalLogin()) return null;
             usedServer = true;
             try
             {
                 var modules = await client.ReadAsync();
-                if (!client.IsCurrent) return null;
+                if (!client.IsCurrent || !HasOriginalLogin()) return null;
                 local = ReadInstalledApplications(rootKey).ToArray();
                 result = DeploymentResolver.Resolve(root, local.Concat(modules
                     .Where(ModuleDeploymentCatalog.IsEffective)
@@ -79,7 +80,7 @@ public sealed partial class ApplicationAvailabilityService
             catch (Exception error) when (error is InvalidOperationException or InvalidDataException or HttpRequestException
                 or OperationCanceledException or System.Text.Json.JsonException)
             {
-                if (!client.IsCurrent) return null;
+                if (!client.IsCurrent || !HasOriginalLogin()) return null;
                 serverFailure = error.Message is "module-http-401" or "module-http-403"
                     ? ComponentAvailabilityKind.NoPermission : ComponentAvailabilityKind.Unknown;
             }
@@ -104,6 +105,9 @@ public sealed partial class ApplicationAvailabilityService
         }
         if (changed) Changed?.Invoke(this, EventArgs.Empty);
         return availability;
+
+        bool HasOriginalLogin() => session.State == AuthSessionState.Authenticated
+            && ReferenceEquals(login, session.CurrentSession) && server == session.ServiceId && user == session.CurrentUser?.Id;
     }
 
     private static DeploymentRelease PackageRoot(AppId id, IReadOnlyList<DeploymentRequirement> required) =>
