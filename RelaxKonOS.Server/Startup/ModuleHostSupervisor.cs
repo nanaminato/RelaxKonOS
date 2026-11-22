@@ -28,8 +28,11 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
     internal IReadOnlyList<ServerModuleHostStatusDto> Snapshot()
     {
         lock (_gate)
-            return _entries.Select(entry => new ServerModuleHostStatusDto(entry.ModuleId, entry.Status,
-                entry.Version, entry.HostApiVersion, entry.ProblemCode)).ToArray();
+            return _entries.Select(entry =>
+            {
+                var (status, problem) = ObserveStatus(entry);
+                return new ServerModuleHostStatusDto(entry.ModuleId, status, entry.Version, entry.HostApiVersion, problem);
+            }).ToArray();
     }
 
     internal ServerModuleHealthModuleDto? SnapshotInstalledHealth(string moduleId, bool enabled)
@@ -38,11 +41,19 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         {
             var entry = _entries.Find(item => item.ModuleId == moduleId);
             if (entry?.Installed is not { } package) return null;
+            var (observed, problem) = ObserveStatus(entry);
             var status = package.Quarantined ? "quarantined" : !enabled ? "disabled"
-                : entry.Status == "running" ? "healthy" : entry.Status;
-            return new(moduleId, enabled, true, entry.Status == "running" ? entry.Version : null,
-                package.SourceId, status, entry.ProblemCode);
+                : observed == "running" ? "healthy" : observed;
+            return new(moduleId, enabled, true, status == "healthy" ? entry.Version : null,
+                package.SourceId, status, problem);
         }
+    }
+
+    private (string Status, string? ProblemCode) ObserveStatus(Entry entry)
+    {
+        if (entry.Status != "running") return (entry.Status, entry.ProblemCode);
+        if (_stopping) return ("stopping", null);
+        return IsTrusted(entry) ? ("running", null) : ("faulted", "module-host-trust-revoked");
     }
 
     internal ModuleHostConnection? AcquireConnection(string moduleId, bool trustedProvider = false)

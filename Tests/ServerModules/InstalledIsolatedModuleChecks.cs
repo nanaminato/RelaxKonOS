@@ -97,6 +97,12 @@ internal static class InstalledIsolatedModuleChecks
                     check(health is { Status: "healthy" } && health.Version == next.Version && health.SourceId == next.SourceId,
                         "health reports the running version and new source together after hot replacement");
                     await CheckServingAsync(supervisor, record.ModuleId, timeout.Token);
+                    ModuleTrustStore.Set(root, next, "test-administrator", trusted: false, preserve: record);
+                    using var revokedConnection = supervisor.AcquireConnection(record.ModuleId);
+                    check(supervisor.Snapshot().Single() is { Status: "faulted", ProblemCode: "module-host-trust-revoked" }
+                        && supervisor.SnapshotInstalledHealth(record.ModuleId, enabled: true) is { Status: "faulted", Version: null }
+                        && revokedConnection is null,
+                        "revoking the running version immediately withdraws its health and connection");
                 }
                 finally { await supervisor.StopAsync(CancellationToken.None); }
             }
