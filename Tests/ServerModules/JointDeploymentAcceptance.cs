@@ -84,7 +84,7 @@ internal static class JointDeploymentAcceptance
         var deployment = new JointAppDeploymentService(new LiveHttpFactory(moduleHttp), auth, installer, packages,
             applications, new FileDeploymentJournal(Path.Combine(state, "journal")));
         var candidate = await installer.InspectLocalAsync(archive);
-        Require(candidate.Manifest.Id == ServerModules.DatabaseId, "the fixture uses the official Databases desktop package");
+        Require(candidate.Manifest.Id == ServerModules.DatabaseId, "the fixture uses the Databases desktop package");
         if (phase == "start")
         {
             var review = await deployment.PrepareAsync(candidate, [], default);
@@ -105,8 +105,15 @@ internal static class JointDeploymentAcceptance
                     && release.ArtifactIdentity.Split('/').Length == 3),
                 "the desktop reuses the running signed Databases module");
         var installed = await deployment.ExecuteAsync(resumed, default);
-        Require(installed.Id == ServerModules.DatabaseId && applications.IsRegistered(new AppId(installed.Id)),
-            "the recovered desktop plan registers Databases after verifying the running module");
+        var manifest = applications.GetManifest(new AppId(installed.Id));
+        Require(installed.Id == ServerModules.DatabaseId && manifest is not null,
+            "the desktop plan registers Databases after verifying the running module");
+        using var readinessServices = new ServiceCollection().AddSingleton(packages).AddSingleton(applications)
+            .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
+            .AddSingleton<IHttpClientFactory>(new LiveHttpFactory(moduleHttp)).BuildServiceProvider();
+        using var readiness = new ApplicationAvailabilityService(auth, readinessServices, null!);
+        Require(await readiness.RefreshAsync(manifest!) is { State: ComponentAvailabilityKind.NoPermission, PackageKind: null },
+            "launch readiness accepts the signed module and reaches the separate component permission check");
     }
 
     private sealed class LiveHttpFactory(HttpClient http) : IHttpClientFactory
