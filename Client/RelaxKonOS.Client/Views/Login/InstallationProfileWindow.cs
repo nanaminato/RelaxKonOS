@@ -10,7 +10,7 @@ internal sealed class InstallationProfileWindow : Window
 {
     private readonly TaskCompletionSource<ProfileSelection> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    internal InstallationProfileWindow(ProfileDocument document, LoginLocalizationService language)
+    internal InstallationProfileWindow(ProfileDocument document, IReadOnlyDictionary<string, string> names, LoginLocalizationService language)
     {
         string Text(string key, string fallback) => language.Get("installation_profile." + key, fallback);
         Title = Text("title", "Choose desktop apps");
@@ -35,7 +35,7 @@ internal sealed class InstallationProfileWindow : Window
             entries.Children.Clear();
             foreach (var entry in document.Profiles[profile])
             {
-                var name = entry.AppId["relaxkonos.".Length..].Replace('-', ' ');
+                var name = names.GetValueOrDefault(entry.AppId, entry.AppId);
                 var label = entry.InstallPolicy == "interactive"
                     ? string.Format(Text("in_store", "{0} · available in the app store"), name) : name;
                 var checkbox = new CheckBox

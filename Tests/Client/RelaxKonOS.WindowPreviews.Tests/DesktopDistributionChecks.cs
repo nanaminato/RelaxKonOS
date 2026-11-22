@@ -82,9 +82,9 @@ internal static class DesktopDistributionChecks
                     if (profile == "standard")
                     {
                         const string excludedApp = "relaxkonos.welcome";
-                        await provisioner.RunAsync([], cancellationToken, profiles =>
+                        await provisioner.RunAsync([], cancellationToken, (profiles, names) =>
                         {
-                            var window = new InstallationProfileWindow(profiles, new LoginLocalizationService(new LocalLanguageStore()));
+                            var window = new InstallationProfileWindow(profiles, names, new LoginLocalizationService(new LocalLanguageStore()));
                             var result = window.ShowSelectionAsync();
                             var layout = (DockPanel)window.Content!;
                             var heading = (StackPanel)layout.Children[0];
@@ -92,13 +92,13 @@ internal static class DesktopDistributionChecks
                             if (profiles.Profiles.Keys.ElementAt(picker.SelectedIndex) != "standard")
                                 throw new InvalidOperationException("The first-run window must default to Standard.");
                             var entries = (StackPanel)((ScrollViewer)layout.Children[2]).Content!;
-                            entries.Children.OfType<CheckBox>().Single(item => item.Content is TextBlock { Text: "welcome" }).IsChecked = false;
+                            entries.Children.OfType<CheckBox>().Single(item => item.Content is TextBlock { Text: "Welcome" }).IsChecked = false;
                             ((StackPanel)layout.Children[1]).Children.OfType<Button>().Single(item => item.IsDefault)
                                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                             return result;
                         });
                         expected.Remove(excludedApp);
-                        await provisioner.RunAsync([], cancellationToken, _ =>
+                        await provisioner.RunAsync([], cancellationToken, (_, _) =>
                             throw new InvalidOperationException("The first-run window reopened after saving its selection."));
                         await provisioner.RunAsync(["--installation-profile=minimal"], cancellationToken);
                         await provisioner.RunAsync(["--installation-profile=standard"], cancellationToken);

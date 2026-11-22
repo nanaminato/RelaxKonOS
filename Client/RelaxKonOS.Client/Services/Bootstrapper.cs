@@ -444,8 +444,8 @@ public static class Bootstrapper
         await provider.GetRequiredService<DeveloperPackageManager>().LoadInstalledAsync();
         var desktop = app.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
         await provider.GetRequiredService<BundledApplicationProvisioner>()
-            .RunAsync(desktop?.Args, chooseProfile: desktop is null ? null : profiles =>
-                new Views.Login.InstallationProfileWindow(profiles, provider.GetRequiredService<LoginLocalizationService>())
+            .RunAsync(desktop?.Args, chooseProfile: desktop is null ? null : (profiles, names) =>
+                new Views.Login.InstallationProfileWindow(profiles, names, provider.GetRequiredService<LoginLocalizationService>())
                     .ShowSelectionAsync());
         provider.GetRequiredService<DeveloperBridgeService>();
 

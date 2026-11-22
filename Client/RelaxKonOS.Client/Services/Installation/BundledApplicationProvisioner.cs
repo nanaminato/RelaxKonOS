@@ -38,7 +38,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
     }
 
     public async Task RunAsync(IEnumerable<string>? arguments = null, CancellationToken cancellationToken = default,
-        Func<ProfileDocument, Task<ProfileSelection>>? chooseProfile = null)
+        Func<ProfileDocument, IReadOnlyDictionary<string, string>, Task<ProfileSelection>>? chooseProfile = null)
     {
         try
         {
@@ -49,7 +49,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             var selection = saved is null && chooseProfile is not null
                 && !options.Any(option => option.StartsWith(ProfileFlag, StringComparison.Ordinal)
                     || option.StartsWith(ExcludeFlag, StringComparison.Ordinal))
-                ? await chooseProfile(profiles)
+                ? await chooseProfile(profiles, await ReadBundledNamesAsync(profiles, cancellationToken))
                 : SelectProfile(profiles, saved, options);
             if (!profiles.Profiles.TryGetValue(selection.Profile, out var selectedEntries) || selection.Excluded is null)
                 throw new InvalidDataException("Invalid installation profile selection.");
@@ -100,6 +100,26 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         {
             packages.RecordActivationDiagnostic($"Bundled application defaults could not be read: {error.GetType().Name}.");
         }
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> ReadBundledNamesAsync(ProfileDocument profiles, CancellationToken cancellationToken)
+    {
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var id in profiles.Profiles.Values.SelectMany(entries => entries).Select(entry => entry.AppId).Distinct(StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var (manifest, digest) = await packages.InspectAsync(packages.OfficialSource.BundledPath(id), cancellationToken);
+                if (manifest.Id == id && digest is not null)
+                    names[id] = manifest.DisplayName;
+            }
+            catch (Exception error) when (!cancellationToken.IsCancellationRequested && AppPackageInstallerService.IsStoreFailure(error))
+            {
+                packages.RecordActivationDiagnostic($"Bundled application {id} could not be inspected: {error.GetType().Name}.");
+            }
+        }
+        return names;
     }
 
     private async Task<ProfileSelection?> ReadSelectionAsync(CancellationToken cancellationToken) =>
