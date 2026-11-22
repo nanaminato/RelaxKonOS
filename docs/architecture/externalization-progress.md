@@ -461,3 +461,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Linux x64 原生图形冒烟通过。专用 WSL 使用临时解包的 Ubuntu X11 依赖和隔离的用户目录，经 Linux .NET 10.0.14 启动当前 Release Desktop 可移植入口 `RelaxKonOS.dll --installation-profile=minimal`。`xwininfo` 识别到新增的 RelaxKonOS 1920×1007 窗口，并确认 `Map State: IsViewable`。测试在观察后终止所启动进程，未检查桌面交互或正常关闭。
 - Linux x64 WSL 原生 Minimal 窗口正常退出验收通过。X11 确认新窗口已映射后，仅向该测试窗口发送 WM_DELETE_WINDOW，桌面进程自行退出并返回 0。测试使用临时用户目录，未执行其他桌面交互。
 - Linux 原生桌面启动与退出复验可使用 `Tests/Client/verify-linux-desktop-startup.py <publish-directory>`。脚本需要 Python、Linux .NET、X11 图形会话以及 xwininfo 和 xprop，使用临时 HOME，确认可见窗口 PID 属于测试进程后发送关闭请求。专用 WSL 上复验通过，退出码为 0。
+- Windows x64 复跑与 Linux 相同的 Release 双包验收输入。Welcome 与签名测试模块通过安装和恢复，Databases、Web Server Manager、Docker Manager 官方包通过仅启用、重启、复用和卸载，且证书传递依赖保护通过。测试使用环回宿主及空闲数据库 Helper 夹具。
