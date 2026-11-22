@@ -826,3 +826,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 仓库 run-acme-live.sh 可在隔离网络命名空间直接复跑签名 Certificates 真实签发。将 RK_TEST_ACME_APP 指向实际桌面归档，第二参数传 Linux 自包含 ServerModules 测试宿主，第三和第四参数传 Pebble 与挑战 DNS 二进制。签名模式校验一个订单和一次 finalization；本轮 HTTP 授权、签发回执、重放、链校验及卸载全部通过。
 - Linux x64 签名 Certificates 的真实 Pebble HTTP 验收增加签发宿主重启后恢复。新宿主从持久化回执读取原成功的操作和证书 ID，使用相同幂等键再次提交返回同一完整回执，Pebble 确认仍只有一个订单及一次 finalization。
 - Linux x64 真实 Pebble 双包验收在签发宿主重启后按原回执的证书 ID 读取详情及证书清单，两处均返回同一有效证书和指纹。CA 保持一个订单及一次 finalization。
+- Windows Release 的 --signed-docker-joint-acceptance 使用官方 Docker Manager 归档测试副本仅提高模块最低版本。协调器提交一次独立签名包安装，Core 重启续跑并登记桌面应用。生产 Compose 服务使用该签名执行包解析预览，拒绝调用 Engine 的测试传输保持未使用。桌面卸载后服务端包仍保留。

@@ -173,6 +173,12 @@ if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundled
     return;
 }
 
+if (args is ["--signed-docker-joint-acceptance", var signedDockerApp])
+{
+    JointDeploymentAcceptance.RunSignedDocker(signedDockerApp);
+    return;
+}
+
 if (args is ["--signed-certificates-joint-acceptance", var signedCertificatesApp])
 {
     JointDeploymentAcceptance.RunSignedCertificates(signedCertificatesApp);
