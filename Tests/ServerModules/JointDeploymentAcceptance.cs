@@ -619,6 +619,10 @@ internal static class JointDeploymentAcceptance
                 string[] siblingIds = ["relaxkonos.proxy-server", "relaxkonos.squid"];
                 var sourceDirectory = Path.GetDirectoryName(archive)!;
                 var keyForProxy = new DeploymentPackageKey(DeploymentPackageKind.ServerModule, moduleId);
+                using var readinessServices = new ServiceCollection().AddSingleton(packages).AddSingleton(apps)
+                    .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
+                    .AddSingleton<IHttpClientFactory>(factory).BuildServiceProvider();
+                using var readiness = new ApplicationAvailabilityService(auth, readinessServices, null!);
                 foreach (var siblingId in siblingIds)
                 {
                     var filename = siblingId + ".roapp";
@@ -633,6 +637,11 @@ internal static class JointDeploymentAcceptance
                     var siblingInstalled = await joint.ExecuteAsync(siblingReview, default);
                     Require(siblingInstalled.Id == siblingId && apps.IsRegistered(new AppId(siblingId)),
                         $"{siblingId} registers without another module installation");
+                    var manifest = apps.GetManifest(new AppId(siblingId))!;
+                    var availability = await readiness.RefreshAsync(manifest);
+                    Require(availability is { CanOpen: true, PackageKind: DeploymentPackageKind.ServerModule }
+                        or { State: ComponentAvailabilityKind.NoPermission, PackageKind: null },
+                        $"{siblingId} launch readiness accepts the shared signed Proxy module");
                 }
                 var dependents = packages.RequiredBy(keyForProxy);
                 Require(dependents.ToHashSet(StringComparer.Ordinal).SetEquals([installed.Id, .. siblingIds]),

@@ -851,3 +851,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 同轮通过 Proxy Manager、Proxy Server 和 Squid 共享独立签名 Proxy 包的验收。后两款直接复用版本，逐个卸载保留 Proxy Manager 登记，服务端只产生一次安装回执且摘要不变。真实 Mihomo 只读观察、直连发布与失败补偿同轮通过；未在此运行 sing-box 或 Squid 守护进程。
 - Windows Release 签名 Proxy 共享依赖验收通过服务端停用预览。三款应用均安装时返回 module-desktop-dependency-blocked，逐个卸载 Proxy Server 和 Squid 后仍保护 Proxy Manager。最后一款卸载后服务端移除桌面依赖阻止项，签名归档继续保留。
 - Linux x64 同轮通过签名 Proxy 共享依赖的服务端停用预览与真实 Mihomo 联调。三应用安装及逐个卸载前两款后，服务端均返回 module-desktop-dependency-blocked。最后一款卸载后阻止项消失，同一签名归档保留。
+- Linux x64 使用实际 Proxy Server 与 Squid 官方归档复验启动就绪检查。两款应用在复用签名 Proxy 模块后，通过生产 ApplicationAvailabilityService 的服务端依赖检查。该检查与之前的停用预览及真实 Mihomo 联调同轮通过。
