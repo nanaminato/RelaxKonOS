@@ -20,9 +20,10 @@ image_viewer = repo / "Applications" / "RelaxKonOS.App.ImageViewer"
 notepad = repo / "Applications" / "RelaxKonOS.App.Notepad"
 ssh_files = repo / "Applications" / "RelaxKonOS.App.SshFiles"
 settings_app = repo / "Applications" / "RelaxKonOS.App.Settings"
+component_center = repo / "Applications" / "RelaxKonOS.App.ComponentCenter"
 # LocalizationService merges these embedded resource sets. The Proxy Server and
 # Databases shared sets are linked into the host's published Localization directory.
-host_embedded_apps = ("CodeEditor", "Git", "FileServices", "Certificates", "WebServers", "Terminal", "Settings")
+host_embedded_apps = ("CodeEditor", "Git", "FileServices", "Certificates", "WebServers", "Terminal", "Settings", "ComponentCenter")
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.
 valid_key = re.compile(r"[a-z][a-z0-9-]*(?:[._][A-Za-z0-9-]+)*$")
@@ -135,7 +136,7 @@ def collect_requested_keys() -> tuple[dict[str, str], dict[str, str]]:
     sources = sorted(
         path
         for pattern in ("*.cs", "*.axaml")
-        for source_root in (root, image_viewer, settings_app)
+        for source_root in (root, image_viewer, settings_app, component_center)
         for path in source_root.rglob(pattern)
         if not {"bin", "obj"} & set(path.parts)
     )
