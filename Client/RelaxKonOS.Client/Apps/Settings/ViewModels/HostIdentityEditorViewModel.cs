@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,7 +16,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 /// come from the remote snapshot, so the client never assumes the target is its own platform. A staged
 /// rename (Windows) is shown as pending until the host restarts and is never reported as live.
 /// </summary>
-public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDisposable
+public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDisposable, IHostIdentityEditor
 {
     private readonly IHostIdentityService _service;
     private readonly IAuthSession _session;
@@ -40,6 +42,11 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     public Func<HostSettingsConnection, Task<bool>>? RequestAuthorizationAsync { get; set; }
     /// <summary>Reports a failed request through a prompt; the page keeps no operation-details surface.</summary>
     public Func<string, Task>? RequestReportProblemAsync { get; set; }
+    ICommand IHostIdentityEditor.ApplyCommand => ApplyCommand;
+    ICommand IHostIdentityEditor.QueryCommand => QueryCommand;
+    ICommand IHostIdentityEditor.ReloadCommand => ReloadCommand;
+    ICommand IHostIdentityEditor.ResetDraftCommand => ResetDraftCommand;
+
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _targetText = "";
     [ObservableProperty] private string _currentHostName = "";

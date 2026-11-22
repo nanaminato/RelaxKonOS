@@ -640,7 +640,7 @@ internal static class ServerModuleCatalogChecks
                 Check(page.ServerModules.Count == 4 && page.HasServerModules && !page.HasServerModulesStatus,
                     $"{culture}: the page lists every reported module.");
 
-                var view = new RelaxKonOS.Client.Apps.Settings.Views.Pages.SystemPageView { DataContext = page };
+                var view = new RelaxKonOS.App.Settings.Views.SystemPageView { DataContext = page };
                 // A tall window keeps the whole page laid out: the module card sits below the
                 // connection facts, and a viewport-sized render would only capture the top.
                 var window = new Window { Content = view, Width = 900, Height = 2400 };

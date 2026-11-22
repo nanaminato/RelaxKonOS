@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
@@ -18,7 +20,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 /// 配置并重启，这一页不会也不能改变服务端状态。
 /// </para>
 /// </summary>
-public sealed partial class SystemPageViewModel : SettingsPageViewModel
+public sealed partial class SystemPageViewModel : SettingsPageViewModel, ISystemPage
 {
     private readonly IAuthSession _session;
     private readonly IServerModuleCatalog _modules;
@@ -112,6 +114,23 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
         return rows;
     }
 
+    public Func<string, string> Labels => key => T(key, key);
+    IHostIdentityEditor ISystemPage.HostIdentity => HostIdentity;
+    object? ISystemPage.UsageMemoryStatus => UsageMemoryStatus;
+    ICommand ISystemPage.ClearUsageMemoryCommand => ClearUsageMemoryCommand;
+    ICommand ISystemPage.OpenEnvironmentVariablesCommand => OpenEnvironmentVariablesCommand;
+    ICommand ISystemPage.OpenPerformanceOptionsCommand => OpenPerformanceOptionsCommand;
+    ICommand ISystemPage.OpenServerHttpsCommand => OpenServerHttpsCommand;
+    ICommand ISystemPage.OpenServerModulesCommand => OpenServerModulesCommand;
+    ICommand ISystemPage.OpenWorkspaceEnvironmentCommand => OpenWorkspaceEnvironmentCommand;
+    ICommand ISystemPage.RefreshServerModulesCommand => RefreshServerModulesCommand;
+
+    protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
+    {
+        base.OnLanguageChanged(sender, e);
+        OnPropertyChanged(nameof(Labels));
+    }
+
     public override string Route => "system";
     public override string DisplayNameKey => "settings.page.system";
     public override string DisplayName => T("settings.page.system", "System");
@@ -178,8 +197,3 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
 }
 
 /// <summary>One official server module as the System page shows it. Display-only; no action is bound to it.</summary>
-public sealed record ServerModuleRow(string Id, bool Enabled, string StateText, string CapabilitiesText, string NotesText)
-{
-    public bool HasNotes => NotesText.Length > 0;
-    public bool HasCapabilities => CapabilitiesText.Length > 0;
-}

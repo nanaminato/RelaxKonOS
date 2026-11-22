@@ -1,9 +1,7 @@
-using Avalonia.VisualTree;
 using Avalonia.Interactivity;
-using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Settings.Views.Pages;
+namespace RelaxKonOS.App.Settings.Views;
 
 public partial class SystemPageView : UserControl
 {
@@ -16,12 +14,13 @@ public partial class SystemPageView : UserControl
     protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        if (DataContext is SystemPageViewModel model) _ = model.RefreshServerModulesAsync();
+        if (DataContext is ISystemPage model) _ = model.RefreshServerModulesAsync();
     }
+
+    public event EventHandler<string>? RouteRequested;
 
     private void OnDailySettingsClick(object? sender, RoutedEventArgs e)
     {
-        if (this.GetVisualAncestors().OfType<SettingsView>().FirstOrDefault()?.DataContext is SettingsViewModel model)
-            model.OpenPageCommand.Execute("system/preferences");
+        RouteRequested?.Invoke(this, "system/preferences");
     }
 }

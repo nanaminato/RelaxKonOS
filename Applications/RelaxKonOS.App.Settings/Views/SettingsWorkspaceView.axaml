@@ -53,6 +53,9 @@
         <DataTemplate DataType="settingsApp:IDeveloperPage">
             <settingsApp:DeveloperPageView VerticalAlignment="Top" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:ISystemPage">
+            <settingsApp:SystemPageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 
