@@ -379,3 +379,4 @@
 - ModuleHost 监督器的状态快照在停止或精确代码信任失效时立即撤下 running；健康响应不再报告生效版本。Windows 模块包专项验证热更新后撤销代码信任立即撤下健康和连接，无需等下一次探测。
 - 一次性、无外部网络的 Ubuntu 容器使用发行 ZIP 中的 ModuleHost 通过 Linux 隔离启动验收。采用现有 direct-root 测试模式，确认 root 持有不可变包快照、非 root 用户持有模块数据目录，并验证四条查询均到达受控回环代理及健康、退出。镜像缺 ICU，验收副本启用 invariant globalization。生产 sudo 接线、Core 监督激活和真实 Helper 查询仍待验。
 - 含 ICU 的一次性 Ubuntu 容器使用未经修改的发行运行时配置通过 Databases 隔离验收。正式 Linux 安装脚本配置固定 sudo 启动器后，非 root Server 测试账户可以启动包，专用模块账户持有数据目录，root 持有包快照，四条查询、健康和退出均通过。查询使用受控回环代理，Core 监督下的联合安装和真实 Helper 查询待验。
+- 一次性 Ubuntu 容器中，发行 Core 接纳签名目录并离线安装 Databases。验收夹具为精确归档预置代码信任后，非 root Core 使用正式 sudo 启动器监督模块，记录 running，Core /healthz 返回 200 并正常退出。安装回执由 AwaitingRestart 转为 Succeeded。真实在线联合安装及观察者经 Helper 查询待验。
