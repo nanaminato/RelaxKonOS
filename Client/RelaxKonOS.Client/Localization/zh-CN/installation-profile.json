@@ -8,6 +8,7 @@
         "installation_profile.in_store": "{0} · 可在应用商店安装",
         "installation_profile.empty": "稍后可从应用商店安装应用。",
         "installation_profile.continue": "继续",
+        "installation_profile.archive_unavailable": "{0} · 随包归档不可用",
         "installation_profile.skip": "跳过预装"
     }
 }

@@ -92,7 +92,10 @@ internal static class DesktopDistributionChecks
                             if (profiles.Profiles.Keys.ElementAt(picker.SelectedIndex) != "standard")
                                 throw new InvalidOperationException("The first-run window must default to Standard.");
                             var entries = (StackPanel)((ScrollViewer)layout.Children[2]).Content!;
-                            entries.Children.OfType<CheckBox>().Single(item => item.Content is TextBlock { Text: "Welcome" }).IsChecked = false;
+                            var welcome = entries.Children.OfType<CheckBox>().Single(item => Equals(item.Tag, excludedApp));
+                            if (welcome.Content is not TextBlock { Text: "Welcome" })
+                                throw new InvalidOperationException("The Welcome choice did not show the verified package name.");
+                            welcome.IsChecked = false;
                             ((StackPanel)layout.Children[1]).Children.OfType<Button>().Single(item => item.IsDefault)
                                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                             return result;

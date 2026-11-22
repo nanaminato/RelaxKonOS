@@ -376,6 +376,29 @@ internal static class OfficialRoappChecks
                     "File Services review exposes the host capability and scoped grants without a server module dependency.");
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
+            await WriteProfileAsync("offline");
+            File.Delete(path);
+            var reviewedMissingArchive = false;
+            await provisioner.RunAsync(chooseProfile: (profiles, names) =>
+            {
+                reviewedMissingArchive = true;
+                Check(!names.ContainsKey(applicationId), "A missing bundled archive must not supply a display name.");
+                var language = new LoginLocalizationService(new LocalLanguageStore());
+                var window = new RelaxKonOS.Client.Views.Login.InstallationProfileWindow(profiles, names, language);
+                var selection = window.ShowSelectionAsync();
+                var layout = (DockPanel)window.Content!;
+                var entries = (StackPanel)((ScrollViewer)layout.Children[2]).Content!;
+                var row = entries.Children.OfType<CheckBox>().Single(item => Equals(item.Tag, applicationId));
+                var expected = string.Format(language.Get("installation_profile.archive_unavailable",
+                    "{0} · bundled archive unavailable"), applicationId);
+                Check(row.Content is TextBlock label && label.Text == expected, "The first-run window identifies the unavailable archive.");
+                ((StackPanel)layout.Children[1]).Children.OfType<Button>().Single(item => item.IsDefault)
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                return selection;
+            });
+            Check(reviewedMissingArchive && packages.FindInstalled(applicationId) is null,
+                "First-run review proceeds when an offline profile archive is missing.");
+            File.Copy(artifact, path);
             await WriteProfileAsync("interactive");
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "Interactive profile entries must not install during startup.");

@@ -8,6 +8,7 @@
         "installation_profile.in_store": "{0} · available in the app store",
         "installation_profile.empty": "You can install apps later from the app store.",
         "installation_profile.continue": "Continue",
+        "installation_profile.archive_unavailable": "{0} · bundled archive unavailable",
         "installation_profile.skip": "Skip preinstallation"
     }
 }

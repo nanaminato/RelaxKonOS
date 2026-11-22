@@ -870,3 +870,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Developer 中已选但缺失或版本不足的应用在官方商店显示最低要求并禁止暂存。Linux x64 联合验收用缺失的 Docker 和提高最低版本的 Git 验证两条路径，均保留选项且无法提交。满足条件的 Proxy 仍可生成签名计划并完成独立安装。三语校验通过。
 - 安装配置按配置集保存排除项。Windows Release 发行验收确认切到 Minimal 再返回 Standard 仍排除 Welcome，返回 Developer 仍排除 Squid 并保留 Proxy 选择。切换时已安装包及用户主动卸载状态均得到保留。
 - 首次启动窗口使用通过现有摘要核对的官方归档清单名称，缺失或无效归档以应用 ID 显示。Windows Release 和 Linux x64 WSL 无头发行验收均通过，从窗口按实际 Welcome 名称取消后只预装其余 12 项，切换后保留排除。
+- 首启窗口对无法读取的离线归档按应用 ID 标注不可用，用户可以继续。Windows Release 使用 Welcome 发行归档验证：暂去掉归档后仍能查看并确认配置，应用未登记；放回归档后后续安装、重启与卸载通过。三语资源校验通过。

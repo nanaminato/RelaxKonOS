@@ -8,6 +8,7 @@
         "installation_profile.in_store": "{0} · アプリストアからインストール可能",
         "installation_profile.empty": "アプリは後からアプリストアでインストールできます。",
         "installation_profile.continue": "続行",
+        "installation_profile.archive_unavailable": "{0} · 同梱アーカイブを利用できません",
         "installation_profile.skip": "事前インストールをスキップ"
     }
 }

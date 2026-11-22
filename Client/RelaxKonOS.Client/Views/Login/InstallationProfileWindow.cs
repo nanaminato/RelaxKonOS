@@ -35,13 +35,17 @@ internal sealed class InstallationProfileWindow : Window
             entries.Children.Clear();
             foreach (var entry in document.Profiles[profile])
             {
-                var name = names.GetValueOrDefault(entry.AppId, entry.AppId);
+                var name = names.GetValueOrDefault(entry.AppId);
+                if (name is null)
+                    name = entry.InstallPolicy == "interactive" ? entry.AppId
+                        : string.Format(Text("archive_unavailable", "{0} · bundled archive unavailable"), entry.AppId);
                 var label = entry.InstallPolicy == "interactive"
                     ? string.Format(Text("in_store", "{0} · available in the app store"), name) : name;
                 var checkbox = new CheckBox
                 {
                     Content = new TextBlock { Text = label, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                     IsChecked = !excluded.Contains(entry.AppId),
+                    Tag = entry.AppId,
                 };
                 checkbox.IsCheckedChanged += (_, _) =>
                 {
