@@ -90,7 +90,23 @@ internal static class RoappCatalogChecks
             var serverJournal = new FileDeploymentJournal(serverJournalPath);
             var serverDeployment = new JointAppDeploymentService(null!, auth, serverInstaller, packages, applications, serverJournal);
             var remoteArchive = await serverInstaller.StageServerPackageAsync("/archives/example.roapp");
+            actor.DuringServiceIdRead = actor.ReplaceLogin;
+            try
+            {
+                await serverDeployment.PrepareAsync(remoteArchive, [], CancellationToken.None);
+                throw new Exception("Preparing a server archive accepted a replaced login.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-account-changed") { }
+            finally { actor.DuringServiceIdRead = null; }
             var remoteReview = await serverDeployment.PrepareAsync(remoteArchive, [], CancellationToken.None);
+            actor.DuringServiceIdRead = actor.ReplaceLogin;
+            try
+            {
+                await serverDeployment.ExecuteAsync(remoteReview, CancellationToken.None);
+                throw new Exception("Executing a server archive accepted a replaced login.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-account-changed") { }
+            finally { actor.DuringServiceIdRead = null; }
             await using (var lease = await serverJournal.OpenAsync(remoteReview.Plan, CancellationToken.None))
                 await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
             serverInstaller.Discard(remoteArchive);

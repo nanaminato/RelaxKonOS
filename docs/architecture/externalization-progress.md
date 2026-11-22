@@ -580,3 +580,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 完整 Windows Release 桌面发布验证 27 个实际归档、摘要、入口程序集和配置集。发布校验拒绝宿主携带独立的 Settings 或 Component Center 实现程序集。隔离预装分别登记 Minimal 0、Standard 11、Developer 12 项，Minimal 可用同一发行归档离线安装和修复 Settings 与 Component Center。组件中心实际开窗与深链接专项通过。
 - Windows Release 完整客户端安装套件通过。观测夹具显式选择 sing-box，mihomo 断言按当前 Linux 受管归档配置更新；组件状态与计划的 HTTP 503 表示状态不可用，发布列表的 HTTP 503 表示索引不可用。独立部署解析与检查点套件通过。
 - 联合部署恢复在读取归档与台账前捕获登录、账号及连接标识。服务端来源归档与远端计划在查找及入队时复核快照，本地离线计划可独立恢复。Windows Release 组件中心和归档恢复专项通过，新增同账号换登录时拒绝恢复服务端归档的本地计划测试。
+- 联合部署准备和执行以操作开始时的会话快照约束账号、连接和服务端归档。窗口预览专项通过，新增在准备与执行开始时同账号换登录的拒绝断言。真实服务端联调未覆盖本次变更。

@@ -22,7 +22,9 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review> PrepareAsync(AppPackageCandidate candidate, IEnumerable<DeploymentRequirement> selectedOptional,
         CancellationToken cancellationToken)
     {
-        if (candidate.ServerArchive is { } serverArchive && !AppPackageInstallerService.MatchesServerArchive(session, serverArchive))
+        var scope = CaptureSessionScope();
+        if (candidate.ServerArchive is { } archive && (scope is null || archive.AccountId != scope.AccountId
+            || archive.ConnectionIdentity != scope.ConnectionIdentity || !IsCurrent(scope)))
             throw new InvalidOperationException("deployment-account-changed");
         var supported = ApplicationPlatformNames.Normalize(candidate.Manifest.ClientPlatforms);
         if (supported.Count > 0 && !supported.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
@@ -42,7 +44,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         var archivePath = candidate.DeleteWhenFinished || candidate.OfficialRelease is not null || candidate.CatalogAuthorization is not null
             ? null : Path.GetFullPath(candidate.LocalPath);
 
-        var backend = new Backend(candidate, installer, packages, applications, session);
+        var backend = new Backend(candidate, installer, packages, applications, binding => MatchesScope(binding, scope));
         var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
         var root = new DeploymentRelease(App(candidate.Manifest.Id), candidate.Manifest.Version, digest, false,
             [.. candidate.Manifest.Dependencies?.Required ?? []], ImmutableDictionary<string, string>.Empty)
@@ -57,19 +59,21 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             && localResolution.ProblemPackage?.Kind != DeploymentPackageKind.ServerModule)
         {
             var plan = await coordinator.PlanAsync(LocalTarget, root, local, optional, cancellationToken);
-            return new(plan with { ClientBinding = CreateBinding(Guid.Empty, "") }, candidate);
+            var localBinding = CreateBinding(Guid.Empty, "");
+            RequireScope(localBinding, scope);
+            return new(plan with { ClientBinding = localBinding }, candidate);
         }
 
-        var actor = session.CurrentUser?.Id ?? throw new InvalidOperationException("deployment-account-changed");
-        var connection = session.ServiceId ?? throw new InvalidOperationException("deployment-account-changed");
-        var binding = CreateBinding(actor, connection);
-        var client = NewModuleClient(binding);
+        if (scope is null) throw new InvalidOperationException("deployment-account-changed");
+        var binding = CreateBinding(scope.AccountId, scope.ConnectionIdentity);
+        var client = NewModuleClient(binding, scope);
         var catalog = new ModuleDeploymentCatalog(client);
         var modules = new ModuleDeploymentExecutor(client);
         backend.BindModuleClient(client);
         var snapshot = await catalog.ReadAsync(cancellationToken);
         var resolution = await coordinator.PlanAsync(snapshot.Target, root,
             snapshot.Releases.Concat(local), optional, cancellationToken);
+        RequireScope(binding, scope);
         var status = applications.EvaluateCompatibility(runtimeManifest).Status;
         if (status is not (ApplicationCompatibilityStatus.Compatible or ApplicationCompatibilityStatus.MissingServerCapability)
             || runtimeManifest.Server.RequiredCapabilities.Any(capability =>
@@ -78,7 +82,9 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                     && release.Capabilities.ContainsKey(capability))))
             throw new InvalidOperationException("deployment-application-incompatible");
         resolution = resolution with { ClientBinding = binding };
-        return new(await modules.PrepareAsync(resolution, snapshot, cancellationToken), candidate);
+        var prepared = await modules.PrepareAsync(resolution, snapshot, cancellationToken);
+        RequireScope(binding, scope);
+        return new(prepared, candidate);
 
         DeploymentClientBinding CreateBinding(Guid account, string identity) => new(account, identity, candidate.ExpectedInstalledPath)
         {
@@ -92,7 +98,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
         bool localOnly = false)
     {
-        var scope = CaptureRecoveryScope();
+        var scope = CaptureSessionScope();
         var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
         var key = App(candidate.Manifest.Id);
         var componentRelease = ComponentReleaseOf(candidate);
@@ -103,7 +109,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 digest, remote.AccountId, remote.ConnectionIdentity, cancellationToken, componentRelease, candidate.ServerArchive);
         if (plan?.ClientBinding is not { } binding) return null;
         if (!MatchesComponentRelease(binding, candidate, digest)
-            || binding.ServerArchive != candidate.ServerArchive || !CanRecover(binding, scope)) return null;
+            || binding.ServerArchive != candidate.ServerArchive || !MatchesScope(binding, scope)) return null;
         return new(plan, candidate with
         {
             ExpectedSha256 = digest,
@@ -123,10 +129,6 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             && candidate.CatalogAuthorization is { } authorization
             && AppPackageInstallerService.MatchesReviewedComponentRelease(reviewed, digest, authorization);
 
-    private static bool MatchesServerArchive(DeploymentClientBinding binding, AppPackageCandidate candidate, IAuthSession? session) =>
-        binding.ServerArchive == candidate.ServerArchive
-        && (binding.ServerArchive is not { } archive || AppPackageInstallerService.MatchesServerArchive(session, archive));
-
     private static async Task<string> ReadArtifactIdentityAsync(AppPackageCandidate candidate, CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(candidate.LocalPath);
@@ -139,7 +141,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<IReadOnlyList<AppPackageCandidate>> RecoverArchivesAsync(
         IReadOnlyList<OfficialDesktopRelease> releases, CancellationToken cancellationToken)
     {
-        var scope = CaptureRecoveryScope();
+        var scope = CaptureSessionScope();
         var plans = await journal.ReadPendingPlansAsync(Guid.Empty, "", cancellationToken);
         if (scope is { } remote && IsCurrent(remote))
             plans = [.. plans, .. await journal.ReadPendingPlansAsync(remote.AccountId, remote.ConnectionIdentity, cancellationToken)];
@@ -149,7 +151,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         foreach (var plan in plans)
         {
             if (cancellationToken.IsCancellationRequested) break;
-            if (plan.ClientBinding is not { } binding || !CanRecover(binding, scope)) continue;
+            if (plan.ClientBinding is not { } binding || !MatchesScope(binding, scope)) continue;
             var root = plan.OrderedReleases[^1];
             var identity = (root.Package, root.ArtifactIdentity, binding.ComponentRelease, binding.ServerArchive);
             if (recovered.Contains(identity)) continue;
@@ -170,7 +172,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 if (root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version) continue;
                 var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
                 if (digest == root.ArtifactIdentity && MatchesComponentRelease(binding, candidate, digest)
-                    && binding.ServerArchive == candidate.ServerArchive && CanRecover(binding, scope) && recovered.Add(identity))
+                    && binding.ServerArchive == candidate.ServerArchive && MatchesScope(binding, scope) && recovered.Add(identity))
                 {
                     candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true });
                     candidate = null; // The installer queue now owns the staged archive.
@@ -183,18 +185,18 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         return candidates;
     }
 
-    private sealed record RecoveryScope(SessionDto Login, Guid AccountId, string ConnectionIdentity);
+    private sealed record SessionScope(SessionDto Login, Guid AccountId, string ConnectionIdentity);
 
-    private RecoveryScope? CaptureRecoveryScope() =>
+    private SessionScope? CaptureSessionScope() =>
         session is { State: AuthSessionState.Authenticated, CurrentSession: { } login }
         && session.CurrentUser is { } user && session.ServiceId is { } connection
             ? new(login, user.Id, connection) : null;
 
-    private bool IsCurrent(RecoveryScope scope) =>
+    private bool IsCurrent(SessionScope scope) =>
         session.CurrentUser?.Id == scope.AccountId && session.ServiceId == scope.ConnectionIdentity
         && session.State == AuthSessionState.Authenticated && ReferenceEquals(session.CurrentSession, scope.Login);
 
-    private bool CanRecover(DeploymentClientBinding binding, RecoveryScope? scope)
+    private bool MatchesScope(DeploymentClientBinding binding, SessionScope? scope)
     {
         var local = binding.AccountId == Guid.Empty && binding.ConnectionIdentity == "";
         if (local && binding.ServerArchive is null) return true;
@@ -207,9 +209,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)
     {
-        var backend = new Backend(review.Candidate, installer, packages, applications, session);
+        var scope = CaptureSessionScope();
+        var backend = new Backend(review.Candidate, installer, packages, applications, binding => MatchesScope(binding, scope));
         if (review.Plan.Target != LocalTarget)
-            backend.BindModuleClient(NewModuleClient(review.Plan.ClientBinding));
+            backend.BindModuleClient(NewModuleClient(review.Plan.ClientBinding, scope));
         await backend.VerifyBeforeExecutionAsync(review.Plan, cancellationToken);
         var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
         await coordinator.ExecuteAsync(review.Plan, cancellationToken);
@@ -219,21 +222,18 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         return installed;
     }
 
-    private ServerModuleManagementClient NewModuleClient(DeploymentClientBinding? binding)
+    private void RequireScope(DeploymentClientBinding? binding, SessionScope? scope)
     {
-        var login = session.CurrentSession;
-        RequireDeploymentLogin();
-        var client = new ServerModuleManagementClient(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
-        RequireDeploymentLogin();
-        return client;
+        if (binding is null || !MatchesScope(binding, scope))
+            throw new InvalidOperationException("deployment-account-changed");
+    }
 
-        void RequireDeploymentLogin()
-        {
-            if (binding is null || login is null || !ReferenceEquals(login, session.CurrentSession)
-                || session.State != AuthSessionState.Authenticated
-                || binding.AccountId != session.CurrentUser?.Id || binding.ConnectionIdentity != session.ServiceId)
-                throw new InvalidOperationException("deployment-account-changed");
-        }
+    private ServerModuleManagementClient NewModuleClient(DeploymentClientBinding? binding, SessionScope? scope)
+    {
+        RequireScope(binding, scope);
+        var client = new ServerModuleManagementClient(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
+        RequireScope(binding, scope);
+        return client;
     }
 
     private static DeploymentPackageKey App(string id) => new(DeploymentPackageKind.Application, id);
@@ -258,16 +258,16 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             ClientPlatforms: manifest.ClientPlatforms, ServerRequirements: manifest.ServerRequirements);
 
     private sealed class Backend(AppPackageCandidate candidate, AppPackageInstallerService installer,
-        DeveloperPackageManager packages, ApplicationManager applications, IAuthSession session) : IDeploymentBackend
+        DeveloperPackageManager packages, ApplicationManager applications, Func<DeploymentClientBinding, bool> matchesScope) : IDeploymentBackend
     {
         private DeveloperAppInfo? installed;
         private ModuleDeploymentCatalog? catalog;
         private ModuleDeploymentExecutor? modules;
 
         private bool MatchesAccount(DeploymentPlan plan) => plan.ClientBinding is { } binding
-            && MatchesServerArchive(binding, candidate, session)
+            && binding.ServerArchive == candidate.ServerArchive && matchesScope(binding)
             && (plan.Target == LocalTarget ? binding.AccountId == Guid.Empty && binding.ConnectionIdentity == ""
-                : binding.AccountId == session.CurrentUser?.Id && binding.ConnectionIdentity == session.ServiceId);
+                : binding.AccountId != Guid.Empty && binding.ConnectionIdentity.Length > 0);
 
         public IEnumerable<DeploymentRelease> InstalledReleases() => packages.InstalledRecords
             .Where(record => RuntimeSemanticVersion.TryParse(record.Version, out _)
