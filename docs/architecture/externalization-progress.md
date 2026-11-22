@@ -46,7 +46,7 @@
 
 基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前官方目录包含 29 个桌面 .roapp，桌面宿主保留内置应用安装器。Standard 离线安装 Browser、Component Center、Event & Alert Center、Explorer、Image Viewer、Notepad、Registry、Server Center、Settings、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 可通过内置应用安装器从发行归档安装和修复基础应用。Developer 额外离线预装 Code Editor，另有 15 个交互式安装项。
 
-首次可用 `--installation-profile=minimal|standard|developer` 与可重复的 `--exclude-bundled-app=<id>` 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖的包须经交互部署。随包提供的 Task Manager 和 Terminal 在启动时检查所需服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+首次启动会打开配置集选择窗口，默认选中 Standard。可用 `--installation-profile=minimal|standard|developer` 与可重复的 `--exclude-bundled-app=<id>` 直接选择。每个配置集的排除项保存在本机 VSD。随后由协调器进行离线预装，逐项记录首次处理的版本。重启、客户端升级和配置集切换保留用户卸载决定。Developer 中已选的交互式应用进入官方商店，可用归档通过原流程提交联合部署审阅。随包提供的 Task Manager 和 Terminal 在启动时检查所需服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 `python Tests/Client/verify-desktop-distribution.py` 检查官方目录、桌面发布项和包清单的应用 ID 是否一致，核对配置集版本下限，并拒绝把声明必需依赖的包列为离线预装。
 当前 Windows 与 Linux x64 发行验收均核对 29 个归档及宿主依赖边界。生产扫描器在隔离 VSD 上验证 Minimal、Standard 和 Developer 分别离线登记 0、13、14 个应用。Developer 另保留 15 个交互安装项。三个配置均登记内置应用安装器及其 .roapp 文件入口。
@@ -74,19 +74,19 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 | 编号 | 验收项 | 证据与范围 |
 | --- | --- | --- |
 | 1 | 最小核心启动 | Windows Minimal 发行版图形入口及 Linux 原生 Minimal 入口已启动。服务端发行 Core 也在移除已停用模块程序集后通过健康检查。参见 [Windows 启动检查](../../Tests/Client/verify-windows-desktop-startup.ps1) 和本页测试记录。 |
-| 2–4 | 基础应用独立构建、默认预装、缺失修复 | Standard 的 13 个项目独立 Release 构建通过。实际发行目录复验三档离线登记数量 0、13、14，Windows Minimal 逐一安装和修复 13 个基础包。参见 [桌面发行验证](../../Tests/Client/verify-desktop-distribution.py) 和 [预装验收](../../Tests/Client/RelaxKonOS.WindowPreviews.Tests/DesktopDistributionChecks.cs)。 |
+| 2–4 | 基础应用独立构建、默认预装、缺失修复 | Standard 的 13 个项目独立 Release 构建通过。实际发行目录复验三档离线登记数量 0、13、14，Windows Minimal 逐一安装和修复 13 个基础包。Windows 原生首次选择窗口通过。Windows 与 Linux x64 无头验收从 Standard 取消 Welcome 后预装其余 12 项，切换配置集保留排除。参见 [桌面发行验证](../../Tests/Client/verify-desktop-distribution.py) 和 [预装验收](../../Tests/Client/RelaxKonOS.WindowPreviews.Tests/DesktopDistributionChecks.cs)。 |
 | 5 | 可选应用独立安装 | 应用矩阵记录各官方可选包的独立生命周期。Windows 和 Linux 联合专项复验 10 个发行归档，真实 Core 验证 Databases 双包及 Project Editor 复用 Git。具体业务环境覆盖见矩阵。 |
 | 6–8 | Shell、协调器依赖边界 | 两平台发行依赖图和散装程序集检查通过。Shell 的 RelaxKonOS 依赖限于 Core，协调器传递依赖限于 Protocol。协调器本身另有 [程序集引用检查](../../Tests/Deployment/RelaxKonOS.Deployment.Tests/Program.cs)。 |
 | 9–11 | 默认选择、必需不可取消、可选可取消 | [生产对话框回归](../../Tests/Client/RelaxKonOS.WindowPreviews.Tests/OfficialRoappChecks.cs) 验证可选默认勾选、取消勾选及必需项无取消控件。[联合回归](../../Tests/ServerModules/JointDeploymentAcceptance.cs) 验证取消只移除可选模块。 |
-| 12–13 | 模块复用、共享依赖保护 | 同一真实 Ubuntu Core 上，Windows 与 Linux 桌面实例共用 Databases，第二端没有新增安装回执，第一端卸载后停用仍受阻，最后一端释放后解除阻止。两端位于同一物理主机。 |
+| 12–13 | 模块复用、共享依赖保护 | 同一真实 Ubuntu Core 上，Windows 与 Linux 桌面实例共用 Databases，第二端没有新增安装回执，第一端卸载后停用仍受阻，最后一端释放后解除阻止。两端位于同一物理主机。Linux x64 联合验收中三个官方 Proxy 应用也复用同一签名归档，卸载最后一款后停用阻止解除。 |
 | 14–16 | 计划过期、服务端切换、网络中断 | 协调器测试拒绝过期和错误实例。联调验证丢失响应后从原回执恢复，真实 Core 重启后完成原计划。网络丢失使用受控请求与响应故障。 |
 | 17 | 升级与卸载 | 联合专项覆盖升级换绑、回滚及离线卸载补偿。Ubuntu 独立模块 0.1.0 到 0.2.0 的热更新保留 Core 和 Git 服务。Windows 与 Ubuntu 两端实际安装后的独立卸载及依赖释放另已验证。 |
 | 18 | 启动依赖检查 | 发行 Terminal 和 Task Manager 的能力缺失阻止激活，恢复后可启动。联合专项覆盖故障模块拒绝启动，Databases 使用真实 Core 验证模块就绪后进入独立组件权限检查。 |
 | 19 | DevCli 与 Direct Deploy | Windows Debug 桌面与 DevCli 通过登录界面直传、卸载、监听更新、失败保留和双配置隔离回归。真实 Docker 归档通过候选启动依赖专项。 |
 | 20 | 真实双包部署 | Ubuntu 发行 Core 从无独立包记录开始，经 HTTPS 下载签名 `.rkmodule`，重启后由桌面协调器登记 `.roapp`。桌面测试副本仅提高模块最低版本；四条观察者查询经真实 Helper 通过。 |
-| 21 | Windows 与 Linux 构建、可执行测试 | Windows Release 完整模块 1,433 项检查，Linux x64 自包含完整模块 1,445 项检查。两平台桌面配置与发行归档已验。 |
+| 21 | Windows 与 Linux 构建、可执行测试 | Windows Release 完整模块历史基线 1,433 项检查。当前 Linux x64 自包含完整模块 1,510 项检查，桌面宿主构建和 29 个官方归档检查通过。两平台桌面配置与发行归档已有验收。 |
 | 22 | Android 回归 | 离线 Debug 及测试 APK 构建，1,906 项 JVM 测试和 11 项模拟器测试通过。设备测试覆盖应用目录与服务维护恢复，使用只读模拟器。 |
-| 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,373 个桌面宿主键和 39 套独立应用资源。 |
+| 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,387 个桌面宿主键和 39 套独立应用资源。 |
 
 原任务还要求持续迁移可拆分的业务功能。服务端矩阵中仍有随 Core 发行的模块，Databases 目前独立监督的是观察入口。其余未覆盖的业务环境和多台物理设备联调见应用矩阵及测试记录。
 
@@ -873,3 +873,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 首启窗口对无法读取的离线归档按应用 ID 标注不可用，用户可以继续。Windows Release 使用 Welcome 发行归档验证：暂去掉归档后仍能查看并确认配置，应用未登记；放回归档后后续安装、重启与卸载通过。三语资源校验通过。
 - 首启窗口用已验证归档版本比较各配置集的最低版本，离线归档版本不足时在确认前显示最低要求。Windows Release 发行测试在窗口中使用实际 Welcome 归档与提高后的 Developer 最低版本验证提示，并切回 Standard 验证名称与排除操作。三语校验通过。
 - 首启选择与实际离线预装共用客户端平台、必需部署依赖及服务端启动要求判定。不满足时窗口显示无法离线预装。Windows Release 发行验收使用实际归档，确认 Terminal 和 Task Manager 可离线安装并继续受启动守卫保护，Proxy 所需服务端模块使其不能离线预装。三语校验通过。
+- 当前 Linux x64 自包含模块完整套件在无外网 Ubuntu 容器通过 1,510 项检查。容器使用 Git 和已有 Docker Compose CLI 进行离线解析，无 Engine 套接字。重新发布当前 Linux 桌面宿主、重建清单已变化的 Tunnels 归档并复用其余归档后，29 个摘要、清单、入口程序集及宿主依赖图核对通过。
