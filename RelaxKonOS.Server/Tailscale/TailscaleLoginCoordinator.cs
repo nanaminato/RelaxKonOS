@@ -5,16 +5,6 @@ using RelaxKonOS.Server.Settings;
 
 namespace RelaxKonOS.Server.Tailscale;
 
-public interface ITailscaleLogin
-{
-    Task<TailscaleLoginOperation> PrepareAsync(ClaimsPrincipal principal, TailscaleLoginPrepareRequest request, CancellationToken ct);
-    Task<TailscaleLoginOperation> ExecuteAsync(ClaimsPrincipal principal, Guid operationId, bool confirmed, CancellationToken ct);
-    Task<TailscaleLoginOperation> GetAsync(ClaimsPrincipal principal, Guid operationId, CancellationToken ct);
-    Task<TailscaleLoginChallengeResponse> ReadChallengeAsync(ClaimsPrincipal principal, Guid operationId, CancellationToken ct);
-    Task<TailscaleLoginRecoverySnapshot> ReadRecoveryAsync(ClaimsPrincipal principal, Guid operationId, CancellationToken ct);
-    Task<TailscaleLoginOperation> CloseAsync(ClaimsPrincipal principal, TailscaleLoginCloseRequest request, CancellationToken ct);
-}
-
 /// <summary>
 /// Binds one first-login attempt to the authenticated account, login session and host installation.
 /// The challenge URL is returned once and never enters the durable operation record.

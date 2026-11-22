@@ -732,3 +732,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 一次性无外网 Ubuntu 容器运行发行 Core 和真实 PAM 登录。未改写的 Linux Project Editor 0.3.1 发行归档复用 Git 1.0 契约并登记桌面应用。实际 Git 仓库通过公开 API 登记、枚举并返回 main 分支和未跟踪文件，提交图 HEAD 的 SHA 与本机 Git 一致。该轮使用 Linux 用户模式和临时仓库，未执行远端推送或设备验收。
 - `--live-git-joint-deployment <loopback-url> <roapp> <desktop-state> <临时仓库在服务端的绝对路径>` 现验证真实桌面 Git 客户端写入。夹具仓库须只有一个提交、已暂存 staged.txt 与未跟踪 draft.txt，并配置测试 Git 作者。Ubuntu 中用原版 Project Editor 归档完成联合安装后，客户端只提交 draft.txt。提交图、父提交和暂存区断言通过，本机 Git 独立确认 HEAD 只含指定文件，staged.txt 仍在暂存区。
 - Project Editor 真机路径测试增加显式分支推送。临时工作仓库的 fixture-acceptance 远端必须指向工作仓库路径加 .git 的本地裸仓库。一次性无外网 Ubuntu 容器中，桌面 Git 客户端将 main 推到 fixture-verified，本机 Git 确认裸仓库仅有该目标分支且 SHA 与新 HEAD 相同，无关暂存文件保持原样。未连接外部托管 Git 服务。
+- Tailscale 拆分第一步将状态、控制、登录、Helper 端口、授权接口及域错误迁入仅依赖共享 Protocol 的 `RelaxKonOS.ServerModule.Tailscale.Contracts`。Core 路由与驻留工厂使用同一契约，协调器和台账实现仍在 Core。Windows Release Tailscale 专项通过，覆盖驻留、登录、回执、恢复和 HTTP 授权。

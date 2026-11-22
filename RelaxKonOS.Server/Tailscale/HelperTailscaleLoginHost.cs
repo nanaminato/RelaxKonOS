@@ -4,17 +4,6 @@ using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Tailscale;
 
-public interface ITailscaleLoginHost
-{
-    Task<TailscaleLoginObservation> ObserveAsync(CancellationToken cancellationToken);
-    Task<TailscaleLoginReceipt> BeginAsync(TailscaleLoginCommand command, CancellationToken cancellationToken);
-    Task<TailscaleLoginReceipt?> GetReceiptAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken);
-    Task<TailscaleLoginChallenge> ReadChallengeAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken);
-    Task<TailscaleLoginObservation> ReadRecoveryAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken);
-    Task<TailscaleLoginClosure> CloseAsync(TailscaleLoginIntent intent, TailscaleLoginCloseRequest request, CancellationToken cancellationToken);
-    Task<TailscaleLoginClosure?> GetClosureAsync(TailscaleLoginIntent intent, CancellationToken cancellationToken);
-}
-
 /// <summary>The Helper is the only producer of login evidence and of the official browser challenge.</summary>
 public sealed class HelperTailscaleLoginHost(IPrivilegedOperationTransport transport) : ITailscaleLoginHost
 {

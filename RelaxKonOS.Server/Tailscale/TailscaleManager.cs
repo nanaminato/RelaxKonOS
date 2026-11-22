@@ -3,11 +3,6 @@ using System.Text.Json;
 
 namespace RelaxKonOS.Server.Tailscale;
 
-public interface ITailscaleManager
-{
-    Task<TailscaleStatusDto> GetStatusAsync(CancellationToken cancellationToken);
-}
-
 /// <summary>Read-only observation of an externally owned local daemon.</summary>
 public sealed class TailscaleManager(ITailscaleStatusCommand command) : ITailscaleManager
 {
