@@ -334,6 +334,21 @@ internal static class JointDeploymentAcceptance
             }
             await packages.UninstallAsync(AppIdText);
 
+            await installer.InstallAsync(await installer.InspectLocalAsync(prerequisitePath));
+            var replacementMixed = await joint.PrepareAsync(mixedCandidate, [], default);
+            Require(replacementMixed.Plan.Id != mixed.Plan.Id
+                && replacementMixed.Plan.OrderedReleases.Take(2).All(release => release.Satisfied),
+                "reviewing again after restoring the local prerequisite reuses the now healthy module");
+            var mixedInstalled = await joint.ExecuteAsync(replacementMixed, default);
+            Require(mixedInstalled.Id == mixedCandidate.Manifest.Id
+                && applications.IsRegistered(new AppId(mixedInstalled.Id))
+                && ModulePackageOperationStore.Read(serverRoot).Count == 1
+                && !(await reopenedMixedJournal.ReadPendingPlansAsync(auth.CurrentUser!.Id, auth.ServiceId!))
+                    .Any(plan => plan.OrderedReleases[^1].Package.Id == mixedInstalled.Id),
+                "completing the replacement plan retires the old recovery entry without installing the module again");
+            await packages.UninstallAsync(mixedInstalled.Id);
+            await packages.UninstallAsync(prerequisiteId);
+
             var activationArchives = bundledModuleArchives.Where(path =>
                 Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId
                     or ServerModules.DatabaseId or ServerModules.DockerId or "relaxkonos.webservers")
