@@ -18,6 +18,9 @@ public sealed partial class SettingsViewModel
     private CancellationTokenSource _catalogLifetime = new();
     private readonly SettingsNavigationHistory _navigationHistory = new();
     private bool _goingBack;
+    public Func<string, string> Labels => key => _navigationLocalization.Get(key, key);
+    System.Windows.Input.ICommand RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.OpenPageCommand => OpenPageCommand;
+
     internal bool IsRestoringNavigation => _goingBack;
     bool RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.IsRestoringNavigation => IsRestoringNavigation;
     string? RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.SelectedPageRoute => SelectedPage?.Route;
@@ -218,7 +221,7 @@ public sealed partial class SettingsViewModel
 
     private void OnNavigationLanguageChanged(object? sender, EventArgs args)
     {
-        NotifySaveFeedback(); RebuildSearchIndex(); OnPropertyChanged(nameof(Breadcrumb)); OnPropertyChanged(nameof(ParentTitle)); OnPropertyChanged(nameof(ConnectionSummary)); OnPropertyChanged(nameof(PageScopeDescription)); OnPropertyChanged(nameof(HasPageScopeDescription)); SearchLocationStatus = "";
+        OnPropertyChanged(nameof(Labels)); NotifySaveFeedback(); RebuildSearchIndex(); OnPropertyChanged(nameof(Breadcrumb)); OnPropertyChanged(nameof(ParentTitle)); OnPropertyChanged(nameof(ConnectionSummary)); OnPropertyChanged(nameof(PageScopeDescription)); OnPropertyChanged(nameof(HasPageScopeDescription)); SearchLocationStatus = "";
     }
     private void OnNavigationSessionChanged(object? sender, AuthSessionStateChangedEventArgs args) => Dispatcher.UIThread.Post(() =>
     {

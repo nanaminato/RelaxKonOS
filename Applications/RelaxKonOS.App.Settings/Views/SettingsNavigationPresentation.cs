@@ -10,7 +10,9 @@ public interface ISettingsNavigationPresentation : INotifyPropertyChanging, INot
     const string SelectedPageProperty = "SelectedPage";
     string? SelectedPageRoute { get; }
     string CurrentNavigationRoute { get; }
-    string SearchQuery { get; }
+    string SearchQuery { get; set; }
+    Func<string, string> Labels { get; }
+    System.Windows.Input.ICommand OpenPageCommand { get; }
     bool HasSearch { get; }
     bool IsRestoringNavigation { get; }
     string SearchLocationStatus { set; }

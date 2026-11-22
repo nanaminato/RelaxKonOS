@@ -1,112 +1,25 @@
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.VisualTree;
-using Avalonia.Input;
-using RelaxKonOS.Client.Apps.Settings.ViewModels;
-using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.App.Settings.Views;
 
 namespace RelaxKonOS.Client.Apps.Settings.Views;
 
-public partial class SettingsView : UserControl
+public sealed class SettingsView : SettingsWorkspaceView
 {
-    private readonly SettingsNavigationPresentation _navigation;
-
     public SettingsView()
     {
-        InitializeComponent();
-        SettingsSearchBar.BeforeFocusSearch = () => CloseNavigationDrawer(restoreFocus: false);
-        // The window's title bar is not inside this view once it is fused, so the shortcut keys are
-        // attached to both blocks instead of being handled by the content view alone.
-        SettingsHeader.KeyDown += OnTitleBarKeyDown;
-        SettingsSearchBar.KeyDown += OnTitleBarKeyDown;
-        _navigation = new(SettingsPageScroll, PageContent, () => SettingsSearchBar.FocusSearch(),
-            () => CloseNavigationDrawer(restoreFocus: false), key => LocalizedText.Get(key));
-        DataContextChanged += (_, _) => _navigation.Observe(DataContext as SettingsViewModel);
-        AttachedToVisualTree += (_, _) => _navigation.Observe(DataContext as SettingsViewModel);
-        DetachedFromVisualTree += (_, _) => { _navigation.Observe(null); _navigation.ClearHighlight(); };
-
-        SizeChanged += (_, args) =>
-        {
-            var compact = args.NewSize.Width < 760;
-            NavigationLayout.ColumnDefinitions[0].Width = new GridLength(compact ? 0 : 250);
-            Sidebar.IsVisible = !compact;
-            CompactNavigation.IsVisible = compact;
-            SettingsHeader.TitleText.IsVisible = args.NewSize.Width >= 360;
-            if (!compact) CloseNavigationDrawer(restoreFocus: false);
-        };
-        KeyDown += (_, args) =>
-        {
-            if (args.Key == Key.Escape && NavigationDrawer.IsVisible)
-            { CloseNavigationDrawer(); args.Handled = true; }
-            else if (args.Key == Key.F && args.KeyModifiers.HasFlag(KeyModifiers.Control))
-            { SettingsSearchBar.FocusSearch(); args.Handled = true; }
-            else if (args.Key == Key.Escape && DataContext is SettingsViewModel { HasSearch: true } model)
-            { model.SearchQuery = ""; args.Handled = true; }
-        };
+        var templates = new SettingsPageTemplates(NavigateTo);
+        foreach (var template in templates.DataTemplates)
+            DataTemplates.Add(template);
     }
+}
 
-    private void OnTitleBarKeyDown(object? sender, KeyEventArgs args)
-    {
-        if (args.Handled) return;
-        if (args.Key == Key.F && args.KeyModifiers.HasFlag(KeyModifiers.Control))
-        { SettingsSearchBar.FocusSearch(); args.Handled = true; }
-        else if (args.Key == Key.Escape && DataContext is SettingsViewModel { HasSearch: true } model)
-        { model.SearchQuery = ""; args.Handled = true; }
-    }
+public partial class SettingsPageTemplates : UserControl
+{
+    private readonly Action<string>? _navigate;
 
-    /// <summary>The leading title-bar block: the back action and this window's own name.</summary>
-    public SettingsHeaderView Header => SettingsHeader;
+    public SettingsPageTemplates() => InitializeComponent();
 
-    /// <summary>The centre title-bar block: the search field.</summary>
-    public SettingsSearchBarView SearchBar => SettingsSearchBar;
+    public SettingsPageTemplates(Action<string> navigate) : this() => _navigate = navigate;
 
-    /// <summary>
-    /// Hands the two title-bar blocks to the host's role slots. This is the whole application-side
-    /// contract: no view names a column, an inset or a bar height, so all three window-chrome
-    /// recipes - and any recipe the host adds later - place them without this file changing.
-    /// </summary>
-    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
-    {
-        SettingsHeader.DataContext = DataContext;
-        SettingsSearchBar.DataContext = DataContext;
-        HeaderHost.Children.Clear();
-        window.View.HeaderLeading = SettingsHeader;
-        window.View.HeaderCenter = SettingsSearchBar;
-        window.View.HeaderTrailing = null;
-    }
-
-    private void OnOpenNavigationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs args)
-    {
-        NavigationDrawer.IsVisible = true;
-        CloseNavigationButton.Focus();
-    }
-
-    private void OnCloseNavigationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs args) => CloseNavigationDrawer();
-
-    private void CloseNavigationDrawer(bool restoreFocus = true)
-    {
-        if (!NavigationDrawer.IsVisible) return;
-        NavigationDrawer.IsVisible = false;
-        if (restoreFocus && NavigationMenuButton.IsEffectivelyVisible) NavigationMenuButton.Focus();
-    }
-
-    private void OnQuickLinkClick(object? sender, Avalonia.Interactivity.RoutedEventArgs args)
-    {
-        if (sender is Button { Tag: string route })
-            OnHomeRouteRequested(sender, route);
-    }
-
-    private void OnHomeRouteRequested(object? sender, string route)
-    {
-        if (DataContext is SettingsViewModel model)
-        {
-            var fromDrawer = NavigationDrawer.IsVisible;
-            model.OpenPageCommand.Execute(route);
-            CloseNavigationDrawer(restoreFocus: false);
-            if (fromDrawer) PageHeading.Focus();
-        }
-    }
-
+    private void OnHomeRouteRequested(object? sender, string route) => _navigate?.Invoke(route);
 }
