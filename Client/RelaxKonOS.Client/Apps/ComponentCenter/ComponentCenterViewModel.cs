@@ -20,8 +20,11 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 }
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
-public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation
+public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout
 {
+    string IComponentCenterLayout.ConnectionText => ConnectionText.Resolve();
+    string IComponentCenterLayout.HeaderOutcomeText => HeaderOutcomeText.Resolve();
+
     ICommand IComponentCenterHeaderActions.OpenTasksCommand => OpenTasksCommand;
     ICommand IComponentCenterHeaderActions.RefreshCommand => RefreshCommand;
     IComponentCenterRefreshState IComponentCenterHeaderActions.Runtime => Runtime;

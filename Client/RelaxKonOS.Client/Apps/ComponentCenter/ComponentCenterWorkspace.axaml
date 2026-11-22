@@ -16,37 +16,8 @@
   <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
  </UserControl.Styles>
 
- <Grid RowDefinitions="Auto,*">
-  <!-- App bar: identity on the left, exactly one refresh affordance on the right. -->
-  <Border Classes="app-header" Padding="20,13">
-   <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-    <Image Width="34" Height="34" VerticalAlignment="Center"
-           Source="avares://RelaxKonOS.Client/Assets/AppIcons/component-center.png" />
-    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-     <TextBlock Text="{loc:Loc application.relaxkonos.component-center.display_name}" FontSize="17" FontWeight="SemiBold"
-                TextTrimming="CharacterEllipsis" />
-     <WrapPanel ItemSpacing="8" LineSpacing="4">
-      <TextBlock Text="{Binding HostIdentity}" FontSize="12" VerticalAlignment="Center"
-                 Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="340" />
-      <Border Classes="pill"><TextBlock Text="{Binding ConnectionText}" /></Border>
-      <Border Classes="pill" IsVisible="{Binding HasTargetText}"><TextBlock Classes="mono" Text="{Binding HostTargetText}" /></Border>
-     </WrapPanel>
-     <TextBlock Text="{Binding HeaderOutcomeText}" TextWrapping="Wrap" IsVisible="{Binding HasHeaderOutcome}"
-                FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-    </StackPanel>
-    <component:ComponentCenterHeaderActions Grid.Column="2" />
-   </Grid>
-  </Border>
-
-  <Grid Grid.Row="1" ColumnDefinitions="288,*" RowDefinitions="Auto,*" x:Name="WorkspaceBody">
-   <ToggleButton x:Name="NavigationToggle" Grid.ColumnSpan="2" Classes="nav-toggle"
-                 Content="{loc:Loc component_center.navigation_toggle}"
-                 IsVisible="False" IsCheckedChanged="NavigationToggle_Changed" Margin="14,10,14,6" HorizontalAlignment="Left" />
-   <Border x:Name="NavigationPane" Classes="app-sidebar" Padding="0" Grid.RowSpan="2">
-    <component:ComponentCenterNavigationView x:Name="Navigation" />
-   </Border>
-
-   <ScrollViewer x:Name="DetailsScroll" Grid.Column="1" Grid.RowSpan="2" Padding="24,20" HorizontalScrollBarVisibility="Disabled">
+ <component:ComponentCenterLayout x:Name="WorkspaceLayout">
+  <component:ComponentCenterLayout.Details>
     <StackPanel Spacing="16">
       <Border IsVisible="{Binding ShowServerModules}"><vm:ServerModulesView DataContext="{Binding ServerModules}" /></Border>
       <Border IsVisible="{Binding ShowCatalogSources}"><component:CatalogSourcesView DataContext="{Binding CatalogSources}" /></Border>
@@ -430,7 +401,6 @@
        </Border>
       </StackPanel>
      </StackPanel>
-   </ScrollViewer>
-  </Grid>
- </Grid>
+  </component:ComponentCenterLayout.Details>
+ </component:ComponentCenterLayout>
 </UserControl>
