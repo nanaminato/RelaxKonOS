@@ -12,8 +12,9 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
+public sealed record ComponentDraftItem(ComponentChangeDraft Draft) : IComponentTaskDraftRow
 {
+    string IComponentTaskDraftRow.Summary => Summary.Resolve();
     public LocalizedStatus Summary => LocalizedStatus.Format("component_center.draft_summary", Draft.ComponentId,
         LocalizedStatus.Key(Draft.Change == RuntimeChange.Uninstall ? "proxy_server.runtime.uninstall_title"
             : "proxy_server.runtime.action." + Draft.Change), Draft.Version ?? "—");
@@ -21,8 +22,19 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
 public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage,
-    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation
+    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation, IComponentTaskDialogModel
 {
+    IEnumerable<IComponentTaskDraftRow> IComponentTaskDialogModel.Drafts => Drafts;
+    string IComponentTaskDialogModel.DraftSummary => DraftSummary.Resolve();
+    string IComponentTaskDialogModel.PersistenceNotice => PersistenceNotice.Resolve();
+    ICommand IComponentTaskDialogModel.PlanDraftCommand => PlanDraftCommand;
+    ICommand IComponentTaskDialogModel.DiscardCommand => DiscardCommand;
+    void IComponentTaskDialogModel.RemoveDraft(IComponentTaskDraftRow row)
+    {
+        if (row is ComponentDraftItem item)
+            RemoveCommand.Execute(item);
+    }
+
     ICatalogSourcesViewModel? IComponentCenterLayout.CatalogSources => CatalogSources;
 
     string IComponentPackageCandidate.PackageMethodTitle => PackageMethodTitle.Resolve();

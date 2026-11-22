@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Avalonia.Controls;
-using Avalonia.Interactivity;
+using RelaxKonOS.App.ComponentCenter;
+using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
@@ -8,8 +9,7 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 public partial class ComponentCenterTasksView : UserControl
 {
     private ComponentCenterViewModel? _model;
-    private readonly Action? _requestClose;
-    public ComponentCenterTasksView()
+    private ComponentCenterTasksView()
     {
         InitializeComponent();
         AttachedToVisualTree += (_, _) =>
@@ -19,9 +19,18 @@ public partial class ComponentCenterTasksView : UserControl
         };
         DetachedFromVisualTree += (_, _) => { if (_model is not null) _model.PropertyChanged -= ModelChanged; };
     }
-    public ComponentCenterTasksView(ComponentCenterViewModel model, Action? requestClose = null) : this()
-    { DataContext = model; _requestClose = requestClose; }
-    private void Close_Click(object? sender, RoutedEventArgs e) => _requestClose?.Invoke();
+    public ComponentCenterTasksView(ComponentCenterViewModel model, Action? requestClose = null)
+        : this(model, requestClose, ComponentTaskDialogLayout.Create) { }
+
+    internal ComponentCenterTasksView(ComponentCenterViewModel model, Action? requestClose,
+        Func<ComponentTaskDialogPresentation, Control> createLayout) : this()
+    {
+        var body = (Control)Content!;
+        Content = null;
+        DataContext = model;
+        Content = createLayout(new(model, body, requestClose));
+    }
+
     protected override void OnDataContextChanged(EventArgs e)
     {
         if (_model is not null) _model.PropertyChanged -= ModelChanged;
@@ -35,13 +44,4 @@ public partial class ComponentCenterTasksView : UserControl
         if (e.PropertyName is nameof(ComponentCenterViewModel.DetailRuntime) or nameof(ComponentCenterViewModel.ShowTaskDomainProgress)) UpdateRuntime();
     }
     private void UpdateRuntime() => TaskRuntimeView?.ShowCenterSection(ComponentCenterPage.Tasks, _model?.ShowTaskDomainProgress != true);
-    protected override void OnSizeChanged(SizeChangedEventArgs e)
-    {
-        base.OnSizeChanged(e);
-        DraftFooterScroll.MaxHeight = Math.Max(90, Math.Min(220, e.NewSize.Height * .3));
-    }
-    private void RemoveDraft_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: ComponentDraftItem item } && _model is { } model) model.RemoveCommand.Execute(item);
-    }
 }

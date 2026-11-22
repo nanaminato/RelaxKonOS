@@ -599,6 +599,17 @@ internal static class SettingsWindowChecks
                 PumpUntil(() => review.IsCompleted && windows.Windows.Count == 1);
                 review.GetAwaiter().GetResult();
             }
+            var taskWindow = model!.OpenTasksCommand.ExecuteAsync(null);
+            PumpUntil(() => windows.Windows.Count == 2);
+            var taskDialog = windows.Windows.Last();
+            var taskHost = taskDialog.View.Content as ContentControl;
+            var taskLayout = taskHost?.Content as Control;
+            Check(taskLayout?.GetType().Name == nameof(ComponentTaskDialogLayout) && taskLayout.GetType().Assembly == packageAssembly,
+                "The installed package must create the task window layout and draft controls.");
+            windows.Close(taskDialog);
+            PumpUntil(() => taskWindow.IsCompleted && windows.Windows.Count == 1);
+            taskWindow.GetAwaiter().GetResult();
+
             var semantics = new TaskPlanSemantics("test-service", Guid.NewGuid().ToString("D"), "app", id, 1,
                 [], "stop-on-failure", "safe-boundary", false, TaskPlanLimits.Default);
             var plan = new TaskPlan(Guid.NewGuid(), DateTimeOffset.UtcNow, TaskPlanCanonicalizer.Digest(semantics), semantics);

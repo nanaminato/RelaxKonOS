@@ -14,7 +14,6 @@
    <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
  </UserControl.Styles>
- <Grid RowDefinitions="*,Auto,Auto">
   <ScrollViewer x:Name="DetailsScroll" HorizontalScrollBarVisibility="Disabled" Padding="20,18">
    <StackPanel Spacing="14">
     <Border Classes="panel-card">
@@ -221,44 +220,4 @@
    </StackPanel>
   </ScrollViewer>
 
-  <Border x:Name="DraftFooter" Grid.Row="1" Padding="20,12" BorderThickness="0,1,0,0"
-          BorderBrush="{DynamicResource BorderSubtleBrush}" Background="{DynamicResource SurfaceRaisedBrush}"
-          IsVisible="{Binding ShowDraftPanel}">
-   <ScrollViewer x:Name="DraftFooterScroll" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Spacing="10">
-     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <StackPanel Spacing="3">
-       <TextBlock Text="{Binding DraftSummary}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
-       <TextBlock Text="{Binding PersistenceNotice}" TextWrapping="Wrap" FontSize="11"
-                  Foreground="{DynamicResource TextTertiaryBrush}" />
-      </StackPanel>
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-       <Button x:Name="PreviewChanges" Classes="primary" Content="{loc:Loc component_center.preview_title}"
-               Command="{Binding PlanDraftCommand}" IsEnabled="{Binding CanPlanDraft}" />
-       <Button x:Name="DiscardChanges" Classes="ghost-action" Content="{loc:Loc component_center.discard}"
-               Command="{Binding DiscardCommand}" IsEnabled="{Binding HasDrafts}" />
-      </StackPanel>
-     </Grid>
-     <ItemsControl ItemsSource="{Binding Drafts}" MaxHeight="130">
-      <ItemsControl.ItemTemplate>
-       <DataTemplate x:DataType="vm:ComponentDraftItem">
-        <Border Classes="inset-block" Margin="0,2" Padding="12,8">
-         <DockPanel>
-          <Button DockPanel.Dock="Right" Classes="ghost-action" Content="{loc:Loc component_center.remove}" Click="RemoveDraft_Click" />
-          <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" Margin="0,0,10,0" />
-         </DockPanel>
-        </Border>
-       </DataTemplate>
-      </ItemsControl.ItemTemplate>
-     </ItemsControl>
-    </StackPanel>
-   </ScrollViewer>
-  </Border>
-
-  <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="20,10">
-   <TextBlock Text="{loc:Loc component_center.task_dialog.close_hint}" TextWrapping="Wrap" FontSize="11"
-              Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-   <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc common.close}" Click="Close_Click" IsEnabled="{Binding CanCloseTaskDialog}" />
-  </Grid>
- </Grid>
 </UserControl>

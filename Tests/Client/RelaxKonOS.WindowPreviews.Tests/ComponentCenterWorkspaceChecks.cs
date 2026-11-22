@@ -377,12 +377,13 @@ internal static class ComponentCenterWorkspaceChecks
                 var popupView = new ComponentCenterTasksView(model);
                 var popupWindow = new Window { Width = 640, Height = 540, Content = popupView };
                 popupWindow.Show(); Dispatcher.UIThread.RunJobs(); popupWindow.UpdateLayout();
-                var previewChanges = popupView.FindControl<Button>("PreviewChanges")!;
+                var popupLayout = (ComponentTaskDialogLayout)popupView.Content!;
+                var previewChanges = popupLayout.FindControl<Button>("PreviewChanges")!;
                 var previewOrigin = previewChanges.TranslatePoint(default, popupView)!.Value;
                 Check(previewOrigin.X >= 0 && previewOrigin.X + previewChanges.Bounds.Width <= popupView.Bounds.Width
                     && previewOrigin.Y >= 0 && previewOrigin.Y + previewChanges.Bounds.Height <= popupView.Bounds.Height,
                     "Task preview stays reachable inside the narrow task dialog");
-                var popupFooter = popupView.FindControl<ScrollViewer>("DraftFooterScroll")!;
+                var popupFooter = popupLayout.FindControl<ScrollViewer>("DraftFooterScroll")!;
                 Check(popupFooter.Bounds.Height <= popupWindow.Height * .3 + 1,
                     "Task drafts scroll within the short dialog without consuming the task body");
                 using (var bitmap = new RenderTargetBitmap(new PixelSize(640, 540)))

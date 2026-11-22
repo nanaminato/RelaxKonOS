@@ -24,7 +24,8 @@ public sealed record ComponentCenterViewFactories(
     Func<ModalDialog<bool>, Control> CreateModulePolicy,
     Func<ModalDialog<bool>, Control> CreateModulePrivilege,
     Func<ModalDialog<bool>, Control> CreateModuleConsent,
-    Func<ModalDialog<bool>, TaskPlanConfirmationPresentation, Control> CreateTaskPlanConfirmation);
+    Func<ModalDialog<bool>, TaskPlanConfirmationPresentation, Control> CreateTaskPlanConfirmation,
+    Func<ComponentTaskDialogPresentation, Control> CreateTaskDialogLayout);
 
 public sealed record TaskPlanConfirmationPresentation(
     TaskPlan Plan,
