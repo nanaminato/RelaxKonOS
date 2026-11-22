@@ -153,6 +153,18 @@ internal static class RoappCatalogChecks
             await RejectAsync(() => files.DownloadAsync("/archives/example.roapp", isCurrent: () => originCurrent),
                 "a download whose calling operation lost its original login");
             Check(transport.Downloads == 3, "The download must enforce the caller's login guard at dispatch.");
+            dispatch.BeforeAuthentication = null;
+            transport.Bytes = await File.ReadAllBytesAsync(packagePath);
+            await using (var lease = await serverJournal.OpenAsync(remoteReview.Plan, CancellationToken.None))
+                await lease.SaveAsync(new DeploymentCheckpoint(0, false) { RequiresReview = true }, CancellationToken.None);
+            using (var recovery = new AppInstallerViewModel(serverInstaller) { JointDeployment = reopenedServer })
+            {
+                await recovery.OpenAsync();
+                Check(recovery.CurrentPackage is { RequiresDeploymentReview: true }
+                    && recovery.Status.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("app_installer.deployment.review_again")
+                    && packages.FindInstalled(id) is null,
+                    "Recovered archives requiring review must show that fact before installation.");
+            }
             var plan = await provider.PlanAsync(source, id);
             using (var review = new AppInstallerViewModel(installer) { AllowPackageSelection = false })
             {

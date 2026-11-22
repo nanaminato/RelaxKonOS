@@ -3,6 +3,8 @@ using System.Text.Json;
 
 namespace RelaxKonOS.Deployment;
 
+public sealed record PendingDeploymentRecovery(DeploymentPlan Plan, bool RequiresReview);
+
 /// <summary>Stores checkpoint files in the caller's private deployment state directory.</summary>
 public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
 {
@@ -18,9 +20,9 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
         return match?.Checkpoint.RequiresReview == false ? match.Plan : null;
     }
 
-    public async Task<IReadOnlyList<DeploymentPlan>> ReadPendingPlansAsync(Guid accountId, string connectionIdentity,
+    public async Task<IReadOnlyList<PendingDeploymentRecovery>> ReadPendingRecoveriesAsync(Guid accountId, string connectionIdentity,
         CancellationToken cancellationToken = default) =>
-        (await ReadPendingEntriesAsync(accountId, connectionIdentity, cancellationToken)).Select(entry => entry.Plan).ToArray();
+        (await ReadPendingEntriesAsync(accountId, connectionIdentity, cancellationToken)).Select(entry => new PendingDeploymentRecovery(entry.Plan, entry.Checkpoint.RequiresReview)).ToArray();
 
     private async Task<IReadOnlyList<Entry>> ReadPendingEntriesAsync(Guid accountId, string connectionIdentity,
         CancellationToken cancellationToken = default)

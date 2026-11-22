@@ -268,7 +268,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     {
         if (CurrentPackage is not null || _pending.Count == 0) return;
         CurrentPackage = _pending.Dequeue();
-        Status = CurrentPackage.IsRepair ? LocalizedText.Ref("app_installer.status.confirm_repair")
+        Status = CurrentPackage.RequiresDeploymentReview ? LocalizedText.Ref("app_installer.deployment.review_again")
+            : CurrentPackage.IsRepair ? LocalizedText.Ref("app_installer.status.confirm_repair")
             : CurrentPackage.IsUpdate ? LocalizedText.Ref("app_installer.status.confirm_update") : LocalizedText.Ref("app_installer.status.confirm_install");
         OnPropertyChanged(nameof(PendingCount));
     }

@@ -216,8 +216,8 @@ internal static class JointDeploymentAcceptance
                 "removing a local prerequisite during snapshot observation prevents the module operation");
             var reopenedMixedJournal = new FileDeploymentJournal(journalPath);
             Require(await Service().FindPendingAsync(mixedCandidate, default) is null
-                && (await reopenedMixedJournal.ReadPendingPlansAsync(auth.CurrentUser!.Id, auth.ServiceId!))
-                    .Any(plan => plan.Id == mixed.Plan.Id),
+                && (await reopenedMixedJournal.ReadPendingRecoveriesAsync(auth.CurrentUser!.Id, auth.ServiceId!))
+                    .Any(recovery => recovery.Plan.Id == mixed.Plan.Id && recovery.RequiresReview),
                 "the reopened journal offers a new review instead of resuming the invalidated mixed plan");
 
             var optional = candidate.Manifest.Dependencies!.Optional.Single();
@@ -429,8 +429,8 @@ internal static class JointDeploymentAcceptance
             Require(mixedInstalled.Id == mixedCandidate.Manifest.Id
                 && applications.IsRegistered(new AppId(mixedInstalled.Id))
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1
-                && !(await reopenedMixedJournal.ReadPendingPlansAsync(auth.CurrentUser!.Id, auth.ServiceId!))
-                    .Any(plan => plan.OrderedReleases[^1].Package.Id == mixedInstalled.Id),
+                && !(await reopenedMixedJournal.ReadPendingRecoveriesAsync(auth.CurrentUser!.Id, auth.ServiceId!))
+                    .Any(recovery => recovery.Plan.OrderedReleases[^1].Package.Id == mixedInstalled.Id),
                 "completing the replacement plan retires the old recovery entry without installing the module again");
             await packages.UninstallAsync(mixedInstalled.Id);
             await packages.UninstallAsync(prerequisiteId);

@@ -138,14 +138,14 @@ await using (var lease = await reopenedJournal.OpenAsync(expiredStepPlan, Cancel
     Check(lease.Checkpoint is { CompletedSteps: 1, RequiresReview: true, Verified: false });
 Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
     binding.AccountId, binding.ConnectionIdentity) is null);
-Check((await reopenedJournal.ReadPendingPlansAsync(binding.AccountId, binding.ConnectionIdentity))
-    .Any(pending => pending.Id == expiredStepPlan.Id));
+Check((await reopenedJournal.ReadPendingRecoveriesAsync(binding.AccountId, binding.ConnectionIdentity))
+    .Any(pending => pending.Plan.Id == expiredStepPlan.Id && pending.RequiresReview));
 backend.ReviewRequiredAt = null;
 await Reject(expiredStepPlan, "deployment-plan-review-required");
 Check(backend.Applied.Count == attempts);
 var replacement = plan with { Id = Guid.NewGuid(), ExpiresAt = expiredStepPlan.ExpiresAt.AddMinutes(1) };
 await coordinator.ExecuteAsync(replacement);
-Check((await reopenedJournal.ReadPendingPlansAsync(binding.AccountId, binding.ConnectionIdentity)).Count == 0);
+Check((await reopenedJournal.ReadPendingRecoveriesAsync(binding.AccountId, binding.ConnectionIdentity)).Count == 0);
 var sourceA = new DeploymentComponentRelease("source-a", "fixture", "publisher-a", "release-a");
 var sourceB = sourceA with { SourceId = "source-b", PublisherId = "publisher-b" };
 var downloadA = plan with { Id = Guid.NewGuid(), ClientBinding = binding with { ComponentRelease = sourceA } };

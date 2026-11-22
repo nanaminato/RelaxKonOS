@@ -142,14 +142,15 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         IReadOnlyList<OfficialDesktopRelease> releases, CancellationToken cancellationToken)
     {
         var scope = CaptureSessionScope();
-        var plans = await journal.ReadPendingPlansAsync(Guid.Empty, "", cancellationToken);
+        var recoveries = await journal.ReadPendingRecoveriesAsync(Guid.Empty, "", cancellationToken);
         if (scope is { } remote && IsCurrent(remote))
-            plans = [.. plans, .. await journal.ReadPendingPlansAsync(remote.AccountId, remote.ConnectionIdentity, cancellationToken)];
+            recoveries = [.. recoveries, .. await journal.ReadPendingRecoveriesAsync(remote.AccountId, remote.ConnectionIdentity, cancellationToken)];
 
         var candidates = new List<AppPackageCandidate>();
         var recovered = new HashSet<(DeploymentPackageKey Package, string Digest, DeploymentComponentRelease? Source, DeploymentServerArchive? Server)>();
-        foreach (var plan in plans)
+        foreach (var recovery in recoveries)
         {
+            var plan = recovery.Plan;
             if (cancellationToken.IsCancellationRequested) break;
             if (plan.ClientBinding is not { } binding || !MatchesScope(binding, scope)) continue;
             var root = plan.OrderedReleases[^1];
@@ -174,7 +175,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 if (digest == root.ArtifactIdentity && MatchesComponentRelease(binding, candidate, digest)
                     && binding.ServerArchive == candidate.ServerArchive && MatchesScope(binding, scope) && recovered.Add(identity))
                 {
-                    candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true });
+                    candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true, RequiresDeploymentReview = recovery.RequiresReview });
                     candidate = null; // The installer queue now owns the staged archive.
                 }
             }

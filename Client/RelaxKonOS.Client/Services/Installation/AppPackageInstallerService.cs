@@ -266,6 +266,7 @@ public sealed record AppPackageCandidate(
     internal string? CatalogComponentId { get; init; }
     internal DeploymentServerArchive? ServerArchive { get; init; }
     internal bool IsRecoveredDeployment { get; init; }
+    internal bool RequiresDeploymentReview { get; init; }
     public bool IsUpdate => InstalledVersion is not null && InstalledVersion != Manifest.Version.Trim();
     public bool IsRepair => InstalledVersion is not null && InstalledVersion == Manifest.Version.Trim();
 }
