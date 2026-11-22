@@ -525,3 +525,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Settings 窗口接口仅传递工作区呈现与创建窗口的回调。宿主从自身服务容器解析受管窗口、系统服务和授权，应用入口不再将内置 AppContext 传入宿主工作区。Windows Release 工作区偏好及 Settings 深链接回归通过。
 - Settings 页面呈现契约、导航契约和跨边界数据迁入 RelaxKonOS.Settings.Contracts，包加载器共享该契约程序集类型。Windows Release 设置窗口和本地化校验通过。依赖宿主构造的其余具体页面模型仍需跨包适配。
 - Settings 首页、默认应用、无障碍、日常设置、关于和权限草稿使用共享呈现模型，以便宿主创建的数据可由包侧模板识别。法律文档资源继续位于 Settings 应用程序集。Windows Release 设置窗口及本地化校验通过；包加载路径待验证。
+- Settings 增加实现外部应用 SDK 的包入口，复用窗口构建与深链接分发，要求显式的宿主工作区能力。Windows Release 工作区偏好专项验证包入口分发和缺少能力时拒绝启动路由。官方来源接线、内部路由授权、发布清单和安装仍待完成。

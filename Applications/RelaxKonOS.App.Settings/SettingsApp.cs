@@ -11,7 +11,7 @@ public sealed class SettingsApp(ISettingsWindow window) : RemoteApplicationBase,
 {
     public static AppId Id { get; } = new("relaxkonos.settings");
 
-    public override ApplicationManifest Manifest { get; } = new(
+    internal static ApplicationManifest SettingsManifest { get; } = new(
         Id: Id,
         DisplayName: "Settings",
         Version: "1.0.0",
@@ -20,20 +20,28 @@ public sealed class SettingsApp(ISettingsWindow window) : RemoteApplicationBase,
         RequestedPermissions: [AppPermissions.DesktopWallpaperWrite, AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
-    public override void Activate(AppContext context) => window.Open(workspace =>
+    public override ApplicationManifest Manifest => SettingsManifest;
+
+    public override void Activate(AppContext context) =>
+        OpenWorkspace(window, (title, view, bounds) => context.ShowWindow(title, view, bounds));
+
+    internal static void OpenWorkspace(ISettingsWindow window,
+        Func<string, SettingsWorkspaceView, Rect, ManagedWindow> showWindow) => window.Open(workspace =>
     {
         var view = new SettingsWorkspaceView { DataContext = workspace };
-        var managedWindow = context.ShowWindow(workspace.Labels("settings.title"), view,
-            bounds: new Rect(180, 90, 820, 560), iconGlyph: Manifest.IconGlyph);
+        var managedWindow = showWindow(workspace.Labels("settings.title"), view, new Rect(180, 90, 820, 560));
         view.AttachWindowHeader(managedWindow);
         return managedWindow;
     });
 
     public bool CanHandleActivation(Uri uri) => SettingsActivation.Match(uri) is not null;
 
-    public void HandleActivation(AppContext context, AppActivationRequest request, ManagedWindow? existingWindow)
+    public void HandleActivation(AppContext context, AppActivationRequest request, ManagedWindow? existingWindow) =>
+        Dispatch(window, request.Uri);
+
+    internal static void Dispatch(ISettingsWindow window, Uri uri)
     {
-        var target = SettingsActivation.Match(request.Uri);
+        var target = SettingsActivation.Match(uri);
         if (target is null) return;
 
         if (target.ApplicationId is { } appId)

@@ -48,6 +48,21 @@ foreach (var (route, target) in new[]
 settingsApp.HandleActivation(null!, new(new Uri("https://settings/home")), null);
 Check(settingsWindow.Target == "permissions:example.App", "Settings dispatched an unsupported activation.");
 
+var packageApp = new RelaxKonOS.App.Settings.SettingsPackageApp();
+var packageContext = DispatchProxy.Create<ISettingsPackageProbeContext, SettingsPackageContextProbe>();
+var packageProbe = (SettingsPackageContextProbe)(object)packageContext;
+packageProbe.Workspace = settingsWindow;
+var homeUri = new Uri("relaxkonos://settings/home");
+await packageApp.HandleActivationAsync(packageContext, homeUri);
+Check(settingsWindow.Target == "home", "The Settings package did not dispatch through its workspace capability.");
+packageProbe.Workspace = null;
+try
+{
+    await packageApp.HandleActivationAsync(packageContext, homeUri);
+    throw new Exception("The Settings package accepted activation without its workspace capability.");
+}
+catch (InvalidOperationException) { }
+
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
 // This console harness has no dispatcher loop; async HTTP checks must use the thread pool.
 SynchronizationContext.SetSynchronizationContext(null);
@@ -242,6 +257,20 @@ static async Task Until(Func<bool> condition)
 {
     for (var i = 0; i < 500; i++) { if (condition()) return; await Task.Delay(10); }
     throw new Exception("Timed out waiting for preference editor state.");
+}
+
+public interface ISettingsPackageProbeContext : RelaxKonOS.AppSDK.IExternalAppContext, RelaxKonOS.App.Settings.ISettingsPackageContext;
+
+public class SettingsPackageContextProbe : DispatchProxy
+{
+    public RelaxKonOS.App.Settings.ISettingsWindow? Workspace { get; set; }
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+    {
+        "get_AppId" => RelaxKonOS.App.Settings.SettingsApp.Id,
+        "get_SettingsWindow" => Workspace,
+        _ => throw new NotSupportedException(method?.Name),
+    };
 }
 
 sealed class SettingsWindowProbe : RelaxKonOS.App.Settings.ISettingsWindow
