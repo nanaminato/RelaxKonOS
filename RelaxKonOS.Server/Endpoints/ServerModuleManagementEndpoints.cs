@@ -339,7 +339,14 @@ internal static class ServerModuleManagementEndpoints
             var modules = http.RequestServices.GetService<ServerModules>();
             if (previous is not null && previous.Runtime != candidate.Manifest.Runtime)
                 return Problem("module-package-runtime-changed", 409);
-            var live = previous is { Runtime: "module-host" } && modules?.IsEnabled(plan.ModuleId) == true;
+            // A frozen plan may grant first code consent to the exact archive installed offline.
+            // That case still requires startup verification and must not enter the online update path.
+            var awaitingFirstConsent = previous is { Runtime: "module-host", Quarantined: false }
+                && previous.ArtifactSha256 == candidate.ArchiveSha256
+                && hosts?.Exists(plan.ModuleId) != true
+                && ModuleTrustStore.Read(context.ContentRootPath, previous) is null;
+            var live = !awaitingFirstConsent && previous is { Runtime: "module-host" }
+                && modules?.IsEnabled(plan.ModuleId) == true;
             if (live && (hosts?.Exists(plan.ModuleId) != true || previous!.Quarantined))
                 return Problem("module-host-not-available-for-update", 409);
             if (live && previous!.ArtifactSha256 != candidate.ArchiveSha256)

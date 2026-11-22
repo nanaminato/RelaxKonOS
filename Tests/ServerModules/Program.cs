@@ -180,6 +180,7 @@ if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"])
     }
     await ModulePackageHttpChecks.RunAsync(VerifyLifecycle);
     await ModulePackageHttpChecks.RunAsync(VerifyLifecycle, isolated: true);
+    await ModulePackageHttpChecks.RunAsync(VerifyLifecycle, isolated: true, preinstalled: true);
     return;
 }
 
@@ -415,6 +416,7 @@ await InstalledIsolatedModuleChecks.RunAsync(Check);
 await ModuleManagementHttpChecks.RunAsync(Check);
 await ModulePackageHttpChecks.RunAsync(Check);
 await ModulePackageHttpChecks.RunAsync(Check, isolated: true);
+await ModulePackageHttpChecks.RunAsync(Check, isolated: true, preinstalled: true);
 await ModuleRuntimeManagementChecks.RunAsync(Check);
 
 // The default set must reproduce a Server that predates the registry: every official module on.

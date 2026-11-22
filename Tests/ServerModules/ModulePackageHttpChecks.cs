@@ -16,7 +16,7 @@ using RelaxKonOS.Server.Startup;
 
 internal static class ModulePackageHttpChecks
 {
-    internal static async Task RunAsync(Action<bool, string> check, bool isolated = false)
+    internal static async Task RunAsync(Action<bool, string> check, bool isolated = false, bool preinstalled = false)
     {
         if (isolated)
         {
@@ -95,8 +95,16 @@ internal static class ModulePackageHttpChecks
                 catalog.Accept(envelope, policy, context, ModulePackageCatalogStore.InitialRevision,
                     "package-http", "accept-package-http", now);
 
-            using var management = new ModuleManagementStore(builder.Configuration, root);
-            var modules = ServerModules.CreateManaged(management.DesiredIds);
+            if (preinstalled)
+            {
+                var offline = await InstalledModuleInstaller.InstallAsync(root, builder.Configuration,
+                    builder.Environment, "official", built.ArchivePath, releaseId, now);
+                check(ModuleTrustStore.Read(root, offline) is null, "offline installation does not grant code trust");
+            }
+            var installedCatalog = InstalledModuleCatalog.Load(root);
+            using var management = new ModuleManagementStore(builder.Configuration, root, installedCatalog);
+            var modules = preinstalled ? ServerModules.Create(builder.Configuration, installedCatalog)
+                : ServerModules.CreateManaged(management.DesiredIds);
             builder.Services.AddSingleton(management);
             builder.Services.AddSingleton<ModuleManagementExecutor>();
             builder.Services.AddHostedService(services => services.GetRequiredService<ModuleManagementExecutor>());
@@ -213,7 +221,8 @@ internal static class ModulePackageHttpChecks
                     "install preview exposes runtime and the structured declared capability scope");
                 using var direct = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageInstall,
                     new ServerModulePackageInstallRequest("official", releaseId, uploaded.UploadId), RelaxKonOSJsonOptions.Default);
-                check(direct.StatusCode == System.Net.HttpStatusCode.Conflict && InstalledModuleStore.Read(root).Count == 0,
+                check(direct.StatusCode == System.Net.HttpStatusCode.Conflict
+                    && InstalledModuleStore.Read(root).Count == (preinstalled ? 1 : 0),
                     "direct install cannot bypass frozen-plan code trust confirmation");
             }
             var applyResponse = await client.PostAsync(
