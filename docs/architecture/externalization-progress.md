@@ -480,3 +480,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 一次性 Ubuntu 通过由桌面发起的 Databases 双包端到端验收。用实际 `.roapp` 复制生成测试归档，只把最低模块版本设为 9.0.0，使随附版本不能满足条件，并以同一真实观察程序集签发 9.0.0 `.rkmodule`。桌面协调器以真实账号登录，进行 HTTPS 下载和冻结计划安装，重启前不登记桌面应用。Core 通过正式 sudo 启动器监督模块后，第二个桌面进程恢复原计划并完成登记。四条经真实 Helper 的观察者查询通过，服务端唯一安装回执为 Succeeded 且摘要吻合，Core 正常退出。生产归档和最低版本要求均未改动。
 - Ubuntu Databases 双包端到端再次通过，并补验桌面启动守卫。登记应用后，守卫接受实际运行的独立签名模块，随后进入单独的组件读取权限检查。验收夹具未授权该权限，因此验证范围止于此检查，未打开业务窗口。
 - 当前 Windows Debug 桌面、DevCli 和测试宿主重新构建后，全量 Direct Deploy 验收通过。真实桌面登录界面通过 --no-launch 安装并重启后回退；两个隔离配置验证项目与包直传、监视更新、失败保留窗口、串行操作及配置隔离。Notepad 和 Image Viewer 通过直传生命周期，Release 安装指针保持不变。
+- Windows Debug 使用真实 Docker `.roapp` 内容复跑 Direct Deploy 必需依赖专项。候选首次启动被拒绝时不登记，--no-launch 登记并保留依赖。再次部署并启动被拒绝时，先前安装路径、应用登记和依赖仍保持一致。测试使用启动守卫夹具，未启动真实 Docker Engine。

@@ -57,13 +57,20 @@ internal static class DirectDeployDependencyChecks
         {
             payload.Position = 0;
             var blocked = await packages.DeployAsync(payload, launch: true, default);
-            if (blocked.Code != "launch_blocked" || !guard.Checked || apps.IsRegistered(id))
+            if (blocked.Code != "launch_blocked" || guard.Checks != 1 || apps.IsRegistered(id))
                 throw new InvalidOperationException($"Candidate dependencies did not block Direct Deploy launch ({blocked.Code}).");
 
             payload.Position = 0;
             var staged = await packages.DeployAsync(payload, launch: false, default);
             if (staged.Code != "ok" || !apps.IsRegistered(id) || !guard.HasRequiredModule(id))
                 throw new InvalidOperationException($"Direct Deploy did not register the dependency ({staged.Code}).");
+
+            var installed = packages.FindInstalled(id.Value);
+            payload.Position = 0;
+            var blockedReplacement = await packages.DeployAsync(payload, launch: true, default);
+            if (installed is null || blockedReplacement.Code != "launch_blocked" || guard.Checks != 2
+                || packages.FindInstalled(id.Value) != installed || !apps.IsRegistered(id) || !guard.HasRequiredModule(id))
+                throw new InvalidOperationException("A denied launch did not preserve the previously installed package and its dependencies.");
         }
         finally
         {
@@ -75,7 +82,7 @@ internal static class DirectDeployDependencyChecks
     private sealed class Guard : IApplicationLaunchGuard
     {
         public DeveloperPackageManager Packages { get; set; } = null!;
-        public bool Checked { get; private set; }
+        public int Checks { get; private set; }
 
         public bool HasRequiredModule(AppId id) => Packages.RequiredDependencies(id) is
             [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.docker" }, Capability: "server.docker" }];
@@ -84,7 +91,7 @@ internal static class DirectDeployDependencyChecks
 
         public Task<bool> CheckAsync(RelaxKonOS.AppSDK.AppContext context, ManagedWindow? existingWindow)
         {
-            Checked = HasRequiredModule(context.AppId);
+            if (HasRequiredModule(context.AppId)) Checks++;
             return Task.FromResult(false);
         }
     }
