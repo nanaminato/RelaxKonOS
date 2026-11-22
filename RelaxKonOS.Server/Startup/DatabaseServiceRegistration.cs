@@ -1,4 +1,3 @@
-using RelaxKonOS.ServerModule.Database;
 using RelaxKonOS.ServerModule.Database.Contracts;
 using RelaxKonOS.Server.Components;
 using RelaxKonOS.Server.Databases;
@@ -27,9 +26,7 @@ internal static class DatabaseServiceRegistration
         services.AddSingleton<IInstallationService, MySqlMaintenanceInstallationService>();
         services.AddSingleton<IInstallationService, PostgreSqlBackupAutomationInstallationService>();
         services.AddSingleton<IPostgreSqlBackupScheduleHost, PostgreSqlBackupScheduleHost>();
-        services.AddSingleton<PostgreSqlBackupScheduler>();
         services.AddSingleton<IDatabaseQueryHost, DatabaseQueryHost>();
-        services.AddSingleton<IDatabaseQueries, DatabaseQueries>();
-        services.AddHostedService(sp => sp.GetRequiredService<PostgreSqlBackupScheduler>());
+        BundledDatabaseExecution.Instance.AddServices(services);
     }
 }

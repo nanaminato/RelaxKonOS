@@ -10,7 +10,7 @@ internal static class GitAssemblyResidencyChecks
     internal static async Task RunAsync(Action<bool, string> check)
     {
         var coreReferences = typeof(ServerModules).Assembly.GetReferencedAssemblies().Select(reference => reference.Name).ToHashSet();
-        foreach (var module in new[] { "Git", "Proxy", "Firewall", "Docker", "Certificates", "WebServer", "DatabaseObservation",
+        foreach (var module in new[] { "Git", "Proxy", "Firewall", "Docker", "Certificates", "WebServer", "Database", "DatabaseObservation",
                      "CloudStorage", "CloudBaidu", "CloudS3", "CloudWebDav" })
             check(!coreReferences.Contains($"RelaxKonOS.ServerModule.{module}"),
                 $"Server has no static reference to the {module} execution implementation");

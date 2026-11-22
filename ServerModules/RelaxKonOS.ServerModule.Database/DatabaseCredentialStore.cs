@@ -3,11 +3,13 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Databases;
 
+using RelaxKonOS.ServerModule.Database.Contracts;
+
 namespace RelaxKonOS.ServerModule.Database;
 
 /// <summary>Immutable database credential references using the host's existing Data Protection key authority.
 /// Neither ordinary state nor operation/audit ledgers contain passwords. There is no reveal HTTP endpoint.</summary>
-public sealed class DatabaseCredentialStore(string root, IDataProtector protector)
+public sealed class DatabaseCredentialStore(string root, IDataProtector protector) : IDatabaseCredentialStore
 {
     private readonly object gate = new();
     private sealed record Entry(Guid Reference, Guid Instance, string Actor, string ProtectedValue);
@@ -75,10 +77,4 @@ public sealed class DatabaseCredentialStore(string root, IDataProtector protecto
     }
     private Entry ReadEntry(Guid reference) => JsonSerializer.Deserialize<Entry>(File.ReadAllBytes(PathFor(reference))) is { } e && e.Reference == reference
         ? e : throw new DatabaseCredentialException("database.credential_unavailable");
-}
-
-public sealed class DatabaseCredentialException(string problemCode, int statusCode = 409) : Exception(problemCode)
-{
-    public string ProblemCode { get; } = problemCode;
-    public int StatusCode { get; } = statusCode;
 }
