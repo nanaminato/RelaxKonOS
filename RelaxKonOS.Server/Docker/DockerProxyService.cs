@@ -50,6 +50,7 @@ public sealed class DockerProxyService(
 
     public async Task<DockerProxyStatusDto> SaveAsync(SaveDockerProxySettingsRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
     {
+        using var lease = Execution.Acquire<IDockerProxyProjection>(DockerComposeExecution.ProxyProjectionEntryType);
         var previous = await ReadSavedAsync(cancellationToken);
         // Saving an unconfirmed replacement must not forget that the old daemon setting is still
         // installed. That marker is what lets a later Clear remove the old setting safely.
@@ -62,34 +63,28 @@ public sealed class DockerProxyService(
         resolver.Invalidate();
 
         var resolution = await resolver.ResolveAsync(cancellationToken);
-        var saved = await ReadSavedAsync(cancellationToken) ?? new DockerProxySetting();
-        var layers = new List<DockerProxyLayerDto> { BuildLayer(resolution) };
-
-        // Order matters. A preference that resolves to a problem is reported and the host is left
-        // exactly as it was: installing it would either be rejected by the Helper (Linux) or, on
-        // Docker Desktop, write manual mode with an empty proxy and restart the daemon.
-        if (resolution.ProblemCode.Length > 0)
-            layers.Add(new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Failed, resolution.ProblemCode, string.Empty));
-        else if (!resolution.Enabled || !resolution.ApplyToEngine)
-            layers.Add(await RetireEngineLayerAsync(previous, resolution, cancellationToken));
-        else if (!configurator.IsSupported)
-            layers.Add(new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Unsupported, DockerProxyProblem.PlatformUnsupported, string.Empty));
-        else if (!request.Confirmed)
-            // Installing or replacing the daemon proxy restarts Docker and interrupts running
-            // containers, so it never happens as a side effect of saving a form.
-            layers.Add(new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Failed, DockerProxyProblem.ConfirmationRequired, string.Empty));
-        else
-            layers.Add(await InstallEngineLayerAsync(resolution, cancellationToken));
+        var buildLayer = lease.Executor.BuildLayer(resolution);
+        var engineLayer = lease.Executor.DecideEngineChange(resolution, configurator.IsSupported, request.Confirmed) switch
+        {
+            DockerProxyEngineChange.InvalidResolution => new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Failed, resolution.ProblemCode, string.Empty),
+            DockerProxyEngineChange.Retire when resolution.ProblemCode.Length == 0 && !resolution.EngineLayerRequested =>
+                await RetireEngineLayerAsync(previous, resolution, cancellationToken),
+            DockerProxyEngineChange.Unsupported => new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Unsupported, DockerProxyProblem.PlatformUnsupported, string.Empty),
+            DockerProxyEngineChange.ConfirmationRequired => new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Failed, DockerProxyProblem.ConfirmationRequired, string.Empty),
+            DockerProxyEngineChange.Install when request.Confirmed && resolution.EngineLayerRequested =>
+                await InstallEngineLayerAsync(resolution, cancellationToken),
+            _ => throw new InvalidOperationException("The Docker proxy module returned an invalid Engine change."),
+        };
 
         // The freshly installed layer is re-evaluated against the daemon's own read-back, because a
         // written configuration is not yet a live one.
         var engineState = await SafeReadEngineProxyAsync(cancellationToken);
         var desktop = ReadDesktopProxy();
-        var reEvaluated = layers.Any(layer => layer.Target == DockerProxyTarget.Engine && layer.State == DockerProxyLayerState.RestartRequired)
+        var reEvaluated = engineLayer.State == DockerProxyLayerState.RestartRequired
             ? EngineLayer(resolution, await ReadSavedAsync(cancellationToken), engineState, desktop)
-            : layers.Single(layer => layer.Target == DockerProxyTarget.Engine);
+            : engineLayer;
         return Describe(resolution, await ReadSavedAsync(cancellationToken), engineState, desktop,
-            [layers.Single(layer => layer.Target == DockerProxyTarget.Build), reEvaluated]);
+            [buildLayer, reEvaluated]);
     }
 
     /// <summary>

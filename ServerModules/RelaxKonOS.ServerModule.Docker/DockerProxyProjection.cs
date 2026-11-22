@@ -5,6 +5,15 @@ namespace RelaxKonOS.Server.Docker;
 
 public sealed class DockerProxyProjection : IDockerProxyProjection
 {
+    public DockerProxyEngineChange DecideEngineChange(DockerProxyResolution resolution, bool isSupported, bool confirmed)
+    {
+        // An invalid preference cannot authorize either installation or retirement.
+        if (resolution.ProblemCode.Length > 0) return DockerProxyEngineChange.InvalidResolution;
+        if (!resolution.Enabled || !resolution.ApplyToEngine) return DockerProxyEngineChange.Retire;
+        if (!isSupported) return DockerProxyEngineChange.Unsupported;
+        return confirmed ? DockerProxyEngineChange.Install : DockerProxyEngineChange.ConfirmationRequired;
+    }
+
     public DockerProxyLayerDto BuildLayer(DockerProxyResolution resolution)
     {
         if (!resolution.Enabled) return new(DockerProxyTarget.Build, DockerProxyLayerState.Disabled, string.Empty, string.Empty);
