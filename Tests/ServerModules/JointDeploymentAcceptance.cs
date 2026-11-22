@@ -38,7 +38,10 @@ internal static class JointDeploymentAcceptance
         RunWithDispatcher(() => RunAsync(Path.GetFullPath(archive), bundledModuleArchives.Select(Path.GetFullPath).ToArray()));
 
     public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
-        RunWithDispatcher(() => RunLiveDatabasesAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase));
+        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, ServerModules.DatabaseId));
+
+    public static void RunLiveGit(string server, string archive, string state) =>
+        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), "reuse", ServerModules.GitId));
 
     private static void RunWithDispatcher(Func<Task> run)
     {
@@ -54,7 +57,7 @@ internal static class JointDeploymentAcceptance
         task.GetAwaiter().GetResult();
     }
 
-    private static async Task RunLiveDatabasesAsync(Uri server, string archive, string state, string phase)
+    private static async Task RunLiveAsync(Uri server, string archive, string state, string phase, string moduleId)
     {
         if (server.Scheme != "http" || server.Host != "127.0.0.1" || server.PathAndQuery != "/"
             || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "resume" or "reuse" or "uninstall"))
@@ -73,7 +76,7 @@ internal static class JointDeploymentAcceptance
             InnerHandler = new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false },
         });
         using var services = new ServiceCollection().BuildServiceProvider();
-        using var trust = new ComponentCatalogSourceStore(Path.Combine(state, "trust"), "live-databases-fixture");
+        using var trust = new ComponentCatalogSourceStore(Path.Combine(state, "trust"), "live-joint-fixture");
         var windows = new RelaxKonOS.WindowManager.WindowManager();
         var applications = new ApplicationManager(windows, services);
         var drive = new VirtualSystemDrive(Path.Combine(state, "drive"));
@@ -92,7 +95,19 @@ internal static class JointDeploymentAcceptance
         var deployment = new JointAppDeploymentService(factory, auth, installer, packages,
             applications, new FileDeploymentJournal(Path.Combine(state, "journal")));
         var candidate = await installer.InspectLocalAsync(archive);
-        Require(candidate.Manifest.Id == ServerModules.DatabaseId, "the fixture uses the Databases desktop package");
+        Require(candidate.Manifest.Id == moduleId, $"the fixture uses the {moduleId} desktop package");
+        if (moduleId == ServerModules.GitId)
+        {
+            var review = await deployment.PrepareAsync(candidate, [], default);
+            Require(review.Plan.PreparedSteps.IsEmpty && review.Plan.OrderedReleases.Any(release =>
+                    release.Package.Kind == DeploymentPackageKind.ServerModule && release.Package.Id == moduleId
+                    && release.Satisfied && release.Capabilities.GetValueOrDefault(ServerCapabilities.Git) == RelaxKonOS.Protocol.Git.GitApiRoutes.CapabilityContractVersion),
+                "Project Editor reuses the running Git module with its declared contract version");
+            var installedGit = await deployment.ExecuteAsync(review, default);
+            Require(installedGit.Id == moduleId && applications.IsRegistered(new AppId(moduleId)),
+                "the desktop registers Project Editor after checking the live Git module");
+            return;
+        }
         if (phase == "start")
         {
             var review = await deployment.PrepareAsync(candidate, [], default);

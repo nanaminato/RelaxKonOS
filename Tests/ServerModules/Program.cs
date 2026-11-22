@@ -179,6 +179,12 @@ if (args is ["--live-databases-joint-deployment", var liveServer, var liveArchiv
     return;
 }
 
+if (args is ["--live-git-joint-deployment", var gitServer, var gitArchive, var gitState])
+{
+    JointDeploymentAcceptance.RunLiveGit(gitServer, gitArchive, gitState);
+    return;
+}
+
 if (args is ["--module-lifecycle-checks"] or ["--module-package-http-checks"])
 {
     void VerifyLifecycle(bool passed, string message)
