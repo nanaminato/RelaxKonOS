@@ -27,7 +27,7 @@
 | registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Release 包验收；真实服务器待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
-| docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包生命周期及隔离宿主联合部署；真实 Engine 待验 |
+| docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | Windows 和 Linux 签名双包、真实 Engine 临时项目部署和删除已验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期和隔离宿主联合部署已验，真实防火墙操作待验 |
 | proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows Release 包生命周期已验，真实 mihomo 待验 |
@@ -828,3 +828,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 真实 Pebble 双包验收在签发宿主重启后按原回执的证书 ID 读取详情及证书清单，两处均返回同一有效证书和指纹。CA 保持一个订单及一次 finalization。
 - Windows Release 的 --signed-docker-joint-acceptance 使用官方 Docker Manager 归档测试副本仅提高模块最低版本。协调器提交一次独立签名包安装，Core 重启续跑并登记桌面应用。生产 Compose 服务使用该签名执行包解析预览，拒绝调用 Engine 的测试传输保持未使用。桌面卸载后服务端包仍保留。
 - Linux x64 的 Docker Manager 独立签名双包验收通过一次安装、重启续跑、生产 Compose 预览和桌面卸载保留模块。Windows Release 同一双包用 RK_TEST_DOCKER_ENGINE=1 通过真实 Engine 临时项目验收，回执确认容器运行，幂等重放返回原回执，删除后观测为空且清理通过。
+- Linux x64 自包含 Docker Manager 签名双包在 WSL 使用 RK_TEST_DOCKER_ENGINE=1 及已有 Docker Desktop Unix 套接字，完成真实 Compose 项目部署、原回执重放、删除及空观测。同轮桌面重启续跑和卸载保留模块通过。Windows 和 WSL 使用同一 Docker Desktop Engine。
