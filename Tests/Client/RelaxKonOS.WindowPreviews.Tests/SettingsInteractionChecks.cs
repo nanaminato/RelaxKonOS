@@ -1,4 +1,5 @@
 using RelaxKonOS.App.Settings.Views;
+using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -14,11 +15,28 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.HostSettings;
 using RelaxKonOS.Protocol.Settings;
+using AppContext = System.AppContext;
 
 internal static class SettingsInteractionChecks
 {
     public static void Run(ShellSettings settings, LocalizationService localization)
     {
+        var activation = new SettingsActivationProbe();
+        var navigation = new SettingsNavigationService(activation);
+        var missing = navigation.OpenApplicationsAsync();
+        Dispatcher.UIThread.RunJobs();
+        missing.GetAwaiter().GetResult();
+        Check(activation.Routes.SequenceEqual([RelaxKonOSActivationUris.SettingsApplications,
+            new Uri("relaxkonos://applications/relaxkonos.appinstaller")]),
+            "A missing Settings route should open the built-in installer.");
+        activation.Routes.Clear();
+        activation.Result = AppActivationStatus.AvailabilityCheckPending;
+        var pending = navigation.OpenEnvironmentAsync();
+        Dispatcher.UIThread.RunJobs();
+        pending.GetAwaiter().GetResult();
+        Check(activation.Routes.SequenceEqual([RelaxKonOSActivationUris.SettingsEnvironment]),
+            "An accepted Settings activation should not open the installer.");
+
         var original = settings.Language;
         var session = DispatchProxy.Create<IAuthSession, LanguageSessionStub>();
         using var vm = new TimeLanguagePageViewModel(settings, localization, null,
@@ -171,6 +189,18 @@ internal static class SettingsInteractionChecks
             window.Close();
         }
     }
+    private sealed class SettingsActivationProbe : IAppActivationService
+    {
+        public List<Uri> Routes { get; } = [];
+        public AppActivationStatus Result { get; set; } = AppActivationStatus.RouteNotFound;
+
+        public AppActivationResult Activate(AppActivationRequest request)
+        {
+            Routes.Add(request.Uri);
+            return new(Result);
+        }
+    }
+
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 }
 

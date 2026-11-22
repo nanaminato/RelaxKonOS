@@ -1,5 +1,6 @@
 using Avalonia.Threading;
 using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
 
 namespace RelaxKonOS.Client.Services;
 
@@ -7,12 +8,18 @@ namespace RelaxKonOS.Client.Services;
 public sealed class SettingsNavigationService : ISettingsNavigation
 {
     private readonly IAppActivationService _activations;
+    private static readonly Uri Recovery = RelaxKonOSActivationUris.LaunchApplication(new AppId("relaxkonos.appinstaller"));
 
     public SettingsNavigationService(IAppActivationService activations) => _activations = activations;
 
-    public Task OpenApplicationsAsync() => Dispatcher.UIThread.InvokeAsync(() =>
-        _activations.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsApplications))).GetTask();
+    public Task OpenApplicationsAsync() => OpenAsync(RelaxKonOSActivationUris.SettingsApplications);
 
-    public Task OpenEnvironmentAsync() => Dispatcher.UIThread.InvokeAsync(() =>
-        _activations.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsEnvironment))).GetTask();
+    public Task OpenEnvironmentAsync() => OpenAsync(RelaxKonOSActivationUris.SettingsEnvironment);
+
+    private Task OpenAsync(Uri uri) => Dispatcher.UIThread.InvokeAsync(() =>
+    {
+        var result = _activations.Activate(new AppActivationRequest(uri));
+        if (result.Status == AppActivationStatus.RouteNotFound)
+            _activations.Activate(new AppActivationRequest(Recovery));
+    }).GetTask();
 }
