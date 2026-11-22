@@ -56,6 +56,21 @@ internal static class JointDeploymentAcceptance
         "relaxkonos.tunnels", ServerCapabilities.Tunnels, "Tunnels", RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.AssemblyFile,
         RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.EntryType, null, VerifySignedTunnelsAsync));
 
+    public static void RunSignedTailscale(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        "relaxkonos.tailscale", ServerCapabilities.Tailscale, "Tailscale", RelaxKonOS.Server.Tailscale.CollectibleTailscaleExecution.AssemblyFile,
+        RelaxKonOS.Server.Tailscale.CollectibleTailscaleExecution.EntryType, null, VerifySignedTailscaleAsync));
+
+    private static async Task VerifySignedTailscaleAsync(TestHost host, string root)
+    {
+        var installed = InstalledModuleCatalog.Load(Path.Combine(root, "server")).OfType<InstalledTailscaleModule>().Single();
+        var context = host.Services.GetRequiredService<ServerModuleContext>();
+        await using var runtime = await installed.RuntimeFactory.CreateAsync(host.Services, context, default);
+        var control = runtime.Resolve(typeof(RelaxKonOS.Server.Tailscale.ITailscaleControl));
+        Require(control.GetType().Assembly.GetName().Name == "RelaxKonOS.ServerModule.Tailscale"
+            && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(control.GetType().Assembly)?.IsCollectible == true,
+            "the joint-installed signed Tailscale package constructs its control service in a collectible context");
+    }
+
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
         string directory, string entryAssembly, string entryType, IReadOnlyDictionary<string, string>? contractVersions,
         Func<TestHost, string, Task> verifyBusiness)
@@ -1356,6 +1371,13 @@ internal static class JointDeploymentAcceptance
                 builder.Services.AddDbContextFactory<RelaxKonOSDbContext>(options =>
                     options.UseSqlite($"Data Source={Path.Combine(root, "git-test.sqlite")};Pooling=False"));
                 builder.Services.AddSingleton(DispatchProxy.Create<IGitRepositoryHost, GitEngineProbeHost>());
+            }
+            if (online.Any(module => module.Id == "relaxkonos.tailscale"))
+            {
+                builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
+                    new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+                if (!hasTunnels)
+                    builder.Services.AddSingleton(DispatchProxy.Create<IHostElevationSessionStore, GitRepositoryAssemblyChecks.RejectTransport>());
             }
             foreach (var module in online.Where(module => module.Id != ServerModules.GitId)) module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
