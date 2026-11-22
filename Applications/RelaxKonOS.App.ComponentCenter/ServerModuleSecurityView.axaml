@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ServerModuleSecurityView"
+ x:DataType="local:IServerModuleSecurity">
+ <StackPanel Spacing="16">
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+     <StackPanel Spacing="3">
+      <TextBlock Classes="section-title" Text="{local:Loc server_modules.health.title}" />
+      <TextBlock Classes="section-hint" Text="{local:Loc server_modules.health.hint}" />
+     </StackPanel>
+     <Button Grid.Column="1" Classes="ghost-action" Content="{local:Loc server_modules.check_health}"
+             Command="{Binding CheckHealthCommand}" IsEnabled="{Binding CanManage}" VerticalAlignment="Center" />
+    </Grid>
+    <WrapPanel ItemSpacing="10" LineSpacing="8">
+     <Border Classes="pill" Classes.ok="{Binding HealthToneOk}" Classes.bad="{Binding HealthToneBad}">
+      <TextBlock Text="{Binding HealthSummaryText}" />
+     </Border>
+     <TextBlock Text="{Binding HealthCheckedText}" FontSize="11" VerticalAlignment="Center"
+                Foreground="{DynamicResource TextTertiaryBrush}" />
+    </WrapPanel>
+    <ItemsControl ItemsSource="{Binding HealthRows}" IsVisible="{Binding HasHealthReport}">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="local:IServerModuleHealthRow">
+       <Border Classes="list-row">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+         <StackPanel Spacing="2">
+          <TextBlock Text="{Binding ModuleId}" FontSize="12" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding ProblemText}" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding HasProblem}"
+                     Foreground="{DynamicResource TextTertiaryBrush}" />
+         </StackPanel>
+         <TextBlock Grid.Column="1" Text="{Binding VersionText}" Classes="mono" FontSize="11" VerticalAlignment="Center"
+                    Foreground="{DynamicResource TextTertiaryBrush}" />
+         <Border Grid.Column="2" Classes="pill" Classes.ok="{Binding ToneOk}" Classes.bad="{Binding ToneBad}"
+                 VerticalAlignment="Center">
+          <TextBlock Text="{Binding StatusText}" />
+         </Border>
+        </Grid>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card">
+   <StackPanel Spacing="14">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+     <StackPanel Spacing="2">
+      <TextBlock Classes="section-title" FontSize="13" Text="{local:Loc server_modules.privilege_title}" />
+      <TextBlock Classes="section-hint" Text="{Binding PrivilegeStateText}" />
+     </StackPanel>
+     <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Center"
+             Content="{local:Loc server_modules.privilege_open}" Command="{Binding OpenPrivilegeReviewCommand}" />
+    </Grid>
+    <Border Classes="rule" />
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+     <StackPanel Spacing="2">
+      <TextBlock Classes="section-title" FontSize="13" Text="{local:Loc server_modules.consent_title}" />
+      <TextBlock Classes="section-hint" Text="{Binding ConsentCountText}" />
+     </StackPanel>
+     <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Center"
+             Content="{local:Loc server_modules.consent_open}" Command="{Binding OpenConsentEditorCommand}" />
+    </Grid>
+   </StackPanel>
+  </Border>
+ </StackPanel>
+</UserControl>

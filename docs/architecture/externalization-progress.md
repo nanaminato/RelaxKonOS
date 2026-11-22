@@ -553,3 +553,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 顶栏任务与刷新控件移至应用项目，宿主通过接口提供命令和刷新可用状态。Windows Release 三语双主题工作区专项通过，覆盖本地化标签、命令绑定与刷新启用状态。
 - Component Center 导航视图移入应用项目，包含搜索、页面列表、组件树和状态呈现。宿主通过视图接口提供目录数据与选择状态。Windows Release 三语双主题专项通过，覆盖搜索、页面切换、组件树与窄窗导航。
 - Component Center 目录来源页迁入应用项目，应用负责列表与审核界面，宿主通过界面接口提供设备本地来源状态和操作。Windows Release 目录来源审核及组件中心三语双主题专项通过。
+- Component Center 服务端模块安全与诊断页迁入应用项目，健康报告、授权审核和常驻授权入口使用宿主提供的命令及状态。Windows Release 模块管理专项通过。

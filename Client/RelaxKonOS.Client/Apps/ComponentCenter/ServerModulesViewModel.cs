@@ -46,8 +46,11 @@ public sealed record ServerModuleActionRow(
     public bool HasHint => !Hint.IsEmpty;
 }
 
-public sealed record ServerModuleHealthRow(ServerModuleHealthModuleDto Fact)
+public sealed record ServerModuleHealthRow(ServerModuleHealthModuleDto Fact) : IServerModuleHealthRow
 {
+    string IServerModuleHealthRow.StatusText => StatusText.Resolve();
+    string IServerModuleHealthRow.ProblemText => ProblemText.Resolve();
+
     public string ModuleId => Fact.ModuleId;
     public string VersionText => Fact.Version ?? "—";
     public LocalizedStatus EnabledText => LocalizedStatus.Key(Fact.Enabled
@@ -89,8 +92,17 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor, IServerModuleSecurity
 {
+    IEnumerable<IServerModuleHealthRow> IServerModuleSecurity.HealthRows => HealthRows;
+    string IServerModuleSecurity.HealthSummaryText => HealthSummaryText.Resolve();
+    string IServerModuleSecurity.HealthCheckedText => HealthCheckedText.Resolve();
+    string IServerModuleSecurity.PrivilegeStateText => PrivilegeStateText.Resolve();
+    string IServerModuleSecurity.ConsentCountText => ConsentCountText.Resolve();
+    ICommand IServerModuleSecurity.CheckHealthCommand => CheckHealthCommand;
+    ICommand IServerModuleSecurity.OpenPrivilegeReviewCommand => OpenPrivilegeReviewCommand;
+    ICommand IServerModuleSecurity.OpenConsentEditorCommand => OpenConsentEditorCommand;
+
     public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
     public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
     IAsyncRelayCommand IServerModulePlanReview.ApplyCommand => ApplyCommand;
