@@ -417,6 +417,22 @@ internal static class OfficialRoappChecks
                         Check(rootFile.AsSpan().SequenceEqual(uploadedBytes) && childFile.AsSpan().SequenceEqual("nested fixture"u8)
                             && Directory.Exists(Path.Combine(downloadRoot, "tree", "empty")),
                             "Directory round-trip must preserve nested contents and empty directories.");
+                        var moves = new List<(int Index, bool Moved)>();
+                        await files.TransferPathsAsync(connection, "/tree", [("/fixture.txt", "fixture.txt", false, false)],
+                            copy: true, (index, moved) => moves.Add((index, moved)));
+                        var sourceAfterCopy = await files.ReadDirectoryAsync(connection, "/");
+                        var destinationAfterCopy = await files.ReadDirectoryAsync(connection, "/tree");
+                        Check(moves.Count == 0 && sourceAfterCopy.Items.Any(item => item.Name == "fixture.txt")
+                            && destinationAfterCopy.Items.Any(item => item.Name == "fixture.txt"),
+                            "Remote copy must retain the source and create a destination without reporting a move.");
+                        await files.TransferPathsAsync(connection, "/tree/empty", [("/tree/fixture.txt", "fixture.txt", false, false)],
+                            copy: false, (index, moved) => moves.Add((index, moved)));
+                        var sourceAfterMove = await files.ReadDirectoryAsync(connection, "/tree");
+                        using var movedFile = new MemoryStream();
+                        await files.DownloadFileAsync(connection, "/tree/empty/fixture.txt", movedFile, _ => { });
+                        Check(moves is [(0, true)] && sourceAfterMove.Items.All(item => item.Name != "fixture.txt")
+                            && movedFile.ToArray().AsSpan().SequenceEqual("RelaxKonOS SFTP fixture\n"u8),
+                            "Remote move must report success, remove the old entry and preserve the copied bytes.");
 
                         var pin = typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!;
                         var expected = pin.GetValue(sshFixture);
@@ -435,7 +451,7 @@ internal static class OfficialRoappChecks
                             }
                         }
                         finally { pin.SetValue(sshFixture, expected); }
-                        Console.WriteLine("SSH Files verified file operations, nested directory round-trip, overwrite protection and host-key rejection over loopback SFTP.");
+                        Console.WriteLine("SSH Files verified file operations, remote copy and move, nested directory round-trip, overwrite protection and host-key rejection over loopback SFTP.");
                     }
                 }
                 if (isDatabase)

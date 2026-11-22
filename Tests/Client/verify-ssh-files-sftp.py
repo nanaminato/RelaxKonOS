@@ -72,7 +72,7 @@ class Directory(paramiko.SFTPServerInterface):
 
     def open(self, path, flags, attr):
         path = self.canonicalize(path)
-        if (path in {"/upload.txt", "/tree/root.txt", "/tree/nested/child.txt"}
+        if (path in {"/upload.txt", "/tree/root.txt", "/tree/nested/child.txt", "/tree/fixture.txt"}
                 and flags & os.O_CREAT and flags & os.O_EXCL
                 and path not in self.files and posixpath.dirname(path) in self.directories):
             return UploadHandle(flags, self.files, path)
@@ -94,7 +94,7 @@ class Directory(paramiko.SFTPServerInterface):
 
     def rename(self, oldpath, newpath):
         oldpath, newpath = map(self.canonicalize, (oldpath, newpath))
-        if (oldpath, newpath) != ("/upload.txt", "/renamed.txt"):
+        if (oldpath, newpath) not in {("/upload.txt", "/renamed.txt"), ("/tree/fixture.txt", "/tree/empty/fixture.txt")}:
             return paramiko.SFTP_PERMISSION_DENIED
         if oldpath not in self.files:
             return paramiko.SFTP_NO_SUCH_FILE

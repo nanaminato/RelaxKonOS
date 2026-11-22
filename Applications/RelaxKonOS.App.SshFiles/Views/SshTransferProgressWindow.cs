@@ -13,7 +13,7 @@ internal sealed class SshTransferProgressWindow : Window, IDisposable
     private readonly ProgressBar _bar = new() { Minimum = 0, Maximum = 100, IsIndeterminate = true };
     private readonly CancellationTokenSource _cancellation = new();
     private long _lastReport;
-    private bool _finished;
+    private volatile bool _finished;
     public CancellationToken Cancellation => _cancellation.Token;
 
     public SshTransferProgressWindow(Control owner, ISystemLanguage language, bool uploading)
@@ -31,7 +31,7 @@ internal sealed class SshTransferProgressWindow : Window, IDisposable
 
     public void Report(string file, long bytes, long? total)
     {
-        Cancellation.ThrowIfCancellationRequested();
+        if (_finished || _cancellation.IsCancellationRequested) return;
         var now = Environment.TickCount64;
         if (bytes != 0 && bytes != total && now - _lastReport < 100) return;
         _lastReport = now;

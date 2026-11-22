@@ -1374,11 +1374,13 @@ internal partial class SshFileBrowserView : UserControl
         {
             foreach (var file in picked)
             {
+                progress.Cancellation.ThrowIfCancellationRequested();
                 StatusMessage = SshStatus.Key("ssh_files.uploading", "Uploading {0} of {1}: {2}", uploaded + 1, picked.Count, file.Name);
                 await using var input = await file.OpenReadAsync();
-                progress.Report(file.Name, 0, input.CanSeek ? input.Length : null);
+                long? length = input.CanSeek ? input.Length : null;
+                progress.Report(file.Name, 0, length);
                 if (!await _session.UploadFileAsync(endpoint, input, Child(directory, file.Name),
-                    bytes => progress.Report(file.Name, (long)bytes, input.CanSeek ? input.Length : null)))
+                    bytes => progress.Report(file.Name, (long)bytes, length)))
                     throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {file.Name}");
                 uploaded++;
             }

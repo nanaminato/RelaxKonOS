@@ -99,12 +99,15 @@ public sealed partial class SshDesktopSession
         client.CreateDirectory(target);
         foreach (var file in directory.EnumerateFiles())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (file.Attributes.HasFlag(FileAttributes.ReparsePoint))
                 throw new IOException($"{file.FullName}: {LocalizedText.Get("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
             using var input = file.OpenRead();
-            report(file.FullName, 0, input.Length);
+            var length = input.Length;
+            report(file.FullName, 0, length);
             client.UploadFile(input, RemoteChild(target, file.Name), canOverride: false,
-                uploaded => report(file.FullName, (long)uploaded, input.Length));
+                uploaded => report(file.FullName, (long)uploaded, length));
+            cancellationToken.ThrowIfCancellationRequested();
         }
         foreach (var child in directory.EnumerateDirectories())
             UploadTree(client, child, RemoteChild(target, child.Name), report, cancellationToken);
@@ -119,6 +122,7 @@ public sealed partial class SshDesktopSession
             report(source, 0, size);
             using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write);
             client.DownloadFile(source, output, downloaded => report(source, (long)downloaded, size));
+            cancellationToken.ThrowIfCancellationRequested();
             return;
         }
         if (Directory.Exists(destination) || File.Exists(destination))
