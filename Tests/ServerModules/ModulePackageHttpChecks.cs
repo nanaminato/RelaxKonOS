@@ -672,7 +672,7 @@ internal static class ModulePackageHttpChecks
         public string ToReloadProblem(PrivilegedProblemCode problem) => throw new InvalidOperationException();
     }
 
-    private static async Task VerifyLiveComposeAsync(IDockerComposeService compose, DockerStackOperationCoordinator coordinator,
+    internal static async Task VerifyLiveComposeAsync(IDockerComposeService compose, DockerStackOperationCoordinator coordinator,
         DockerStackOperationStore store, Action<bool, string> check)
     {
         var project = "rk-signed-" + Guid.NewGuid().ToString("N");

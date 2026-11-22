@@ -261,6 +261,10 @@ internal static class JointDeploymentAcceptance
         var preview = await compose.PreviewAsync(new("joint-docker", "services:\n  web:\n    image: nginx:alpine\n"));
         Require(preview.Services.Single().Service == "web",
             "the joint-installed Docker execution package parses a Compose preview without contacting Docker Engine");
+        if (Environment.GetEnvironmentVariable("RK_TEST_DOCKER_ENGINE") == "1")
+            await ModulePackageHttpChecks.VerifyLiveComposeAsync(compose,
+                host.Services.GetRequiredService<DockerStackOperationCoordinator>(),
+                host.Services.GetRequiredService<DockerStackOperationStore>(), Require);
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
