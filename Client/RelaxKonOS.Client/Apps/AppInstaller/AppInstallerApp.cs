@@ -101,7 +101,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
         if (serverPaths.Count > 0)
             _ = viewModel.QueueServerPackagesAsync(serverPaths);
         else
-            _ = viewModel.RefreshOfficialCommand.ExecuteAsync(null);
+            _ = viewModel.OpenAsync();
     }
 
     private static TopLevel? GetTopLevel() => Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop

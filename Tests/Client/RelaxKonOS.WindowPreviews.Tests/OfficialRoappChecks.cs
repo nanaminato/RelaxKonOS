@@ -157,6 +157,15 @@ internal static class OfficialRoappChecks
                 Check(await deployment.FindPendingAsync(unhashed with { LocalPath = otherPath },
                     CancellationToken.None, localOnly: true) is null,
                     "Archive bytes that differ from the reviewed digest must not resume a pending plan.");
+                var reopened = new JointAppDeploymentService(null!, null!, installer, packages, applications,
+                    new FileDeploymentJournal(Path.Combine(root, "resume-package-digest")));
+                var discovered = await reopened.RecoverLocalArchivesAsync(CancellationToken.None);
+                Check(discovered is [{ IsRecoveredDeployment: true }] && discovered[0].LocalPath == candidate.LocalPath,
+                    "Reopening the recovery journal must discover the original archive without choosing it again.");
+                await File.AppendAllTextAsync(path, "changed after deployment review");
+                Check((await reopened.RecoverLocalArchivesAsync(CancellationToken.None)).Count == 0,
+                    "Recovery discovery must exclude the original path when its archive no longer matches.");
+                File.Copy(artifact, path, overwrite: true);
             }
             if (isEventAlerts)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerEventAlertsRead],

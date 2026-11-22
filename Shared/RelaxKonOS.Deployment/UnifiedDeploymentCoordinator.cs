@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 
 namespace RelaxKonOS.Deployment;
 
@@ -10,7 +11,11 @@ public sealed record DeploymentPermission(string Kind, ImmutableArray<string> Pl
 public sealed record PreparedDeploymentStep(DeploymentPackageKey Package, Guid InstallerPlanId,
     DateTimeOffset ExpiresAt, ImmutableArray<DeploymentPermission> Permissions);
 
-public sealed record DeploymentClientBinding(Guid AccountId, string ConnectionIdentity, string? InstalledPath);
+public sealed record DeploymentClientBinding(Guid AccountId, string ConnectionIdentity, string? InstalledPath)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ArchivePath { get; init; }
+}
 
 public sealed record DeploymentPlan(Guid Id, DeploymentTarget Target, DateTimeOffset ExpiresAt,
     ImmutableArray<DeploymentRelease> OrderedReleases)

@@ -9,8 +9,16 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
     public async Task<DeploymentPlan?> FindPendingPlanAsync(DeploymentPackageKey package, string version,
         string artifactIdentity, Guid accountId, string connectionIdentity, CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(directory)) return null;
-        DeploymentPlan? latest = null;
+        var plans = await ReadPendingPlansAsync(accountId, connectionIdentity, cancellationToken);
+        return plans.FirstOrDefault(plan => plan.OrderedReleases[^1] is var root
+            && root.Package == package && root.Version == version && root.ArtifactIdentity == artifactIdentity);
+    }
+
+    public async Task<IReadOnlyList<DeploymentPlan>> ReadPendingPlansAsync(Guid accountId, string connectionIdentity,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(directory)) return [];
+        var plans = new List<DeploymentPlan>();
         foreach (var path in Directory.EnumerateFiles(directory))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -24,12 +32,9 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             if (entry.Checkpoint.Verified
                 || plan.ClientBinding is not { } client || client.AccountId != accountId
                 || client.ConnectionIdentity != connectionIdentity) continue;
-            var root = plan.OrderedReleases[^1];
-            if (root.Package == package && root.Version == version && root.ArtifactIdentity == artifactIdentity
-                && (latest is null || plan.ExpiresAt > latest.ExpiresAt))
-                latest = plan;
+            plans.Add(plan);
         }
-        return latest;
+        return plans.OrderByDescending(plan => plan.ExpiresAt).ThenBy(plan => plan.Id).ToArray();
     }
 
     public async Task<DeploymentPlan?> FindStartedPlanAsync(Guid planId, CancellationToken cancellationToken = default)

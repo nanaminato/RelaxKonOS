@@ -217,6 +217,7 @@ public sealed record AppPackageCandidate(
 {
     internal OfficialDesktopRelease? OfficialRelease { get; init; }
     internal string? ExpectedInstalledPath { get; init; }
+    internal bool IsRecoveredDeployment { get; init; }
     public bool IsUpdate => InstalledVersion is not null && InstalledVersion != Manifest.Version.Trim();
     public bool IsRepair => InstalledVersion is not null && InstalledVersion == Manifest.Version.Trim();
 }

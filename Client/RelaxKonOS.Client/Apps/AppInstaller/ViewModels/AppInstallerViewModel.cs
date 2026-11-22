@@ -85,6 +85,29 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         ShowNext(); // Always wait for the existing explicit Install/Update command.
     }
 
+    internal async Task OpenAsync()
+    {
+        if (JointDeployment is { } deployment)
+        {
+            IsBusy = true;
+            try
+            {
+                var recovered = await deployment.RecoverLocalArchivesAsync(_storeLifetime.Token);
+                if (_disposed) return;
+                foreach (var candidate in recovered)
+                    _pending.Enqueue(candidate);
+                ShowNext();
+            }
+            catch (OperationCanceledException) when (_disposed) { return; }
+            catch (Exception error) when (AppPackageInstallerService.IsStoreFailure(error))
+            {
+                Status = LocalizedText.Ref("app_installer.status.install_failed", DeploymentProblem(error));
+            }
+            finally { IsBusy = false; }
+        }
+        if (!_disposed) await RefreshOfficialCommand.ExecuteAsync(null);
+    }
+
     public async Task QueueServerPackagesAsync(IEnumerable<string> paths)
     {
         IsBusy = true;
@@ -109,7 +132,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         try
         {
             var candidate = CurrentPackage;
-            if (candidate.Manifest.Dependencies is { } dependencies)
+            if (candidate.Manifest.Dependencies is not null || candidate.IsRecoveredDeployment)
             {
                 var joint = JointDeployment ?? throw new InvalidOperationException("deployment-coordinator-unavailable");
                 if (_jointReview is null)
@@ -123,7 +146,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
                 }
                 if (_jointReview is null)
                 {
-                    var optional = dependencies.Optional ?? [];
+                    var optional = candidate.Manifest.Dependencies?.Optional ?? [];
                     var selected = optional.Count == 0 ? optional
                         : SelectOptionalAsync is { } select ? await select(optional) : null;
                     if (selected is null || ConfirmDeploymentAsync is null) return;

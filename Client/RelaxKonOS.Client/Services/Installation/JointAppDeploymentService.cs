@@ -32,6 +32,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             throw new InvalidOperationException("component.state_revision_conflict");
         packages.EnsureReplacementVersionIsCompatible(candidate.Manifest.Id, candidate.Manifest.Version);
         candidate = candidate with { ExpectedSha256 = digest, ExpectedInstalledPath = current?.InstallationPath };
+        var archivePath = candidate.DeleteWhenFinished || candidate.OfficialRelease is not null || candidate.CatalogAuthorization is not null
+            ? null : Path.GetFullPath(candidate.LocalPath);
 
         var backend = new Backend(candidate, installer, packages, applications, session);
         var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
@@ -49,12 +51,12 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             && localResolution.ProblemPackage?.Kind != DeploymentPackageKind.ServerModule)
         {
             var plan = await coordinator.PlanAsync(LocalTarget, root, local, optional, cancellationToken);
-            return new(plan with { ClientBinding = new(Guid.Empty, "", candidate.ExpectedInstalledPath) }, candidate);
+            return new(plan with { ClientBinding = new(Guid.Empty, "", candidate.ExpectedInstalledPath) { ArchivePath = archivePath } }, candidate);
         }
 
         var actor = session.CurrentUser?.Id ?? throw new InvalidOperationException("deployment-account-changed");
         var connection = session.ServiceId ?? throw new InvalidOperationException("deployment-account-changed");
-        var binding = new DeploymentClientBinding(actor, connection, candidate.ExpectedInstalledPath);
+        var binding = new DeploymentClientBinding(actor, connection, candidate.ExpectedInstalledPath) { ArchivePath = archivePath };
         var client = NewModuleClient(binding);
         var catalog = new ModuleDeploymentCatalog(client);
         var modules = new ModuleDeploymentExecutor(client);
@@ -99,6 +101,36 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         if (candidate.ExpectedSha256 is { } expected && digest != expected)
             throw new InvalidOperationException("component.package_expectation_changed");
         return digest;
+    }
+
+    public async Task<IReadOnlyList<AppPackageCandidate>> RecoverLocalArchivesAsync(CancellationToken cancellationToken)
+    {
+        var plans = await journal.ReadPendingPlansAsync(Guid.Empty, "", cancellationToken);
+        if (session?.State == AuthSessionState.Authenticated && session.CurrentUser is { } user && session.ServiceId is { } connection)
+            plans = [.. plans, .. await journal.ReadPendingPlansAsync(user.Id, connection, cancellationToken)];
+
+        var candidates = new List<AppPackageCandidate>();
+        var recovered = new HashSet<(DeploymentPackageKey Package, string Digest)>();
+        foreach (var plan in plans)
+        {
+            if (plan.ClientBinding is not { ArchivePath: { } path } binding || !CanRecover(binding) || !File.Exists(path)) continue;
+            try
+            {
+                var candidate = await installer.InspectLocalAsync(path, cancellationToken: cancellationToken);
+                var root = plan.OrderedReleases[^1];
+                if (root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version) continue;
+                var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
+                if (digest == root.ArtifactIdentity && CanRecover(binding) && recovered.Add((root.Package, digest)))
+                    candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true });
+            }
+            catch (Exception error) when (!cancellationToken.IsCancellationRequested && AppPackageInstallerService.IsStoreFailure(error)) { }
+        }
+        return candidates;
+
+        bool CanRecover(DeploymentClientBinding binding) =>
+            binding.AccountId == Guid.Empty && binding.ConnectionIdentity == ""
+            || session?.State == AuthSessionState.Authenticated && binding.AccountId == session.CurrentUser?.Id
+                && binding.ConnectionIdentity == session.ServiceId;
     }
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)
