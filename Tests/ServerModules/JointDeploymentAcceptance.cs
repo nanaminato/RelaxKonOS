@@ -322,6 +322,14 @@ internal static class JointDeploymentAcceptance
             Require(await client.GetStringAsync("/", ct) == "after" && !nginx.HasExited,
                 "rejected configuration leaves the existing Nginx master serving the last valid response");
 
+            await WriteConfigAsync("recovered");
+            var recoveryPorts = new ModulePackageHttpChecks.WebServerReloadProbe(RunReloadAsync);
+            using var recoveryLease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", recoveryPorts);
+            Require(await recoveryLease.Executor.ReloadAsync(ct) == "" && recoveryPorts.Confirmed,
+                "the installed signed executor confirms a corrected Nginx configuration after rejection");
+            await WaitForResponseAsync("recovered");
+            Require(!nginx.HasExited, "the same Nginx master serves the corrected configuration");
+
             async Task<bool> RunReloadAsync(CancellationToken token)
             {
                 using var reload = Start("-s", "reload");

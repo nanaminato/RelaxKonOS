@@ -36,7 +36,7 @@
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows、Linux 签名双包已验，Linux 隔离 Pebble 真实签发及重启恢复已验 |
-| webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 隔离模块启用、重启恢复和证书依赖保护已验，Nginx 业务联调待验 |
+| webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 签名双包及 Certificates 复用已验，Linux 真实 Nginx 直连重载、拒绝坏配置及修正后重载已验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
@@ -833,3 +833,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含 Web Server Manager 签名双包通过。在一个安装回执和 Core 重启后登记应用，复用随附 Certificates，并通过受控重载端口调用已安装签名执行包。卸载桌面保留模块。另从 Ubuntu Noble 基础仓库把 Nginx 1.24.0 解包至 WSL 临时目录，实际二进制已通过版本检查，尚待接到签名联合部署重载用例。
 - Linux x64 签名 Web Server 双包通过 RK_TEST_NGINX 调用真实 Nginx 1.24.0。临时环回实例先返回旧响应，联合安装的签名执行包经测试直连端口发起重载，同一 master 返回新配置响应。测试结束清理该进程，桌面卸载仍保留签名包。生产 Helper 和系统服务重载路径未纳入这次验收。
 - Linux x64 签名 Web Server 双包通过真实 Nginx 无效配置验收。签名执行包返回 RecoveryRequired，未确认重载；原 master 继续返回此前有效配置的响应。
+- Linux x64 签名 Web Server 联合部署使用真实 Nginx，坏配置被拒后经同一签名重载入口提交修正配置，重载确认成功，同一 master 返回修正后的 HTTP 响应。系统服务 Helper 重载路径仍待验。
