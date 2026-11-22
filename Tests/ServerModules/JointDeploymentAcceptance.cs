@@ -452,7 +452,14 @@ internal static class JointDeploymentAcceptance
                     "a faulted module invalidates the deployment snapshot and is never a satisfied candidate");
                 factory.FaultedModule = null;
             }
-            await packages.UninstallAsync(AppIdText);
+            var protectionClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+            var protectedInventory = await protectionClient.ReadAsync();
+            var disableProtected = await protectionClient.PreviewAsync(new(serviceId, ServerModuleAction.Disable, [ModuleId],
+                protectedInventory.Where(module => module.DesiredEnabled && module.Id != ModuleId).Select(module => module.Id).ToArray(),
+                protectedInventory[0].DesiredRevision!, "verify-registered-dependency"));
+            Require(disableProtected.BlockedBy.Any(blocker => blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
+                "committing the application registers a server-side blocker for its required module");
+            await RemoveWithDependencyAsync(AppIdText, review.Plan.Id);
 
             await installer.InstallAsync(await installer.InspectLocalAsync(prerequisitePath));
             var replacementMixed = await joint.PrepareAsync(mixedCandidate, [], default);
@@ -466,7 +473,7 @@ internal static class JointDeploymentAcceptance
                 && !(await reopenedMixedJournal.ReadPendingRecoveriesAsync(auth.CurrentUser!.Id, auth.ServiceId!))
                     .Any(recovery => recovery.Plan.OrderedReleases[^1].Package.Id == mixedInstalled.Id),
                 "completing the replacement plan retires the old recovery entry without installing the module again");
-            await packages.UninstallAsync(mixedInstalled.Id);
+            await RemoveWithDependencyAsync(mixedInstalled.Id, replacementMixed.Plan.Id);
             await packages.UninstallAsync(prerequisiteId);
 
             var activationArchives = bundledModuleArchives.Where(path =>
@@ -533,10 +540,11 @@ internal static class JointDeploymentAcceptance
                 var activationInstalled = await joint.ExecuteAsync(activationPending, default);
                 Require(activationInstalled.Id == activationAppId && applications.IsRegistered(new AppId(activationAppId)),
                     $"restart activates {dependencyId} and permits desktop application registration");
-                await packages.UninstallAsync(activationAppId);
+                await RemoveWithDependencyAsync(activationAppId, activationPending.Plan.Id);
             }
 
             var proxyDependents = new List<string>();
+            var proxyClaims = new Dictionary<string, Guid>(StringComparer.Ordinal);
             foreach (var bundledArchive in bundledModuleArchives)
             {
                 var appId = Path.GetFileNameWithoutExtension(bundledArchive);
@@ -576,7 +584,11 @@ internal static class JointDeploymentAcceptance
                 Require(installedBundled.Id == appId && applications.IsRegistered(new AppId(appId))
                     && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
                     $"{appId} installs through the coordinator without mutating existing modules");
-                if (expectedModules.Contains(ServerModules.ProxyId)) proxyDependents.Add(appId);
+                if (expectedModules.Contains(ServerModules.ProxyId))
+                {
+                    proxyDependents.Add(appId);
+                    proxyClaims.Add(appId, bundledReview.Plan.Id);
+                }
                 else
                 {
                     var directModules = appId == "relaxkonos.webservers" ? [ServerModules.WebServerId] : expectedModules;
@@ -595,7 +607,7 @@ internal static class JointDeploymentAcceptance
                             && blocker.ModuleId == ServerModules.CertificatesId),
                             "the server protects Certificates while Web Servers requires it");
                     }
-                    await packages.UninstallAsync(appId);
+                    await RemoveWithDependencyAsync(appId, bundledReview.Plan.Id);
                     Require(dependencies.All(key => !packages.RequiredBy(key).Contains(appId))
                         && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
                         $"uninstalling {appId} removes its dependency without changing the reused modules");
@@ -609,7 +621,7 @@ internal static class JointDeploymentAcceptance
                     "every installed Proxy application protects the shared server module");
                 foreach (var appId in proxyDependents)
                 {
-                    await packages.UninstallAsync(appId);
+                    await RemoveWithDependencyAsync(appId, proxyClaims[appId]);
                     var remaining = proxyDependents.SkipWhile(item => item != appId).Skip(1).Order(StringComparer.Ordinal);
                     Require(packages.RequiredBy(proxyModule).SequenceEqual(remaining),
                         $"uninstalling {appId} preserves the shared dependency of the remaining applications");
@@ -652,6 +664,14 @@ internal static class JointDeploymentAcceptance
             var upgraded = await installer.InstallAsync(await installer.InspectLocalAsync(packagePath));
             Require(upgraded.Version == "2.0.0", "removing the consuming app lets the same replacement proceed");
             await packages.UninstallAsync(AppIdText);
+
+            async Task RemoveWithDependencyAsync(string appId, Guid planId)
+            {
+                await packages.UninstallAsync(appId);
+                var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                await moduleClient.ReadAsync();
+                await moduleClient.ReleaseDesktopDependencyAsync(planId, serviceId);
+            }
         }
         finally
         {

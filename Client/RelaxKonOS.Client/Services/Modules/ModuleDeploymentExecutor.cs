@@ -111,6 +111,28 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
     }
 
+    public async Task RegisterDesktopDependenciesAsync(DeploymentPlan plan, CancellationToken cancellationToken)
+    {
+        var releases = plan.OrderedReleases.ToDictionary(release => release.Package);
+        var required = new HashSet<DeploymentPackageKey>();
+        var root = plan.OrderedReleases[^1];
+        CollectRequired(root);
+        var modules = required.Where(package => package.Kind == DeploymentPackageKind.ServerModule)
+            .Select(package => package.Id).Order(StringComparer.Ordinal).ToArray();
+        if (modules.Length == 0) return;
+
+        await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
+        await client.RegisterDesktopDependencyAsync(plan.Id,
+            new(plan.Target.ServerIdentity, root.Package.Id, modules), cancellationToken);
+
+        void CollectRequired(DeploymentRelease release)
+        {
+            foreach (var requirement in release.Requires)
+                if (required.Add(requirement.Package))
+                    CollectRequired(releases[requirement.Package]);
+        }
+    }
+
     private static bool HasPlannedCapabilities(ServerModuleDto module, DeploymentRelease release)
     {
         var observed = ModuleDeploymentCatalog.ObservedCapabilities(module);
