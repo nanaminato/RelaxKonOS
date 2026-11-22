@@ -552,6 +552,9 @@ internal static class ModulePackageHttpChecks
     private static async Task VerifyRestoredWebServerAsync(string root, Action<bool, string> check)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        builder.Services.AddSingleton(new CertificateOptions { DirectoryUrl = "invalid-directory" });
+        builder.Services.AddSingleton<FileHttp01ChallengeStore>();
+        builder.Services.AddSingleton<CertificateMetadataRepository>();
         var installed = InstalledModuleCatalog.Load(root);
         var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.WebServerId, ServerModules.CertificatesId }, installed);
         var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
@@ -559,8 +562,14 @@ internal static class ModulePackageHttpChecks
         await using var host = builder.Build();
         var execution = host.Services.GetRequiredService<WebServerExecutionCode>();
         check(!ReferenceEquals(execution, WebServerExecutionCode.Shared), "the restored Web Server module registers its installed execution loader");
-        check(!ReferenceEquals(host.Services.GetRequiredService<AcmeExecution>(), AcmeExecution.Shared),
+        var installedAcme = host.Services.GetRequiredService<AcmeExecution>();
+        check(!ReferenceEquals(installedAcme, AcmeExecution.Shared),
             "the Web Server dependency starts with its own verified signed Certificates execution package");
+        var acme = host.Services.GetRequiredService<IAcmeService>();
+        var directory = new Uri("https://fixture.invalid/dir");
+        var identity = new AcmeOrderIdentity(directory, new(directory, "/account"), "fixture", new(directory, "/order"));
+        check(await acme.ObserveOrderAsync(identity, default) == "unavailable" && installedAcme.CurrentCode is { IsAlive: true },
+            "production ACME service activation uses the restored signed package and rejects an invalid CA directory");
         var ports = new WebServerReloadProbe();
         using var lease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", ports);
         check(await lease.Executor.ReloadAsync(default) == "" && ports.Confirmed,

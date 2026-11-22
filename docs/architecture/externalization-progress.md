@@ -764,3 +764,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Web Server 官方签名 .rkmodule 接入独立安装、版本清单和回滚。Core 校验网站发布与四个 Nginx 执行入口，要求包声明现有 Certificates 依赖，并为请求和后台操作注入已安装执行程序集。Windows Release 双版本签名包 HTTP 验收及 Web Server 常规专项通过。通过已安装签名包执行真实 Nginx 操作仍待验。
 - Windows Release 签名模块 HTTP 回归在 Web Server 回滚后新建 Core 宿主，验证 DI 注册的是已安装执行加载器。通过受控 Nginx 重载端口验证成功回执及无法确认时的恢复结果。本机无可用 Nginx 镜像或 WSL 二进制，真实 Nginx 仍待验。
 - Certificates 的 ACME 执行程序集与三个随附依赖接入官方签名 .rkmodule。Core 复核包摘要、固定依赖和执行入口，TLS 启动与证书存储仍由 Core 提供。Windows Release 双版本签名包 HTTP 验收及 ACME 可卸载代次回归通过，Web Server 可与已安装的 Certificates 包共同启动。真实 ACME 签发待验。
+- Windows Release 签名包 HTTP 验收通过生产 DI 解析回滚后的 ACME 服务并实际加载已安装执行代次。无效 CA 目录返回 unavailable。现有 WSL 环境与缓存镜像未找到 Pebble 和挑战 DNS 夹具，隔离签发仍待验。
