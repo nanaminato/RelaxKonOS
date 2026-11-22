@@ -2,8 +2,10 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
+using RelaxKonOS.Server.Git;
 using RelaxKonOS.Server.Tailscale;
 using RelaxKonOS.Server.Tunnels;
 using RelaxKonOS.Server.WebServer;
@@ -258,6 +260,8 @@ internal static class InstalledModuleInstaller
             else if (InstalledTunnelsModule.MatchesManifest(manifest)) CollectibleTunnelExecution.VerifyStagedExecution(entry);
             else if (InstalledDockerModule.MatchesManifest(manifest)) DockerComposeExecution.ValidateEntryPoints(entry);
             else if (InstalledWebServerModule.MatchesManifest(manifest)) WebServerExecutionCode.ValidateEntryPoints(entry);
+            else if (InstalledCertificateModule.MatchesManifest(manifest)) AcmeExecution.ValidateEntryPoint(entry);
+            else if (InstalledGitModule.MatchesManifest(manifest)) CollectibleGitExecution.VerifyStagedExecution(entry);
         }
         catch (Exception error) when (error is InvalidDataException or TypeLoadException or FileLoadException or BadImageFormatException)
         { throw new ModulePackageException("module-package-execution-contract"); }

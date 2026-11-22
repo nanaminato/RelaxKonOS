@@ -29,9 +29,7 @@ internal sealed class CollectibleGitExecution : IAsyncDisposable
         CodeReference = new WeakReference(context);
         try
         {
-            using var stream = File.OpenRead(entry);
-            var assembly = context.LoadFromStream(stream);
-            var type = assembly.GetType(EntryType, throwOnError: true)!;
+            var type = ReadEntryType(context, entry);
             _module = (IGitExecutionModule)Activator.CreateInstance(type, services)!;
             _context = context;
         }
@@ -40,6 +38,24 @@ internal sealed class CollectibleGitExecution : IAsyncDisposable
             context.Unload();
             throw;
         }
+    }
+
+    internal static void VerifyStagedExecution(string entry)
+    {
+        var context = new ExecutionLoadContext();
+        try { ReadEntryType(context, entry); }
+        catch { throw new InvalidDataException("Git execution entry does not match its host contract."); }
+        finally { context.Unload(); }
+    }
+
+    private static Type ReadEntryType(ExecutionLoadContext context, string entry)
+    {
+        using var stream = File.OpenRead(entry);
+        var type = context.LoadFromStream(stream).GetType(EntryType, throwOnError: true)!;
+        if (type.IsAbstract || !typeof(IGitExecutionModule).IsAssignableFrom(type)
+            || type.GetConstructor([typeof(GitExecutionContext)]) is null)
+            throw new InvalidDataException("Git execution entry does not match its host contract.");
+        return type;
     }
 
     public async ValueTask DisposeAsync()

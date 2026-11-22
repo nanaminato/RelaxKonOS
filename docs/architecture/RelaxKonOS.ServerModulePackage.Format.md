@@ -131,6 +131,7 @@ Firewall 包在相同的安装、暂存复用和回退边界校验 `IFirewallExe
 Tailscale 包在这些边界校验 `ITailscaleExecution` 接口及公开无参构造函数。
 Tunnels 包在这些边界校验 `ITunnelExecution` 接口及公开无参构造函数。
 Docker 与 Web Server 包在这些边界复用启动时的全部入口检查。Docker 覆盖 Compose、Engine 控制、镜像源、代理投影和操作结果。Web Server 覆盖站点发布、Nginx 集成、重载、网站根目录和生命周期。
+Certificates 包校验 ACME 服务及续期信息接口、公开构造签名和私有依赖程序集。Git 包校验 `IGitExecutionModule` 接口和接收 `GitExecutionContext` 的公开构造函数。
 
 ## 在线上传与安装 API
 

@@ -677,7 +677,7 @@ internal static class JointDeploymentAcceptance
                 Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
             ModulePackageBuildResult? incompatible = null;
             if (moduleId is ServerModules.ProxyId or ServerModules.FirewallId or ServerModules.DockerId or ServerModules.WebServerId
-                or "relaxkonos.tailscale" or "relaxkonos.tunnels")
+                or ServerModules.CertificatesId or ServerModules.GitId or "relaxkonos.tailscale" or "relaxkonos.tunnels")
             {
                 var incompatibleSource = Directory.CreateDirectory(Path.Combine(root, "incompatible-execution")).FullName;
                 var bytes = await File.ReadAllBytesAsync(Path.Combine(executionDirectory, entryAssembly));
@@ -687,12 +687,18 @@ internal static class JointDeploymentAcceptance
                     ServerModules.FirewallId => "IFirewallExecutionModule\0"u8,
                     ServerModules.DockerId => "DockerImageMirrorExecution\0"u8,
                     ServerModules.WebServerId => "NginxReloadExecutor\0"u8,
+                    ServerModules.CertificatesId => "IAcmeRenewalInfoProvider\0"u8,
+                    ServerModules.GitId => "IGitExecutionModule\0"u8,
                     "relaxkonos.tailscale" => "ITailscaleExecution\0"u8,
                     _ => "ITunnelExecution\0"u8,
                 });
                 if (name < 0) throw new InvalidOperationException("The fixture could not find the incompatible execution type name.");
                 bytes[name] = (byte)'X';
                 await File.WriteAllBytesAsync(Path.Combine(incompatibleSource, entryAssembly), bytes);
+                if (moduleId == ServerModules.CertificatesId)
+                    foreach (var dependency in AcmeExecution.Dependencies)
+                        File.Copy(Path.Combine(executionDirectory, dependency + ".dll"),
+                            Path.Combine(incompatibleSource, dependency + ".dll"));
                 incompatible = await ModulePackageBuilder.BuildAsync(new(incompatibleSource,
                     Path.Combine(root, "incompatible-module"), moduleId, "98.0.0", "incompatible-execution-" + rid,
                     "fixture", "official", rid, entryAssembly, entryType, "joint-execution", new string('a', 40),
