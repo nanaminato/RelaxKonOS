@@ -1,5 +1,7 @@
+using Avalonia.Controls;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
@@ -7,7 +9,7 @@ namespace RelaxKonOS.App.ComponentCenter;
 
 public interface IComponentCenterWorkspace
 {
-    void Open(AppContext context);
+    void Open(Func<string, Control, ManagedWindow> showWorkspace);
     bool CanNavigate(Uri uri);
     void Navigate(Uri uri);
 }
@@ -21,7 +23,8 @@ public sealed class ComponentCenterApp(IComponentCenterWorkspace workspace) : Re
         InstancePolicy: ApplicationInstancePolicy.SingleWindow,
         IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
 
-    public override void Activate(AppContext context) => workspace.Open(context);
+    public override void Activate(AppContext context) =>
+        workspace.Open((title, content) => context.ShowWindow(title, content, new Rect(80, 45, 1060, 800)));
 
     public bool CanHandleActivation(Uri uri) => workspace.CanNavigate(uri);
 

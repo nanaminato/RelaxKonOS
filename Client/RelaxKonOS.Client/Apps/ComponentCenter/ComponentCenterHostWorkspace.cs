@@ -11,8 +11,9 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Common;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
-using Rect = RelaxKonOS.Core.Primitives.Rect;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
@@ -25,7 +26,7 @@ using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
 
 /// <summary>Supplies desktop services to the Component Center workspace.</summary>
-public sealed class ComponentCenterHostWorkspace : IComponentCenterWorkspace
+public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IComponentCenterWorkspace
 {
     private ComponentCenterViewModel? _model;
     public bool CanNavigate(Uri uri) => ComponentCenterNavigation.TryParse(uri, out _);
@@ -47,8 +48,9 @@ public sealed class ComponentCenterHostWorkspace : IComponentCenterWorkspace
         // Navigation only changes context, never a draft or approval.
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
-    public void Open(AppContext context)
+    public void Open(Func<string, Control, ManagedWindow> showWorkspace)
     {
+        var context = new AppContext(ComponentCenterApp.Id, services.GetRequiredService<IWindowManager>(), services);
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
         if (session?.State != AuthSessionState.Authenticated) return;
         if (context.Services.GetService(typeof(IRuntimeCatalogClient)) is not IRuntimeCatalogClient catalog) return;
@@ -87,7 +89,6 @@ public sealed class ComponentCenterHostWorkspace : IComponentCenterWorkspace
                 InstalledApplicationDependents = moduleId => desktopPackages?.RequiredBy(
                     new(RelaxKonOS.Deployment.DeploymentPackageKind.ServerModule, moduleId)) ?? [],
             };
-        _model = model;
         if (context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerWebServers)) is RelaxKonOS.AppSDK.IServerWebServers web
             && context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerCertificates)) is RelaxKonOS.AppSDK.IServerCertificates certificates
             && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker)) is RelaxKonOS.Client.Services.Privileged.IHostElevationBroker elevations)
@@ -117,8 +118,19 @@ public sealed class ComponentCenterHostWorkspace : IComponentCenterWorkspace
         view.OpenApplication = applicationId => applications?.Launch(new AppId(applicationId));
         RelaxKonOS.WindowManager.ModalDialog<bool>? taskDialog = null;
         var taskDialogOpen = false;
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
-            view, new Rect(80, 45, 1060, 800), context.Manifest?.IconGlyph);
+        ManagedWindow window;
+        try
+        {
+            window = showWorkspace(LocalizedText.Get("application.relaxkonos.component-center.display_name"), view);
+        }
+        catch
+        {
+            model.Dispose();
+            mihomo?.Dispose();
+            runtime.Dispose();
+            throw;
+        }
+        _model = model;
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService))
                 is RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService desktopInstaller
             && desktopPackages is not null)
