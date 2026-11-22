@@ -332,7 +332,7 @@ object DesktopIcons {
         "procfile",
     )
 
-    /** `ExplorerPath.Extension`: everything from the last dot, or nothing when there is none. */
+    /** Matches the desktop file browser: everything from the last dot, or nothing when there is none. */
     private fun extensionOf(name: String): String {
         val index = name.lastIndexOf('.')
         return if (index < 0) "" else name.substring(index)

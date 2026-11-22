@@ -21,46 +21,14 @@ public sealed class ExplorerEntryComparer(ExplorerSortField field, bool descendi
             ExplorerSortField.Modified => Nullable.Compare(x.Modified, y.Modified),
             ExplorerSortField.Size => Nullable.Compare(x.Size, y.Size),
             ExplorerSortField.Type => x.Type != FileSystemEntryType.File ? 0
-                : StringComparer.CurrentCultureIgnoreCase.Compare(ExplorerPath.Extension(x.Name), ExplorerPath.Extension(y.Name)),
-            _ => CompareNames(x.Name, y.Name),
+                : StringComparer.CurrentCultureIgnoreCase.Compare(FileName.Extension(x.Name), FileName.Extension(y.Name)),
+            _ => FileName.CompareNaturally(x.Name, y.Name),
         };
-        if (value == 0) value = CompareNames(x.Name, y.Name);
+        if (value == 0) value = FileName.CompareNaturally(x.Name, y.Name);
         if (value == 0) value = StringComparer.Ordinal.Compare(x.Path, y.Path);
         return descending ? -Math.Sign(value) : Math.Sign(value);
     }
-
-    public static int CompareNames(string x, string y)
-    {
-        var i = 0;
-        var j = 0;
-        while (i < x.Length && j < y.Length)
-        {
-            if (char.IsAsciiDigit(x[i]) && char.IsAsciiDigit(y[j]))
-            {
-                var a = i;
-                var b = j;
-                while (i < x.Length && char.IsAsciiDigit(x[i])) i++;
-                while (j < y.Length && char.IsAsciiDigit(y[j])) j++;
-                while (a < i && x[a] == '0') a++;
-                while (b < j && y[b] == '0') b++;
-                var length = (i - a).CompareTo(j - b);
-                if (length != 0) return length;
-                var number = x.AsSpan(a, i - a).SequenceCompareTo(y.AsSpan(b, j - b));
-                if (number != 0) return number;
-            }
-            else
-            {
-                var value = char.ToUpperInvariant(x[i]).CompareTo(char.ToUpperInvariant(y[j]));
-                if (value != 0) return value;
-                i++;
-                j++;
-            }
-        }
-        var remaining = (x.Length - i).CompareTo(y.Length - j);
-        return remaining != 0 ? remaining : StringComparer.Ordinal.Compare(x, y);
-    }
 }
-
 
 public sealed record ExplorerViewPreferences(
     ExplorerSortField SortField = ExplorerSortField.Name,

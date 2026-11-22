@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.FileBrowser;
 // SizeSuffix 逻辑移植自 Jaya FileSystemObjectModel.SizeSuffix（BSD-3）。
 // Copyright (c) 2020, Rubal Walia. 原始许可见 LICENSE-jaya.txt 与 THIRD_PARTY_NOTICES.md。
 using System.Globalization;
@@ -58,7 +59,7 @@ public sealed class EntryDescriptionConverter : IValueConverter
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not FileSystemEntryDto entry) return string.Empty;
-        var extension = ExplorerPath.Extension(entry.Name).TrimStart('.');
+        var extension = FileName.Extension(entry.Name).TrimStart('.');
         if (entry.Type == FileSystemEntryType.File && extension.Length > 0)
             return LocalizedText.Format("explorer.entry_type.extension", extension.ToUpperInvariant());
         return TypeConverter.Convert(entry.Type, targetType, parameter, culture);

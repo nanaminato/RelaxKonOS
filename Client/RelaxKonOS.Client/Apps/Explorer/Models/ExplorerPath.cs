@@ -77,9 +77,4 @@ public static class ExplorerPath
     }
 
     public static string? Parent(string path) => ExplorerBreadcrumb.ParentPath(path);
-    public static string Extension(string name)
-    {
-        var index = name.LastIndexOf('.');
-        return index < 0 ? string.Empty : name[index..];
-    }
 }

@@ -205,8 +205,8 @@ Check(ExplorerPath.IsAncestorOrEqual("/", "/data"), "POSIX root ancestor");
 Check(!ExplorerPath.IsValidName("../escape", "/data") && !ExplorerPath.IsValidName("NUL.txt", @"C:\data"), "Reject escaping and Windows reserved leaf names");
 Check(ExplorerPath.IsValidName(@"back\slash", "/data") && !ExplorerPath.IsValidName(@"back\slash", @"C:\data"), "Filename validation follows remote path flavor");
 Check(ExplorerPath.Resolve(@"C:\data", "sub/note.txt") == @"C:\data\sub\note.txt", "Picker relative subpaths use remote separators");
-Check(ExplorerEntryComparer.CompareNames("file2.txt", "file10.txt") < 0, "Natural numeric filename order");
-Check(ExplorerEntryComparer.CompareNames("file999999999999999999999999", "file1000000000000000000000000") < 0, "Numeric comparison cannot overflow");
+Check(FileName.CompareNaturally("file2.txt", "file10.txt") < 0, "Natural numeric filename order");
+Check(FileName.CompareNaturally("file999999999999999999999999", "file1000000000000000000000000") < 0, "Numeric comparison cannot overflow");
 var sortEntries = new[]
 {
     new FileSystemEntryDto("/sort/file10.txt", "file10.txt", 10, FileSystemEntryType.File, null, DateTimeOffset.UnixEpoch, null, false, false, null),

@@ -12,7 +12,6 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
 using RelaxKonOS.WindowManager;
-using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Localization;
 
 namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
@@ -1112,11 +1111,11 @@ internal partial class SshFileBrowserView : UserControl
         var value = _sortIndex switch
         {
             1 => x.Modified.CompareTo(y.Modified),
-            2 => StringComparer.CurrentCultureIgnoreCase.Compare(ExplorerPath.Extension(x.Name), ExplorerPath.Extension(y.Name)),
+            2 => StringComparer.CurrentCultureIgnoreCase.Compare(FileName.Extension(x.Name), FileName.Extension(y.Name)),
             3 => x.Size.CompareTo(y.Size),
-            _ => ExplorerEntryComparer.CompareNames(x.Name, y.Name),
+            _ => FileName.CompareNaturally(x.Name, y.Name),
         };
-        if (value == 0) value = ExplorerEntryComparer.CompareNames(x.Name, y.Name);
+        if (value == 0) value = FileName.CompareNaturally(x.Name, y.Name);
         if (value == 0) value = StringComparer.Ordinal.Compare(x.Path, y.Path);
         return _descending ? -Math.Sign(value) : Math.Sign(value);
     }

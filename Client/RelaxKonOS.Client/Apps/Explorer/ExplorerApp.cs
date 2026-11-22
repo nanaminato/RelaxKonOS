@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.FileBrowser;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using System.Text.Json;
 using RelaxKonOS.Client.Apps.Explorer.Models;
@@ -572,7 +573,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
                 OpenArchiveWindow(context, archives, entry.Path, entry.Name);
                 return;
             }
-            var extension = ExplorerPath.Extension(entry.Name);
+            var extension = FileName.Extension(entry.Name);
             var defaultApplicationId = string.IsNullOrEmpty(extension) ? null : defaults?.Resolve(extension);
             var applicationId = defaultApplicationId is not null && applications?.SupportsFile(new AppId(defaultApplicationId), entry.Path) == true
                 ? defaultApplicationId
@@ -620,7 +621,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         vm.RequestOpenWithAsync = async entry =>
         {
             var owner = FindOwnerWindow(context, vm);
-            var extension = ExplorerPath.Extension(entry.Name);
+            var extension = FileName.Extension(entry.Name);
             var openers = applications?.FileOpenersForPath(entry.Path) ?? Array.Empty<ApplicationInfo>();
             // 候选为空 + 文件条目 + 有文本编辑器 → 先 MIME 快速判断；不确定再退化嗅探字节
             if (openers.Count == 0 && entry.Type == FileSystemEntryType.File && applications?.TextFileOpeners.Count > 0)

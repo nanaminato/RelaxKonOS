@@ -1237,7 +1237,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         => SelectedFilter is { } filter
             && (filter.Patterns.Any(pattern => FileSystemName.MatchesSimpleExpression(pattern, name,
                     ignoreCase: ExplorerPath.IsWindows(directory ?? AddressbarPath)))
-                || (filter.IncludeExtensionlessFiles && ExplorerPath.Extension(name).Length == 0));
+                || (filter.IncludeExtensionlessFiles && FileName.Extension(name).Length == 0));
 
     private void UpdatePickerEntryName()
     {
