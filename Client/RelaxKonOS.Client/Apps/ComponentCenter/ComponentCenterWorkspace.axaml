@@ -4,6 +4,7 @@
  xmlns:mr="clr-namespace:RelaxKonOS.Protocol.ManagedRuntimes;assembly=RelaxKonOS.Protocol"
  xmlns:loc="using:RelaxKonOS.Client.Localization"
  xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
+ xmlns:component="using:RelaxKonOS.App.ComponentCenter"
  xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter"
  x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterWorkspace"
  x:DataType="vm:ComponentCenterViewModel" Classes="builtin-app"
@@ -13,13 +14,6 @@
       frames. Nothing here grants a capability; a disabled action stays visible and explained. -->
  <UserControl.Styles>
   <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
-  <!-- The task entry borrows the header's secondary-command shape so the two read as one row. The
-       trailing ellipsis is part of the label ("opens a dialog"), so the button keeps a floor width. -->
-  <Style Selector="Button.header-tasks">
-   <Setter Property="MinWidth" Value="86" />
-   <Setter Property="Height" Value="30" />
-   <Setter Property="FontSize" Value="12" />
-  </Style>
  </UserControl.Styles>
 
  <Grid RowDefinitions="Auto,*">
@@ -40,20 +34,7 @@
      <TextBlock Text="{Binding HeaderOutcomeText}" TextWrapping="Wrap" IsVisible="{Binding HasHeaderOutcome}"
                 FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
     </StackPanel>
-    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-     <Button x:Name="OpenTasksButton" Classes="ghost-action header-tasks" Command="{Binding OpenTasksCommand}"
-             AutomationProperties.Name="{loc:Loc component_center.task_dialog.title}"
-             ToolTip.Tip="{loc:Loc component_center.task_dialog.scope}">
-      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-       <Path Width="13" Height="13" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}"
-             StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-             Data="M3 6 L5 8 L9 4 M3 12 L5 14 L9 10 M3 18 L5 20 L9 16 M13 6 H21 M13 12 H21 M13 18 H21" />
-       <TextBlock Text="{loc:Loc component_center.task_dialog.open}" VerticalAlignment="Center" />
-      </StackPanel>
-     </Button>
-     <Button Classes="header-refresh" Height="30" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc proxy_server.refresh}"
-             AutomationProperties.Name="{loc:Loc proxy_server.refresh}" IsEnabled="{Binding Runtime.CanRefreshSources}" />
-    </StackPanel>
+    <component:ComponentCenterHeaderActions Grid.Column="2" />
    </Grid>
   </Border>
 

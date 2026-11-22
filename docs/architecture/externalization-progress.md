@@ -550,3 +550,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows Release 组件中心包专项改用生产 ComponentCenterHostWorkspace 和隔离会话。安装后验证包窗口归属、更新与已安装页面深链接及窗口复用。未连接真实服务端或执行组件变更。
 - 业务依赖管理、兼容性提示和 Settings 模块入口在组件中心路由缺失时打开 App Installer。已存在但不可用的路由保留原结果。Windows Release 组件导航与观察器专项通过；Installation.Tests 全量在后续 TaskPreviewClientChecks 的观察者展示断言失败，未计入验收。
 - Component Center 与模块管理三语文案移至应用项目嵌入资源，宿主读取同一份资源供管理入口和诊断页使用。Windows Release 组件中心三语双主题、模块专项和静态本地化校验通过。
+- Component Center 顶栏任务与刷新控件移至应用项目，宿主通过接口提供命令和刷新可用状态。Windows Release 三语双主题工作区专项通过，覆盖本地化标签、命令绑定与刷新启用状态。

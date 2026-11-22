@@ -1,8 +1,11 @@
 using RelaxKonOS.App.Git;
+using RelaxKonOS.App.ComponentCenter;
+using System.Windows.Input;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -17,8 +20,14 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 }
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
-public partial class ComponentCenterViewModel : ObservableObject, IDisposable
+public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions
 {
+    ICommand IComponentCenterHeaderActions.OpenTasksCommand => OpenTasksCommand;
+    ICommand IComponentCenterHeaderActions.RefreshCommand => RefreshCommand;
+    IComponentCenterRefreshState IComponentCenterHeaderActions.Runtime => Runtime;
+    public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
+    public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
+
     public ServerModulesViewModel? ServerModules { get; set; }
     public bool ShowServerModules => SelectedPage == ComponentCenterPage.ServerModules;
     public CatalogSourcesViewModel? CatalogSources { get; set; }

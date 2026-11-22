@@ -51,6 +51,13 @@ internal static class ComponentCenterWorkspaceChecks
                 var view = new ComponentCenterWorkspace(model);
                 var window = new Window { Width = 1060, Height = 800, Content = view };
                 window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+                var header = view.GetVisualDescendants().OfType<ComponentCenterHeaderActions>().Single();
+                var headerButtons = header.GetVisualDescendants().OfType<Button>().ToArray();
+                Check(headerButtons.Any(button => ReferenceEquals(button.Command, model.OpenTasksCommand)
+                        && button.GetVisualDescendants().OfType<TextBlock>().Any(text => !string.IsNullOrWhiteSpace(text.Text)))
+                    && headerButtons.Any(button => ReferenceEquals(button.Command, model.RefreshCommand)
+                        && button.IsEnabled == model.Runtime.CanRefreshSources),
+                    "Packaged header actions bind localized task text, host commands and refresh availability.");
                 var search = view.FindControl<TextBox>("Search")!;
                 search.Text = "missing"; Dispatcher.UIThread.RunJobs();
                 Check(view.FindControl<TreeView>("ComponentTree")!.ItemCount == 0, "Search hides nonmatching components");
