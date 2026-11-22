@@ -49,13 +49,14 @@ internal sealed partial class ExplorerHostWorkspace
         return true;
     }
 
-    internal bool TryOpen(AppContext context, string? initialPath, string? iconGlyph)
+    internal ManagedWindow? Open(AppContext context, string? initialPath,
+        Func<string, Control, ManagedWindow> showWindow)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var client = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
 
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
-            return false;
+            return null;
 
         var clipboard = context.Services.GetService(typeof(IRemoteFileClipboard)) as IRemoteFileClipboard;
         var viewModel = new ExplorerViewModel(client, fileClipboard: clipboard)
@@ -103,9 +104,7 @@ internal sealed partial class ExplorerHostWorkspace
             });
         session.StateChanged += RefreshCloudSession;
         DiscoverCloudStorage();
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), view,
-            bounds: new Rect(80, 60, 960, 640),
-            iconGlyph: iconGlyph);
+        var window = showWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), view);
         var cloudConfigurations = new Dictionary<Guid, (ManagedWindow Window, CloudConnectionView Form)>();
         void CloseCloudConfigurations()
         {
@@ -233,7 +232,7 @@ internal sealed partial class ExplorerHostWorkspace
             ? UserExecutionProblemText.ForReason(eligibility.Reason)
             : null;
         _initializations[window] = OpenInitialLocationAsync(viewModel, initialPath, settings, eligibilityNotice);
-        return true;
+        return window;
     }
 
     private static async Task NavigateAfterInitializationAsync(ExplorerViewModel viewModel, Task? initialization, string? path)

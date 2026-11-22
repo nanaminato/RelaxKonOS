@@ -24,6 +24,9 @@ internal sealed partial class OfficialDesktopPackages(string directory, HttpClie
     internal static bool OwnsComponentCenterWorkspace(string appId, PackageOrigin origin) =>
         origin == PackageOrigin.OfficialDistribution && appId == "relaxkonos.component-center";
 
+    internal static bool OwnsExplorerWorkspace(string appId, PackageOrigin origin) =>
+        origin == PackageOrigin.OfficialDistribution && appId == "relaxkonos.explorer";
+
     internal static bool OwnsShellRoute(string appId, PackageOrigin origin, Uri uri) =>
         uri.IsAbsoluteUri && uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
         && (OwnsSettingsWorkspace(appId, origin) && uri.Host.Equals("settings", StringComparison.OrdinalIgnoreCase)

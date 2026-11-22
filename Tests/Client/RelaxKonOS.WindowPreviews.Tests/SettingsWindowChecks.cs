@@ -79,12 +79,30 @@ internal static class SettingsWindowChecks
             new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings), null!, null!, null!,
             null!, null!, memory, null!, null!, null!, null!,
             settingsWindow: workspace,
-            componentCenterWorkspace: centerWorkspace ?? new RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace(services));
+            componentCenterWorkspace: centerWorkspace ?? new RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace(services),
+            explorerWorkspace: new RelaxKonOS.Client.Apps.Explorer.ExplorerPackageHostWorkspace(services));
         var factory = CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null);
         var settingsManifest = new RelaxKonOS.App.Settings.SettingsPackageApp().Manifest;
         using var packageLifetime = new CancellationTokenSource();
         var official = RelaxKonOS.Client.Services.Developer.PackageOrigin.OfficialDistribution;
         var local = RelaxKonOS.Client.Services.Developer.PackageOrigin.LocalPackage;
+        var explorerManifest = new ApplicationManifest(new AppId("relaxkonos.explorer"),
+            "Explorer", "1.0.0", "open", "Explorer fixture", []);
+        using var explorerLifetime = new CancellationTokenSource();
+        var explorer = ((IExplorerPackageContext)factory.CreateForInstalledPackage(
+            explorerManifest, official, explorerLifetime.Token, null, null)).ExplorerWorkspace;
+        Check(explorer is not null
+            && ((IExplorerPackageContext)factory.CreateForInstalledPackage(explorerManifest, local, default, null, null)).ExplorerWorkspace is null
+            && ((IExplorerPackageContext)factory.CreateForInstalledPackage(settingsManifest, official, default, null, null)).ExplorerWorkspace is null
+            && ((IExplorerPackageContext)factory.Create(explorerManifest)).ExplorerWorkspace is null,
+            "Only the official Explorer package receives its workspace.");
+        explorerLifetime.Cancel();
+        try
+        {
+            explorer!.Localize("explorer.login_required");
+            throw new Exception("A retired Explorer package retained its workspace.");
+        }
+        catch (OperationCanceledException) { }
         var settingsUri = new Uri("relaxkonos://settings/home");
         Check(OfficialDesktopPackages.OwnsShellRoute(settingsManifest.Id.Value, official, settingsUri)
             && !OfficialDesktopPackages.OwnsShellRoute(settingsManifest.Id.Value, local, settingsUri)

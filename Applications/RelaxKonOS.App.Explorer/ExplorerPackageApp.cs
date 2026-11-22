@@ -18,7 +18,7 @@ public sealed class ExplorerPackageApp : IExternalRemoteApplication, IExternalAp
     {
         cancellationToken.ThrowIfCancellationRequested();
         var workspace = RequireWorkspace(context);
-        var window = workspace.Open(null);
+        var window = OpenWorkspace(context, workspace, null);
         _activationNeedsLogin = window is null;
         _activationWindow = new(window ?? ShowLoginPrompt(context, workspace));
         return Task.CompletedTask;
@@ -38,10 +38,14 @@ public sealed class ExplorerPackageApp : IExternalRemoteApplication, IExternalAp
         if (activationWindow?.TryGetTarget(out var window) == true && (needsLogin || workspace.TryNavigate(window, path)))
             return Task.CompletedTask;
 
-        if (workspace.Open(path) is null)
+        if (OpenWorkspace(context, workspace, path) is null)
             ShowLoginPrompt(context, workspace);
         return Task.CompletedTask;
     }
+
+    private ManagedWindow? OpenWorkspace(IExternalAppContext context, IExplorerPackageWorkspace workspace, string? path) =>
+        workspace.Open(path, (title, content) => context.Windows.ShowWindow(title, content,
+            new Rect(80, 60, 960, 640), Manifest.IconGlyph).Window);
 
     private ManagedWindow ShowLoginPrompt(IExternalAppContext context, IExplorerPackageWorkspace workspace) =>
         context.Windows.ShowWindow(

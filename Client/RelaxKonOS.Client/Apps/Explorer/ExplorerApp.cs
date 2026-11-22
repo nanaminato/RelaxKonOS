@@ -33,7 +33,9 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 
     private void OpenExplorer(AppContext context, string? initialPath)
     {
-        if (_workspace.TryOpen(context, initialPath, Manifest.IconGlyph)) return;
+        if (_workspace.Open(context, initialPath, (title, content) =>
+            context.ShowWindow(title, content, new Rect(80, 60, 960, 640), Manifest.IconGlyph)) is not null)
+            return;
 
         var stub = new ExplorerLoginRequiredView(LocalizedText.Get("explorer.login_required"));
         context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), stub,
