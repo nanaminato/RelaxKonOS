@@ -13,6 +13,9 @@ internal interface IServerModule
     /// <summary>Server capabilities this module actually provides when it is enabled and mapped.</summary>
     IReadOnlyList<string> Capabilities { get; }
 
+    /// <summary>Explicit contract versions for capabilities implemented by this module.</summary>
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions => null;
+
     /// <summary>Module IDs that must be enabled for this module to be enabled.</summary>
     IReadOnlyList<string> Requires { get; }
 

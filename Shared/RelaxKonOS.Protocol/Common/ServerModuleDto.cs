@@ -40,4 +40,5 @@ public sealed record ServerModuleDto(
     string? HostApiRequirement = null,
     string ResourceReleaseLevel = "none",
     ServerModuleResidencyPolicyDto? DesiredResidencyPolicy = null,
-    ServerModuleResidencyPolicyDto? EffectiveResidencyPolicy = null);
+    ServerModuleResidencyPolicyDto? EffectiveResidencyPolicy = null,
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);

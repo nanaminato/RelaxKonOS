@@ -401,6 +401,22 @@ internal static class JointDeploymentAcceptance
                 factory.SubstituteCapabilities = true;
                 Require(await moduleCatalog.ObserveAsync(default) != healthy.Target,
                     "changing only the module's advertised capabilities invalidates the deployment target");
+                var advertised = await moduleCatalog.ReadAsync(default);
+                var versioned = advertised.Releases.Single(release => release.Package.Id == ModuleId && release.Satisfied);
+                Require(versioned.Capabilities.GetValueOrDefault("fixture.changed") == "2",
+                    "the effective candidate preserves the explicit capability contract version");
+                factory.ObservedCapabilityVersion = "3";
+                Require(await moduleCatalog.ObserveAsync(default) != advertised.Target,
+                    "changing only a capability contract version invalidates the deployment target");
+                var versionExecutor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
+                try
+                {
+                    await versionExecutor.VerifyAsync(review.Plan, versioned, default);
+                    throw new InvalidOperationException("Expected exact capability contract verification to fail.");
+                }
+                catch (InvalidOperationException error) when (error.Message == "deployment-module-not-effective") { }
+                factory.ObservedCapabilityVersion = "2";
+                await versionExecutor.VerifyAsync(review.Plan, versioned, default);
                 factory.SubstituteCapabilities = false;
                 factory.SubstituteInstalledDigest = true;
                 Require(await moduleCatalog.ObserveAsync(default) != healthy.Target,
@@ -761,6 +777,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteInstalledDigest { get => handler.SubstituteInstalledDigest; set => handler.SubstituteInstalledDigest = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public bool SubstituteCapabilities { get => handler.SubstituteCapabilities; set => handler.SubstituteCapabilities = value; }
+        public string ObservedCapabilityVersion { set => handler.ObservedCapabilityVersion = value; }
         public Action? BeforeNextClient { get; set; }
         public Func<Task>? BeforeNextRequest { set => handler.BeforeNextRequest = value; }
         public Task HoldNextEnableApply()
@@ -796,6 +813,7 @@ internal static class JointDeploymentAcceptance
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
         public bool SubstituteCapabilities { get; set; }
+        public string ObservedCapabilityVersion { get; set; } = "2";
         public Func<Task>? BeforeNextRequest { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -867,7 +885,8 @@ internal static class JointDeploymentAcceptance
                         : module.Id == FaultedModule
                         ? module with { Residency = new("faulted", false, "KeepLoaded", 0, 0, null, null, null, "fixture", null) }
                         : HideEffectiveVersion && module.Id == ModuleId ? module with { EffectiveVersion = null }
-                        : SubstituteCapabilities && module.Id == ModuleId ? module with { Capabilities = ["fixture.changed"] }
+                        : SubstituteCapabilities && module.Id == ModuleId ? module with { Capabilities = ["fixture.changed"], CapabilityContractVersions =
+                            new Dictionary<string, string> { ["fixture.changed"] = ObservedCapabilityVersion } }
                         : SubstituteInventoryDigest && module.Id == ModuleId ? module with { ArtifactDigest = new string('0', 64) }
                         : module).ToArray(), options: RelaxKonOSJsonOptions.Default),
                 };

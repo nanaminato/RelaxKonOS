@@ -111,6 +111,13 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
     }
 
+    private static bool HasPlannedCapabilities(ServerModuleDto module, DeploymentRelease release)
+    {
+        var observed = ModuleDeploymentCatalog.ObservedCapabilities(module);
+        return release.Capabilities.All(claim => observed.TryGetValue(claim.Key, out var version)
+            && (claim.Value.Length == 0 || StringComparer.Ordinal.Equals(claim.Value, version)));
+    }
+
     public async Task VerifyAsync(DeploymentPlan plan, DeploymentRelease release, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -119,7 +126,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var identity = release.ArtifactIdentity.Split('/')[^1];
         if (module is null || !ModuleDeploymentCatalog.IsEffective(module)
             || ModuleDeploymentCatalog.EffectivePackageVersion(module) != release.Version
-            || !release.Capabilities.Keys.All(capability => module.Capabilities.Contains(capability, StringComparer.Ordinal))
+            || !HasPlannedCapabilities(module, release)
             || identity.Length == 64 && module.ArtifactDigest != identity)
             throw new InvalidOperationException("deployment-module-not-effective");
 

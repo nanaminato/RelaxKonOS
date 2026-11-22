@@ -61,7 +61,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                         ? module.Requires.Select(id => new DeploymentRequirement(Key(id)))
                         : signed.Dependencies.Select(ToRequirement);
                     releases.Add(new(Key(module.Id), activationVersion, module.ArtifactDigest!, false,
-                        [.. requirements], UnversionedCapabilities(module.Capabilities))
+                        [.. requirements], ObservedCapabilities(module))
                     {
                         ActivationOnly = true,
                         CurrentVersion = activationVersion,
@@ -87,7 +87,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                 ? signedRelease.Dependencies.Select(ToRequirement)
                 : module.Requires.Select(id => new DeploymentRequirement(Key(id)));
             releases.Add(new(Key(module.Id), effectiveVersion, identity, true, [..dependencies],
-                UnversionedCapabilities(module.Capabilities)));
+                ObservedCapabilities(module)));
         }
 
         foreach (var entry in store)
@@ -123,7 +123,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             RequiresRecovery = RequiresRecovery(module),
             module.PendingOperationId, module.Packaging, module.TrustState, module.ConfigurationWritable,
             Requires = module.Requires.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
-            Capabilities = module.Capabilities.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
+            Capabilities = ObservedCapabilities(module).OrderBy(capability => capability.Key, StringComparer.Ordinal)
         });
         var packages = installed.OrderBy(package => package.ModuleId, StringComparer.Ordinal).Select(package => new
         {
@@ -182,7 +182,11 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
     private static string Identity(string sourceId, string releaseId, string digest) =>
         $"{sourceId}/{releaseId}/{digest}";
 
-    // The module endpoints report names only. A module version does not prove a capability contract version.
-    internal static ImmutableDictionary<string, string> UnversionedCapabilities(IEnumerable<string> capabilities) =>
+    internal static ImmutableDictionary<string, string> ObservedCapabilities(ServerModuleDto module) =>
+        module.Capabilities.Distinct(StringComparer.Ordinal).ToImmutableDictionary(name => name,
+            name => module.CapabilityContractVersions?.GetValueOrDefault(name) ?? "", StringComparer.Ordinal);
+
+    // Signed releases currently list names. A package version does not prove a capability contract version.
+    private static ImmutableDictionary<string, string> UnversionedCapabilities(IEnumerable<string> capabilities) =>
         capabilities.Distinct(StringComparer.Ordinal).ToImmutableDictionary(name => name, _ => "", StringComparer.Ordinal);
 }

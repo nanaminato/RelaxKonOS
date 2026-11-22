@@ -95,7 +95,8 @@ internal sealed partial class ServerModules
                 Rid: RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid,
                 HostApiRequirement: version,
                 ResourceReleaseLevel: host is not null ? "process" : module is IServerModuleResidency ? "objects" : "none",
-                DesiredResidencyPolicy: desiredPolicy, EffectiveResidencyPolicy: effectivePolicy));
+                DesiredResidencyPolicy: desiredPolicy, EffectiveResidencyPolicy: effectivePolicy,
+                CapabilityContractVersions: module.CapabilityContractVersions));
         }
         return inventory;
     }
