@@ -202,7 +202,8 @@ foreach (var style in SystemStyleIds.All)
     host.Content = view;
     Dispatcher.UIThread.RunJobs();
     var scroll = ((Grid)view.Content!).Children.OfType<ScrollViewer>().Single();
-    var install = view.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("primary"));
+    var install = view.GetVisualDescendants().OfType<Button>()
+        .Single(button => ReferenceEquals(button.Command, installer.InstallCommand));
     var before = install.TranslatePoint(default, view)!.Value;
     Check(scroll.Extent.Height > scroll.Viewport.Height + 100, "Long package permissions require scrolling.");
     Check(before.Y + install.Bounds.Height <= view.Bounds.Height, "Install remains inside the compact viewport.");

@@ -535,3 +535,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Settings 宿主在显示主窗口前解析必需服务，并在窗口打开后立即登记清理回调。Windows Release 从官方归档安装后验证关闭和重新打开会创建新的宿主工作区，深链接仍正确分发。
 - 桌面宿主移除对 Settings 实现项目的引用。Settings 包提供对话框与法律资源读取工厂，宿主只引用共享契约和语言资源。Windows Release 隔离发布确认根目录没有 Settings 实现 DLL；重建归档的包启动专项验证真实宿主窗口、两份离线法律文档及深链接。
 - 发行校验增加宿主依赖图与散装 DLL 检查，拒绝把 Settings 实现带入核心目录。Windows Release 新宿主与已验官方归档组成的发行目录通过全部 26 个归档核对及三档预装、Minimal 修复。带旧宿主依赖的目录被新检查拒绝。
+- 修正 ApplicationLayout 的安装审核页固定操作区测试，通过实际 InstallCommand 定位按钮，避免同页官方目录操作也带 primary 样式时出现多重匹配。Windows Release 全量越过安装器布局，随后在 BrowserChecks.VerifyAddressInput 的本地化状态断言失败，暂跳过该独立浏览器问题。
