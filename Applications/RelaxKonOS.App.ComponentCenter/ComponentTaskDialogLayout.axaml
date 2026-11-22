@@ -3,9 +3,29 @@
  xmlns:local="using:RelaxKonOS.App.ComponentCenter"
  xmlns:sdk="using:RelaxKonOS.AppSDK"
  x:Class="RelaxKonOS.App.ComponentCenter.ComponentTaskDialogLayout"
- x:Name="Layout" x:DataType="sdk:IComponentTaskDialogModel">
+ x:Name="Layout" x:DataType="sdk:IComponentTaskDialogModel"
+ Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+ <UserControl.Styles>
+  <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />
+  <Style Selector="Border.step">
+   <Setter Property="Padding" Value="0,9" />
+   <Setter Property="BorderThickness" Value="0,1,0,0" />
+   <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+  </Style>
+  <Style Selector="TextBlock.step-title">
+   <Setter Property="FontSize" Value="13" />
+   <Setter Property="FontWeight" Value="SemiBold" />
+   <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+ </UserControl.Styles>
  <Grid RowDefinitions="*,Auto,Auto">
-  <ContentControl Content="{Binding #Layout.Body}" />
+  <ScrollViewer x:Name="DetailsScroll" HorizontalScrollBarVisibility="Disabled" Padding="20,18">
+   <StackPanel Spacing="14">
+    <local:ComponentTaskPlanningView />
+    <ContentControl Content="{Binding #Layout.RuntimeView}" IsVisible="{Binding ShowRuntimeTaskActivity}" />
+    <local:ComponentTaskResultsView />
+   </StackPanel>
+  </ScrollViewer>
   <Border x:Name="DraftFooter" Grid.Row="1" Padding="20,12" BorderThickness="0,1,0,0"
           BorderBrush="{DynamicResource BorderSubtleBrush}" Background="{DynamicResource SurfaceRaisedBrush}"
           IsVisible="{Binding ShowDraftPanel}">

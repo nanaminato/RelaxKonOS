@@ -7,22 +7,22 @@ namespace RelaxKonOS.App.ComponentCenter;
 
 public partial class ComponentTaskDialogLayout : UserControl
 {
-    public static readonly StyledProperty<Control?> BodyProperty =
-        AvaloniaProperty.Register<ComponentTaskDialogLayout, Control?>(nameof(Body));
+    public static readonly StyledProperty<Control?> RuntimeViewProperty =
+        AvaloniaProperty.Register<ComponentTaskDialogLayout, Control?>(nameof(RuntimeView));
 
     private Action? _requestClose;
 
     public ComponentTaskDialogLayout() => InitializeComponent();
 
-    public Control? Body
+    public Control? RuntimeView
     {
-        get => GetValue(BodyProperty);
-        set => SetValue(BodyProperty, value);
+        get => GetValue(RuntimeViewProperty);
+        set => SetValue(RuntimeViewProperty, value);
     }
 
     public static ComponentTaskDialogLayout Create(ComponentTaskDialogPresentation presentation) => new()
     {
-        Body = presentation.Body,
+        RuntimeView = presentation.RuntimeView,
         DataContext = presentation.Model,
         _requestClose = presentation.RequestClose,
     };

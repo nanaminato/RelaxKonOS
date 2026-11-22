@@ -458,7 +458,7 @@ internal static class ComponentCenterWorkspaceChecks
                 var changeView = new ComponentCenterTasksView(activeModel);
                 var changeWindow = new Window { Width = 1060, Height = 800, Content = changeView };
                 changeWindow.Show(); Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
-                changeView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 420);
+                ((ComponentTaskDialogLayout)changeView.Content!).FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 420);
                 Dispatcher.UIThread.RunJobs(); changeWindow.UpdateLayout();
                 Check(!changeView.GetVisualDescendants().OfType<TextBlock>().Any(t =>
                     t.Text?.Contains("component_center.", StringComparison.Ordinal) == true
@@ -558,7 +558,7 @@ internal static class ComponentCenterWorkspaceChecks
                         committed = committed with { CommitWitness = new(operation, committed.Installation, committed.ActiveRevisionId,
                             committed.ConfigurationIdentity, committed.MeasuredVersion) };
                         taskModel.TaskEvidence.Add(new(new(recoveryRun.Steps[0].StepId, operation, InstallationOperationState.Succeeded, true, committed)));
-                        resultView.FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 520);
+                        ((ComponentTaskDialogLayout)resultView.Content!).FindControl<ScrollViewer>("DetailsScroll")!.Offset = new Vector(0, 520);
                         Dispatcher.UIThread.RunJobs(); resultWindow.UpdateLayout();
                         using var bitmap = new RenderTargetBitmap(new PixelSize(1060, 800));
                         bitmap.Render(resultWindow); bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "TaskEvidence.png"), new PngBitmapEncoderOptions());

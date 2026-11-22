@@ -571,3 +571,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 任务窗口布局、草稿列表与底栏控件由已安装 .roapp 创建。宿主通过 SDK 提供草稿状态、操作命令和任务主体。Windows Release 三语双主题、短窗可达性和新归档隔离开窗验证通过。
 - Component Center 任务工作负载选择、检查结果和变更计划面板由已安装 .roapp 创建。Windows Release 三语双主题和新归档隔离安装通过，后者核对三个面板所属视图的程序集来源。
 - Component Center 任务历史、执行结果、证据与恢复界面由已安装 .roapp 创建，执行与恢复仍通过宿主命令。Windows Release 三语双主题及新归档隔离安装通过。
+- Component Center 应用包直接编排任务窗口主体、滚动区和样式，删去宿主任务窗口 XAML。宿主通过 SDK 注入共享运行时视图。Windows Release 三语双主题及新归档隔离安装通过。

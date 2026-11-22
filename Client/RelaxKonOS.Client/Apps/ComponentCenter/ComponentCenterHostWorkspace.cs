@@ -202,7 +202,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
                 {
                     taskDialog = dialog;
                     dialog.CanCancelAsync = () => Task.FromResult(!model.IsTaskBusy && !model.IsInspecting);
-                    return new ComponentCenterTasksView(model, dialog.Cancel, views.CreateTaskDialogLayout, views.CreateTaskPlanning, views.CreateTaskResults);
+                    return new ComponentCenterTasksView(model, dialog.Cancel, views.CreateTaskDialogLayout);
                 }, new Size(840, 720));
             }
             finally { taskDialog = null; taskDialogOpen = false; }

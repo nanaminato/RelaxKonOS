@@ -3,10 +3,11 @@ using Avalonia.Controls;
 
 namespace RelaxKonOS.AppSDK;
 
-public sealed record ComponentTaskDialogPresentation(IComponentTaskDialogModel Model, Control Body, Action? RequestClose);
+public sealed record ComponentTaskDialogPresentation(IComponentTaskDialogModel Model, Control RuntimeView, Action? RequestClose);
 
 public interface IComponentTaskDialogModel
 {
+    bool ShowRuntimeTaskActivity { get; }
     bool ShowDraftPanel { get; }
     string DraftSummary { get; }
     string PersistenceNotice { get; }
