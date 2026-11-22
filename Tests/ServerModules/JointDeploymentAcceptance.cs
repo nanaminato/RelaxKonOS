@@ -552,15 +552,19 @@ internal static class JointDeploymentAcceptance
             Require((await sharedClient.PreviewAsync(sharedDisable with { IdempotencyKey = "offline-release-queued" })).BlockedBy.Any(blocker =>
                     blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
                 "the server still blocks disable while the offline release is queued");
+            Require(await secondPackages.UninstallAsync(AppIdText),
+                "the second desktop can uninstall and release its claim while the first release is queued");
+            var secondReleaseDirectory = secondDrive.ResolveRootChild("System/desktop-module-releases");
+            Require(!Directory.Exists(secondReleaseDirectory) || !Directory.EnumerateFiles(secondReleaseDirectory, "*.json").Any(),
+                "the online uninstall leaves no deferred release on the second desktop");
+            Require((await sharedClient.PreviewAsync(sharedDisable with { IdempotencyKey = "only-offline-release-queued" })).BlockedBy.Any(blocker =>
+                    blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
+                "the unreported offline uninstall alone keeps module protection in force");
             await packages.LoadInstalledAsync();
             Require(!Directory.EnumerateFiles(releaseDirectory, "*.json").Any(),
                 "startup releases an offline uninstall record on the original server and account");
-            Require((await sharedClient.PreviewAsync(sharedDisable)).BlockedBy.Any(blocker =>
-                    blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
-                "uninstalling one desktop leaves the other desktop's module protection in force");
-            Require(await secondPackages.UninstallAsync(AppIdText)
-                && (await sharedClient.PreviewAsync(sharedDisable with { IdempotencyKey = "both-desktops-uninstalled" })).BlockedBy.Count == 0,
-                "uninstalling the last desktop allows the module to be disabled");
+            Require((await sharedClient.PreviewAsync(sharedDisable with { IdempotencyKey = "both-claims-released" })).BlockedBy.Count == 0,
+                "reconciling the last claim allows the module to be disabled");
 
             await installer.InstallAsync(await installer.InspectLocalAsync(prerequisitePath));
             var replacementMixed = await joint.PrepareAsync(mixedCandidate, [], default);
