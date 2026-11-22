@@ -778,3 +778,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 启动回执核验拒绝把隔离的安装目标标记为成功，即便版本、发行 ID 与摘要全部相同。Windows Release 模块包专项覆盖该情形并通过。
 - 卸载已停用的官方独立替换包后，运行中 Core 的部署清单立即重新显示停用的随附模块。Windows Release 卸载专项 21 项通过，覆盖正常停用并卸载 Git 独立替换后随附模块重新可见，同时保持停用意图。
 - Core 启动前按已接纳目录的历史撤销记录隔离当前安装包，覆盖发行 ID 和归档摘要。期望配置保留，隔离包不进入有效模块列表。Windows Release 生命周期验收通过，验证 Firewall 撤销后在启动时隔离且 Git 保持启用。运行中撤销仍在下一次启动时生效。
+- 启动恢复及撤销包隔离现置于 Core 已取得独占 host.lock 之后，恢复标记使用同一进程代次。Windows Release 生命周期回归通过，验证竞争启动未取得锁时保持原恢复标记不变。

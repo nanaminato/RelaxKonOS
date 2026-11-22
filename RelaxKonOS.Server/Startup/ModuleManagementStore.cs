@@ -60,8 +60,12 @@ internal sealed partial class ModuleManagementStore : IDisposable
     internal ModuleManagementStore(IConfiguration configuration, string contentRoot,
         IReadOnlyList<IServerModule>? installedModules = null) : this(configuration, contentRoot, true, installedModules: installedModules) { }
 
+    internal static ModuleManagementStore StartHost(IConfiguration configuration, string contentRoot) =>
+        new(configuration, contentRoot, initializePermissions: true, recoverPackages: true);
+
     private ModuleManagementStore(IConfiguration configuration, string contentRoot, bool initializePermissions,
-        string? expectedServiceId = null, string? expectedRevision = null, IReadOnlyList<IServerModule>? installedModules = null)
+        string? expectedServiceId = null, string? expectedRevision = null, IReadOnlyList<IServerModule>? installedModules = null,
+        bool recoverPackages = false)
     {
         _contentRoot = contentRoot;
         var authority = configuration["ModuleManagement:Authority"] ?? "deployment";
@@ -103,6 +107,11 @@ internal sealed partial class ModuleManagementStore : IDisposable
         _hostLock = new FileStream(Path.Combine(directory, "host.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         try
         {
+            if (recoverPackages)
+            {
+                ModulePackageStartupGuard.Begin(contentRoot, configuration, ProcessGeneration);
+                installedModules = InstalledModuleCatalog.Load(contentRoot);
+            }
             var configuredModules = ServerModules.Create(configuration, installedModules);
             var configured = configuredModules.ConfiguredIds.Order(StringComparer.Ordinal).ToArray();
             var residency = ModuleResidencyOptions.Parse(configuration, configuredModules.KnownModuleIds, configuredModules.KnownReleasableModuleIds);

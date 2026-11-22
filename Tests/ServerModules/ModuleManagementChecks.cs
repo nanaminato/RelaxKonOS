@@ -24,6 +24,18 @@ internal static class ModuleManagementChecks
         // dependency admission and do not become a startup module registration.
         try
         {
+            var lockRoot = Path.Combine(root, "startup-lock");
+            using (var running = ModuleManagementStore.StartHost(configuration, lockRoot))
+            {
+                var marker = ModulePackageStartupGuard.PathFor(lockRoot);
+                var before = File.ReadAllBytes(marker);
+                var rejected = false;
+                try { using var competing = ModuleManagementStore.StartHost(configuration, lockRoot); }
+                catch (IOException) { rejected = true; }
+                check(rejected && File.ReadAllBytes(marker).SequenceEqual(before),
+                    "a competing host cannot replace the package startup marker while the owner holds host.lock");
+                ModulePackageStartupGuard.Complete(lockRoot);
+            }
             Guid planId; Guid operationId; string service;
             using (var store = new ModuleManagementStore(configuration, root))
             {
