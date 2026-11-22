@@ -882,3 +882,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 在独立网络命名空间使用校验过的 sing-box 1.14.3 临时二进制复验 Proxy Server 凭据到期。真实环回流量在到期前转发，到期后旧流关闭、到期凭据被拒、有效凭据可重连。模拟 Helper 响应丢失和工作进程退出后，通过原回执恢复且仅应用一次。此用例使用生产 Proxy 启动保护和发布服务，经测试传输连接真实二进制。签名双包直接发布和系统 Helper 仍待验。
 - Windows Release 和 Linux x64 以各自完整重建的桌面发行目录复验签名 Proxy 双包。Developer 审阅、不可用版本与连接重试、一次独立签名安装和重启续跑均通过；Proxy Server、Squid 复用同一归档并通过就绪检查，最后一款应用卸载后解除服务端停用阻止。Linux 同轮通过真实 Mihomo 配置发布和失败补偿，Windows 测试目录由包加载上下文延迟至进程退出后释放。
 - Proxy 执行加载错误区分程序集加载、入口加载和实例化，诊断包含宿主指定入口名称且不保留原异常。Windows Release 签名双包验收在已安装归档中查询不存在的入口，确认诊断指出名称。初次测试在模块提交时返回 module-state-unavailable，同一构建复跑完整通过。
+- Linux x64 自包含签名 Proxy 双包使用完整重建的桌面发行归档复验新入口诊断。不存在的入口报告名称，正常入口继续完成 Mihomo 配置发布和失败补偿。三款桌面应用复用签名版本，最后一款卸载后解除服务端停用阻止。
