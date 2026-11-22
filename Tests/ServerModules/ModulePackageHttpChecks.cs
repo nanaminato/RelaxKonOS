@@ -654,7 +654,7 @@ internal static class ModulePackageHttpChecks
             "a quarantined Certificates package blocks the dependent Web Server without advertising either capability");
     }
 
-    private sealed class WebServerReloadProbe : INginxReloadPorts
+    internal sealed class WebServerReloadProbe : INginxReloadPorts
     {
         public Guid OperationId { get; } = Guid.NewGuid();
         public bool UsesSystemPackage => false;

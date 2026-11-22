@@ -37,6 +37,7 @@ using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Runtimes;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Tunnels;
+using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Server.Certificate;
@@ -267,9 +268,31 @@ internal static class JointDeploymentAcceptance
                 host.Services.GetRequiredService<DockerStackOperationStore>(), Require);
     }
 
+    public static void RunSignedWebServer(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        ServerModules.WebServerId, ServerCapabilities.WebServer, "WebServer", WebServerExecutionCode.AssemblyFile,
+        WebServerExecutionCode.EntryType, null, VerifySignedWebServerAsync,
+        [new(ServerModules.CertificatesId, "0.0.0", "9999.0.0")]));
+
+    private static async Task VerifySignedWebServerAsync(TestHost _, string root)
+    {
+        var serverRoot = Path.Combine(root, "server");
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
+        var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.WebServerId, ServerModules.CertificatesId },
+            InstalledModuleCatalog.Load(serverRoot));
+        modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+        await using var host = builder.Build();
+        var execution = host.Services.GetRequiredService<WebServerExecutionCode>();
+        var probe = new ModulePackageHttpChecks.WebServerReloadProbe();
+        using var lease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", probe);
+        Require(!ReferenceEquals(execution, WebServerExecutionCode.Shared)
+            && ReferenceEquals(host.Services.GetRequiredService<AcmeExecution>(), AcmeExecution.Shared)
+            && await lease.Executor.ReloadAsync(default) == "" && probe.Confirmed,
+            "the joint-installed signed Web Server executor uses its reload port and reuses bundled Certificates");
+    }
+
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
         string directory, string entryAssembly, string entryType, IReadOnlyDictionary<string, string>? contractVersions,
-        Func<TestHost, string, Task> verifyBusiness)
+        Func<TestHost, string, Task> verifyBusiness, IReadOnlyList<ModulePackageDependency>? dependencies = null)
     {
         var parent = Path.Combine(AppContext.BaseDirectory, "test-data");
         var root = Directory.CreateDirectory(Path.Combine(parent, "signed-execution-joint-" + Guid.NewGuid().ToString("N"))).FullName;
@@ -292,7 +315,7 @@ internal static class JointDeploymentAcceptance
                 Path.Combine(root, "module"), moduleId, version, "joint-execution-" + rid, "fixture", "official", rid,
                 entryAssembly, entryType, "joint-execution", new string('a', 40), "official", 1,
                 "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability],
-                CapabilityContractVersions: contractVersions), now);
+                Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", "official", "https://modules.example/",
                 [moduleId], new Dictionary<string, string> { ["fixture-key"] = package.PublicKeySpkiBase64 }, 3600);
             var config = new ConfigurationBuilder().AddJsonStream(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(new
@@ -324,6 +347,10 @@ internal static class JointDeploymentAcceptance
             var candidate = await installer.InspectLocalAsync(appArchive);
             var review = await joint.PrepareAsync(candidate, [], default);
             Require(review.Plan.PreparedSteps.Length == 1, $"the {moduleId} desktop package selects the independent signed server release");
+            if (dependencies is { Count: > 0 })
+                Require(dependencies.All(dependency => review.Plan.OrderedReleases.Any(release =>
+                    release.Package == new DeploymentPackageKey(DeploymentPackageKind.ServerModule, dependency.ModuleId) && release.Satisfied)),
+                    "the signed Web Server plan reuses its effective Certificates dependency");
             await ExpectRestartAsync(joint, review);
             Require(!apps.IsRegistered(new AppId(candidate.Manifest.Id)), $"the desktop waits for the signed {moduleId} package to become effective");
             await host.DisposeAsync();
@@ -1610,7 +1637,7 @@ internal static class JointDeploymentAcceptance
                 if (!hasTunnels)
                     builder.Services.AddSingleton<IHostElevationSessionStore, NoElevation>();
             }
-            foreach (var module in online.Where(module => module.Id is not (ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId)))
+            foreach (var module in online.Where(module => module.Id is not (ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId)))
                 module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
@@ -1664,7 +1691,7 @@ internal static class JointDeploymentAcceptance
                         .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User)))).RequireAuthorization();
                 app.MapGet("/fixture-core", () => "ready");
                 app.MapServerModuleManagementEndpoints();
-                foreach (var module in online.Where(module => module.Id is not (ServerModules.CertificatesId or ServerModules.DockerId))) module.MapEndpoints(app, context);
+                foreach (var module in online.Where(module => module.Id is not (ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId))) module.MapEndpoints(app, context);
                 app.Urls.Add("http://127.0.0.1:0");
                 await app.StartAsync();
                 store.VerifyStartup(modules.EnabledIds);
