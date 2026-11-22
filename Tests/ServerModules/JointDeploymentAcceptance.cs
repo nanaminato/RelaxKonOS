@@ -111,6 +111,10 @@ internal static class JointDeploymentAcceptance
                 "the desktop registers Project Editor after checking the live Git module");
             var git = new RelaxKonOS.Client.Apps.Git.RemoteGitClient(loginHttp, auth);
             var registered = await git.RegisterRepositoryAsync(new("Joint deployment fixture", repository));
+            const string remoteName = "fixture-acceptance";
+            Require((await git.ListRemotesAsync(registered.Id)).SingleOrDefault(remote => remote.Name == remoteName)
+                    is { } remote && (remote.PushUrl ?? remote.FetchUrl) == repository + ".git",
+                "the fixture push target is the dedicated local bare repository");
             var before = await git.GetGraphAsync(registered.Id);
             var beforeStatus = await git.GetStatusAsync(registered.Id);
             Require(before is [{ IsHead: true }] && beforeStatus.Staged.Select(item => item.Path).SequenceEqual(["staged.txt"])
@@ -125,6 +129,10 @@ internal static class JointDeploymentAcceptance
                 && status.Staged.Select(item => item.Path).SequenceEqual(["staged.txt"])
                 && status.Untracked.All(item => item.Path != "draft.txt"),
                 "the commit advances HEAD and leaves unrelated staged work intact");
+            var push = await git.PushAsync(registered.Id, new(SaveCredentials: false, LocalBranch: "main",
+                Remote: remoteName, RemoteBranch: "fixture-verified"));
+            Require(push is { Success: true, Operation: "push", RequiresCredentials: false },
+                "the desktop Git client pushes the selected branch to the isolated bare repository");
             return;
         }
         if (phase == "start")
