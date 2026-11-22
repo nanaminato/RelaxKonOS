@@ -79,7 +79,10 @@
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Database/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Database.dll" Link="Modules/Database/RelaxKonOS.ServerModule.Database.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Database.Contracts/RelaxKonOS.ServerModule.Database.Contracts.csproj" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Tailscale.Contracts/RelaxKonOS.ServerModule.Tailscale.Contracts.csproj" />
-    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Tunnels/RelaxKonOS.ServerModule.Tunnels.csproj" />
+    <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Tunnels.Contracts/RelaxKonOS.ServerModule.Tunnels.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Tunnels/RelaxKonOS.ServerModule.Tunnels.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.Tunnels/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Tunnels.dll"
+             Link="Modules/Tunnels/RelaxKonOS.ServerModule.Tunnels.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Tailscale/RelaxKonOS.ServerModule.Tailscale.csproj" ReferenceOutputAssembly="false" />
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Tailscale/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Tailscale.dll"
              Link="Modules/Tailscale/RelaxKonOS.ServerModule.Tailscale.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

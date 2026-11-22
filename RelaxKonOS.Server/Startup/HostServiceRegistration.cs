@@ -131,6 +131,8 @@ internal static class HostServiceRegistration
         // Tunnel desired state is stored separately from workspace preferences. FRP stays an external
         // process; the provider only generates private configuration and supervises its own child PID.
         builder.Services.AddSingleton<RelaxKonOS.Server.Runtimes.IRuntimeManager, RelaxKonOS.Server.Runtimes.FrpRuntimeManager>();
+        builder.Services.AddSingleton(_ => new RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution());
+        builder.Services.AddSingleton(sp => sp.GetRequiredService<RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution>().Module);
         builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelProvider, RelaxKonOS.Server.Tunnels.FrpTunnelProvider>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.IManagedFrpsService, RelaxKonOS.Server.Tunnels.ManagedFrpsService>();
         builder.Services.AddHostedService(sp => (RelaxKonOS.Server.Tunnels.FrpTunnelProvider)sp.GetRequiredService<RelaxKonOS.Server.Tunnels.ITunnelProvider>());

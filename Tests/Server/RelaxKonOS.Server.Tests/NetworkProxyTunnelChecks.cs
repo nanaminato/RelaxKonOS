@@ -421,15 +421,16 @@ internal static async Task VerifyLinuxMihomoRuntimeLinkActivationAsync(string ro
 
 internal static void VerifyFrpTomlSafety()
 {
-    TestAssert.Assert(TunnelValidation.ValidateDefinition("bad\nname", TunnelProtocol.Tcp, "127.0.0.1", 22, 6000, null) == "tunnel.definition_invalid",
+    using var execution = new CollectibleTunnelExecution();
+    TestAssert.Assert(execution.Module.ValidateDefinition(new(Guid.Empty, "bad\nname", TunnelProtocol.Tcp, "127.0.0.1", 22, 6000, null, true, false, false)) == "tunnel.definition_invalid",
         "Tunnel name validation allowed TOML control characters.");
-    TestAssert.Assert(TunnelValidation.ValidateDefinition("http", TunnelProtocol.Http, "::1", 8080, null, "app.example.test") is null,
+    TestAssert.Assert(execution.Module.ValidateDefinition(new(Guid.Empty, "http", TunnelProtocol.Http, "::1", 8080, null, "app.example.test", true, false, false)) is null,
         "IPv6 loopback HTTP tunnel was rejected.");
     var profile = new TunnelServerProfileDto(Guid.NewGuid(), "edge", "frps.example.test", 7000, TunnelAuthKind.Token, true,
         TunnelTlsMode.Force, TunnelRuntimeMode.Managed, null, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
     var tunnel = new TunnelDefinitionDto(Guid.NewGuid(), profile.Id, "api", "frp", TunnelProtocol.Https, "::1", 8443,
         null, "app.example.test", true, true, true, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-    var toml = FrpTomlGenerator.Generate(profile, [tunnel], "token-with-\\-and-\"quote");
+    var toml = execution.Module.GenerateConfiguration(profile, [tunnel], "token-with-\\-and-\"quote");
     TestAssert.Assert(toml.Contains("token = \"token-with-\\\\-and-\\\"quote\"", StringComparison.Ordinal), "FRP TOML token escaping changed.");
     TestAssert.Assert(toml.Contains("customDomains = [\"app.example.test\"]", StringComparison.Ordinal) && toml.Contains("[proxies.transport]", StringComparison.Ordinal),
         "FRP TOML generator lost HTTPS domain or transport options.");
@@ -524,8 +525,10 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
     services.AddScoped<ISecretStore, DataProtectionSecretStore>();
     services.AddScoped<ITunnelAudit, TunnelAudit>();
     services.AddScoped<ITunnelService, TunnelService>();
+    using var execution = new CollectibleTunnelExecution();
+    services.AddSingleton(execution.Module);
     services.AddSingleton<IRuntimeManager>(runtime);
-    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>(), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport)));
+    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>(), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport), execution.Module));
     await using var container = services.BuildServiceProvider();
     await using (var scope = container.CreateAsyncScope())
     {
@@ -547,7 +550,7 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
             }
             TestAssert.Assert(current.Single().State == TunnelConnectionState.Connected, "Successful FRP login was overwritten by the startup state.");
             var reopened = new FrpTunnelProvider(container.GetRequiredService<IServiceScopeFactory>(), environment, runtime,
-                new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport));
+                new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport), execution.Module);
             TestAssert.Assert((await reopened.ListAsync("apply-user", CancellationToken.None)).Single().State == TunnelConnectionState.Connected,
                 "Reopening the FRPC provider lost its independent service applied identity.");
             var original = current.Single();
@@ -578,7 +581,8 @@ internal static async Task VerifyTunnelSecretLifecycleAsync(string root)
     await using var db = new RelaxKonOSDbContext(dbOptions); await db.Database.EnsureCreatedAsync();
     var protection = DataProtectionProvider.Create(Path.Combine(root, "data-protection"));
     var secrets = new DataProtectionSecretStore(db, protection);
-    var service = new TunnelService(db, secrets, new TunnelAudit(db));
+    using var execution = new CollectibleTunnelExecution();
+    var service = new TunnelService(db, secrets, new TunnelAudit(db), execution.Module);
     const string user = "tunnel-test-user";
     var created = await service.UpsertProfileAsync(null, new UpsertTunnelServerProfileRequest("edge", "frps.example.test", 7000,
         TunnelAuthKind.Token, TunnelTlsMode.Default, TunnelRuntimeMode.Managed, null), user, CancellationToken.None);

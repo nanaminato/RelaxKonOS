@@ -5,6 +5,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.Tunnels.Contracts/RelaxKonOS.ServerModule.Tunnels.Contracts.csproj" />
   </ItemGroup>
 </Project>

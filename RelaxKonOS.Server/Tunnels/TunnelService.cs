@@ -8,7 +8,7 @@ using RelaxKonOS.Server.Storage.Sqlite;
 namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Transactional desired-state service. It never starts a process while saving user input.</summary>
-public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, ITunnelAudit audit) : ITunnelService
+public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, ITunnelAudit audit, ITunnelExecution execution) : ITunnelService
 {
     public async Task<IReadOnlyList<TunnelServerProfileDto>> ListProfilesAsync(string userId, CancellationToken ct)
     {
@@ -28,7 +28,7 @@ public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, 
 
     public async Task<TunnelServerProfileDto> UpsertProfileAsync(Guid? id, UpsertTunnelServerProfileRequest request, string userId, CancellationToken ct)
     {
-        var invalid = TunnelValidation.ValidateProfile(request.Name, request.Host, request.Port, request.AuthKind, request.RuntimeMode, request.ExternalExecutablePath);
+        var invalid = execution.ValidateProfile(request);
         if (invalid is not null) throw new TunnelValidationException(invalid);
         var now = DateTimeOffset.UtcNow;
         TunnelServerProfile entity;
@@ -84,7 +84,7 @@ public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, 
 
     public async Task<TunnelDefinitionDto> UpsertTunnelAsync(Guid? id, UpsertTunnelDefinitionRequest request, string userId, CancellationToken ct)
     {
-        var invalid = TunnelValidation.ValidateDefinition(request.Name, request.Protocol, request.LocalHost, request.LocalPort, request.RemotePort, request.Domain);
+        var invalid = execution.ValidateDefinition(request);
         if (invalid is not null) throw new TunnelValidationException(invalid);
         if (!await db.TunnelServerProfiles.AnyAsync(x => x.Id == request.ServerProfileId && x.UserId == userId, ct)) throw new TunnelValidationException("tunnel.profile_not_found");
         var now = DateTimeOffset.UtcNow;

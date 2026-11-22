@@ -4,7 +4,7 @@ using RelaxKonOS.Protocol.Tunnels;
 namespace RelaxKonOS.ServerModule.Tunnels;
 
 /// <summary>Small closed TOML writer. No caller can inject TOML keys, includes, CLI arguments, or environment templates.</summary>
-public static class FrpTomlGenerator
+internal static class FrpTomlGenerator
 {
     public static string Generate(TunnelServerProfileDto profile, IEnumerable<TunnelDefinitionDto> definitions, string? token)
     {

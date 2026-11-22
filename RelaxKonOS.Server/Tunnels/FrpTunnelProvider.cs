@@ -13,7 +13,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Applies validated desired state to isolated frpc child processes. It never downloads FRP or forwards traffic.</summary>
-public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironment environment, IRuntimeManager runtimes, ManagedRuntimeOperations windowsRuntime) : ITunnelProvider, IHostedService
+public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironment environment, IRuntimeManager runtimes, ManagedRuntimeOperations windowsRuntime, ITunnelExecution execution) : ITunnelProvider, IHostedService
 {
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _profileLocks = new();
     private readonly ConcurrentDictionary<Guid, ManagedProcess> _processes = new();
@@ -105,7 +105,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
             if (executable is null) return await CompleteAsync(db, profileId, userId, new(false, TunnelConnectionState.RuntimeUnavailable, profile.RuntimeMode == TunnelRuntimeMode.Managed ? "tunnel.managed_runtime_not_installed" : "tunnel.external_invalid"), ct);
             var folder = Path.Combine(_configurationRoot, profile.Id.ToString("N")); Directory.CreateDirectory(folder); SetPrivateDirectory(folder);
             var configuration = Path.Combine(folder, "frpc.toml"); var temporary = Path.Combine(folder, $".frpc.{Guid.NewGuid():N}.tmp"); var backup = Path.Combine(folder, ".frpc.previous.toml");
-            await File.WriteAllTextAsync(temporary, FrpTomlGenerator.Generate(dto, definitions.Select(ToDto), token), ct); SetPrivateFile(temporary);
+            await File.WriteAllTextAsync(temporary, execution.GenerateConfiguration(dto, definitions.Select(ToDto), token), ct); SetPrivateFile(temporary);
             if (!await VerifyAsync(executable, temporary, ct)) { File.Delete(temporary); return await CompleteAsync(db, profileId, userId, new(false, TunnelConnectionState.SavedNotApplied, "tunnel.config_verify_failed"), ct); }
             try
             {

@@ -4,7 +4,7 @@ using RelaxKonOS.Protocol.Tunnels;
 
 namespace RelaxKonOS.ServerModule.Tunnels;
 
-public static partial class TunnelValidation
+internal static partial class TunnelValidation
 {
 
     [GeneratedRegex("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")]
