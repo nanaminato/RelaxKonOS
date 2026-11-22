@@ -11,11 +11,29 @@ using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Tailscale;
 using modulehelper::RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Privileged;
 using Microsoft.Extensions.Logging.Abstractions;
 
 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows native acceptance requires Windows.");
+if (args is ["--tailscale-live-pipe"])
+{
+    using var caller = WindowsIdentity.GetCurrent();
+    var sid = caller.User?.Value ?? throw new InvalidOperationException("The test caller SID is required.");
+    var pipe = "RelaxKonOS.Tailscale.Acceptance." + Guid.NewGuid().ToString("N");
+    var secret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    await using var helper = new WindowsPrivilegedPipeServer(new(pipe, secret, [], [], sid),
+        error => Console.Error.WriteLine($"Helper pipe failure: {error.GetType().Name}"));
+    helper.Start();
+    var liveTransport = new WindowsNamedPipePrivilegedOperationTransport(new PrivilegedHelperOptions
+    { PipeName = pipe, SharedSecret = secret }, NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance);
+    var status = await new HelperTailscaleManager(liveTransport).GetStatusAsync(default);
+    Console.WriteLine($"Tailscale authenticated pipe status: {status.State}");
+    if (status is not { State: "observed", BackendState.Length: > 0 })
+        throw new InvalidOperationException("The production pipe did not return a live Tailscale backend state.");
+    return;
+}
 if (args is ["--job-tree-only"])
 {
     await WindowsJobTreeChecks.RunAsync();
