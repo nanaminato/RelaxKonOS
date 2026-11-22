@@ -35,7 +35,7 @@ public sealed class SshFileBrowserApp : RemoteApplicationBase
         }
 
         var view = new SshFileBrowserView(session, context.Services.GetRequiredService<ISystemLanguage>(),
-            () => UsageMemoryStore.Capture(context),
+            new SshTransferPicker(() => UsageMemoryStore.Capture(context)),
             path => FindFileHandler(path) is not null,
             path => FindFileHandler(path) is { } handler
                 && context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(handler, path)).Succeeded);

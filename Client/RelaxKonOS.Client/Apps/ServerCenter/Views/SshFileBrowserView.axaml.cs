@@ -56,7 +56,7 @@ internal partial class SshFileBrowserView : UserControl
     private readonly FileBrowserPresentation _presentation;
     private readonly ISshFileSession _session;
     private readonly ISystemLanguage _language;
-    private readonly Func<UsageMemoryScope> _capturePickerMemory;
+    private readonly ISshTransferPicker _transferPicker;
     private readonly Func<string, bool> _canOpenFile;
     private readonly Func<string, bool> _openFile;
     private readonly Action<string>? _selectPackage;
@@ -152,13 +152,13 @@ internal partial class SshFileBrowserView : UserControl
     public string TypeSortGlyph { get => GetValue(TypeSortGlyphProperty); private set => SetValue(TypeSortGlyphProperty, value); }
     public string SizeSortGlyph { get => GetValue(SizeSortGlyphProperty); private set => SetValue(SizeSortGlyphProperty, value); }
 
-    public SshFileBrowserView(ISshFileSession session, ISystemLanguage language, Func<UsageMemoryScope> capturePickerMemory,
+    public SshFileBrowserView(ISshFileSession session, ISystemLanguage language, ISshTransferPicker transferPicker,
         Func<string, bool>? canOpenFile = null,
         Func<string, bool>? openFile = null, Action<string>? selectPackage = null, Action? cancelPicker = null)
     {
         _session = session;
         _language = language;
-        _capturePickerMemory = capturePickerMemory;
+        _transferPicker = transferPicker;
         _sessionClipboard = Clipboards.GetOrCreateValue(session);
         _canOpenFile = canOpenFile ?? (_ => false);
         _openFile = openFile ?? (_ => false);
@@ -1360,7 +1360,7 @@ internal partial class SshFileBrowserView : UserControl
         if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var directory = _path;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
-        var picked = await UsageFilePicker.OpenFilePickerAsync(storage, new FilePickerOpenOptions { AllowMultiple = true }, _capturePickerMemory(), "SshFileBrowserView.axaml.0");
+        var picked = await _transferPicker.PickUploadFilesAsync(storage);
         if (picked.Count == 0 || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
         using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
@@ -1391,8 +1391,7 @@ internal partial class SshFileBrowserView : UserControl
         if (_busy || IsPackagePicker || _session.Connection is not { } endpoint) return;
         var directory = _path;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
-        var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, _capturePickerMemory(), "SshFileBrowserView.axaml.1");
-        var localPath = folders.FirstOrDefault()?.TryGetLocalPath();
+        var localPath = await _transferPicker.PickUploadFolderAsync(storage);
         if (localPath is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
         var folder = new DirectoryInfo(localPath);
         using var progress = new SshTransferProgressWindow(this, uploading: true);
@@ -1423,13 +1422,12 @@ internal partial class SshFileBrowserView : UserControl
         }
         if (selected.Length == 1 && !selected[0].IsDirectory)
         {
-            var file = await UsageFilePicker.SaveFilePickerAsync(storage, new FilePickerSaveOptions { SuggestedFileName = selected[0].Name }, _capturePickerMemory(), "SshFileBrowserView.axaml.2");
+            var file = await _transferPicker.PickDownloadFileAsync(storage, selected[0].Name);
             if (file is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
             await RunDownloadAsync(endpoint, selected[0], file);
             return;
         }
-        var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, _capturePickerMemory(), "SshFileBrowserView.axaml.3");
-        var folder = folders.FirstOrDefault()?.TryGetLocalPath();
+        var folder = await _transferPicker.PickDownloadFolderAsync(storage);
         if (folder is null || _busy || !ReferenceEquals(endpoint, _session.Connection)) return;
         using var progress = new SshTransferProgressWindow(this, uploading: false);
         _busy = true; UpdateControls();

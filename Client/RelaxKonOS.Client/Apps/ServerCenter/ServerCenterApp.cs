@@ -54,7 +54,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
                     async () => { await dialog.CancelAsync(); return dialog.Result.IsCompleted; },
                     () => dialog.ShowDialogAsync<string?>(
                         viewModel.Text("server_center.wizard.choose_server_bundle", "Browse server files"),
-                        picker => new SshFileBrowserView(sshSession, language, CapturePickerMemory, selectPackage: path => picker.Close(path),
+                        picker => new SshFileBrowserView(sshSession, language, new SshTransferPicker(CapturePickerMemory), selectPackage: path => picker.Close(path),
                             cancelPicker: picker.Cancel),
                         new Size(860, 580)),
                     async () =>

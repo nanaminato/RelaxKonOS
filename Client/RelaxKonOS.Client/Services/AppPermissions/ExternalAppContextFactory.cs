@@ -234,6 +234,8 @@ public sealed class ExternalAppContextFactory
             ? new ExternalTerminal(connection.IsCurrent ? connection : null, _sshSession, _diagnostics) : null,
         appId.Value == "relaxkonos.ssh-files" && sshEndpoint is not null
             ? new ExternalSshFileSession(_sshSession, sshEndpoint, lifetime) : null,
+        appId.Value == "relaxkonos.ssh-files" && sshEndpoint is not null
+            ? new SshTransferPicker(() => fileSession) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -290,6 +292,7 @@ public sealed class ExternalAppContextFactory
         ITerminalWorkspacePreferences? TerminalWorkspacePreferences,
         IExternalTerminal? Terminal,
         ISshFileSession? SshFiles,
+        ISshTransferPicker? SshTransferPicker,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

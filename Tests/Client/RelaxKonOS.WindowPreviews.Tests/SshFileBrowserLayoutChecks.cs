@@ -302,7 +302,7 @@ internal static class SshFileBrowserLayoutChecks
     {
         var services = RelaxKonOS.Client.App.Services;
         return new(session, services.GetRequiredService<LocalizationService>(),
-            () => UsageMemoryStore.CaptureServices(services), selectPackage: selectPackage);
+            new SshTransferPicker(() => UsageMemoryStore.CaptureServices(services)), selectPackage: selectPackage);
     }
 
     private static void Pump() => Dispatcher.UIThread.RunJobs();

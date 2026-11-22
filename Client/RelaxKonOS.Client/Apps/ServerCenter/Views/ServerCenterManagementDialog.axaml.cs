@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using RelaxKonOS.Client.Services.ServerCenter;
 using Avalonia.Interactivity;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.WindowManager;
@@ -56,7 +57,7 @@ public partial class ServerCenterManagementDialog : UserControl
         if (DataContext is ServerCenterViewModel viewModel)
             await viewModel.BrowseRepairPackageAsync(session => _dialog.ShowDialogAsync<string?>(
                 viewModel.BrowseRepairPackageText,
-                picker => new SshFileBrowserView(session, _language, _capturePickerMemory,
+                picker => new SshFileBrowserView(session, _language, new SshTransferPicker(_capturePickerMemory),
                     selectPackage: path => picker.Close(path), cancelPicker: picker.Cancel),
                 new RelaxKonOS.Core.Primitives.Size(860, 580)));
     }
