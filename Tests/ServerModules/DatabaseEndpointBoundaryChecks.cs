@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using RelaxKonOS.ModuleHost.Sdk;
 using System.Net;
 using RelaxKonOS.ServerModuleHost;
 using Microsoft.AspNetCore.Http;
@@ -144,6 +146,7 @@ internal static class DatabaseEndpointBoundaryChecks
         }
 
         await CheckObservationClientAsync();
+        await CheckModuleEntryAsync();
         Console.WriteLine("Database registration, endpoint policies, deactivation and private observation admission checks passed.");
 
         void Check(string route, string method, string? policy)
@@ -153,6 +156,69 @@ internal static class DatabaseEndpointBoundaryChecks
                 || endpoint.Metadata.GetMetadata<IAuthorizeData>() is not { } authorization
                 || authorization.Policy != policy)
                 throw new InvalidOperationException($"The database route {method} {route} did not retain its authorization metadata.");
+        }
+    }
+
+    private static async Task CheckModuleEntryAsync()
+    {
+        var observation = new EntryObservationFixture();
+        var entry = new DatabaseModuleHostEntry();
+        var context = new EntryContext(entry.Id, observation);
+        await entry.StartAsync(context, default);
+        await using var app = WebApplication.CreateBuilder().Build();
+        entry.MapEndpoints(app, context);
+        var routes = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>().ToDictionary(endpoint => endpoint.RoutePattern.RawText!);
+        if (routes.Count != 4 || routes.Values.Any(endpoint =>
+            endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods.Single() != "GET"))
+            throw new InvalidOperationException("The database ModuleHost entry must expose exactly four read routes.");
+
+        var instance = Guid.NewGuid();
+        foreach (var (path, kind) in new[]
+        {
+            (PostgreSqlRoutes.State, DatabaseObservationKind.PostgreSqlState),
+            (PostgreSqlRoutes.MaintenancePlan, DatabaseObservationKind.PostgreSqlMaintenancePlan),
+            (PostgreSqlRoutes.MigrationPlan, DatabaseObservationKind.PostgreSqlMigrationPlan),
+            (MySqlRoutes.State, DatabaseObservationKind.MySqlState)
+        })
+        {
+            Guid? selected = kind == DatabaseObservationKind.PostgreSqlState ? instance : null;
+            using var body = new MemoryStream();
+            var http = new DefaultHttpContext { RequestServices = app.Services };
+            http.Request.Method = "GET";
+            if (selected is not null)
+                http.Request.QueryString = new QueryString("?instance=" + selected.Value.ToString("D"));
+            http.Response.Body = body;
+            await routes[path].RequestDelegate!(http);
+            if (observation.Last != (kind, selected) || http.Response.StatusCode != 503
+                || http.Response.ContentType != "application/problem+json"
+                || System.Text.Encoding.UTF8.GetString(body.ToArray()) != "{}")
+                throw new InvalidOperationException("The ModuleHost entry did not preserve the observation request and broker response.");
+        }
+        await entry.StopAsync(default);
+    }
+
+    private sealed record EntryContext(string ModuleId, IModuleDatabaseObservation DatabaseObservation) : IModuleHostDatabaseContext
+    {
+        public string ModuleDataPath => "";
+        public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
+        public IModuleHostStorage Storage => throw new NotSupportedException();
+        public ILogger Logger => NullLogger.Instance;
+        public IModulePrivilegeBroker Privileges => throw new NotSupportedException();
+        public ICloudFileProviders CloudProviders => throw new NotSupportedException();
+    }
+
+    private sealed class EntryObservationFixture : IModuleDatabaseObservation
+    {
+        public (DatabaseObservationKind, Guid?) Last { get; private set; }
+
+        public ValueTask<HttpResponseMessage> ReadAsync(DatabaseObservationKind kind, Guid? instance,
+            CancellationToken cancellationToken)
+        {
+            Last = (kind, instance);
+            var content = new ByteArrayContent("{}"u8.ToArray());
+            content.Headers.ContentType = new("application/problem+json");
+            return ValueTask.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = content });
         }
     }
 
