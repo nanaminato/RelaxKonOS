@@ -3,7 +3,6 @@
              xmlns:models="clr-namespace:RelaxKonOS.App.Settings;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:settingsApp="clr-namespace:RelaxKonOS.App.Settings.Views"
-             xmlns:vm="clr-namespace:RelaxKonOS.App.Settings"
              x:Class="RelaxKonOS.App.Settings.Views.SettingsWorkspaceView"
              x:DataType="contracts:ISettingsWorkspace"
              x:CompileBindings="True"
@@ -16,22 +15,22 @@
         </Style>
     </UserControl.Styles>
     <UserControl.DataTemplates>
-        <DataTemplate DataType="vm:SettingsHomePageContent">
+        <DataTemplate DataType="models:SettingsHomePageContent">
             <settingsApp:SettingsHomePageView VerticalAlignment="Top" RouteRequested="OnPageRouteRequested" />
         </DataTemplate>
-        <DataTemplate DataType="vm:DefaultAppsPageContent">
+        <DataTemplate DataType="models:DefaultAppsPageContent">
             <settingsApp:DefaultAppsPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:AccessibilityPageContent">
+        <DataTemplate DataType="models:AccessibilityPageContent">
             <settingsApp:AccessibilityPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:DailySettingsPageContent">
+        <DataTemplate DataType="models:DailySettingsPageContent">
             <settingsApp:DailySettingsPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:AboutPageContent">
+        <DataTemplate DataType="models:AboutPageContent">
             <settingsApp:AboutPageView VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="settingsApp:AppPermissionEditor">
+        <DataTemplate DataType="contracts:AppPermissionEditor">
             <settingsApp:AppPermissionDialogView VerticalAlignment="Top" />
         </DataTemplate>
         <DataTemplate DataType="contracts:ITimeLanguagePage">

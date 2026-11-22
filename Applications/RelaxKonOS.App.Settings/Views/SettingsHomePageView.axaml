@@ -1,10 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:models="clr-namespace:RelaxKonOS.App.Settings;assembly=RelaxKonOS.Settings.Contracts"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:settings="clr-namespace:RelaxKonOS.App.Settings"
              xmlns:local="clr-namespace:RelaxKonOS.App.Settings.Views"
              x:Class="RelaxKonOS.App.Settings.Views.SettingsHomePageView"
-             x:DataType="settings:SettingsHomePageContent">
+             x:DataType="models:SettingsHomePageContent">
     <UserControl.Styles>
         <Style Selector="Button.settings-link">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
