@@ -49,7 +49,12 @@ internal class DockerModule : IServerModule, IServerModuleDeactivationGuard, ISe
             OperatingSystem.IsWindows()
                 ? new RelaxKonOS.Server.Docker.WindowsDockerDesktopProxyReader()
                 : new RelaxKonOS.Server.Docker.UnsupportedDockerDesktopProxyReader());
-        builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyService, RelaxKonOS.Server.Docker.DockerProxyService>();
+        builder.Services.AddSingleton<IDockerProxyService>(services =>
+        {
+            var proxy = ActivatorUtilities.CreateInstance<DockerProxyService>(services);
+            proxy.Execution = Execution;
+            return proxy;
+        });
         // Engine lifecycle control reuses the same platform split as the proxy configurator: a systemd
         // unit driven through the privileged Helper, or the Docker Desktop CLI.
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineHostController, RelaxKonOS.Server.Docker.DockerEngineHostController>();

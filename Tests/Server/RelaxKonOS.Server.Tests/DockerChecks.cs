@@ -123,11 +123,11 @@ internal static async Task VerifyDockerProxyAsync(string root)
 
     // A build runs inside a container, where the local machine's own address is that container, so
     // this case has to be recognised before the build layer can call itself usable.
-    TestAssert.Assert(DockerProxyValidation.IsLoopbackUrl("http://127.0.0.1:3128")
-        && DockerProxyValidation.IsLoopbackUrl("http://localhost:3128")
-        && DockerProxyValidation.IsLoopbackUrl("http://[::1]:3128")
-        && !DockerProxyValidation.IsLoopbackUrl("http://proxy.example:8080")
-        && !DockerProxyValidation.IsLoopbackUrl("not-a-url"),
+    TestAssert.Assert(DockerProxyAddress.IsLoopbackUrl("http://127.0.0.1:3128")
+        && DockerProxyAddress.IsLoopbackUrl("http://localhost:3128")
+        && DockerProxyAddress.IsLoopbackUrl("http://[::1]:3128")
+        && !DockerProxyAddress.IsLoopbackUrl("http://proxy.example:8080")
+        && !DockerProxyAddress.IsLoopbackUrl("not-a-url"),
         "Loopback detection did not separate a local address from a reachable one.");
 
     // --- Build layer: a value-less build argument carries the proxy -------------------------

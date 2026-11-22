@@ -11,6 +11,7 @@ internal sealed class DockerComposeExecution
     internal const string EntryType = "RelaxKonOS.Server.Docker.DockerComposeExecutor";
     internal const string EngineControlEntryType = "RelaxKonOS.Server.Docker.DockerEngineControlExecution";
     internal const string ImageMirrorEntryType = "RelaxKonOS.Server.Docker.DockerImageMirrorExecution";
+    internal const string ProxyProjectionEntryType = "RelaxKonOS.Server.Docker.DockerProxyProjection";
     internal static DockerComposeExecution Shared { get; } = new(TimeSpan.FromSeconds(30));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
@@ -98,6 +99,7 @@ internal sealed class DockerComposeExecution
         RequireEntry<IDockerComposeService>(EntryType, typeof(string));
         RequireEntry<IDockerEngineControlService>(EngineControlEntryType, typeof(IDockerEngineControlHost));
         RequireEntry<IDockerImageMirrorExecution>(ImageMirrorEntryType);
+        RequireEntry<IDockerProxyProjection>(ProxyProjectionEntryType);
         return assembly;
 
         void RequireEntry<T>(string name, params Type[] arguments)

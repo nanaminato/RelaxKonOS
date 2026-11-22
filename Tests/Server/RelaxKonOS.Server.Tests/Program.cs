@@ -699,6 +699,17 @@ if (args.Contains("--docker-control-only"))
     await DockerMirrorChecks.RunAsync();
     return;
 }
+if (args is ["--docker-proxy-only"])
+{
+    var proxyTestRoot = Directory.CreateTempSubdirectory("rk-docker-proxy-");
+    try { await DockerChecks.VerifyDockerProxyAsync(proxyTestRoot.FullName); }
+    finally
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        proxyTestRoot.Delete(recursive: true);
+    }
+    return;
+}
 if (args.Contains("--file-services-only"))
 {
     ServerCoreChecks.VerifySmbProtocolAndElevationContract();

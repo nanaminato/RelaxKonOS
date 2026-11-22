@@ -756,3 +756,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 已安装 Docker 签名执行包在启动时校验 Compose 与 Engine 控制两个类型及构造契约，每次驻留加载也复核。Windows Release HTTP 回归通过，回滚后新建 Core 宿主既能解析 Compose，又会拒绝未确认的 Engine 重启。测试没有执行 Engine 控制命令。
 - Docker Hub 镜像地址改写进入 Docker 签名执行程序集，Core 按账户读取镜像偏好，并只传递选定端点和镜像引用。Windows Release 镜像 HTTP、账户隔离、来源校验、选择和改写测试通过，Engine 控制回归通过。
 - Windows Release 的 --docker-signed-package-live 在回滚后通过生产依赖注入调用签名包的镜像改写入口。当前账户的 Docker Hub 镜像引用被改写，显式 registry 及无选定镜像的账户返回原地址。同轮再次验证真实 Engine 临时项目启动和清理。
+- Docker 代理的构建层与 Engine 层状态判定进入签名执行程序集。Core 保留偏好验证、加密存储、平台配置写入和实际状态采集。Windows Release 代理专项覆盖凭据保护、Docker Desktop 上游识别、逐层结果和失败关闭，签名模块包 HTTP 回归通过。未对真实 Docker 宿主写入代理配置。
