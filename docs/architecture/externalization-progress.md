@@ -578,3 +578,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 模块目录、筛选、详情及操作展示迁入 .roapp。应用包直接编排模块管理的目录、软件包、商店和安全页面，宿主提供模型和操作。Windows Release 模块专项与新归档隔离安装通过。
 - 桌面宿主移除对 Component Center 应用程序集的项目及运行时引用。宿主与包共用源码文案资源，发布仍通过 .roapp。Windows Release 三语双主题、模块管理和独立归档隔离安装通过，验证默认程序集加载上下文在包启动前后均未加载应用实现。
 - 完整 Windows Release 桌面发布验证 27 个实际归档、摘要、入口程序集和配置集。发布校验拒绝宿主携带独立的 Settings 或 Component Center 实现程序集。隔离预装分别登记 Minimal 0、Standard 11、Developer 12 项，Minimal 可用同一发行归档离线安装和修复 Settings 与 Component Center。组件中心实际开窗与深链接专项通过。
+- Windows Release 完整客户端安装套件通过。观测夹具显式选择 sing-box，mihomo 断言按当前 Linux 受管归档配置更新；组件状态与计划的 HTTP 503 表示状态不可用，发布列表的 HTTP 503 表示索引不可用。独立部署解析与检查点套件通过。

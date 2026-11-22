@@ -50,7 +50,7 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
         var pending = new List<Task<ComponentDownloadRelease[]>>
         {
             SendAsync<ComponentDownloadRelease[]>(HttpMethod.Get, ComponentRoutes.Releases(componentId)
-                + "?refresh=" + refresh.ToString().ToLowerInvariant(), null, lifetime.Token),
+                + "?refresh=" + refresh.ToString().ToLowerInvariant(), null, lifetime.Token, ComponentProblemCodes.PackageIndexUnavailable),
             new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases()
                 .ListAsync(componentId, rid, refresh, lifetime.Token)
         };
@@ -85,7 +85,8 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
         }
     }
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken ct) where T : class
+    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken ct,
+        string unavailableCode = ComponentProblemCodes.StateUnavailable) where T : class
     {
         Verify();
         var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct);
@@ -104,8 +105,8 @@ public sealed class ComponentLifecycleClient(HttpClient http, IAuthSession sessi
                 : response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized
                     ? "component.permission_denied"
                 : response.StatusCode is System.Net.HttpStatusCode.Conflict ? "component.platform_unsupported"
-                : response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ? "component.package_index_unavailable"
-                : "component.state_unavailable";
+                : response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ? unavailableCode
+                : ComponentProblemCodes.StateUnavailable;
             throw new InvalidOperationException(code);
         }
         await using var stream = await response.Content.ReadAsStreamAsync(ct);

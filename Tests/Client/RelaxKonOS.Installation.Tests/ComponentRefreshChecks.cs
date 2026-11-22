@@ -23,7 +23,8 @@ internal static class ComponentRefreshChecks
             {
                 Check(model.IsSystemPackage && !model.HasRuntimeDetails && model.ShowPackageFreeze, "Linux sing-box uses the package panel instead of the signed archive panel");
                 model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "mihomo");
-                Check(model.IsSystemPackage && !model.HasRuntimeDetails, "Linux mihomo uses the configured host package source");
+                Check(model.IsDirectDownload && model.ShowPackageFreeze && !model.IsSystemPackage,
+                    "Linux mihomo uses the managed archive declared by the component catalog");
                 model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "squid");
                 Check(model.ShowRegisterPackage && !model.HasExternalPackageChange && !model.CanRegisterPackage
                     && model.RegisterPackageText.Resolve() == LocalizedText.Get("component_center.package.register"),

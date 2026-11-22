@@ -117,6 +117,8 @@ internal static class TaskPreviewClientChecks
         await runtime.LoadAsync();
         var preview = new PreviewFixture(auth.User.Id);
         using var center = new ComponentCenterViewModel(runtime, new(), "server", auth.User.Id, preview);
+        center.SelectedNode = center.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
+            .Single(node => node.ComponentId == "sing-box");
         await center.InspectCommand.ExecuteAsync(null);
         Check(center.InspectionSteps.Count == 1 && preview.Calls == 1 && !runtime.CanManage && center.Drafts.Count == 0,
             "Observer inspection displays results without management permission, drafts or installation");
