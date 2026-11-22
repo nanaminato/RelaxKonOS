@@ -194,6 +194,34 @@ finally
 await secondCoordinator.ExecuteAsync(concurrentPlan);
 Check(backend.Applied.Skip(appliedBefore).SequenceEqual(Enumerable.Range(0, concurrentPlan.OrderedReleases.Length))
     && backend.Verifications == verifiedBefore + 1);
+var reviewAtVerification = plan with { Id = Guid.NewGuid(), ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10) };
+backend.ReviewRequiredOnVerification = true;
+await Reject(reviewAtVerification, "deployment-client-dependency-changed");
+await using (var lease = await reopenedJournal.OpenAsync(reviewAtVerification, CancellationToken.None))
+    Check(lease.Checkpoint is { RequiresReview: true, Verified: false } reviewCheckpoint
+        && reviewCheckpoint.CompletedSteps == reviewAtVerification.OrderedReleases.Length);
+var appliedAfterVerificationFailure = backend.Applied.Count;
+var verificationAttempts = backend.Verifications;
+backend.ReviewRequiredOnVerification = false;
+await Reject(reviewAtVerification, "deployment-plan-review-required");
+Check(backend.Applied.Count == appliedAfterVerificationFailure && backend.Verifications == verificationAttempts);
+var retryVerification = plan with { Id = Guid.NewGuid(), ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10) };
+backend.VerificationOffline = true;
+try
+{
+    await coordinator.ExecuteAsync(retryVerification);
+    throw new Exception("Expected interrupted verification.");
+}
+catch (IOException error) when (error.Message == "Verification unavailable") { }
+await using (var lease = await reopenedJournal.OpenAsync(retryVerification, CancellationToken.None))
+    Check(lease.Checkpoint is { RequiresReview: false, Verified: false } retryCheckpoint
+        && retryCheckpoint.CompletedSteps == retryVerification.OrderedReleases.Length);
+var appliedBeforeRetry = backend.Applied.Count;
+backend.VerificationOffline = false;
+await secondCoordinator.ExecuteAsync(retryVerification);
+Check(backend.Applied.Count == appliedBeforeRetry);
+await using (var lease = await reopenedJournal.OpenAsync(retryVerification, CancellationToken.None))
+    Check(lease.Checkpoint is { Verified: true, RequiresReview: false });
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
@@ -205,6 +233,8 @@ sealed class Backend : IDeploymentBackend
     public Func<Task> FinishStepAsync;
     public int? ReviewRequiredAt;
     public bool Offline;
+    public bool ReviewRequiredOnVerification;
+    public bool VerificationOffline;
     public Task<DeploymentTarget> ObserveAsync(CancellationToken cancellationToken) =>
         Offline ? Task.FromException<DeploymentTarget>(new IOException("Server unreachable")) : Task.FromResult(Target);
     public Task ApplyOrReconcileAsync(DeploymentPlan plan, int index, CancellationToken cancellationToken)
@@ -218,6 +248,9 @@ sealed class Backend : IDeploymentBackend
     public Task VerifyAsync(DeploymentPlan plan, CancellationToken cancellationToken)
     {
         Verifications++;
+        if (ReviewRequiredOnVerification)
+            throw new DeploymentPlanReviewRequiredException("deployment-client-dependency-changed");
+        if (VerificationOffline) throw new IOException("Verification unavailable");
         return Task.CompletedTask;
     }
 }

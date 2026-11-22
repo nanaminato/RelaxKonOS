@@ -119,7 +119,12 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        await backend.VerifyAsync(plan, cancellationToken);
+        try { await backend.VerifyAsync(plan, cancellationToken); }
+        catch (DeploymentPlanReviewRequiredException)
+        {
+            await lease.SaveAsync(new(plan.OrderedReleases.Length, false) { RequiresReview = true }, CancellationToken.None);
+            throw;
+        }
         await lease.SaveAsync(new(plan.OrderedReleases.Length, true), CancellationToken.None);
 
         void CheckExpiration()

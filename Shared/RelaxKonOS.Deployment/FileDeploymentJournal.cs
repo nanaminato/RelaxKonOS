@@ -129,8 +129,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             || entry.Plan.PreparedSteps.IsDefault
             || entry.Checkpoint.CompletedSteps < 0 || entry.Checkpoint.CompletedSteps > entry.Plan.OrderedReleases.Length
             || entry.Checkpoint.Verified && entry.Checkpoint.CompletedSteps != entry.Plan.OrderedReleases.Length
-            || entry.Checkpoint.RequiresReview && (entry.Checkpoint.Verified
-                || entry.Checkpoint.CompletedSteps == entry.Plan.OrderedReleases.Length)
+            || entry.Checkpoint.RequiresReview && entry.Checkpoint.Verified
             || entry.Plan.OrderedReleases.Any(release => release is null || release.Capabilities is null || release.Requires.IsDefault))
             throw new InvalidDataException("Invalid deployment checkpoint.");
         if (!string.Equals(entry.Identity, ComputeIdentity(entry.Plan), StringComparison.Ordinal))
