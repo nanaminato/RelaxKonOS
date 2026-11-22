@@ -779,6 +779,7 @@
     "server_modules.problem.module_resident_dependent": "他の読み込み済みモジュールがこのモジュールに依存しています。",
     "server_modules.problem.module_disabled": "モジュールは無効です。",
     "server_modules.problem.module_pending_disable": "モジュールは再起動後に無効になります。",
+    "server_modules.problem.module_desktop_dependency_blocked": "このモジュールを必要とするデスクトップアプリがあります。アプリをインストールした端末でアンインストールまたは更新してから、もう一度お試しください。",
     "server_modules.problem.module_dependency_blocked": "有効なモジュールが依存しています。先に依存元を無効にしてください。",
     "server_modules.problem.module_action_unsupported": "サーバーはこの操作に対応していません。",
     "server_modules.problem.module_not_found": "サーバーにこのモジュールはありません。",

@@ -50,6 +50,7 @@
         "app_installer.deployment.change": "{0} を {1} にインストールまたは更新",
         "app_installer.deployment.version_change": "{0}  {1} → {2}",
         "app_installer.deployment.restart_pending": "デプロイを続行するにはサーバーの再起動が必要です。再接続後に再試行してください。",
+        "app_installer.deployment.module_protection_unavailable": "必須モジュールの依存関係をサーバーに登録できませんでした。コンポーネントセンターでモジュールが有効か確認してから、もう一度お試しください。",
         "app_installer.deployment.activation_pending": "必須モジュールが有効になっていません。コンポーネントセンターで状態を確認してから再試行してください。",
         "app_installer.deployment.no_permission": "現在のアカウントにはサーバーモジュールの管理権限がありません。",
         "app_installer.deployment.module_unavailable": "互換性のあるサーバーモジュール {0} が見つかりません。コンポーネントセンターでモジュールと配布元を確認してください。",

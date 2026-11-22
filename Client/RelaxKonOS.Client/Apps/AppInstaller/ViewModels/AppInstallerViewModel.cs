@@ -213,6 +213,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
             LocalizedText.Format(package.Kind == DeploymentPackageKind.ServerModule
                 ? "app_installer.deployment.module_unavailable" : "app_installer.deployment.app_unavailable", package.Id),
         { Message: "deployment-module-AwaitingRestart" } => LocalizedText.Get("app_installer.deployment.restart_pending"),
+        { Message: "module-desktop-dependency-unavailable" } => LocalizedText.Get("app_installer.deployment.module_protection_unavailable"),
         { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),
         { Message: "deployment-plan-in-progress" } => LocalizedText.Get("app_installer.deployment.plan_in_progress"),

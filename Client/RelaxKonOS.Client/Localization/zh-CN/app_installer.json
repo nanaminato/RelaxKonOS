@@ -50,6 +50,7 @@
         "app_installer.deployment.change": "安装或更新 {0} 至 {1}",
         "app_installer.deployment.version_change": "{0}  {1} → {2}",
         "app_installer.deployment.restart_pending": "服务端重启后才能继续部署。重新连接后请重试。",
+        "app_installer.deployment.module_protection_unavailable": "服务端暂时无法为必需模块登记依赖保护。请在组件中心确认模块已启用，然后重试。",
         "app_installer.deployment.activation_pending": "必需模块尚未启用。请在组件中心检查其状态，然后重试。",
         "app_installer.deployment.no_permission": "当前账户没有管理服务端模块的权限。",
         "app_installer.deployment.module_unavailable": "没有可用的兼容服务端模块 {0}。请在组件中心检查该模块及其来源。",

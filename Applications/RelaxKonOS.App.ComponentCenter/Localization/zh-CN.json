@@ -779,6 +779,7 @@
     "server_modules.problem.module_resident_dependent": "其他已加载模块依赖此模块。",
     "server_modules.problem.module_disabled": "模块已停用。",
     "server_modules.problem.module_pending_disable": "模块将在重启后停用。",
+    "server_modules.problem.module_desktop_dependency_blocked": "仍有桌面应用依赖此模块。请在安装该应用的设备上卸载或更新应用，然后重试。",
     "server_modules.problem.module_dependency_blocked": "有已启用模块依赖它；先停用依赖方。",
     "server_modules.problem.module_action_unsupported": "服务端不支持此动作。",
     "server_modules.problem.module_not_found": "服务端没有此模块。",

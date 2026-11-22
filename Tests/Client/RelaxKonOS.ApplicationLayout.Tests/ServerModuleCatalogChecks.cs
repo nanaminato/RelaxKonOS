@@ -214,6 +214,20 @@ internal static class ServerModuleCatalogChecks
             Check(!model.CanDisable && !model.CanRemove && model.ActionRows.Any(row =>
                 row.Hint.Resolve().Contains("test.project-editor", StringComparison.Ordinal)),
                 "Installed application dependencies block module disable and removal and identify the affected app.");
+            var remoteBlocker = new ServerModuleHealthRow(new("relaxkonos.git", true, true, "1.4.0", "official",
+                "blocked", "module-desktop-dependency-blocked")).ProblemText;
+            var translations = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var language in new[] { "en-US", "zh-CN", "ja-JP" })
+            {
+                settings.Language = language;
+                var message = remoteBlocker.Resolve();
+                Check(message == LocalizedText.Get("server_modules.problem.module_desktop_dependency_blocked")
+                    && !message.Contains("server_modules.problem.", StringComparison.Ordinal),
+                    "The server-side desktop dependency blocker resolves in " + language + ".");
+                translations.Add(message);
+            }
+            Check(translations.Count == 3, "The desktop dependency blocker has distinct translations in all supported languages.");
+            settings.Language = languageBefore;
             protectModule = false;
             await model.RefreshCommand.ExecuteAsync(null);
 

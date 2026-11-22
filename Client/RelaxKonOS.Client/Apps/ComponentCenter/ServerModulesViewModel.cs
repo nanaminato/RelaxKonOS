@@ -1547,6 +1547,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             "module-resident-dependent" => LocalizedStatus.Key("server_modules.problem.module_resident_dependent"),
             "module-disabled" => LocalizedStatus.Key("server_modules.problem.module_disabled"),
             "module-pending-disable" => LocalizedStatus.Key("server_modules.problem.module_pending_disable"),
+            "module-desktop-dependency-blocked" => LocalizedStatus.Key("server_modules.problem.module_desktop_dependency_blocked"),
             "module-dependency-blocked" => LocalizedStatus.Key("server_modules.problem.module_dependency_blocked"),
             "module-action-unsupported" => LocalizedStatus.Key("server_modules.problem.module_action_unsupported"),
             "module-not-found" => LocalizedStatus.Key("server_modules.problem.module_not_found"),

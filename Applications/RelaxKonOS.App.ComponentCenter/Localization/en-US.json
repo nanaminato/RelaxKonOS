@@ -779,6 +779,7 @@
     "server_modules.problem.module_resident_dependent": "Another loaded module depends on this module.",
     "server_modules.problem.module_disabled": "The module is disabled.",
     "server_modules.problem.module_pending_disable": "The module will be disabled after a restart.",
+    "server_modules.problem.module_desktop_dependency_blocked": "A desktop application still needs this module. Uninstall or update the application on the device where it was installed, then try again.",
     "server_modules.problem.module_dependency_blocked": "An enabled module depends on it; disable the dependents first.",
     "server_modules.problem.module_action_unsupported": "The server does not support this action.",
     "server_modules.problem.module_not_found": "The server does not have this module.",

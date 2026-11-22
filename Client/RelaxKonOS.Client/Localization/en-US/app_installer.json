@@ -50,6 +50,7 @@
         "app_installer.deployment.change": "Install or update {0} to {1}",
         "app_installer.deployment.version_change": "{0}  {1} → {2}",
         "app_installer.deployment.restart_pending": "The server must restart before deployment can continue. Retry after reconnecting.",
+        "app_installer.deployment.module_protection_unavailable": "The server could not protect a required module. Check that the module is active in Component Center and try again.",
         "app_installer.deployment.activation_pending": "A required module is not active. Check its status in Component Center, then retry.",
         "app_installer.deployment.no_permission": "The current account does not have permission to manage server modules.",
         "app_installer.deployment.module_unavailable": "No compatible server module is available for {0}. Check the module and its sources in Component Center.",
