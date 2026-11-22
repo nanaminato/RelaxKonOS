@@ -85,6 +85,35 @@ def verify_published(publish_dir, manifests, profile_document):
     print(f"Verified {len(manifests)} published archive digests, manifests and entry assemblies.")
 
 
+def verify_profiles(document, manifests):
+    profiles = document["profiles"]
+    require(document["schemaVersion"] == 2 and document["defaultProfile"] == "standard"
+            and {"minimal", "standard", "developer"} <= profiles.keys(), "Invalid desktop installation profile document.")
+    for profile, entries in profiles.items():
+        seen = set()
+        for entry in entries:
+            app_id = entry["appId"]
+            policy = entry["installPolicy"]
+            require(app_id in manifests and app_id not in seen, f"{profile} contains an unknown or repeated package {app_id}.")
+            require(policy in {"offline", "interactive"}, f"{profile} has an invalid install policy for {app_id}.")
+            manifest = manifests[app_id]
+            require(version(manifest["version"]) >= version(entry["minimumVersion"]),
+                    f"The published {app_id} is below the {profile} version floor.")
+            require(policy != "offline" or not (manifest.get("dependencies") or {}).get("required"),
+                    f"{profile} would preinstall {app_id} with required deployment dependencies.")
+            seen.add(app_id)
+    require(not any(entry["installPolicy"] == "offline" for entry in profiles["minimal"]),
+            "Minimal must leave application installation to the recovery entry.")
+    developer = {entry["appId"]: entry for entry in profiles["developer"]}
+    for entry in profiles["standard"]:
+        app_id = entry["appId"]
+        inherited = developer.get(app_id)
+        require(inherited is not None and inherited["installPolicy"] == entry["installPolicy"]
+                and version(inherited["minimumVersion"]) >= version(entry["minimumVersion"]),
+                f"Developer must preserve the Standard installation policy and version floor for {app_id}.")
+    return profiles
+
+
 def main(publish_dir):
     repo = Path(__file__).resolve().parents[2]
     desktop = repo / "Client/RelaxKonOS.Client.Desktop"
@@ -105,22 +134,7 @@ def main(publish_dir):
     require(not (missing or extra), f"Catalog and desktop publish entries differ. Missing {sorted(missing)}, extra {sorted(extra)}.")
 
     document = read_json(desktop / "installation-profiles.json")
-    profiles = document["profiles"]
-    require(document["schemaVersion"] == 2 and document["defaultProfile"] == "standard"
-            and {"minimal", "standard", "developer"} <= profiles.keys(), "Invalid desktop installation profile document.")
-    for profile, entries in profiles.items():
-        seen = set()
-        for entry in entries:
-            app_id = entry["appId"]
-            policy = entry["installPolicy"]
-            require(app_id in manifests and app_id not in seen, f"{profile} contains an unknown or repeated package {app_id}.")
-            require(policy in {"offline", "interactive"}, f"{profile} has an invalid install policy for {app_id}.")
-            manifest = manifests[app_id]
-            require(version(manifest["version"]) >= version(entry["minimumVersion"]),
-                    f"The published {app_id} is below the {profile} version floor.")
-            require(policy != "offline" or not (manifest.get("dependencies") or {}).get("required"),
-                    f"{profile} would preinstall {app_id} with required deployment dependencies.")
-            seen.add(app_id)
+    profiles = verify_profiles(document, manifests)
     summary = ", ".join(f"{profile}={len(entries)}" for profile, entries in profiles.items())
     print(f"Verified {len(manifests)} official desktop manifests and installation profiles ({summary}).")
     if publish_dir is not None:
