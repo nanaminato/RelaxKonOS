@@ -24,14 +24,14 @@ using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
 
-/// <summary>Desktop entry point for managed host component lifecycles.</summary>
-public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHandler
+/// <summary>Supplies desktop services to the Component Center workspace.</summary>
+public sealed class ComponentCenterHostWorkspace : IComponentCenterWorkspace
 {
     private ComponentCenterViewModel? _model;
-    public bool CanHandleActivation(Uri uri) => ComponentCenterNavigation.TryParse(uri, out _);
-    public void HandleActivation(AppContext context, AppActivationRequest request, RelaxKonOS.WindowManager.ManagedWindow? existingWindow)
+    public bool CanNavigate(Uri uri) => ComponentCenterNavigation.TryParse(uri, out _);
+    public void Navigate(Uri uri)
     {
-        if (_model is null || !ComponentCenterNavigation.TryParse(request.Uri, out var target)) return;
+        if (_model is null || !ComponentCenterNavigation.TryParse(uri, out var target)) return;
         if (target!.HostId != _model.HostIdentity || (target.Page == ComponentCenterPage.ServerModules
                 ? _model.ServerModules?.IsCurrent != true : _model.Runtime.IsInvalidated))
         {
@@ -47,12 +47,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         // Navigation only changes context, never a draft or approval.
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
-    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.component-center"), "Component Center", "1.0.0", "⇄", "Managed host components",
-        [AppPermissions.ServerComponentsRead, AppPermissions.ServerComponentsManage, AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage, AppPermissions.ServerGitRead, AppPermissions.ServerGitManage],
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow,
-        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
-
-    public override void Activate(AppContext context)
+    public void Open(AppContext context)
     {
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
         if (session?.State != AuthSessionState.Authenticated) return;
@@ -123,7 +118,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         RelaxKonOS.WindowManager.ModalDialog<bool>? taskDialog = null;
         var taskDialogOpen = false;
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.component-center.display_name"),
-            view, new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
+            view, new Rect(80, 45, 1060, 800), context.Manifest?.IconGlyph);
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService))
                 is RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService desktopInstaller
             && desktopPackages is not null)
@@ -256,7 +251,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 ("frps", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp) })
             {
                 var task = new InstallationTaskViewModel(DesktopInstallationText.Instance, installationClient,
-                    new RelaxKonOS.Client.Services.AppSettings.ExternalAppSettings(Manifest.Id, settings),
+                    new RelaxKonOS.Client.Services.AppSettings.ExternalAppSettings(context.AppId, settings),
                     serviceId, true, () => model.RefreshPackageInstallationAsync(componentId),
                     () => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
                         .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(context.Services)

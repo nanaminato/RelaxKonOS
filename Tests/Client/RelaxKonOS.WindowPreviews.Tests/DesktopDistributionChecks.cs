@@ -33,7 +33,8 @@ internal static class DesktopDistributionChecks
         var root = Path.Combine(parent, "desktop-profile-" + Guid.NewGuid().ToString("N"));
         using var services = new ServiceCollection()
             .AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>()
-            .AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>()
+            .AddSingleton<RelaxKonOS.App.ComponentCenter.IComponentCenterWorkspace, RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace>()
+            .AddSingleton<RelaxKonOS.App.ComponentCenter.ComponentCenterApp>()
             .AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>()
             .AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>()
             .BuildServiceProvider();
