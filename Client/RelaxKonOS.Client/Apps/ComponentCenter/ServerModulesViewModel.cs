@@ -1573,7 +1573,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             "module-package-release-revoked" => LocalizedStatus.Key("server_modules.problem.module_package_release_revoked"),
             "module-package-rid-mismatch" => LocalizedStatus.Key("server_modules.problem.module_package_rid_mismatch"),
             "module-package-host-api-incompatible" => LocalizedStatus.Key("server_modules.problem.module_package_host_api_incompatible"),
-            "module-package-module-id-conflict" => LocalizedStatus.Key("server_modules.problem.module_package_module_id_conflict"),
+            "module-package-module-id-conflict" or "module-package-execution-contract" =>
+                LocalizedStatus.Key("server_modules.problem.module_package_module_id_conflict"),
             "module-package-artifact-verification-required" => LocalizedStatus.Key("server_modules.problem.module_package_artifact_verification_required"),
             "module-package-dependency-verification-required" => LocalizedStatus.Key("server_modules.problem.module_package_dependency_verification_required"),
             "module-package-actions-unsupported" => LocalizedStatus.Key("server_modules.problem.module_package_actions_unsupported"),

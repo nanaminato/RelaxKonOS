@@ -195,6 +195,12 @@ internal static class InstalledModuleInstaller
                 }
                 if (seen.Count != files.Count) throw new ModulePackageException("module-package-archive-file-set");
             }
+            if (InstalledProxyModule.MatchesManifest(manifest))
+            {
+                try { InstalledProxyModule.VerifyStagedExecution(Path.Combine(staging, manifest.EntryAssembly)); }
+                catch (InvalidDataException) { throw new ModulePackageException("module-package-execution-contract"); }
+            }
+
             var record = new InstalledModuleRecord(manifest.ModuleId, manifest.Version, manifest.ReleaseId, sourceId,
                 manifest.PublisherId, artifactSha256, manifestSha256, packagePath, manifest.EntryAssembly, manifest.EntryType,
                 manifest.Capabilities, manifest.Dependencies.Select(dependency => dependency.ModuleId).Distinct(StringComparer.Ordinal).ToArray(),

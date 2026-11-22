@@ -6,6 +6,7 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 internal sealed class MihomoDirectPublicationCode(ProxyExecutionCodeGate.Lease code, IMihomoDirectPublicationExecutor executor) : IDisposable
 {
     internal static ProxyExecutionCodeGate BundledGate { get; } = new("direct-publication");
+    internal const string EntryType = "RelaxKonOS.Server.Proxy.MihomoDirectPublicationExecutor";
     private static readonly DirectPublicationProblems Problems = new(ProxyProblemCodes.RecoveryRequired, ProxyProblemCodes.ConfigApplyFailed,
         ProxyProblemCodes.ControllerUnavailable, ProxyProblemCodes.PrivilegedOperationUnavailable, ProxyProblemCodes.SystemProxyConflict);
 
@@ -16,7 +17,7 @@ internal sealed class MihomoDirectPublicationCode(ProxyExecutionCodeGate.Lease c
         var code = gate.Acquire();
         try
         {
-            return new(code, code.Create<IMihomoDirectPublicationExecutor>("RelaxKonOS.Server.Proxy.MihomoDirectPublicationExecutor"));
+            return new(code, code.Create<IMihomoDirectPublicationExecutor>(EntryType));
         }
         catch
         {

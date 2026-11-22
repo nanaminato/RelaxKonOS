@@ -33,6 +33,19 @@ internal sealed class InstalledProxyModule(InstalledModuleRecord record, string 
         && manifest.Capabilities.Contains(ServerCapabilities.ProxyServer, StringComparer.Ordinal)
         && manifest.Dependencies.Length == 0;
 
+    internal static void VerifyStagedExecution(string path)
+    {
+        using var code = new ProxyExecutionCodeGate("install-verification", () => path).Acquire();
+        code.RequireConstructor<IProxyOverviewExecutor>(ProxyConnectionExecutionGate.OverviewEntryType);
+        code.RequireConstructor<IProxyConnectionSnapshotReader>(ProxyConnectionExecutionGate.SnapshotReaderEntryType,
+            typeof(Action<ProxyConnectionSnapshotEntry>), typeof(bool));
+        code.RequireConstructor<IProxySubscriptionNormalizer>("RelaxKonOS.Server.Proxy.ProxySubscriptionNormalizer");
+        code.RequireConstructor<IProxyQueuedSubscriptionExecutor>(ProxySubscriptionOperations.EntryType,
+            typeof(IProxySubscriptionActions), typeof(IProxySubscriptionBatch));
+        code.RequireConstructor<IMihomoDirectPublicationExecutor>(MihomoDirectPublicationCode.EntryType);
+        code.RequireConstructor<ISquidReceiptVerifier>(SquidGatewayService.ReceiptVerifierEntryType);
+    }
+
     public override void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         if (record.Quarantined) return;

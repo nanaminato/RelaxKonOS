@@ -675,6 +675,33 @@ internal static class JointDeploymentAcceptance
                 entryAssembly, entryType, "joint-execution", new string('a', 40), "official", 1,
                 "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability, .. additionalCapabilities ?? []],
                 Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
+            if (moduleId == ServerModules.ProxyId)
+            {
+                var incompatibleSource = Directory.CreateDirectory(Path.Combine(root, "incompatible-proxy")).FullName;
+                var bytes = await File.ReadAllBytesAsync(Path.Combine(executionDirectory, entryAssembly));
+                var name = bytes.AsSpan().IndexOf("ProxyQueuedSubscriptionExecutor\0"u8);
+                if (name < 0) throw new InvalidOperationException("The fixture could not find the queued executor type name.");
+                bytes[name] = (byte)'X';
+                await File.WriteAllBytesAsync(Path.Combine(incompatibleSource, entryAssembly), bytes);
+                var incompatible = await ModulePackageBuilder.BuildAsync(new(incompatibleSource,
+                    Path.Combine(root, "incompatible-module"), moduleId, "98.0.0", "incompatible-proxy-" + rid,
+                    "fixture", "official", rid, entryAssembly, entryType, "joint-execution", new string('a', 40),
+                    "official", 1, "https://modules.example/", key, "fixture-key", 3600,
+                    Capabilities: [capability, .. additionalCapabilities ?? []]), now);
+                await using var invalidArchive = File.OpenRead(incompatible.ArchivePath);
+                try
+                {
+                    await InstalledModuleInstaller.InstallVerifiedAsync(serverRoot, "official", incompatible.Manifest,
+                        incompatible.ManifestSha256, incompatible.ArchiveSha256, invalidArchive, now);
+                    throw new InvalidOperationException("The incompatible Proxy execution package was accepted.");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                {
+                    Require(InstalledModuleStore.Read(serverRoot).Count == 0
+                        && !Directory.Exists(Path.Combine(serverRoot, "data", "module-management", "packages", moduleId, "98.0.0")),
+                        "an incompatible signed Proxy execution package is rejected before committing a version");
+                }
+            }
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", "official", "https://modules.example/",
                 [moduleId], new Dictionary<string, string> { ["fixture-key"] = package.PublicKeySpkiBase64 }, 3600);
             var config = new ConfigurationBuilder().AddJsonStream(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(new

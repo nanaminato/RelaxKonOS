@@ -494,7 +494,8 @@ internal static class ServerModuleManagementEndpoints
         catch (ModulePackageException exception) { return Problem(exception.ProblemCode,
             exception.ProblemCode is "module-package-plan-forbidden" ? 403
                 : exception.ProblemCode is "module-package-plan-not-found" ? 404
-                : exception.ProblemCode is "module-package-plan-expired" or "module-package-plan-already-applied" ? 409
+                : exception.ProblemCode is "module-package-plan-expired" or "module-package-plan-already-applied"
+                    or "module-package-execution-contract" ? 409
                 : exception.ProblemCode is "module-package-source-invalid" ? 400
                 : exception.ProblemCode is "module-package-source-unconfigured" or "module-package-source-not-accepted" ? 404 : 503); }
         catch (Exception exception) when (exception is IOException or System.UnauthorizedAccessException)

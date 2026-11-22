@@ -8,6 +8,7 @@ namespace RelaxKonOS.Server.Proxy;
 internal sealed class ProxyConnectionExecutionGate
 {
     internal const string OverviewEntryType = "RelaxKonOS.Server.Proxy.ProxyOverviewExecutor";
+    internal const string SnapshotReaderEntryType = "RelaxKonOS.Server.Proxy.Mihomo.MihomoConnectionSnapshotReader";
     internal static ProxyConnectionExecutionGate Shared { get; } = new(TimeSpan.FromSeconds(30));
     internal const int MaximumOutstandingGenerations = 4;
     private const int MaximumRecordBytes = 256 * 1024;
@@ -108,7 +109,7 @@ internal sealed class ProxyConnectionExecutionGate
                 {
                     using var stream = File.OpenRead(resolvePath());
                     var assembly = context.LoadFromStream(stream);
-                    var reader = assembly.GetType("RelaxKonOS.Server.Proxy.Mihomo.MihomoConnectionSnapshotReader", throwOnError: true)!;
+                    var reader = assembly.GetType(SnapshotReaderEntryType, throwOnError: true)!;
                     var overview = (IProxyOverviewExecutor)Activator.CreateInstance(
                         assembly.GetType(OverviewEntryType, throwOnError: true)!)!;
                     current = new Generation(context, reader, overview, code);
