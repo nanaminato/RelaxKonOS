@@ -1,0 +1,68 @@
+<UserControl nav:SettingsSearchTarget.Id="relaxkonos.about" xmlns="https://github.com/avaloniaui"
+             xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.Settings"
+             x:Class="RelaxKonOS.App.Settings.Views.AboutPageView"
+             x:DataType="vm:AboutPageContent" Classes="builtin-app">
+    <StackPanel Spacing="16">
+        <StackPanel Spacing="2">
+            <TextBlock Text="{Binding Description}" Opacity="0.65" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{Binding ProductName}" Classes="title" />
+                <TextBlock Text="{Binding Tagline}" Opacity="0.7" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Text="{Binding VersionLabel}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding AppVersion}" />
+                </Grid>
+                <TextBlock Text="{Binding Copyright}" Opacity="0.7" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding LinksLabel}" Classes="title" />
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding WebsiteLabel}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding OfficialWebsite}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{Binding CopyLabel}" Command="{Binding CopyOfficialWebsiteCommand}" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="{Binding OpenLabel}" Command="{Binding OpenOfficialWebsiteCommand}" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding AllProductsLabel}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AllProductsWebsite}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{Binding CopyLabel}" Command="{Binding CopyAllProductsWebsiteCommand}" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="{Binding OpenLabel}" Command="{Binding OpenAllProductsWebsiteCommand}" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding SourceLabel}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding SourceRepository}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{Binding CopyLabel}" Command="{Binding CopySourceRepositoryCommand}" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="{Binding OpenLabel}" Command="{Binding OpenSourceRepositoryCommand}" VerticalAlignment="Center" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding LegalLabel}" Classes="title" />
+                <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding LicenseName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding LicenseHint}" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+                <WrapPanel>
+                    <Button Content="{Binding ViewLicenseLabel}" Command="{Binding ViewProjectLicenseCommand}" Margin="0,0,8,8" />
+                    <Button Content="{Binding ViewThirdPartyLabel}" Command="{Binding ViewThirdPartyNoticesCommand}" Margin="0,0,8,8" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

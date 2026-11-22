@@ -72,7 +72,7 @@ internal static class SettingsWindowChecks
         {
             settings.Language = "zh-CN";
             model.InitializeAsync().GetAwaiter().GetResult(); // Offline: no real host calls.
-            var about = model.Pages.OfType<AboutPageViewModel>().Single();
+            var about = model.Pages.OfType<AboutPageViewModel>().Single().Content;
             Check(about.ProjectLicense.LoadAsync().GetAwaiter().GetResult().Contains(about.LicenseName, StringComparison.Ordinal)
                 && about.ThirdPartyNotices.LoadAsync().GetAwaiter().GetResult().StartsWith("# Third-Party Notices", StringComparison.Ordinal),
                 "The Settings assembly must provide both legal documents offline.");
@@ -91,6 +91,10 @@ internal static class SettingsWindowChecks
             Check(!drawer.IsVisible && model.SelectedPage?.Route == "time-language", "Drawer selection did not navigate and close.");
             scroll.Offset = new Vector(0, 120); Pump(); var rememberedOffset = scroll.Offset.Y;
             model.OpenPageCommand.Execute("about"); Pump();
+            var aboutView = view.GetVisualDescendants().OfType<AboutPageView>().Single();
+            Check(aboutView.GetVisualDescendants().OfType<TextBlock>().Any(label =>
+                    label.Text == localization.Get("settings.about_page.description", "")),
+                "The detached About page must render the current language.");
             model.BackCommand.Execute(null); Pump();
             Check(Math.Abs(scroll.Offset.Y - rememberedOffset) < 1, "Returning to a page lost its scroll offset.");
             model.SearchQuery = "region"; Pump();

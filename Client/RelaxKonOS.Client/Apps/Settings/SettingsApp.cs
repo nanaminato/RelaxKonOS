@@ -251,7 +251,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             {
                 DataContext = new ConfirmDialogViewModel(message, result => dialog.Close(result), LocalizedText.Get("common.ok")),
             });
-        var aboutPage = viewModel.Pages.OfType<AboutPageViewModel>().Single();
+        var aboutPage = viewModel.Pages.OfType<AboutPageViewModel>().Single().Content;
         aboutPage.RequestOpenUriAsync = uri =>
         {
             try

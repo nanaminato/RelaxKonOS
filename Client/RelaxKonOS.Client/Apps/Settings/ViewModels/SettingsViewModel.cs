@@ -97,7 +97,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new AppsPageViewModel(settings, apps!, packages!, localization, browserClient!),
             new DefaultAppsPageViewModel(settings, apps!, save),
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
-            new AboutPageViewModel(settings),
+            new AboutPageViewModel(settings, localization),
             new AccessibilityPageViewModel(settings, _devicePreferences),
             new DailySettingsPageViewModel(settings, _devicePreferences, IsLocal ? sshDesktop!.DevicePreferences : null),
         };

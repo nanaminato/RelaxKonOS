@@ -121,7 +121,7 @@
         <DataTemplate DataType="vm:AccessibilityPageViewModel"><pages:AccessibilityPageView VerticalAlignment="Top" /></DataTemplate>
         <DataTemplate DataType="vm:DailySettingsPageViewModel"><pages:DailySettingsPageView VerticalAlignment="Top" /></DataTemplate>
         <DataTemplate DataType="vm:AboutPageViewModel">
-                <pages:AboutPageView VerticalAlignment="Top" />
+                <settingsApp:AboutPageView DataContext="{Binding Content}" VerticalAlignment="Top" />
         </DataTemplate>
     </UserControl.DataTemplates>
 
