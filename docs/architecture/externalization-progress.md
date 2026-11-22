@@ -879,3 +879,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 当前源码离线验证 Android Debug 与测试 APK，强制重新运行 JVM 任务，1,906 项通过且无失败或跳过。将匹配的两个 APK 安装到只读 Medium_Phone 模拟器，应用目录与 Server Center 维护恢复 11 项设备测试通过，随后关闭模拟器。未连接真实远端服务。
 - 从 SagerNet 官方 1.14.3 发行下载 Windows 和 Linux amd64 归档，两者 SHA-256 均与 SingBoxManifest 固定值一致。Tests/ProxyServer 在两平台使用真实二进制验证 REALITY、VLESS TLS、VLESS WebSocket、Trojan 和 Hysteria2 的服务端配置及 sing-box 客户端导出可通过原生 check。HTTP 回执与进程恢复同轮通过。服务生命周期和流量转发未覆盖，Linux 回归在独立网络命名空间执行。
 - Windows 和 Linux amd64 的 Proxy Server 原生专项增加 sing-box 1.14.3 临时环回监听验收。使用生成的 Trojan 服务端配置启动前台进程，TLS 客户端核对服务端呈现测试证书，检查结束后停止并等待进程退出。Linux 在独立网络命名空间通过。未发送代理请求，生产 Helper 发布及业务流量仍待验。
+- Linux x64 在独立网络命名空间使用校验过的 sing-box 1.14.3 临时二进制复验 Proxy Server 凭据到期。真实环回流量在到期前转发，到期后旧流关闭、到期凭据被拒、有效凭据可重连。模拟 Helper 响应丢失和工作进程退出后，通过原回执恢复且仅应用一次。此用例使用生产 Proxy 启动保护和发布服务，经测试传输连接真实二进制。签名双包直接发布和系统 Helper 仍待验。

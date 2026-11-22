@@ -3,6 +3,7 @@ using RelaxKonOS.Server.Startup;
 using System.Diagnostics;
 using System.Net.Security;
 using System.Text.Json.Nodes;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.ProxyServer;
 
@@ -13,8 +14,8 @@ internal static class ProxyExpiryLiveChecks
 
     internal static async Task RunAsync(string executable)
     {
-        if (!OperatingSystem.IsLinux() || executable != "/usr/bin/sing-box" || !File.Exists(executable))
-            throw new ArgumentException("Expected the installed Linux sing-box binary.");
+        if (!OperatingSystem.IsLinux() || !Path.IsPathFullyQualified(executable) || !File.Exists(executable))
+            throw new ArgumentException("Expected an absolute path to a Linux sing-box binary.", nameof(executable));
 
         var directory = Directory.CreateTempSubdirectory("relaxkonos-singbox-expiry-");
         try
@@ -247,6 +248,9 @@ internal static class ProxyExpiryLiveChecks
 
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeResponsibilityQuery)
+                return new(true, OutputBase64: Convert.ToBase64String(
+                    JsonSerializer.SerializeToUtf8Bytes(new MihomoRuntimeResponsibility(null, null))));
             if (request.Operation == PrivilegedOperationKind.ProxyServerApply)
             {
                 ApplyCalls++;
