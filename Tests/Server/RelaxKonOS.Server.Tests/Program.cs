@@ -792,7 +792,7 @@ if (args.Contains("--frpc-lifecycle-only"))
         await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(frpRoot);
         await NetworkProxyTunnelChecks.VerifyTunnelSecretLifecycleAsync(frpRoot);
     }
-    finally { Directory.Delete(frpRoot, recursive: true); }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(frpRoot, recursive: true); }
     Console.WriteLine("FRP fixture runtime, applied revision, and secret lifecycle checks passed.");
     return;
 }

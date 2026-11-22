@@ -1,3 +1,4 @@
+using RelaxKonOS.ServerModule.Tunnels;
 using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.Tunnels;
 using RelaxKonOS.Server.Domain;
@@ -131,6 +132,5 @@ public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, 
     private static TunnelDefinitionDto ToDto(TunnelDefinition x) => new(x.Id, x.ServerProfileId, x.Name, x.ProviderId, x.Protocol, x.LocalHost, x.LocalPort, x.RemotePort, x.Domain, x.Enabled, x.Encryption, x.Compression, x.Revision, x.CreatedAt, x.UpdatedAt);
 }
 
-public sealed class TunnelValidationException(string problemCode) : Exception(problemCode) { public string ProblemCode { get; } = problemCode; }
 public sealed class TunnelRevisionConflictException() : Exception("tunnel.revision_conflict");
 public sealed class TunnelNotFoundException() : Exception("tunnel.not_found");

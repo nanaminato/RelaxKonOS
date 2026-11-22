@@ -1,4 +1,5 @@
-﻿using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.ServerModule.Tunnels;
+using RelaxKonOS.Protocol.Proxy;
 internal static class NetworkProxyTunnelChecks
 {
 internal static void VerifyTunnelProtocolContract()

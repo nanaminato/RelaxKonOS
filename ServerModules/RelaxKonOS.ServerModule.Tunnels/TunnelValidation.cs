@@ -2,12 +2,10 @@ using System.Net;
 using System.Text.RegularExpressions;
 using RelaxKonOS.Protocol.Tunnels;
 
-namespace RelaxKonOS.Server.Tunnels;
+namespace RelaxKonOS.ServerModule.Tunnels;
 
-internal static partial class TunnelValidation
+public static partial class TunnelValidation
 {
-    private const int MaxProfilesPerUser = 32;
-    private const int MaxTunnelsPerProfile = 128;
 
     [GeneratedRegex("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")]
     private static partial Regex NamePattern();

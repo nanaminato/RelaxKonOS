@@ -783,3 +783,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Git 双包验收在桌面接续完成后请求已认证的 Git Engine 状态。隔离 HTTP 宿主经已安装签名执行包运行真实本地 Git CLI，返回可用状态和非空版本，随后桌面卸载及服务端包保留检查通过。
 - Git 双包联合验收在 Windows Release 完成后，经认证 HTTP 初始化真实临时 Git 仓库、在 SQLite 登记、暂存文件并读取真实暂存区。服务端使用已安装签名执行程序集、本地 Git CLI 和隔离用户执行端口。桌面卸载及服务端包保留断言通过。
 - Linux x64 使用实际发行 Git .roapp 复验同一签名双包流程。独立签名包选择、等待重启和接续原计划登记均通过，且未重复提交安装。WSL 测试发行版没有 Git CLI，跳过真实仓库操作及依赖该步骤的联合卸载断言。
+- Tunnels 的档案与隧道定义校验、FRP 客户端 TOML 生成已迁入独立业务程序集，项目仅引用 Protocol。Core 继续负责用户授权、秘密存储、持久化及进程管理。Windows Release 独立构建及 Core 发布通过，发行目录包含隧道程序集。FRP 状态、协议、配置转义、夹具运行时及秘密生命周期检查通过。当前程序集随 Core 发行，签名包安装和真实 FRP 服务联调待完成。
