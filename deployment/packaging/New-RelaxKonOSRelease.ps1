@@ -36,7 +36,7 @@ function New-PackageDirectory([string] $PackageKind) {
 }
 
 function Publish-Component([string] $Project, [string] $Destination, [string] $Executable) {
-    & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration --runtime $Runtime --self-contained true --output $Destination "-p:InformationalVersion=$Version"
+    & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration "-p:RuntimeIdentifier=$Runtime" --self-contained true --output $Destination "-p:InformationalVersion=$Version"
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Project." }
     if (-not (Test-Path -LiteralPath (Join-Path $Destination $Executable) -PathType Leaf)) { throw "Publish output did not contain $Executable." }
 }
