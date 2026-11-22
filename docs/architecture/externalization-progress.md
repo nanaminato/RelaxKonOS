@@ -41,7 +41,7 @@
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
 | database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
-| tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows Release 包生命周期及授权验证通过，实机待验 |
+| tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows 和 Linux 随附及签名双包已验，真实 Helper IPC 和守护进程业务联调待验 |
 | ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 已验，远端桌面待验 |
 
 基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前官方目录包含 29 个桌面 .roapp，桌面宿主保留内置应用安装器。Standard 离线安装 Browser、Component Center、Event & Alert Center、Explorer、Image Viewer、Notepad、Registry、Server Center、Settings、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 可通过内置应用安装器从发行归档安装和修复基础应用。Developer 额外离线预装 Code Editor，另有 15 个交互式安装项。
@@ -811,3 +811,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 自包含 Tailscale 双包及随附模块联合验收均通过。独立签名包在重启后用可回收上下文实例化控制服务，桌面一次安装并在卸载后保留服务端包。随附模块通过仅启用、重启续跑、复用及释放依赖登记。WSL 未发现 tailscaled，Windows 已有 CLI，真实业务路径仍待验。
 - Windows Release 签名 Tailscale 双包验收通过重启后的控制读取。可回收程序集内的控制服务通过生产 Helper 适配器发送一次 TailscaleControlRead，并返回测试传输的快照。测试使用认证观察者，传输仅允许读取。真实 Helper 与 tailscaled 未覆盖。
 - Windows Release 签名 Tailscale 双包控制读取改走生产 HTTP 路由及模块驻留协调器。匿名请求返回 401 且未调用 Helper，认证观察者取得测试传输的控制快照，生产 Helper 适配器仅发送一次只读请求。真实 Helper 与 tailscaled 仍待验。
+- Linux x64 自包含签名 Tailscale 双包通过生产 HTTP 控制路由验收。匿名请求在 Helper 调用前拒绝，观察者经已安装签名执行程序集及生产适配器取得测试传输快照。随附模块的启用、重启恢复和复用同轮通过。
