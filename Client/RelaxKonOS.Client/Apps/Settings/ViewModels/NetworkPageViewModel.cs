@@ -31,7 +31,7 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel, INetwo
     }
 
     public Func<string, string> Labels => key => T(key, key);
-    object INetworkPage.HostNetwork => HostNetwork;
+    IHostNetworkEditor INetworkPage.HostNetwork => HostNetwork;
     IOutboundProxyEditor INetworkPage.OutboundProxy => OutboundProxy;
     ICommand INetworkPage.TestConnectionCommand => TestConnectionCommand;
 

@@ -1,9 +1,8 @@
 using Avalonia.Controls;
 using Avalonia;
 using Avalonia.Interactivity;
-using RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-namespace RelaxKonOS.Client.Apps.Settings.Views.Pages;
+namespace RelaxKonOS.App.Settings.Views;
 
 public partial class HostNetworkView : UserControl
 {
@@ -17,7 +16,7 @@ public partial class HostNetworkView : UserControl
     public HostNetworkView() => InitializeComponent();
     private void OnAdapterClick(object? sender, RoutedEventArgs args)
     {
-        if (sender is Button { DataContext: NetworkAdapterItem adapter } && DataContext is HostNetworkEditorViewModel editor)
+        if (sender is Button { DataContext: INetworkAdapterItem adapter } && DataContext is IHostNetworkEditor editor)
             editor.OpenAdapter(adapter);
     }
 }

@@ -62,6 +62,9 @@
         <DataTemplate DataType="settingsApp:INetworkPage">
             <settingsApp:NetworkPageView VerticalAlignment="Top" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:INetworkAdapterPage">
+            <settingsApp:HostNetworkView DataContext="{Binding Editor}" IsAdapterDetailPage="True" VerticalAlignment="Top" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 

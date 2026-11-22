@@ -4,7 +4,7 @@
              x:Class="RelaxKonOS.App.Settings.Views.NetworkPageView"
              x:DataType="loc:INetworkPage" Classes="builtin-app">
     <StackPanel Spacing="16">
-    <ContentControl Content="{Binding HostNetwork}" />
+    <loc:HostNetworkView DataContext="{Binding HostNetwork}" />
 
         <Border Classes="card" DataContext="{Binding OutboundProxy}">
             <StackPanel Spacing="12" x:DataType="loc:IOutboundProxyEditor">

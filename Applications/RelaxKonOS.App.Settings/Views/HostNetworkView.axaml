@@ -1,10 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
-             xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views;assembly=RelaxKonOS.App.Settings"
-             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.HostNetworkView" x:Name="NetworkView"
-             x:DataType="vm:HostNetworkEditorViewModel" Classes="builtin-app">
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Settings.Views"
+             x:Class="RelaxKonOS.App.Settings.Views.HostNetworkView" x:Name="NetworkView"
+             x:DataType="loc:IHostNetworkEditor" Classes="builtin-app">
     <StackPanel Spacing="16">
         <StackPanel Spacing="16" IsVisible="{Binding !IsAdapterDetailPage, ElementName=NetworkView}">
         <Border CornerRadius="16" Padding="24">
@@ -29,11 +27,11 @@
         </Grid>
         <TextBlock Text="{loc:Loc settings.network.remote_scope}" TextWrapping="Wrap" Classes="subtle" />
         <ItemsControl ItemsSource="{Binding Adapters}" IsEnabled="{Binding !HasPendingConfirmation}"
-                 nav:SettingsSearchTarget.Id="host.network.adapters" AutomationProperties.Name="{loc:Loc settings.network.adapters}"
+                 loc:SettingsSearchTarget.Id="host.network.adapters" AutomationProperties.Name="{loc:Loc settings.network.adapters}"
                  >
 
             <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:NetworkAdapterItem">
+                <DataTemplate x:DataType="loc:INetworkAdapterItem">
                     <Button Click="OnAdapterClick" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,4" Padding="16"
                             Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">

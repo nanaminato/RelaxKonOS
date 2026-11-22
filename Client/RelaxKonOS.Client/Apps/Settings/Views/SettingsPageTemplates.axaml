@@ -5,12 +5,6 @@
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.SettingsPageTemplates">
     <UserControl.DataTemplates>
 
-        <DataTemplate DataType="vm:NetworkAdapterPageViewModel">
-            <pages:HostNetworkView DataContext="{Binding Editor}" IsAdapterDetailPage="True" VerticalAlignment="Top" />
-        </DataTemplate>
-        <DataTemplate DataType="vm:HostNetworkEditorViewModel">
-            <pages:HostNetworkView />
-        </DataTemplate>
         <DataTemplate DataType="vm:ApplicationDetailPageViewModel">
             <pages:AppsPageView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>

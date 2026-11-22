@@ -6,7 +6,7 @@ namespace RelaxKonOS.App.Settings.Views;
 public interface INetworkPage : INotifyPropertyChanged
 {
     Func<string, string> Labels { get; }
-    object HostNetwork { get; }
+    IHostNetworkEditor HostNetwork { get; }
     IOutboundProxyEditor OutboundProxy { get; }
     string ConnectionState { get; }
     string ServerUrl { get; }

@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
@@ -12,7 +14,7 @@ using RelaxKonOS.Protocol.Settings;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-public sealed partial class HostNetworkEditorViewModel : ObservableObject, IDisposable
+public sealed partial class HostNetworkEditorViewModel : ObservableObject, IDisposable, IHostNetworkEditor
 {
     private readonly IHostNetworkService _service;
     private readonly IAuthSession _session;
@@ -44,6 +46,19 @@ public sealed partial class HostNetworkEditorViewModel : ObservableObject, IDisp
         SelectedAdapter = adapter;
         return true;
     }
+    public Func<string, string> Labels => key => _localization.Get(key, key);
+    IReadOnlyList<INetworkAdapterItem> IHostNetworkEditor.Adapters => Adapters;
+    INetworkAdapterItem? IHostNetworkEditor.SelectedAdapter => SelectedAdapter;
+    ICommand IHostNetworkEditor.ApplyCommand => ApplyCommand;
+    ICommand IHostNetworkEditor.ConfirmCommand => ConfirmCommand;
+    ICommand IHostNetworkEditor.ReloadCommand => ReloadCommand;
+
+    void IHostNetworkEditor.OpenAdapter(INetworkAdapterItem adapter)
+    {
+        if (adapter is NetworkAdapterItem item)
+            OpenAdapter(item);
+    }
+
     public ObservableCollection<NetworkAdapterItem> Adapters { get; } = [];
     [ObservableProperty] private NetworkAdapterItem? _selectedAdapter;
     [ObservableProperty] private bool _isBusy;
@@ -185,6 +200,7 @@ public sealed partial class HostNetworkEditorViewModel : ObservableObject, IDisp
     }
     private void OnLanguageChanged(object? sender, EventArgs args)
     {
+        OnPropertyChanged(nameof(Labels));
         foreach (var item in Adapters) item.Relocalize();
         OnPropertyChanged(nameof(UnavailableReason)); OnPropertyChanged(nameof(ConfirmationText));
     }
@@ -201,7 +217,7 @@ public sealed partial class HostNetworkEditorViewModel : ObservableObject, IDisp
     }
 }
 
-public sealed class NetworkAdapterItem(HostNetworkAdapter value) : ObservableObject
+public sealed class NetworkAdapterItem(HostNetworkAdapter value) : ObservableObject, INetworkAdapterItem
 {
     public HostNetworkAdapter Value { get; } = value;
     public string Name => Value.Name;

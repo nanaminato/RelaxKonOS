@@ -518,3 +518,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Settings 系统页和模块目录行迁入独立程序集。宿主继续执行主机名计划、系统操作和目录读取。Windows Release 设置窗口、设置交互、模块目录专项及本地化校验通过。ApplicationLayout 全量在紧凑安装器页面选择唯一 primary 按钮时遇到多个匹配项（Program.cs:205），跳过全量，模块专项通过。
 - Settings 账户与安全页及其模板迁入独立程序集。别名、配对与账户变更仍由宿主服务执行。Windows Release 设置窗口回归验证别名搜索目标，本地化校验通过；未执行真实账户或配对变更。
 - Settings 网络概览、出站代理及连接状态界面迁入独立程序集。宿主继续提供网卡编辑子视图并执行代理变更及连接测试。Windows Release 设置窗口回归和本地化校验通过。
+- Settings 网卡概览与详情视图迁入应用程序集。网卡数据、计划应用和确认仍由宿主服务处理。Windows Release 设置窗口回归覆盖打开网卡详情和返回，本地化校验通过。

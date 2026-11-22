@@ -1,15 +1,17 @@
+using RelaxKonOS.App.Settings.Views;
 using System.ComponentModel;
 using RelaxKonOS.Client.Services;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-public sealed class NetworkAdapterPageViewModel : SettingsPageViewModel
+public sealed class NetworkAdapterPageViewModel : SettingsPageViewModel, INetworkAdapterPage
 {
     public NetworkAdapterPageViewModel(ShellSettings settings, HostNetworkEditorViewModel editor) : base(settings, null)
     {
         Editor = editor;
         editor.PropertyChanged += OnEditorChanged;
     }
+    IHostNetworkEditor INetworkAdapterPage.Editor => Editor;
     public HostNetworkEditorViewModel Editor { get; }
     public override string Route => "network/adapter";
     public override string DisplayNameKey => "settings.network.adapters";

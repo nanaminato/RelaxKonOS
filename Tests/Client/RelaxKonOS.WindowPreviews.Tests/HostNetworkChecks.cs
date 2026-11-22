@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Settings.Views;
 using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using Avalonia;
 using Avalonia.Controls;
