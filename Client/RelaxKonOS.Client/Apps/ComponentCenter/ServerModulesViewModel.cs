@@ -30,11 +30,6 @@ public sealed partial class ServerModuleSelection(ServerModuleDto fact, Action c
     public bool NeedsRestart => Fact.RestartRequired;
 }
 
-public sealed record ServerModulePolicyChoice(string Value)
-{
-    public LocalizedStatus Label => LocalizedStatus.Key("server_modules.strategy." + Value, Value);
-}
-
 public enum ServerModuleFilter { All, Enabled, Disabled, PendingRestart }
 
 public sealed record ServerModuleFilterChoice(ServerModuleFilter Filter, LocalizedStatus Label);
@@ -94,7 +89,7 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview, IServerModulePolicyEditor
 {
     public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
     public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
@@ -120,6 +115,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     ICommand IServerModuleConsentReview.RevokeConsentCommand => RevokeConsentCommand;
     string IServerModuleConsentReview.ConsentCountText => ConsentCountText.Resolve();
     string IServerModuleConsentReview.ConsentModuleText => ConsentModuleText.Resolve();
+
+    string IServerModulePolicyEditor.ActionTargetText => ActionTargetText.Resolve();
+    string IServerModulePolicyEditor.PolicyHint => PolicyHint.Resolve();
+    string IServerModulePolicyEditor.SelectedDesiredPolicyText => SelectedDesiredPolicyText.Resolve();
+    string IServerModulePolicyEditor.SelectedEffectivePolicyText => SelectedEffectivePolicyText.Resolve();
 
     private static readonly ServerModuleFilterChoice[] FilterItems =
     [
@@ -311,8 +311,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public bool CanInstallStoreItem => !Busy && CanManage
         && SelectedStoreItem is { Revoked: false, RidCompatible: true, HostApiCompatible: true };
     private int _versionRequest;
-    public IReadOnlyList<ServerModulePolicyChoice> PolicyChoices { get; } = [new("KeepLoaded"), new("IdleDelayed"), new("ReleaseOnLogout")];
-    [ObservableProperty] private ServerModulePolicyChoice policyChoice = new("IdleDelayed");
+    public IReadOnlyList<ServerModulePolicyChoice> PolicyChoices { get; } = [new("KeepLoaded", LocalizedText.Get), new("IdleDelayed", LocalizedText.Get), new("ReleaseOnLogout", LocalizedText.Get)];
+    [ObservableProperty] private ServerModulePolicyChoice policyChoice = new("IdleDelayed", LocalizedText.Get);
     [ObservableProperty] private decimal idleGraceSeconds = 300;
     public bool CanSetPolicy => CanPreview(ServerModuleAction.SetResidencyPolicy) && IdleGraceSeconds is >= 0 and <= 604800
         && decimal.Truncate(IdleGraceSeconds) == IdleGraceSeconds;

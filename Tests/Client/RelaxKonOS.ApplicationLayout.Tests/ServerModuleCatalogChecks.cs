@@ -314,6 +314,17 @@ internal static class ServerModuleCatalogChecks
                 var shots = Path.Combine(AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(shots);
                 bitmap.Render(policyWindow); bitmap.Save(Path.Combine(shots, "server-module-policy.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
+            var measuredPolicy = model.Selected!.DesiredResidencyPolicy!;
+            var grace = policyView.GetVisualDescendants().OfType<NumericUpDown>().Single();
+            grace.Value = measuredPolicy.IdleGraceSeconds + 30;
+            Dispatcher.UIThread.RunJobs();
+            Check(model.IdleGraceSeconds == measuredPolicy.IdleGraceSeconds + 30,
+                "The residency editor did not keep the draft grace period in sync.");
+            var cancelPolicy = policyView.GetVisualDescendants().OfType<Button>()
+                .Single(button => Equals(button.Content, LocalizedText.Get("common.cancel")));
+            cancelPolicy.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Check(model.IdleGraceSeconds == measuredPolicy.IdleGraceSeconds && applies == 0,
+                "Cancelling the residency editor did not restore the measured policy without applying it.");
             policyWindow.Close(); Dispatcher.UIThread.RunJobs();
 
             await model.RemoveCommand.ExecuteAsync(null);

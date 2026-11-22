@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:loc="using:RelaxKonOS.Client.Localization"
- x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulePolicyEditorView" x:DataType="vm:ServerModulesViewModel"
+ xmlns:vm="using:RelaxKonOS.App.ComponentCenter" xmlns:loc="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ServerModulePolicyEditorView" x:DataType="vm:IServerModulePolicyEditor"
  Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
  <!-- Residency policy is a setting, not a fact to read on every visit: the page keeps the two
       measured policy values, and this dialog owns the draft. Nothing is submitted until the

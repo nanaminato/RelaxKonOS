@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.ComponentCenter;
+namespace RelaxKonOS.App.ComponentCenter;
 
 /// <summary>
 /// Draft editor for the residency policy. The result only says "a plan was requested": the policy
@@ -19,7 +19,7 @@ public partial class ServerModulePolicyEditorView : UserControl
 
     private void Cancel_Click(object? sender, RoutedEventArgs e)
     {
-        (DataContext as ServerModulesViewModel)?.ResetPolicyFromSelection();
+        (DataContext as IServerModulePolicyEditor)?.ResetPolicyFromSelection();
         _dialog?.Close(false);
     }
 }
