@@ -105,6 +105,8 @@ public sealed class ProxySubscriptionDownloader(
     IProxySettingsReader settingsService,
     ILogger<ProxySubscriptionDownloader>? logger = null) : IProxySubscriptionDownloader
 {
+    internal ProxyExecutionCodeGate Execution { private get; init; } = ProxySubscriptionContentNormalizer.BundledGate;
+
     public Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new ProxySubscriptionDownloadOptionsDto(ProxySubscriptionNetworkPolicy.HasSystemProxy()));
 
@@ -162,7 +164,7 @@ public sealed class ProxySubscriptionDownloader(
         {
             var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             var body = normalizer is null
-                ? await ProxySubscriptionContentNormalizer.ReadAsync(stream, cancellationToken)
+                ? await Execution.ReadAsync(stream, cancellationToken)
                 : await ProxySubscriptionContentNormalizer.ReadOwnedBodyAsync(normalizer, stream, cancellationToken);
             if (body.TooLarge) throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionFetchFailed);
             if (body.Content is not { } normalized) throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionInvalid);

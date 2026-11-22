@@ -5,6 +5,8 @@ namespace RelaxKonOS.Server.Proxy;
 /// <summary>Queues values only; accepted work owns a scope independent of the HTTP request.</summary>
 public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, IServiceScopeFactory scopes)
 {
+    internal ProxyExecutionCodeGate Execution { private get; init; } = ProxySubscriptionContentNormalizer.BundledGate;
+
     public Task<ProxyOperationDto> EnqueueAsync(string key,
         ProxySubscriptionOperation operation, Guid subscriptionId, string actor, CancellationToken ct)
     {
@@ -17,11 +19,12 @@ public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, 
         };
         var scopeFactory = scopes;
         var ledger = operations;
+        var execution = Execution;
         return ledger.EnqueueIdentifiedAsync(key, kind, (operationId, _, holdExecution, token) =>
             ProxyOperationScope.RunAsync(scopeFactory, actor, kind, async (services, stopping) =>
             {
                 var actions = services.GetRequiredService<IProxySubscriptionActions>();
-                var code = ProxySubscriptionContentNormalizer.Acquire();
+                var code = execution.Acquire();
                 holdExecution(code);
                 var executor = code.Create<IProxyQueuedSubscriptionExecutor>(
                     "RelaxKonOS.Server.Proxy.ProxyQueuedSubscriptionExecutor", actions, new Batch(ledger, actions));

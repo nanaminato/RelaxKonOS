@@ -508,6 +508,12 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledCertificateModule>(client, root, certificates, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledProxyModule>(client, root, proxy, check);
+                var proxyHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                var proxyModules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }, InstalledModuleCatalog.Load(root));
+                proxyModules.ConfigureServices(proxyHost, ServerModuleContext.Create(proxyHost.Configuration, proxyHost.Environment, "memory"));
+                await using (var restoredProxyHost = proxyHost.Build())
+                    check(!ReferenceEquals(restoredProxyHost.Services.GetRequiredService<ProxyConnectionExecutionGate>(), ProxyConnectionExecutionGate.Shared),
+                        "a fresh Core host validates restored Proxy overview and subscription executors from the installed package");
                 await VerifyRestoredWebServerAsync(root, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
                 var mirrorOwner = Guid.NewGuid();

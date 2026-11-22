@@ -51,6 +51,7 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
 
     public IReadOnlyList<string> Requires => [];
     private protected virtual ProxyConnectionExecutionGate Execution => ProxyConnectionExecutionGate.Shared;
+    private protected virtual ProxyExecutionCodeGate SubscriptionExecution => ProxySubscriptionContentNormalizer.BundledGate;
 
     public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
@@ -70,7 +71,8 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
         builder.Services.AddSingleton<IProxyWorkLeaseSource, ProxyWorkLeaseSource>();
         builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
-        builder.Services.AddScoped<ProxySubscriptionOperations>();
+        builder.Services.AddScoped(services => new ProxySubscriptionOperations(services.GetRequiredService<ProxyOperationStore>(),
+            services.GetRequiredService<IServiceScopeFactory>()) { Execution = SubscriptionExecution });
         builder.Services.AddScoped<ProxyLifecycleOperations>();
         builder.Services.AddScoped<MihomoManagedTunOperations>();
         builder.Services.AddScoped<MihomoNamedTunStartRecovery>();
@@ -91,7 +93,8 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
         builder.Services.AddScoped<ProxySubscriptionHttpClientFactory>();
         builder.Services.AddScoped<IProxySubscriptionDownloader>(services => new ProxySubscriptionDownloader(
             services.GetRequiredService<ProxySubscriptionHttpClientFactory>(),
-            services.GetRequiredService<IProxySettingsReader>(), services.GetService<ILogger<ProxySubscriptionDownloader>>()));
+            services.GetRequiredService<IProxySettingsReader>(), services.GetService<ILogger<ProxySubscriptionDownloader>>())
+            { Execution = SubscriptionExecution });
 
         // Core owns system-proxy/TUN recovery and expiry independently of this management surface.
 

@@ -3,7 +3,7 @@ using System.Runtime.Loader;
 namespace RelaxKonOS.Server.Proxy;
 
 /// <summary>Bounds active and not-yet-collected execution contexts without forcing GC.</summary>
-internal sealed class ProxyExecutionCodeGate(string purpose)
+internal sealed class ProxyExecutionCodeGate(string purpose, Func<string>? resolvePath = null)
 {
     internal const int MaxOutstandingContexts = 16;
     private readonly object _gate = new();
@@ -11,7 +11,7 @@ internal sealed class ProxyExecutionCodeGate(string purpose)
 
     internal Lease Acquire()
     {
-        var path = ProxyExecutionLoadContext.BundledAssemblyPath();
+        var path = resolvePath is null ? ProxyExecutionLoadContext.BundledAssemblyPath() : resolvePath();
         lock (_gate)
         {
             _code.RemoveAll(reference => !reference.IsAlive);
@@ -27,6 +27,7 @@ internal sealed class ProxyExecutionCodeGate(string purpose)
     internal sealed class Lease(ProxyExecutionLoadContext context, string path, WeakReference reference) : IDisposable
     {
         private AssemblyLoadContext? owner = context;
+        private System.Reflection.Assembly? assembly;
         internal WeakReference Reference => reference;
 
         internal T Create<T>(string name, params object[] args)
@@ -34,12 +35,21 @@ internal sealed class ProxyExecutionCodeGate(string purpose)
             try
             {
                 var code = owner ?? throw new ObjectDisposedException(nameof(Lease));
-                var type = code.LoadFromAssemblyPath(path).GetType(name, throwOnError: true)!;
+                if (assembly is null)
+                {
+                    using var stream = File.OpenRead(path);
+                    assembly = code.LoadFromStream(stream);
+                }
+                var type = assembly.GetType(name, throwOnError: true)!;
                 return (T)Activator.CreateInstance(type, args)!;
             }
             catch (Exception) { throw new InvalidDataException("Proxy execution could not be activated."); }
         }
 
-        public void Dispose() => Interlocked.Exchange(ref owner, null)?.Unload();
+        public void Dispose()
+        {
+            assembly = null;
+            Interlocked.Exchange(ref owner, null)?.Unload();
+        }
     }
 }

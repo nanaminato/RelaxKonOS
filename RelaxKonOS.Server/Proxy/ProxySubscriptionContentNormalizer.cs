@@ -5,10 +5,10 @@ namespace RelaxKonOS.Server.Proxy;
 /// <summary>Host call gate for an authorized subscription response body.</summary>
 internal static class ProxySubscriptionContentNormalizer
 {
-    private static readonly ProxyExecutionCodeGate Gate = new("subscription");
+    internal static ProxyExecutionCodeGate BundledGate { get; } = new("subscription");
 
     internal static Task<ProxySubscriptionBody> ReadAsync(Stream stream, CancellationToken ct, Action<WeakReference>? observe = null) =>
-        Gate.ReadAsync(stream, ct, observe);
+        BundledGate.ReadAsync(stream, ct, observe);
 
     internal static async Task<ProxySubscriptionBody> ReadOwnedBodyAsync(IProxySubscriptionNormalizer normalizer,
         Stream stream, CancellationToken ct)
@@ -25,7 +25,6 @@ internal static class ProxySubscriptionContentNormalizer
         catch (Exception) { throw new InvalidDataException("Proxy subscription conversion failed."); }
     }
 
-    internal static ProxyExecutionCodeGate.Lease Acquire() => Gate.Acquire();
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static async Task<ProxySubscriptionBody> ReadAsync(this ProxyExecutionCodeGate gate, Stream stream, CancellationToken ct, Action<WeakReference>? observe = null)
     {
