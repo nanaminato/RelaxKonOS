@@ -30,6 +30,19 @@ public interface IModuleHostContext
     ICloudFileProviders CloudProviders { get; }
 }
 
+/// <summary>Read-only database observation available to the trusted database module during a user request.</summary>
+public interface IModuleHostDatabaseContext : IModuleHostContext
+{
+    IModuleDatabaseObservation DatabaseObservation { get; }
+}
+
+public interface IModuleDatabaseObservation
+{
+    /// <summary>The caller owns the returned response and its content stream.</summary>
+    ValueTask<HttpResponseMessage> ReadAsync(RelaxKonOS.ModuleHost.Protocol.DatabaseObservationKind kind,
+        Guid? instance, CancellationToken cancellationToken);
+}
+
 public interface ICloudFileProviders
 {
     ValueTask<bool> IsAvailableAsync(RelaxKonOS.ModuleHost.Protocol.CloudFileProvider provider, CancellationToken cancellationToken);

@@ -1,3 +1,5 @@
+using System.Net;
+using RelaxKonOS.ServerModuleHost;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ModuleHost.Protocol;
@@ -141,6 +143,7 @@ internal static class DatabaseEndpointBoundaryChecks
                 throw new InvalidOperationException("A request without a trusted module generation reached the observation broker.");
         }
 
+        await CheckObservationClientAsync();
         Console.WriteLine("Database registration, endpoint policies, deactivation and private observation admission checks passed.");
 
         void Check(string route, string method, string? policy)
@@ -152,6 +155,68 @@ internal static class DatabaseEndpointBoundaryChecks
                 throw new InvalidOperationException($"The database route {method} {route} did not retain its authorization metadata.");
         }
     }
+
+    private static async Task CheckObservationClientAsync()
+    {
+        var moduleToken = new string('a', 64);
+        var requestToken = new string('b', 64);
+        var accessor = new HttpContextAccessor();
+        var handler = new DatabaseObservationTransportFixture();
+        using var transport = new HttpClient(handler);
+        var client = new DatabaseObservationClient(DatabaseObservationProtocol.ModuleId, "http://127.0.0.1:65000/",
+            moduleToken, accessor, transport);
+
+        await RejectAsync(() => client.ReadAsync(DatabaseObservationKind.MySqlState, null, default), HttpStatusCode.Forbidden);
+        var incoming = new DefaultHttpContext();
+        accessor.HttpContext = incoming;
+        try
+        {
+            incoming.Request.Headers[ModulePrivilegeProtocol.RequestContextHeader] = requestToken;
+            var outsider = new DatabaseObservationClient("other-module", "http://127.0.0.1:65000/", moduleToken, accessor, transport);
+            await RejectAsync(() => outsider.ReadAsync(DatabaseObservationKind.MySqlState, null, default), HttpStatusCode.Forbidden);
+            var external = new DatabaseObservationClient(DatabaseObservationProtocol.ModuleId, "http://example.invalid/",
+                moduleToken, accessor, transport);
+            await RejectAsync(() => external.ReadAsync(DatabaseObservationKind.MySqlState, null, default), HttpStatusCode.ServiceUnavailable);
+            if (handler.Requests.Count != 0)
+                throw new InvalidOperationException("Rejected observation clients must not call the broker.");
+
+            var instance = Guid.NewGuid();
+            foreach (var (kind, path, selected) in new (DatabaseObservationKind, string, Guid?)[]
+            {
+                (DatabaseObservationKind.PostgreSqlState, DatabaseObservationProtocol.PostgreSqlState + "?instance=" + instance.ToString("D"), instance),
+                (DatabaseObservationKind.PostgreSqlMaintenancePlan, DatabaseObservationProtocol.PostgreSqlMaintenancePlan, null),
+                (DatabaseObservationKind.PostgreSqlMigrationPlan, DatabaseObservationProtocol.PostgreSqlMigrationPlan, null),
+                (DatabaseObservationKind.MySqlState, DatabaseObservationProtocol.MySqlState, null)
+            })
+            {
+                using var response = await client.ReadAsync(kind, selected, default);
+                if (response.StatusCode != HttpStatusCode.OK || handler.Requests.Last() != (HttpMethod.Get, path, moduleToken, requestToken))
+                    throw new InvalidOperationException("Observation requests must preserve the fixed path and both authorization headers.");
+            }
+        }
+        finally { accessor.HttpContext = null; }
+
+        static async Task RejectAsync(Func<ValueTask<HttpResponseMessage>> read, HttpStatusCode status)
+        {
+            try { using var response = await read(); }
+            catch (HttpRequestException error) when (error.StatusCode == status) { return; }
+            throw new InvalidOperationException($"Expected observation client rejection {status}.");
+        }
+    }
+
+    private sealed class DatabaseObservationTransportFixture : HttpMessageHandler
+    {
+        internal List<(HttpMethod, string, string, string)> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add((request.Method, request.RequestUri!.PathAndQuery,
+                request.Headers.GetValues(ModuleHostProtocol.ServiceTokenHeader).Single(),
+                request.Headers.GetValues(ModulePrivilegeProtocol.RequestContextHeader).Single()));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
+        }
+    }
+
 }
 
 internal sealed class IdleDatabaseHelper : IPrivilegedOperationTransport

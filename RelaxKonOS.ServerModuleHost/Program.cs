@@ -66,7 +66,8 @@ public static class ModuleHostProgram
             var broker = Environment.GetEnvironmentVariable(ModulePrivilegeProtocol.BrokerEnvironment);
             var context = new Context(moduleId, dataPath, new ModuleHostStorage(dataPath),
                 loggerFactory.CreateLogger(moduleId), new ModuleHostPrivilegeClient(broker, serviceToken, accessor),
-                new CloudProviderClient(broker, serviceToken));
+                new CloudProviderClient(broker, serviceToken),
+                new DatabaseObservationClient(moduleId, broker, serviceToken, accessor));
             await entry.StartAsync(context, CancellationToken.None);
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root });
             builder.Logging.ClearProviders();
@@ -214,7 +215,8 @@ public static class ModuleHostProgram
     }
 
     private sealed record Context(string ModuleId, string ModuleDataPath, IModuleHostStorage Storage,
-        ILogger Logger, IModulePrivilegeBroker Privileges, ICloudFileProviders CloudProviders) : IModuleHostContext
+        ILogger Logger, IModulePrivilegeBroker Privileges, ICloudFileProviders CloudProviders,
+        IModuleDatabaseObservation DatabaseObservation) : IModuleHostDatabaseContext
     {
         public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
     }
