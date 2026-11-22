@@ -7,15 +7,13 @@ namespace RelaxKonOS.App.Settings.Views;
 
 public interface ISettingsNavigationPresentation : INotifyPropertyChanging, INotifyPropertyChanged
 {
-    const string SelectedPageProperty = "SelectedPage";
-    string? SelectedPageRoute { get; }
+    SettingsPageModel? SelectedPage { get; }
     string CurrentNavigationRoute { get; }
     string SearchQuery { get; set; }
     Func<string, string> Labels { get; }
-    System.Windows.Input.ICommand OpenPageCommand { get; }
     bool HasSearch { get; }
     bool IsRestoringNavigation { get; }
-    string SearchLocationStatus { set; }
+    string SearchLocationStatus { get; set; }
     event Action<SettingsSearchEntry>? SearchResultOpened;
     event Action? NavigationContextReset;
 }
@@ -69,8 +67,8 @@ public sealed class SettingsNavigationPresentation
 
     private void OnModelPropertyChanging(object? sender, PropertyChangingEventArgs args)
     {
-        if (_observedModel is not { HasSearch: false, SelectedPageRoute: not null } model) return;
-        if (args.PropertyName == ISettingsNavigationPresentation.SelectedPageProperty
+        if (_observedModel is not { HasSearch: false, SelectedPage: not null } model) return;
+        if (args.PropertyName == nameof(ISettingsNavigationPresentation.SelectedPage)
             || args.PropertyName == nameof(ISettingsNavigationPresentation.SearchQuery) && !model.IsRestoringNavigation)
             _scrollOffsets[model.CurrentNavigationRoute] = scroll.Offset;
     }
@@ -94,7 +92,7 @@ public sealed class SettingsNavigationPresentation
             }
             // Escape returns to the pre-search position. A result reveal supersedes this callback.
         }
-        else if (args.PropertyName != ISettingsNavigationPresentation.SelectedPageProperty) return;
+        else if (args.PropertyName != nameof(ISettingsNavigationPresentation.SelectedPage)) return;
         ClearHighlight();
         var generation = ++_navigationGeneration;
         var route = _observedModel?.CurrentNavigationRoute;
@@ -111,7 +109,7 @@ public sealed class SettingsNavigationPresentation
         var generation = ++_navigationGeneration;
         Dispatcher.UIThread.Post(() =>
         {
-            if (generation != _navigationGeneration || _observedModel is not { } model || model.SelectedPageRoute != entry.Route || model.HasSearch) return;
+            if (generation != _navigationGeneration || _observedModel is not { } model || model.SelectedPage?.Route != entry.Route || model.HasSearch) return;
             if (entry.SettingId.StartsWith("page.", StringComparison.Ordinal)) return;
             var target = SettingsSearchTarget.Find(pageContent, entry.SettingId);
             model.SearchLocationStatus = target is null

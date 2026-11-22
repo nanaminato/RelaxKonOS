@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,11 +21,22 @@ public sealed partial class SettingsViewModel
     private readonly SettingsNavigationHistory _navigationHistory = new();
     private bool _goingBack;
     public Func<string, string> Labels => key => _navigationLocalization.Get(key, key);
-    System.Windows.Input.ICommand RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.OpenPageCommand => OpenPageCommand;
+    ICommand ISettingsWorkspace.BackCommand => BackCommand;
+    ICommand ISettingsWorkspace.OpenPageCommand => OpenPageCommand;
+    ICommand ISettingsWorkspace.OpenSearchResultCommand => OpenSearchResultCommand;
+    ICommand ISettingsWorkspace.RetryDeviceSaveCommand => RetryDeviceSaveCommand;
+    ICommand ISettingsWorkspace.RetrySaveCommand => RetrySaveCommand;
+    ICommand ISettingsWorkspace.DiscardDraftCommand => DiscardDraftCommand;
+    IReadOnlyList<SettingsPageModel> ISettingsWorkspace.NavigationPages => NavigationPages;
+    SettingsPageModel? ISettingsNavigationPresentation.SelectedPage => SelectedPage;
+    SettingsPageModel? ISettingsWorkspace.SelectedCategory
+    {
+        get => SelectedCategory;
+        set => SelectedCategory = value as SettingsPageViewModel;
+    }
 
     internal bool IsRestoringNavigation => _goingBack;
-    bool RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.IsRestoringNavigation => IsRestoringNavigation;
-    string? RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.SelectedPageRoute => SelectedPage?.Route;
+    bool ISettingsNavigationPresentation.IsRestoringNavigation => IsRestoringNavigation;
     private bool _navigationDisposed;
 
     [ObservableProperty] private string _searchQuery = "";

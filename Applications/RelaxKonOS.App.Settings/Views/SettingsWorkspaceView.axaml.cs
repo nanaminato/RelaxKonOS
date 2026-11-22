@@ -95,7 +95,7 @@ public partial class SettingsWorkspaceView : UserControl
 
     public void NavigateTo(string route)
     {
-        if (DataContext is ISettingsNavigationPresentation model)
+        if (DataContext is ISettingsWorkspace model)
         {
             var fromDrawer = NavigationDrawer.IsVisible;
             model.OpenPageCommand.Execute(route);

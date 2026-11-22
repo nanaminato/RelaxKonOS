@@ -3,7 +3,8 @@
              xmlns:settingsApp="clr-namespace:RelaxKonOS.App.Settings.Views"
              xmlns:vm="clr-namespace:RelaxKonOS.App.Settings"
              x:Class="RelaxKonOS.App.Settings.Views.SettingsWorkspaceView"
-             x:CompileBindings="False"
+             x:DataType="settingsApp:ISettingsWorkspace"
+             x:CompileBindings="True"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.Styles>
