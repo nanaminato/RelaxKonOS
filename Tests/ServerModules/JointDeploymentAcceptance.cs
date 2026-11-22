@@ -128,6 +128,36 @@ internal static class JointDeploymentAcceptance
             Require(await packages.UninstallAsync(installed.Id) && !apps.IsRegistered(new AppId(installed.Id))
                 && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
                 $"uninstalling the desktop {moduleId} package releases the app without removing the server module");
+            if (moduleId == "relaxkonos.tunnels")
+            {
+                using var managementHttp = factory.CreateClient("joint-fixture");
+                var management = new ServerModuleManagementClient(managementHttp, auth);
+                var inventory = await management.ReadAsync();
+                var target = inventory.Single(module => module.Id == moduleId);
+                var desired = inventory.Where(module => module.DesiredEnabled && module.Id != moduleId)
+                    .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+                var disable = await management.PreviewAsync(new(serviceId, ServerModuleAction.Disable, [moduleId],
+                    desired, target.DesiredRevision!, "disable-signed-tunnels"));
+                Require(disable.BlockedBy.Count == 0, "uninstalling Tunnel Manager releases the server-side module dependency");
+                var receipt = await management.ApplyAsync(disable.PlanId);
+                Require(receipt.State == ServerModuleOperationState.AwaitingRestart, "signed Tunnels disable waits for restart");
+                await host.DisposeAsync();
+                host = null;
+                host = await TestHost.StartAsync(serverRoot, config);
+                session.Url = host.Url;
+                var restartedManagement = new ServerModuleManagementClient(managementHttp, auth);
+                var restartedInventory = await restartedManagement.ReadAsync();
+                var restartedTarget = restartedInventory.Single(module => module.Id == moduleId);
+                var completed = await restartedManagement.OperationAsync(receipt.OperationId);
+                using var client = new HttpClient { BaseAddress = new Uri(host.Url) };
+                client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+                using var routes = await client.GetAsync(TunnelApiRoutes.Profiles);
+                Require(!restartedTarget.EffectiveEnabled && completed.State == ServerModuleOperationState.Succeeded
+                    && routes.StatusCode == System.Net.HttpStatusCode.NotFound
+                    && await client.GetStringAsync("/fixture-core") == "ready"
+                    && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
+                    "disabling signed Tunnels withdraws its routes and leaves Core and the installed package available");
+            }
         }
         finally
         {
