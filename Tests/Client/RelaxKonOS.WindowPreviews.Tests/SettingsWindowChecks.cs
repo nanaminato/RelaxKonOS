@@ -36,6 +36,18 @@ internal static class SettingsWindowChecks
 {
     public static void Run(ShellSettings settings, LocalizationService localization)
     {
+        const string pathValue = "/usr/bin::/bin";
+        EnvironmentMutation? mutation = null;
+        var pathVariable = new EnvironmentVariable("PATH", pathValue, null, EnvironmentValueKind.ExpandString,
+            SettingsScope.HostMachine, false, false, []);
+        var variableEditor = EnvironmentVariableEditor.Create(pathVariable, false, key => key,
+            () => Task.FromResult<string?>(null), () => { }, value => mutation = value);
+        var saveVariable = variableEditor.GetVisualDescendants().OfType<Button>()
+            .Single(button => Equals(button.Content, "common.save"));
+        saveVariable.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Check(mutation == new EnvironmentMutation("PATH", EnvironmentMutationKind.Set, pathValue, EnvironmentValueKind.ExpandString),
+            "The PATH editor lost an empty segment or the existing value kind.");
+
         var previousServices = RelaxKonOS.Client.App.Services;
         var original = settings.ToPreferences();
         var session = DispatchProxy.Create<IAuthSession, SettingsWindowSession>();

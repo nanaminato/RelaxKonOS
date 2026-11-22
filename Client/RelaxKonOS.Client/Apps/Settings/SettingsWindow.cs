@@ -5,10 +5,8 @@ using Avalonia.Threading;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
-using Avalonia.Data;
 using Avalonia.Styling;
 using System.Diagnostics;
-using CommunityToolkit.Mvvm.ComponentModel;
 using System.Text.Json;
 using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using RelaxKonOS.Client.Apps.Settings.Views;
@@ -314,166 +312,23 @@ public sealed class SettingsWindow : ISettingsWindow
                                 ? "settings.environment.system_variables" : "settings.environment.user_variables");
                             await environmentDialog.ShowDialogAsync<bool>(title, dialog =>
                             {
-                                var name = new Avalonia.Controls.TextBox
-                                {
-                                    Text = existing?.Name ?? "",
-                                    MaxLength = EnvironmentValidation.MaximumNameLength,
-                                    IsReadOnly = existing is not null,
-                                };
-                                var isPath = existing?.Name.Equals("PATH", StringComparison.OrdinalIgnoreCase) == true;
-                                var value = new Avalonia.Controls.TextBox
-                                {
-                                    Text = existing?.RawValue ?? "",
-                                    AcceptsReturn = false,
-                                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                                    MaxLength = EnvironmentValidation.MaximumValueLength,
-                                    MinHeight = 32,
-                                };
-                                var pathEditor = new EnvironmentPathEditor(existing?.RawValue ?? "", isPath, windows ? ";" : ":");
-                                var pathEntry = new Avalonia.Controls.TextBox { MaxLength = EnvironmentValidation.MaximumValueLength };
-                                var pathList = new Avalonia.Controls.ListBox { ItemsSource = pathEditor.Entries, MinHeight = 80, SelectionMode = Avalonia.Controls.SelectionMode.Single };
-                                pathList.Classes.Add("windows-path-editor");
-                                pathList.Bind(Avalonia.Controls.Primitives.SelectingItemsControl.SelectedItemProperty,
-                                    new Binding(nameof(EnvironmentPathEditor.SelectedEntry)) { Source = pathEditor, Mode = BindingMode.TwoWay });
-                                pathEditor.PropertyChanged += (_, args) =>
-                                {
-                                    if (args.PropertyName == nameof(EnvironmentPathEditor.SelectedEntry) && pathEditor.SelectedEntry is { } entry)
-                                        pathList.ScrollIntoView(entry);
-                                };
-                                pathList.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<EnvironmentPathEntry>((_, _) =>
-                                {
-                                    var text = new Avalonia.Controls.TextBlock { Margin = new Avalonia.Thickness(8, 4), TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
-                                    text.Bind(Avalonia.Controls.TextBlock.TextProperty, new Binding(nameof(EnvironmentPathEntry.Value)));
-                                    return text;
-                                });
-                                // This dialog is hosted in its own window, so its selected state needs a local style.
-                                pathList.Styles.Add(new Avalonia.Styling.Style(selector => selector.Is<Avalonia.Controls.ListBoxItem>().Class(":selected"))
-                                {
-                                    Setters =
+                                return EnvironmentVariableEditor.Create(existing, windows, key => LocalizedText.Get(key),
+                                    async () =>
                                     {
-                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BackgroundProperty, new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("SelectionBackgroundBrush")),
-                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderBrushProperty, new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("FocusBorderBrush")),
-                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderThicknessProperty, new Avalonia.Thickness(1)),
-                                    },
-                                });
-                                pathEntry.Bind(Avalonia.Controls.TextBox.TextProperty,
-                                    new Binding("SelectedEntry.Value") { Source = pathEditor, Mode = BindingMode.TwoWay });
-                                pathEntry.Bind(Avalonia.Controls.Control.IsEnabledProperty,
-                                    new Binding(nameof(EnvironmentPathEditor.HasSelection)) { Source = pathEditor });
-                                Avalonia.Controls.Button? browse = null;
-                                var pathButtons = new Avalonia.Controls.StackPanel
-                                {
-                                    Spacing = 7,
-                                    Margin = new Avalonia.Thickness(0, 0, 0, 16),
-                                };
-                                void AddPathButton(string key, Action action)
-                                {
-                                    var button = new Avalonia.Controls.Button { Content = LocalizedText.Get(key), MinWidth = 82 };
-                                    button.Click += (_, _) => action();
-                                    pathButtons.Children.Add(button);
-                                }
-                                AddPathButton("common.new", () => { pathEditor.Add(); pathEntry.Focus(); });
-                                AddPathButton("settings.environment.edit", () => { if (pathEditor.HasSelection) pathEntry.Focus(); });
-                                AddPathButton("common.delete", pathEditor.RemoveSelected);
-                                AddPathButton("settings.environment.path_up", () =>
-                                {
-                                    pathEditor.MoveSelected(-1);
-                                    if (pathEditor.SelectedEntry is { } entry) pathList.ScrollIntoView(entry);
-                                });
-                                AddPathButton("settings.environment.path_down", () =>
-                                {
-                                    pathEditor.MoveSelected(1);
-                                    if (pathEditor.SelectedEntry is { } entry) pathList.ScrollIntoView(entry);
-                                });
-                                browse = new Avalonia.Controls.Button { Content = LocalizedText.Get("settings.environment.browse"), IsEnabled = !isPath };
-                                if (isPath)
-                                    browse.Bind(Avalonia.Controls.Control.IsEnabledProperty,
-                                        new Binding(nameof(EnvironmentPathEditor.HasSelection)) { Source = pathEditor });
-                                browse.Click += async (_, _) =>
-                                {
-                                    if (explorer is null) return;
-                                    var selected = await dialog.ShowDialogAsync<string?>(LocalizedText.Get("settings.environment.browse"), pickerDialog =>
-                                    {
-                                        var picker = new ExplorerViewModel(explorer, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
-                                            paths => pickerDialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "Settings.environment-folder")
+                                        if (explorer is null) return null;
+                                        return await dialog.ShowDialogAsync<string?>(LocalizedText.Get("settings.environment.browse"), pickerDialog =>
                                         {
-                                            CancelAction = pickerDialog.Cancel,
-                                        };
-                                        _ = picker.LoadRootAsync();
-                                        return new ExplorerMainView { DataContext = picker };
-                                    });
-                                    if (string.IsNullOrWhiteSpace(selected)) return;
-                                    if (isPath && pathEditor.SelectedEntry is { } entry) entry.Value = selected;
-                                    else value.Text = selected;
-                                };
-                                var cancel = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.cancel"), MinWidth = 88 };
-                                cancel.Click += (_, _) => dialog.Cancel();
-                                var save = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.save"), MinWidth = 88 };
-                                save.Click += (_, _) =>
-                                {
-                                    var variableName = name.Text?.Trim() ?? "";
-                                    var variableValue = isPath ? pathEditor.JoinedValue : value.Text ?? "";
-                                    if (!EnvironmentValidation.IsValidName(variableName, windows)
-                                        || variableValue.Length > EnvironmentValidation.MaximumValueLength)
-                                        return;
-                                    mutation = new EnvironmentMutation(variableName, EnvironmentMutationKind.Set, variableValue,
-                                        existing?.ValueKind ?? EnvironmentValueKind.String);
-                                    dialog.Close(true);
-                                };
-                                var content = new Avalonia.Controls.Grid
-                                {
-                                    Margin = new Avalonia.Thickness(20, 0, 20, 12), RowSpacing = 10,
-                                    RowDefinitions = new Avalonia.Controls.RowDefinitions("Auto,*,Auto,Auto"),
-                                };
-                                content.Children.Add(new Avalonia.Controls.TextBlock { Text = LocalizedText.Get(isPath ? "settings.environment.path_entries" : "settings.environment.value") });
-                                if (isPath)
-                                {
-                                    var pathEditorLayout = new Avalonia.Controls.Grid { ColumnDefinitions = new Avalonia.Controls.ColumnDefinitions("*,Auto"), ColumnSpacing = 10 };
-                                    pathEditorLayout.Children.Add(pathList);
-                                    Avalonia.Controls.Grid.SetColumn(pathButtons, 1);
-                                    pathEditorLayout.Children.Add(pathButtons);
-                                    pathEditorLayout.SizeChanged += (_, args) =>
-                                    {
-                                        var narrow = args.NewSize.Width < 420;
-                                        pathEditorLayout.ColumnDefinitions = new Avalonia.Controls.ColumnDefinitions(narrow ? "*" : "*,Auto");
-                                        pathEditorLayout.RowDefinitions = new Avalonia.Controls.RowDefinitions(narrow ? "*,Auto" : "*");
-                                        Avalonia.Controls.Grid.SetColumn(pathButtons, narrow ? 0 : 1);
-                                        Avalonia.Controls.Grid.SetRow(pathButtons, narrow ? 1 : 0);
-                                        pathButtons.Orientation = narrow ? Avalonia.Layout.Orientation.Horizontal : Avalonia.Layout.Orientation.Vertical;
-                                        pathButtons.Spacing = narrow ? 2 : 7;
-                                        foreach (var button in pathButtons.Children.OfType<Avalonia.Controls.Button>())
-                                            button.MinWidth = narrow ? 0 : 82;
-                                    };
-                                    Avalonia.Controls.Grid.SetRow(pathEditorLayout, 1);
-                                    content.Children.Add(pathEditorLayout);
-                                    Avalonia.Controls.Grid.SetRow(pathEntry, 2);
-                                    content.Children.Add(pathEntry);
-                                }
-                                else { Avalonia.Controls.Grid.SetRow(value, 1); content.Children.Add(value); }
-                                Avalonia.Controls.Grid.SetRow(browse, 3);
-                                content.Children.Add(browse);
-                                var footer = new Avalonia.Controls.StackPanel
-                                {
-                                    Orientation = Avalonia.Layout.Orientation.Horizontal,
-                                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
-                                    Margin = new Avalonia.Thickness(20, 0, 20, 12), Spacing = 8, Children = { cancel, save },
-                                };
-                                var nameHeader = new Avalonia.Controls.StackPanel
-                                {
-                                    Margin = new Avalonia.Thickness(20, 20, 20, 12), Spacing = 10,
-                                    Children =
-                                    {
-                                        new Avalonia.Controls.TextBlock { Text = LocalizedText.Get("settings.environment.name") },
-                                        name,
+                                            var picker = new ExplorerViewModel(explorer, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
+                                                paths => pickerDialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "Settings.environment-folder")
+                                            {
+                                                CancelAction = pickerDialog.Cancel,
+                                            };
+                                            _ = picker.LoadRootAsync();
+                                            return new ExplorerMainView { DataContext = picker };
+                                        });
                                     },
-                                };
-                                var editorLayout = new Avalonia.Controls.Grid { RowDefinitions = new Avalonia.Controls.RowDefinitions("Auto,*,Auto") };
-                                editorLayout.Children.Add(nameHeader);
-                                Avalonia.Controls.Grid.SetRow(content, 1);
-                                editorLayout.Children.Add(content);
-                                Avalonia.Controls.Grid.SetRow(footer, 2);
-                                editorLayout.Children.Add(footer);
-                                return editorLayout;
+                                    dialog.Cancel,
+                                    value => { mutation = value; dialog.Close(true); });
                             }, new Size(560, existing?.Name.Equals("PATH", StringComparison.OrdinalIgnoreCase) == true ? 480 : 330));
                             return mutation;
                         };
@@ -703,58 +558,4 @@ public sealed class SettingsWindow : ISettingsWindow
         {
             DataContext = new ConfirmDialogViewModel(message, result => dialog.Close(result), LocalizedText.Get("common.ok")),
         });
-}
-
-/// <summary>Owns the PATH edit dialog's list and current item so both controls stay in sync.</summary>
-internal sealed partial class EnvironmentPathEditor : ObservableObject
-{
-    public System.Collections.ObjectModel.ObservableCollection<EnvironmentPathEntry> Entries { get; }
-
-    [ObservableProperty] private EnvironmentPathEntry? _selectedEntry;
-
-    public bool HasSelection => SelectedEntry is not null;
-    public string JoinedValue => string.Join(_separator, Entries.Select(entry => entry.Value));
-    private readonly string _separator;
-
-    public EnvironmentPathEditor(string value, bool isPath, string separator)
-    {
-        _separator = separator;
-        Entries = new(isPath
-            ? value.Split(separator, StringSplitOptions.None).Select(entry => new EnvironmentPathEntry(entry))
-            : Array.Empty<EnvironmentPathEntry>());
-    }
-
-    partial void OnSelectedEntryChanged(EnvironmentPathEntry? value) => OnPropertyChanged(nameof(HasSelection));
-
-    public void Add()
-    {
-        var entry = new EnvironmentPathEntry("");
-        Entries.Add(entry);
-        SelectedEntry = entry;
-    }
-
-    public void RemoveSelected()
-    {
-        if (SelectedEntry is not { } entry) return;
-        var index = Entries.IndexOf(entry);
-        if (index < 0) return;
-        Entries.RemoveAt(index);
-        SelectedEntry = Entries.Count == 0 ? null : Entries[Math.Min(index, Entries.Count - 1)];
-    }
-
-    public void MoveSelected(int offset)
-    {
-        if (SelectedEntry is not { } entry) return;
-        var index = Entries.IndexOf(entry);
-        var destination = index + offset;
-        if (index < 0 || destination < 0 || destination >= Entries.Count) return;
-        Entries.Move(index, destination);
-        // ListBox may clear selection while processing the collection move.
-        SelectedEntry = entry;
-    }
-}
-
-internal sealed partial class EnvironmentPathEntry(string value) : ObservableObject
-{
-    [ObservableProperty] private string _value = value;
 }
