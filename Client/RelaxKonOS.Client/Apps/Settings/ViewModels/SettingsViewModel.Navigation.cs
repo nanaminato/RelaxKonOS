@@ -19,6 +19,8 @@ public sealed partial class SettingsViewModel
     private readonly SettingsNavigationHistory _navigationHistory = new();
     private bool _goingBack;
     internal bool IsRestoringNavigation => _goingBack;
+    bool RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.IsRestoringNavigation => IsRestoringNavigation;
+    string? RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation.SelectedPageRoute => SelectedPage?.Route;
     private bool _navigationDisposed;
 
     [ObservableProperty] private string _searchQuery = "";

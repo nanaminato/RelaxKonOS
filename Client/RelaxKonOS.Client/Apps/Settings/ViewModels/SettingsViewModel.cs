@@ -20,7 +20,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 /// 透传编辑 <see cref="ShellSettings"/>（即时反映到桌面外壳），并由 <see cref="Save"/> 触发防抖保存到服务端
 /// （<c>/workspaces/{id}/preferences</c>，与 TerminalSettings/BrowserSettings 同模式）。
 /// <see cref="InitializeAsync"/> 在窗口打开后调用一次：从服务端拉取偏好应用到 ShellSettings + 填充默认程序映射。</summary>
-public sealed partial class SettingsViewModel : ObservableObject, IDisposable
+public sealed partial class SettingsViewModel : ObservableObject, IDisposable, RelaxKonOS.App.Settings.Views.ISettingsNavigationPresentation
 {
     private readonly ShellSettings _settings;
     private readonly IWorkspaceSettingsService _client;
