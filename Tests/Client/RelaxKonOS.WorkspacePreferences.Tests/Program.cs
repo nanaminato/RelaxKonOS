@@ -247,8 +247,7 @@ static async Task Until(Func<bool> condition)
 sealed class SettingsWindowProbe : RelaxKonOS.App.Settings.ISettingsWindow
 {
     public string? Target { get; private set; }
-    public void Open(RelaxKonOS.AppSDK.AppContext context,
-        Func<RelaxKonOS.App.Settings.Views.ISettingsWorkspace, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
+    public void Open(Func<RelaxKonOS.App.Settings.Views.ISettingsWorkspace, RelaxKonOS.WindowManager.ManagedWindow> showWorkspace) =>
         Target = "window";
     public void Navigate(string route) => Target = route;
     public void OpenEnvironment() => Target = "environment dialog";

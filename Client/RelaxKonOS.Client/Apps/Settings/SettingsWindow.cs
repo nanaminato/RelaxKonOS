@@ -41,12 +41,13 @@ namespace RelaxKonOS.Client.Apps.Settings;
 /// 八个分类；用户偏好通过独立 Workspace 服务保存。用户偏好（壁纸/主题/时间格式/语言/区域/默认程序）
 /// 持久化到服务端 Workspace（<c>/workspaces/{id}/preferences</c>），多设备登录同一 Workspace 共享。
 /// SSH 桌面使用独立本地个性化存储，不访问服务端设置。</summary>
-public sealed class SettingsWindow : ISettingsWindow
+public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
 {
     private SettingsViewModel? _viewModel;
     private ManagedWindow? _window;
-    public void Open(AppContext context, Func<ISettingsWorkspace, ManagedWindow> showWorkspace)
+    public void Open(Func<ISettingsWorkspace, ManagedWindow> showWorkspace)
     {
+        var context = new AppContext(SettingsApp.Id, services.GetRequiredService<IWindowManager>(), services);
         var settings = context.Services.GetRequiredService<ShellSettings>();
         var session = context.Services.GetRequiredService<IAuthSession>();
         var settingsClient = context.Services.GetRequiredService<IWorkspaceSettingsService>();

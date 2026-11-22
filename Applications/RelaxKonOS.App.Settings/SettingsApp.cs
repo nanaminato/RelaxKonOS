@@ -9,7 +9,7 @@ namespace RelaxKonOS.App.Settings;
 
 public interface ISettingsWindow
 {
-    void Open(AppContext context, Func<ISettingsWorkspace, ManagedWindow> showWorkspace);
+    void Open(Func<ISettingsWorkspace, ManagedWindow> showWorkspace);
     void Navigate(string route);
     void OpenEnvironment();
     void OpenApplicationPermissions(string appId);
@@ -17,8 +17,10 @@ public interface ISettingsWindow
 
 public sealed class SettingsApp(ISettingsWindow window) : RemoteApplicationBase, IAppActivationHandler
 {
+    public static AppId Id { get; } = new("relaxkonos.settings");
+
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("relaxkonos.settings"),
+        Id: Id,
         DisplayName: "Settings",
         Version: "1.0.0",
         IconGlyph: "⚙️",
@@ -26,7 +28,7 @@ public sealed class SettingsApp(ISettingsWindow window) : RemoteApplicationBase,
         RequestedPermissions: [AppPermissions.DesktopWallpaperWrite, AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
-    public override void Activate(AppContext context) => window.Open(context, workspace =>
+    public override void Activate(AppContext context) => window.Open(workspace =>
     {
         var view = new SettingsWorkspaceView { DataContext = workspace };
         var managedWindow = context.ShowWindow(workspace.Labels("settings.title"), view,
