@@ -7,20 +7,24 @@ namespace RelaxKonOS.Server.Docker;
 /// <summary>One bounded collectible generation, shared by request and durable operation scopes.</summary>
 internal sealed class DockerComposeExecution
 {
+    internal const string AssemblyFile = "RelaxKonOS.ServerModule.Docker.dll";
+    internal const string EntryType = "RelaxKonOS.Server.Docker.DockerComposeExecutor";
     internal static DockerComposeExecution Shared { get; } = new(TimeSpan.FromSeconds(30));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
     private readonly List<WeakReference> generations = [];
     private readonly TimeSpan idleDelay;
+    private readonly Func<string> resolveEntry;
     private readonly Timer timer;
     private Generation? current;
     private int active;
     private long lastRelease;
     private bool recoveryRequired;
 
-    internal DockerComposeExecution(TimeSpan idleDelay)
+    internal DockerComposeExecution(TimeSpan idleDelay, Func<string>? resolveEntry = null)
     {
         this.idleDelay = idleDelay;
+        this.resolveEntry = resolveEntry ?? ResolveBundledPath;
         if (ExecutionContext.IsFlowSuppressed()) timer = CreateTimer();
         else
         {
@@ -48,7 +52,7 @@ internal sealed class DockerComposeExecution
             catch (Exception)
             {
                 if (active == 0) ScheduleRelease();
-                throw new InvalidDataException("Bundled Docker Compose execution could not be activated.");
+                throw new InvalidDataException("Docker Compose execution could not be activated.");
             }
         }
     }
@@ -58,25 +62,32 @@ internal sealed class DockerComposeExecution
         generations.RemoveAll(reference => !reference.IsAlive);
         if (generations.Count >= MaximumGenerations)
             throw new InvalidDataException("Docker Compose execution code collection is pending.");
-        var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Docker");
-        var path = Path.Combine(directory, "RelaxKonOS.ServerModule.Docker.dll");
-        if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
-            || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Bundled Docker Compose execution assembly is missing or linked.");
+        var path = resolveEntry();
 
         var context = new ExecutionLoadContext();
         var code = new WeakReference(context);
         generations.Add(code);
         try
         {
-            var executor = context.LoadFromAssemblyPath(path).GetType("RelaxKonOS.Server.Docker.DockerComposeExecutor", throwOnError: true)!;
+            using var stream = File.OpenRead(path);
+            var executor = context.LoadFromStream(stream).GetType(EntryType, throwOnError: true)!;
             return new Generation(context, executor, code);
         }
         catch (Exception)
         {
             context.Unload();
-            throw new InvalidDataException("Bundled Docker Compose execution could not be loaded.");
+            throw new InvalidDataException("Docker Compose execution could not be loaded.");
         }
+    }
+
+    private static string ResolveBundledPath()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Docker");
+        var path = Path.Combine(directory, AssemblyFile);
+        if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
+            || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("Bundled Docker Compose execution assembly is missing or linked.");
+        return path;
     }
 
     private void ScheduleRelease()

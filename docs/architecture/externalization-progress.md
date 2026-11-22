@@ -750,3 +750,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 驻留回归通过 Git 签名包 1.0.0 到 2.0.0 和回滚至 1.0.0 的真实仓库验收。分别新建 Core 应用宿主并复用原 SQLite 与工作树。2.0.0 识别原仓库登记和暂存文件并暂存第二个文件，回滚后 1.0.0 可读取两个暂存条目。原宿主清单正确显示更新待重启。验收使用同一测试进程内新建的宿主。
 - 模块商店、版本目录、下载和安装预览共用内置 ID 替换校验。桌面组件中心禁用被阻止条目的下载并显示中英日原因。Windows Release HTTP 回归通过，确认签名正确但缺少 Git 能力契约的版本在商店显示阻止、下载前拒绝、手动上传后仍无法生成计划，兼容版本安装与回滚照常。
 - 模块包回滚在更改已安装版本前核对已接受签名目录的全局撤销记录，覆盖发行 ID 和归档摘要。Windows Release HTTP 验收确认 Git 的历史版本摘要撤销后回滚被拒，现有版本仍为启动目标。
+- Docker Compose 执行程序集可作为官方签名 .rkmodule 安装并在 Core 请求作用域加载。现有 Engine 传输、权限检查、台账与启动调度继续由 Core 提供。Windows Release HTTP 回归验证两个签名版本的安装、更新和回滚，回滚后新建 Core 宿主成功调用已安装执行程序集解析 Compose。真实 Compose config 回归通过，Engine 写操作及 Docker Manager 其余实现的独立化待验或待迁移。

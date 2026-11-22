@@ -9,7 +9,10 @@ public sealed class DockerComposeService : IDockerComposeService, IDisposable
     private readonly DockerComposeExecution.Lease lease;
 
     public DockerComposeService(IHostEnvironment environment, IOptions<DockerComposeOptions> options)
-        : this(DockerComposePaths.ResolveDataDirectory(environment, options.Value.DataDirectory), DockerComposeExecution.Shared) { }
+        : this(environment, options, DockerComposeExecution.Shared) { }
+
+    internal DockerComposeService(IHostEnvironment environment, IOptions<DockerComposeOptions> options, DockerComposeExecution execution)
+        : this(DockerComposePaths.ResolveDataDirectory(environment, options.Value.DataDirectory), execution) { }
 
     internal DockerComposeService(string dataDirectory, DockerComposeExecution execution) => lease = execution.Acquire(dataDirectory);
 

@@ -1,5 +1,7 @@
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
+using Microsoft.Extensions.Options;
+using RelaxKonOS.Server.Docker;
 
 namespace RelaxKonOS.Server.Startup.Modules;
 
@@ -15,18 +17,20 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// <c>IDockerRuntimeInstaller</c>, <c>IDockerProxyResolver</c> and
 /// <c>IOutboundProxyHttpClientFactory</c>; this module only adds the management layer on top.
 /// </summary>
-internal sealed class DockerModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
+internal class DockerModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.DockerId;
     public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new RelaxKonOS.Server.Residency.ResidentModuleWorkRuntimeFactory(ServerModules.DockerId);
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Docker];
-    public IReadOnlyList<string> Requires => [];
+    public virtual IReadOnlyList<string> Requires => [];
+    private protected virtual DockerComposeExecution Execution => DockerComposeExecution.Shared;
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver,
             RelaxKonOS.Server.ImageMirrors.DockerImageMirrorResolver>();
-        builder.Services.AddScoped<RelaxKonOS.Server.Docker.IDockerComposeService, RelaxKonOS.Server.Docker.DockerComposeService>();
+        builder.Services.AddScoped<IDockerComposeService>(services => new DockerComposeService(
+            services.GetRequiredService<IHostEnvironment>(), services.GetRequiredService<IOptions<DockerComposeOptions>>(), Execution));
         // Compose stack operations are durable: the ledger outlives the HTTP request, the phone that
         // started it, and this process. The ledger itself is Core-owned (the deactivation gate reads it
         // while this module is disabled); the coordinator below is its only writer and reconciles an
@@ -84,7 +88,7 @@ internal sealed class DockerModule : IServerModule, IServerModuleDeactivationGua
                 .ToArray());
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         endpoints.MapDockerEndpoints();
         endpoints.MapDockerProxyEndpoints();

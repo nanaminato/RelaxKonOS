@@ -13,6 +13,7 @@ using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
 using RelaxKonOS.Server.Git;
 using RelaxKonOS.Server.Startup;
@@ -76,6 +77,7 @@ internal static class ModulePackageHttpChecks
             ModulePackageBuildResult[] tailscale = [];
             ModulePackageBuildResult[] firewall = [];
             ModulePackageBuildResult[] git = [];
+            ModulePackageBuildResult[] docker = [];
             ModulePackageBuildResult? incompatibleGit = null;
             if (!isolated)
             {
@@ -125,17 +127,33 @@ internal static class ModulePackageHttpChecks
                     { Version = "2.0.0", ReleaseId = "git-2.0.0-" + rid }, now)];
                 incompatibleGit = await ModulePackageBuilder.BuildAsync(gitOptions with
                 { Version = "3.0.0", ReleaseId = "git-3.0.0-" + rid, CapabilityContractVersions = null }, now);
+                var dockerOptions = tailscaleOptions with
+                {
+                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "Docker"),
+                    OutputDirectory = Path.Combine(root, "docker-package"),
+                    ModuleId = ServerModules.DockerId,
+                    ReleaseId = "docker-1.0.0-" + rid,
+                    EntryAssembly = DockerComposeExecution.AssemblyFile,
+                    EntryType = DockerComposeExecution.EntryType,
+                    Capabilities = [ServerCapabilities.Docker],
+                    Ui = new("Docker", "", "", null, "UNLICENSED"),
+                };
+                docker = [await ModulePackageBuilder.BuildAsync(dockerOptions, now),
+                    await ModulePackageBuilder.BuildAsync(dockerOptions with
+                    { Version = "2.0.0", ReleaseId = "docker-2.0.0-" + rid }, now)];
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
                     now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
-                        .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
+                        .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release),
+                        .. docker.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", dependent is null ? ["fixture-http"]
-                    : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale", ServerModules.FirewallId, ServerModules.GitId],
+                    : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale",
+                        ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -211,7 +229,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -430,6 +448,17 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledTailscaleModule>(client, root, tailscale, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledFirewallModule>(client, root, firewall, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
+                await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
+                var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                var dockerModules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.DockerId }, InstalledModuleCatalog.Load(root));
+                dockerModules.ConfigureServices(dockerHost, ServerModuleContext.Create(dockerHost.Configuration, dockerHost.Environment, "memory"));
+                await using (var composeHost = dockerHost.Build())
+                await using (var composeScope = composeHost.Services.CreateAsyncScope())
+                {
+                    var compose = composeScope.ServiceProvider.GetRequiredService<IDockerComposeService>();
+                    var preview = await compose.PreviewAsync(new("package-check", "services:\n  web:\n    image: nginx:alpine\n"));
+                    check(preview.Services.Single().Service == "web", "a fresh Core host parses a Compose preview using the restored signed execution package");
+                }
                 using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "2.0.0"), RelaxKonOSJsonOptions.Default);
                 selectSecond.EnsureSuccessStatusCode();
