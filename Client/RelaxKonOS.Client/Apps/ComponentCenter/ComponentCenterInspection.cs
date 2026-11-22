@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -9,8 +10,13 @@ using RelaxKonOS.Protocol.TaskOrchestration;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record ComponentInspectionStep(TaskStep Step)
+public sealed record ComponentInspectionStep(TaskStep Step) : IComponentInspectionStep
 {
+    string IComponentInspectionStep.Title => Title.Resolve();
+    string IComponentInspectionStep.State => State.Resolve();
+    string IComponentInspectionStep.Effects => Effects.Resolve();
+    string IComponentInspectionStep.Problems => Problems.Resolve();
+
     public LocalizedStatus Effects => Step.RequiredCapabilities.IsEmpty ? LocalizedStatus.Literal("")
         : LocalizedStatus.Key(TaskPlanJson.ReadInputs<RuntimeTaskFrozenChange>(Step.Inputs).Impact.DeletesBusinessData
             ? "component_center.change_deletes_data" : "component_center.change_preserves_data");

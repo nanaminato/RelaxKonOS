@@ -606,6 +606,9 @@ internal static class SettingsWindowChecks
             var taskLayout = taskHost?.Content as Control;
             Check(taskLayout?.GetType().Name == nameof(ComponentTaskDialogLayout) && taskLayout.GetType().Assembly == packageAssembly,
                 "The installed package must create the task window layout and draft controls.");
+            Check(taskLayout!.GetLogicalDescendants().Any(control =>
+                    control.GetType().Name == nameof(ComponentTaskPlanningView) && control.GetType().Assembly == packageAssembly),
+                "The installed package must create the workload, inspection and plan controls.");
             windows.Close(taskDialog);
             PumpUntil(() => taskWindow.IsCompleted && windows.Windows.Count == 1);
             taskWindow.GetAwaiter().GetResult();

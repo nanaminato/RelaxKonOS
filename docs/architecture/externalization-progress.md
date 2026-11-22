@@ -569,3 +569,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 长期授权对话框由已安装 .roapp 创建。列表通过 SDK 只传显示字段与授权 ID，宿主保留原始记录和确认凭据。Windows Release 模块管理与新归档隔离安装通过，并验证列表选择映射及归档不再包含 ModuleHost.Protocol。
 - Component Center 任务计划确认对话框由已安装 .roapp 创建。Windows Release 隔离安装验证对话框程序集来源、显式确认返回批准及关闭窗口返回未批准。测试未提交真实任务。
 - Component Center 任务窗口布局、草稿列表与底栏控件由已安装 .roapp 创建。宿主通过 SDK 提供草稿状态、操作命令和任务主体。Windows Release 三语双主题、短窗可达性和新归档隔离开窗验证通过。
+- Component Center 任务工作负载选择、检查结果和变更计划面板由已安装 .roapp 创建。Windows Release 三语双主题和新归档隔离安装通过，后者核对三个面板所属视图的程序集来源。

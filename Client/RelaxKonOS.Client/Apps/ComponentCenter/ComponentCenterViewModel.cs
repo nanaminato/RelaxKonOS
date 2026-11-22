@@ -22,8 +22,25 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft) : IComponent
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
 public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage,
-    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation, IComponentTaskDialogModel
+    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation, IComponentTaskDialogModel, IComponentTaskPlanning
 {
+
+    string IComponentTaskPlanning.Notice => Notice.Resolve();
+    string IComponentTaskPlanning.InspectionNotice => InspectionNotice.Resolve();
+    string IComponentTaskPlanning.ChangePlanNotice => ChangePlanNotice.Resolve();
+    ICommand IComponentTaskPlanning.AddTaskWorkloadCommand => AddTaskWorkloadCommand;
+    ICommand IComponentTaskPlanning.InspectCommand => InspectCommand;
+    ICommand IComponentTaskPlanning.ApproveTaskCommand => ApproveTaskCommand;
+    IEnumerable<IComponentTaskSelection> IComponentTaskPlanning.TaskWorkloads => TaskWorkloads;
+    IEnumerable<IComponentTaskSelection> IComponentTaskPlanning.BatchComponents => BatchComponents;
+    IEnumerable<IComponentInspectionStep> IComponentTaskPlanning.InspectionSteps => InspectionSteps;
+    IEnumerable<IComponentInspectionStep> IComponentTaskPlanning.ChangePlanSteps => ChangePlanSteps;
+    IComponentTaskSelection? IComponentTaskPlanning.TaskWorkload
+    {
+        get => TaskWorkload;
+        set => TaskWorkload = (ComponentTreeNode?)value;
+    }
+
     IEnumerable<IComponentTaskDraftRow> IComponentTaskDialogModel.Drafts => Drafts;
     string IComponentTaskDialogModel.DraftSummary => DraftSummary.Resolve();
     string IComponentTaskDialogModel.PersistenceNotice => PersistenceNotice.Resolve();

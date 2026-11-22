@@ -13,8 +13,9 @@ public sealed record ComponentCenterNavigationItem(ComponentCenterPage Page) : I
 }
 
 /// <summary>Selection aggregates local draft intents, independently of host installation status.</summary>
-public partial class ComponentTreeNode : ObservableObject, IComponentCenterTreeItem
+public partial class ComponentTreeNode : ObservableObject, IComponentCenterTreeItem, IComponentTaskSelection
 {
+    string IComponentTaskSelection.Label => Label.Resolve();
     string IComponentCenterTreeItem.Label => Label.Resolve();
     string IComponentCenterTreeItem.Status => Status.Resolve();
     string IComponentCenterTreeItem.Requirement => Requirement.Resolve();

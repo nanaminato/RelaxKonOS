@@ -1,0 +1,99 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
+ xmlns:converters="using:Avalonia.Data.Converters"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentTaskPlanningView" x:DataType="sdk:IComponentTaskPlanning">
+ <StackPanel Spacing="14">
+  <Border Classes="panel-card">
+   <StackPanel Spacing="12">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="section-title" Text="{local:Loc component_center.task_dialog.batch}" />
+     <TextBlock Classes="section-hint" Text="{local:Loc component_center.task_dialog.scope}" />
+    </StackPanel>
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+     <ComboBox ItemsSource="{Binding TaskWorkloads}" SelectedItem="{Binding TaskWorkload}" HorizontalAlignment="Stretch">
+      <ComboBox.ItemTemplate>
+       <DataTemplate x:DataType="sdk:IComponentTaskSelection">
+        <TextBlock Text="{Binding Label}" />
+       </DataTemplate>
+      </ComboBox.ItemTemplate>
+     </ComboBox>
+     <Button Grid.Column="1" Classes="ghost-action" Content="{local:Loc component_center.stage_workload}"
+             Command="{Binding AddTaskWorkloadCommand}" VerticalAlignment="Center" />
+    </Grid>
+    <TextBlock Classes="problem" Text="{Binding Notice}" IsVisible="{Binding Notice, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}" />
+    <ItemsControl ItemsSource="{Binding BatchComponents}" Classes="step-list">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="sdk:IComponentTaskSelection">
+       <Border Classes="step">
+        <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked, Mode=TwoWay}" IsEnabled="{Binding CanSelect}" />
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card" IsVisible="{Binding ShowInspection}">
+   <StackPanel Spacing="12">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+     <StackPanel Spacing="3">
+      <TextBlock Classes="section-title" Text="{local:Loc component_center.inspect_title}" />
+      <TextBlock Classes="section-hint" Text="{local:Loc component_center.inspect_hint}" />
+     </StackPanel>
+     <Button Grid.Column="1" Classes="ghost-action" Content="{local:Loc component_center.inspect}"
+             Command="{Binding InspectCommand}" IsEnabled="{Binding CanInspect}" VerticalAlignment="Center" />
+    </Grid>
+    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsInspecting}" />
+    <TextBlock Text="{Binding InspectionNotice}" TextWrapping="Wrap" FontSize="12"
+               IsVisible="{Binding InspectionNotice, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}" />
+    <ItemsControl ItemsSource="{Binding InspectionSteps}" Classes="step-list">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="sdk:IComponentInspectionStep">
+       <Border Classes="step">
+        <StackPanel Spacing="3">
+         <TextBlock Classes="step-title" Text="{Binding Title}" />
+         <TextBlock Text="{Binding State}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+         <TextBlock Text="{Binding Effects}" TextWrapping="Wrap" FontSize="12" />
+         <TextBlock Classes="problem" Text="{Binding Problems}" />
+        </StackPanel>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+  </Border>
+
+  <Border Classes="panel-card" IsVisible="{Binding ShowBatchPlanPanel}">
+   <StackPanel Spacing="12">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="section-title" Text="{local:Loc component_center.change_plan_title}" />
+     <TextBlock Classes="section-hint" Text="{local:Loc component_center.change_plan_hint}" />
+    </StackPanel>
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button Classes="primary" Content="{local:Loc component_center.change_plan_title}" Command="{Binding PlanDraftCommand}" IsEnabled="{Binding CanPlanDraft}" />
+     <Button Classes="ghost-action" Content="{local:Loc component_center.task_approve}" Command="{Binding ApproveTaskCommand}" IsEnabled="{Binding CanApproveTask}" />
+    </WrapPanel>
+    <TextBlock Text="{Binding ChangePlanNotice}" TextWrapping="Wrap" FontSize="12"
+               IsVisible="{Binding ChangePlanNotice, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}" />
+    <TextBlock Text="{Binding ChangePlanDigest}" TextWrapping="Wrap" Classes="mono" FontSize="11"
+               Foreground="{DynamicResource TextTertiaryBrush}" />
+    <ItemsControl ItemsSource="{Binding ChangePlanSteps}" Classes="step-list">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="sdk:IComponentInspectionStep">
+       <Border Classes="step">
+        <StackPanel Spacing="3">
+         <TextBlock Classes="step-title" Text="{Binding Title}" />
+         <TextBlock Text="{Binding State}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+         <TextBlock Text="{Binding Effects}" TextWrapping="Wrap" FontSize="12" />
+         <TextBlock Classes="problem" Text="{Binding Problems}" />
+        </StackPanel>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+  </Border>
+ </StackPanel>
+</UserControl>
