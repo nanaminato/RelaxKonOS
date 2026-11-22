@@ -276,6 +276,10 @@ internal static class JointDeploymentAcceptance
             var buffer = new byte[payload.Length];
             await received.GetStream().ReadExactlyAsync(buffer, timeout.Token);
             Require(buffer.AsSpan().SequenceEqual(payload), "real frpc and frps forward the exact payload to the loopback backend");
+            await received.GetStream().WriteAsync(buffer, timeout.Token);
+            Array.Clear(buffer);
+            await forwarded.GetStream().ReadExactlyAsync(buffer, timeout.Token);
+            Require(buffer.AsSpan().SequenceEqual(payload), "the loopback backend reply returns through the same FRP connection");
         }
         finally
         {
@@ -283,6 +287,18 @@ internal static class JointDeploymentAcceptance
             stopped.EnsureSuccessStatusCode();
             var result = await stopped.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RelaxKonOSJsonOptions.Default);
             Require(result is { Succeeded: true, State: TunnelConnectionState.Disconnected }, "Core stops the external FRP session");
+        }
+        using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            using var probe = new System.Net.Sockets.TcpClient();
+            try { await probe.ConnectAsync(System.Net.IPAddress.Loopback, remotePort, stopTimeout.Token); }
+            catch (System.Net.Sockets.SocketException error) when (error.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused)
+            {
+                Console.WriteLine("PASS: stopping the external session releases the frps proxy listener");
+                break;
+            }
+            await Task.Delay(100, stopTimeout.Token);
         }
     }
 
