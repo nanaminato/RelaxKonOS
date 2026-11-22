@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />
+    <EmbeddedResource Include="Localization/*.json" LogicalName="Settings.Localization.%(Filename).json" />
   </ItemGroup>
 </Project>

@@ -21,7 +21,7 @@ notepad = repo / "Applications" / "RelaxKonOS.App.Notepad"
 ssh_files = repo / "Applications" / "RelaxKonOS.App.SshFiles"
 # LocalizationService merges these embedded resource sets. The Proxy Server and
 # Databases shared sets are linked into the host's published Localization directory.
-host_embedded_apps = ("CodeEditor", "Git", "FileServices", "Certificates", "WebServers", "Terminal")
+host_embedded_apps = ("CodeEditor", "Git", "FileServices", "Certificates", "WebServers", "Terminal", "Settings")
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.
 valid_key = re.compile(r"[a-z][a-z0-9-]*(?:[._][A-Za-z0-9-]+)*$")
