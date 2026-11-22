@@ -77,11 +77,12 @@ internal static class RoappCatalogChecks
         try
         {
             await PublishAsync("1.0.0");
-            var auth = DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>();
-            var actor = (TailscaleScopeAuthFixture)(object)auth;
-            var files = DispatchProxy.Create<IExplorerClient, RecoveryArchiveTransport>();
-            var transport = (RecoveryArchiveTransport)(object)files;
-            transport.Bytes = await File.ReadAllBytesAsync(packagePath);
+            var auth = DispatchProxy.Create<IAuthSession, RecoveryArchiveAuth>();
+            var actor = (RecoveryArchiveAuth)(object)auth;
+            var transport = new RecoveryArchiveTransport { Bytes = await File.ReadAllBytesAsync(packagePath) };
+            var dispatch = new RecoveryDispatchHandler { InnerHandler = new AuthenticatedHttpHandler(auth) { InnerHandler = transport } };
+            using var archiveHttp = new HttpClient(dispatch);
+            var files = new ExplorerClient(archiveHttp, auth, new UsageMemoryStore(Path.Combine(root, "archive-memory.json")));
             var serverInstaller = new AppPackageInstallerService(packages, files, catalogSources, auth);
             var serverJournalPath = Path.Combine(root, "server-archive-recovery");
             var serverJournal = new FileDeploymentJournal(serverJournalPath);
@@ -112,6 +113,14 @@ internal static class RoappCatalogChecks
             transport.Bytes = [.. transport.Bytes, 0];
             Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 3,
                 "A server archive whose bytes changed must not enter the recovery queue.");
+            actor.DuringTokenRefresh = () => actor.ServiceId = "http://another-fixture.invalid";
+            Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 3,
+                "A login switch during token lookup must not send an archive request.");
+            actor.DuringTokenRefresh = null;
+            actor.ServiceId = reviewedServer;
+            dispatch.BeforeAuthentication = () => actor.ServiceId = "http://another-fixture.invalid";
+            Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 3,
+                "A login switch between URI construction and authentication must not send an archive request.");
             var plan = await provider.PlanAsync(source, id);
             using (var review = new AppInstallerViewModel(installer) { AllowPackageSelection = false })
             {
@@ -258,17 +267,49 @@ internal static class RoappCatalogChecks
         }
     }
     internal sealed class Diagnostics : IAppActivationDiagnostics { public void Record(string message) { } }
-    public class RecoveryArchiveTransport : DispatchProxy
+    public class RecoveryArchiveAuth : TailscaleScopeAuthFixture
+    {
+        public Action? DuringTokenRefresh { get; set; }
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method?.Name != nameof(IAuthSession.GetAccessTokenAsync)) return base.Invoke(method, args);
+            DuringTokenRefresh?.Invoke();
+            return Task.FromResult<string?>("fixture-access-token");
+        }
+    }
+
+    private sealed class RecoveryArchiveTransport : HttpMessageHandler
     {
         public byte[] Bytes { get; set; } = [];
         public int Downloads { get; private set; }
 
-        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (method?.Name != nameof(IExplorerClient.DownloadAsync) || args?[0] is not "/archives/example.roapp")
-                throw new NotSupportedException(method?.Name);
+            cancellationToken.ThrowIfCancellationRequested();
+            Check(request.Method == HttpMethod.Get && request.RequestUri is { } uri
+                && uri.GetLeftPart(UriPartial.Authority) == "http://fixture.invalid"
+                && uri.AbsolutePath == RelaxKonOS.Protocol.Files.FileApiRoutes.Download
+                && Uri.UnescapeDataString(uri.Query) == "?path=/archives/example.roapp"
+                && request.Headers.Authorization is { Scheme: "Bearer", Parameter: "fixture-access-token" },
+                "Server archive recovery must use the authenticated file download route for the recorded server and file.");
             Downloads++;
-            return Task.FromResult<(Stream Stream, string FileName)?>((new MemoryStream(Bytes, writable: false), "example.roapp"));
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new ByteArrayContent(Bytes),
+            });
+        }
+    }
+
+    private sealed class RecoveryDispatchHandler : DelegatingHandler
+    {
+        public Action? BeforeAuthentication { get; set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            BeforeAuthentication?.Invoke();
+            return base.SendAsync(request, cancellationToken);
         }
     }
     internal sealed class Permissions : IAppPermissionManager

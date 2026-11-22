@@ -253,8 +253,9 @@ public sealed partial class ExplorerClient : IExplorerClient, IArchiveClient, IE
         (string Key, string? Value)? query = null, object? body = null, CancellationToken ct = default,
         HttpCompletionOption completion = HttpCompletionOption.ResponseContentRead)
     {
-        var serverUrl = RequireSession();
-        using var req = new HttpRequestMessage(method, BuildUri(serverUrl, route, query));
+        using var req = new HttpRequestMessage(method, (Uri?)null);
+        AuthenticatedHttpHandler.BindLogin(req, _session);
+        req.RequestUri = BuildUri(RequireSession(), route, query);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.Tokens!.AccessToken);
         if (body is not null)
             req.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
