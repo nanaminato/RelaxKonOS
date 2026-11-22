@@ -1636,5 +1636,3 @@ public sealed record ServerInstallationOptions(
     IReadOnlyList<string>? FileRoots = null, ServerFileAccessScope? AdministratorFileAccess = null,
     IReadOnlyList<string>? AdministratorFileRoots = null, ServerFileAccessScope? RootFileAccess = null,
     IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false, bool AddFirewallRule = false, bool GuardianEnabled = true);
-
-public sealed record ServerRollbackReview(string Host, string CurrentVersion, string PreviousVersion);

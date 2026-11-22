@@ -107,7 +107,8 @@ internal static class SettingsWindowChecks
         serverCenterLifetime.Cancel();
         try
         {
-            serverCenter!.Open(_ => throw new Exception("A retired Server Center package opened a window."));
+            serverCenter!.Open(_ => throw new Exception("A retired Server Center package opened a window."),
+                (_, _, _) => throw new Exception("A retired Server Center package opened a dialog."));
             throw new Exception("A retired Server Center package retained its workspace.");
         }
         catch (OperationCanceledException) { }
@@ -652,6 +653,15 @@ internal static class SettingsWindowChecks
             Check(deployment.GetType().Name == "ServerCenterDeploymentPage" && deployment.GetType().Assembly == workspace.GetType().Assembly
                 && ReferenceEquals(deployment.FindControl<ComboBox>("DeploymentHosts")!.ItemsSource, model.Hosts),
                 "The package must own the deployment page and use the host inventory.");
+            var rollbackResult = model.ConfirmRollbackAsync!(new ServerRollbackReview("fixture.example", "2.0.0", "1.0.0"));
+            PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
+            var rollbackWindow = windows.Windows.Single(item => item.IsModalDialog);
+            var rollback = (UserControl)rollbackWindow.View.Content!;
+            Check(rollback.GetType().Name == "ServerRollbackConfirmationView" && rollback.GetType().Assembly == workspace.GetType().Assembly,
+                "The package must own its rollback confirmation view.");
+            rollback.FindControl<Button>("CancelButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            PumpUntil(() => rollbackResult.IsCompleted && !windows.Windows.Contains(rollbackWindow));
+            Check(!rollbackResult.GetAwaiter().GetResult(), "Canceling rollback approved the operation.");
             var wizardResult = model.ShowInstallationWizardAsync!();
             PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
             var wizardWindow = windows.Windows.Single(item => item.IsModalDialog);

@@ -3,6 +3,7 @@ using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Apps.ProcessGuardian;
 using RelaxKonOS.Protocol.ProcessGuardian;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
@@ -380,10 +381,11 @@ public sealed class ExternalAppContextFactory
     private sealed class ServerCenterPackageWorkspace(IServerCenterPackageWorkspace workspace, CancellationToken lifetime)
         : IServerCenterPackageWorkspace
     {
-        public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow)
+        public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
+            Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation)
         {
             lifetime.ThrowIfCancellationRequested();
-            workspace.Open(showWindow);
+            workspace.Open(showWindow, createRollbackConfirmation);
         }
     }
 

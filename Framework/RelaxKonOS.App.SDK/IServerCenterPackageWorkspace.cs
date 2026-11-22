@@ -1,6 +1,8 @@
 using System.Collections;
 using System.ComponentModel;
 using System.Windows.Input;
+using Avalonia.Controls;
+using Avalonia.Data;
 using RelaxKonOS.UI;
 using RelaxKonOS.WindowManager;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -9,7 +11,8 @@ namespace RelaxKonOS.AppSDK;
 
 public interface IServerCenterPackageWorkspace
 {
-    void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow);
+    void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
+        Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation);
 }
 
 public interface IServerCenterPackageContext
@@ -153,3 +156,5 @@ public interface IServerCenterDeploymentPresentation : INotifyPropertyChanged
     Task EnsureSelectedHostPlatformAsync(CancellationToken cancellationToken = default);
     Task ShowManagementSectionAsync(string section);
 }
+
+public sealed record ServerRollbackReview(string Host, string CurrentVersion, string PreviousVersion);

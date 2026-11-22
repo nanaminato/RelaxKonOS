@@ -1,6 +1,7 @@
 using RelaxKonOS.App.SshFiles.Views;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
@@ -16,7 +17,8 @@ namespace RelaxKonOS.Client.Apps.ServerCenter;
 internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWindowManager windowManager)
     : IServerCenterPackageWorkspace
 {
-    public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow)
+    public void Open(Func<IServerCenterWorkspacePresentation, ManagedWindow> showWindow,
+        Func<ServerRollbackReview, ModalDialog<bool>, Func<string, Binding>, Control> createRollbackConfirmation)
     {
         var sshSession = services.GetRequiredService<SshDesktopSession>();
         var language = services.GetRequiredService<ISystemLanguage>();
@@ -24,7 +26,9 @@ internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWind
         var viewModel = services.GetRequiredService<ServerCenterViewModel>();
         var window = showWindow(viewModel);
         viewModel.ConfirmRollbackAsync = review => windowManager.ShowDialogAsync<bool>(window, viewModel.RollbackText,
-            dialog => new ServerRollbackConfirmationView(review, dialog), new Size(560, 420));
+            dialog => createRollbackConfirmation(review, dialog,
+                key => (Binding)new RelaxKonOS.Client.Localization.LocExtension(key).ProvideValue(null!)),
+            new Size(560, 420));
         viewModel.ShowManagementDialogAsync = async section =>
         {
             // Opening the dialog runs after the page probed the host over SSH, which takes a

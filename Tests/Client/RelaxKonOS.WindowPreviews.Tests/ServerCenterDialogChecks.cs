@@ -14,6 +14,8 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.WindowManager;
 using RelaxKonOS.UI;
+using RelaxKonOS.App.ServerCenter.Views;
+using Avalonia.Data;
 using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class ServerCenterDialogChecks
@@ -103,7 +105,8 @@ internal static class ServerCenterDialogChecks
                 new RelaxKonOS.Core.Primitives.Rect(0, 0, 800, 600)));
             ServerRollbackConfirmationView? view = null;
             var result = manager.ShowDialogAsync<bool>(owner, "Restore previous version", dialog =>
-                view = new ServerRollbackConfirmationView(new("192.168.1.7:22", "0.1.0-dev20261014-05", "0.1.0-dev20261012-03"), dialog),
+                view = new ServerRollbackConfirmationView(new("192.168.1.7:22", "0.1.0-dev20261014-05", "0.1.0-dev20261012-03"), dialog,
+                    key => (Binding)new RelaxKonOS.Client.Localization.LocExtension(key).ProvideValue(null!)),
                 new RelaxKonOS.Core.Primitives.Size(560, 420));
             Dispatcher.UIThread.RunJobs();
             var values = view!.GetVisualDescendants().OfType<SelectableTextBlock>().Select(text => text.Text).ToArray();
