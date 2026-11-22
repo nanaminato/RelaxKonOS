@@ -229,6 +229,11 @@ internal static class JointDeploymentAcceptance
             {
                 var manifest = applications.GetManifest(new AppId(AppIdText))!;
                 Require(await readiness.RefreshAsync(manifest) is { CanOpen: true }, "a healthy module satisfies launch readiness");
+                factory.HideEffectiveVersion = true;
+                Require(await readiness.RefreshAsync(manifest) is
+                    { CanOpen: false, State: ComponentAvailabilityKind.Unknown, ComponentId: ModuleId },
+                    "an installed independent module without a running version blocks launch without reporting it missing");
+                factory.HideEffectiveVersion = false;
                 var moduleCatalog = new ModuleDeploymentCatalog(new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth));
                 var healthy = await moduleCatalog.ReadAsync(default);
                 factory.FaultedModule = ModuleId;
@@ -527,6 +532,7 @@ internal static class JointDeploymentAcceptance
         public int Requests => handler.Requests;
         public bool SubstituteReceiptRelease { get => handler.SubstituteReceiptRelease; set => handler.SubstituteReceiptRelease = value; }
         public bool SubstituteHealthVersion { get => handler.SubstituteHealthVersion; set => handler.SubstituteHealthVersion = value; }
+        public bool HideEffectiveVersion { get => handler.HideEffectiveVersion; set => handler.HideEffectiveVersion = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
         public Task HoldNextEnableApply()
@@ -553,6 +559,7 @@ internal static class JointDeploymentAcceptance
         public bool DropEnableResponse { get; set; }
         public bool SubstituteReceiptRelease { get; set; }
         public bool SubstituteHealthVersion { get; set; }
+        public bool HideEffectiveVersion { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
@@ -589,15 +596,17 @@ internal static class JointDeploymentAcceptance
                     Content = JsonContent.Create(receipt! with { ReleaseId = "other-release" }, options: RelaxKonOSJsonOptions.Default),
                 };
             }
-            if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules && FaultedModule is { } faulted)
+            if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules
+                && (FaultedModule is not null || HideEffectiveVersion))
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
                 var modules = await response.Content.ReadFromJsonAsync<ServerModuleDto[]>(RelaxKonOSJsonOptions.Default, cancellationToken);
                 return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(modules!.Select(module => module.Id == faulted
+                    Content = JsonContent.Create(modules!.Select(module => module.Id == FaultedModule
                         ? module with { Residency = new("faulted", false, "KeepLoaded", 0, 0, null, null, null, "fixture", null) }
+                        : HideEffectiveVersion && module.Id == ModuleId ? module with { EffectiveVersion = null }
                         : module).ToArray(), options: RelaxKonOSJsonOptions.Default),
                 };
             }

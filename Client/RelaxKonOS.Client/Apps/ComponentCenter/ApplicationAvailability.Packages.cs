@@ -66,8 +66,15 @@ public sealed partial class ApplicationAvailabilityService
                         item.Module.Capabilities.Distinct(StringComparer.Ordinal)
                             .ToImmutableDictionary(capability => capability, _ => "", StringComparer.Ordinal)))), []);
                 if (result.ProblemPackage is { Kind: DeploymentPackageKind.ServerModule } unavailable
-                    && modules.Any(module => module.Id == unavailable.Id && ModuleDeploymentCatalog.RequiresRecovery(module)))
-                    serverFailure = ComponentAvailabilityKind.Recovery;
+                    && modules.SingleOrDefault(module => module.Id == unavailable.Id) is { } dependency)
+                {
+                    if (ModuleDeploymentCatalog.RequiresRecovery(dependency))
+                        serverFailure = ComponentAvailabilityKind.Recovery;
+                    else if (dependency.PendingOperationId is not null || dependency.RestartRequired)
+                        serverFailure = ComponentAvailabilityKind.Busy;
+                    else if (dependency is { Packaging: "independent", EffectiveEnabled: true, EffectiveVersion: null })
+                        serverFailure = ComponentAvailabilityKind.Unknown;
+                }
             }
             catch (Exception error) when (error is InvalidOperationException or InvalidDataException or HttpRequestException
                 or OperationCanceledException or System.Text.Json.JsonException)
