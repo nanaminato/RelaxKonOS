@@ -1,4 +1,6 @@
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.GatewayProxy;
+using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.Tailscale;
 using System.IO.Compression;
@@ -409,27 +411,39 @@ internal static class JointDeploymentAcceptance
     {
         var serverRoot = Path.Combine(root, "server");
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
-        builder.Services.AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>();
-        builder.Services.AddSingleton<IProxyPlatformPaths, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths>();
+        var helper = new SquidPublicationHelper();
+        builder.Services.AddSingleton<IPrivilegedOperationTransport>(helper);
+        builder.Services.AddSingleton<IProxyPlatformPaths>(new SquidPublicationPaths(Path.Combine(root, "squid")));
         var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }, InstalledModuleCatalog.Load(serverRoot));
         modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
         await using var host = builder.Build();
         var execution = host.Services.GetRequiredService<ProxyConnectionExecutionGate>();
         await using var squidScope = host.Services.CreateAsyncScope();
-        var squid = squidScope.ServiceProvider.GetRequiredService<RelaxKonOS.Server.GatewayProxy.SquidGatewayService>();
-        using var squidCode = squid.ReceiptExecution.Acquire();
-        var verifier = squidCode.Create<ISquidPublicationReceiptVerifier>(
-            RelaxKonOS.Server.GatewayProxy.SquidGatewayService.ReceiptVerifierEntryType);
-        const string renderedConfiguration = "test fixture\n";
+        var squid = squidScope.ServiceProvider.GetRequiredService<SquidGatewayService>();
+        var store = squidScope.ServiceProvider.GetRequiredService<SquidConfigurationStore>();
+        var configuration = new SquidConfiguration();
+        var renderedConfiguration = SquidConfigurationRenderer.Preview(configuration).Configuration!;
         var configurationDigest = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(renderedConfiguration)));
         var operationId = Guid.NewGuid();
-        var previousDigest = new string('a', 64);
-        Require(!ReferenceEquals(squid.ReceiptExecution, RelaxKonOS.Server.GatewayProxy.SquidGatewayService.BundledReceiptExecution)
-            && verifier.Matches(operationId, renderedConfiguration, operationId, configurationDigest, configurationDigest, true)
-            && verifier.Matches(operationId, renderedConfiguration, operationId, configurationDigest, previousDigest, false)
-            && !verifier.Matches(operationId, renderedConfiguration, operationId, configurationDigest, previousDigest, true)
-            && !verifier.Matches(operationId, renderedConfiguration, Guid.NewGuid(), configurationDigest, configurationDigest, true),
-            "the joint-installed signed Proxy package verifies Squid publication receipts");
+        var receipt = new SquidPublicationReceipt(operationId, configurationDigest, configurationDigest, true);
+        helper.Receipt = receipt with { ObservedHash = new string('a', 64) };
+        Require(!ReferenceEquals(squid.ReceiptExecution, SquidGatewayService.BundledReceiptExecution)
+            && await squid.ApplyAsync(operationId, new(configuration), _ => Task.CompletedTask, default) == "squid.recovery.required"
+            && await store.ReadAsync(default) is { DesiredRevision: 1, PublishedRevision: null, LastProblemCode: "squid.publication.unconfirmed" },
+            "the signed Squid executor leaves an inconsistent publication unconfirmed");
+        helper.Receipt = receipt with { OperationId = Guid.NewGuid() };
+        Require(await squid.RecoverPublicationAsync(operationId, default) is null,
+            "the signed Squid executor rejects a recovery receipt for another operation");
+        helper.Receipt = receipt;
+        Require(await squid.RecoverPublicationAsync(operationId, default) == receipt
+            && await store.ReadAsync(default) is { DesiredRevision: 1, PublishedRevision: 1, LastProblemCode: null } confirmed
+            && confirmed.PublishedConfigurationHash == configurationDigest,
+            "the signed Squid executor confirms the persisted revision only with the original receipt");
+        var rollbackId = Guid.NewGuid();
+        helper.Receipt = receipt with { OperationId = rollbackId, Applied = false };
+        Require(await squid.ApplyAsync(rollbackId, new(configuration), _ => Task.CompletedTask, default) == SquidGatewayService.RolledBack
+            && await store.ReadAsync(default) is { DesiredRevision: 2, PublishedRevision: 1, LastProblemCode: SquidGatewayService.RolledBack },
+            "a verified rollback keeps the last published Squid revision");
         using var overview = execution.AcquireOverview();
         var reads = new ProxyOverviewReads(_ => Task.CompletedTask, _ => Task.FromResult(false), _ => Task.FromResult<bool?>(true),
             _ => throw new InvalidOperationException("Runtime observation must take precedence."), _ => Task.FromResult(true), _ => Task.FromResult(3));
@@ -1911,6 +1925,29 @@ internal static class JointDeploymentAcceptance
         }
 
         private readonly byte[] responseBody = body;
+    }
+
+    private sealed class SquidPublicationHelper : IPrivilegedOperationTransport
+    {
+        public SquidPublicationReceipt? Receipt { get; set; }
+
+        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.Operation is not (PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidConfigurationReceipt))
+                throw new InvalidOperationException($"Unexpected Squid fixture request: {request.Operation}");
+            var rolledBack = request.Operation == PrivilegedOperationKind.SquidApplyConfiguration && Receipt is { Applied: false };
+            return Task.FromResult(new PrivilegedOperationResult(!rolledBack,
+                Error: rolledBack ? SquidGatewayService.RolledBack : null, SquidPublicationReceipt: Receipt));
+        }
+    }
+
+    private sealed class SquidPublicationPaths(string stateDirectory) : IProxyPlatformPaths
+    {
+        public string GetStateDirectory() => stateDirectory;
+        public string GetEngineVersionsDirectory(string engineId) => throw new NotSupportedException();
+        public string GetEngineDataDirectory(string engineId) => throw new NotSupportedException();
+        public string GetProtectedConfigurationDirectory() => throw new NotSupportedException();
+        public string GetSanitizedLogDirectory() => throw new NotSupportedException();
     }
 
     private sealed class TailscaleReadHelper : IPrivilegedOperationTransport
