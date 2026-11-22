@@ -458,3 +458,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows Release 隔离双包验收覆盖本地依赖变更后的完整重新审阅。补装本地依赖后为同一归档创建新计划，复用已健康的签名模块并完成桌面登记。模块包回执总数仍为一，重开台账时旧计划不再进入恢复队列。
 - Linux x64 在无外网容器运行当前 Release 可移植测试程序集，使用 Welcome 官方归档与运行时签名的 Linux `.rkmodule` 完成联合安装与恢复。Databases、Web Server Manager 和 Docker Manager 官方归档通过仅启用、重启、模块复用及卸载检查。数据库停用保护使用空闲状态 Helper 夹具。独立 Databases 发行包与客户端的联合安装、图形运行和实际业务引擎另待验收。
 - Linux x64 WSL 使用 .NET 10.0.14 和当前 Release 可移植桌面测试程序集，执行发行包三配置无头验收。Minimal、默认 Standard、Developer 分别登记 0、9、10 个离线官方包，均保留内置恢复入口。SSH Files 发行包通过来源、完整性、更新、安装失败保留、重启发现和卸载检查。该轮复用桌面发行中的归档，未运行 Linux 原生窗口或真实 SFTP。
+- Linux x64 原生图形冒烟通过。专用 WSL 使用临时解包的 Ubuntu X11 依赖和隔离的用户目录，经 Linux .NET 10.0.14 启动当前 Release Desktop 可移植入口 `RelaxKonOS.dll --installation-profile=minimal`。`xwininfo` 识别到新增的 RelaxKonOS 1920×1007 窗口，并确认 `Map State: IsViewable`。测试在观察后终止所启动进程，未检查桌面交互或正常关闭。
