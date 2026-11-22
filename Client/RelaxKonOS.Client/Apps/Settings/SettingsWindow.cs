@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.App.Settings;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.App.Settings.Views;
@@ -241,7 +242,7 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
         systemPage.RequestServerModules = () =>
         {
             if (session.State == AuthSessionState.Authenticated && session.ServiceId is { } host)
-                context.Activations.Activate(RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterNavigation.ServerModules(host));
+                ComponentCenterEntry.OpenManagement(ComponentCenterNavigation.ServerModules(host), uri => context.Activations.Activate(uri));
         };
         systemPage.RequestServerHttpsAsync = async () =>
         {

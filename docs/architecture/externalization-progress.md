@@ -548,3 +548,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 切换至官方发行目录并移除内置注册。Windows Release 核对 27 个官方归档，使用新版组件中心和既有 26 个归档的隔离发行目录验证 Standard 与 Developer 预装，以及 Minimal 离线安装和同版本修复。包实际开窗及主机操作仍待验收。
 - 删除 Component Center 旧内置入口。Windows Release 隔离安装实际归档，验证包打开归属正确的窗口、第二条深链接复用窗口，以及带操作参数的路由在宿主拒绝。测试使用工作区替身，生产宿主业务启动仍待验收。
 - Windows Release 组件中心包专项改用生产 ComponentCenterHostWorkspace 和隔离会话。安装后验证包窗口归属、更新与已安装页面深链接及窗口复用。未连接真实服务端或执行组件变更。
+- 业务依赖管理、兼容性提示和 Settings 模块入口在组件中心路由缺失时打开 App Installer。已存在但不可用的路由保留原结果。Windows Release 组件导航与观察器专项通过；Installation.Tests 全量在后续 TaskPreviewClientChecks 的观察者展示断言失败，未计入验收。

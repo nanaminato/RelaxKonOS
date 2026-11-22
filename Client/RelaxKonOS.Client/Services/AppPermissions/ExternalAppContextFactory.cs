@@ -407,8 +407,8 @@ public sealed class ExternalAppContextFactory
             if (!connection.IsCurrent || connection.Session.ServiceId is not { } host
                 || ComponentCatalog.LaunchGate(appId.Value)?.ComponentIds.Contains(componentId) is not true)
                 return false;
-            new ExternalAppActivation(appId, activations).Activate(ComponentCenterNavigation.Component(host, appId.Value, componentId));
-            return true;
+            return ComponentCenterEntry.OpenManagement(ComponentCenterNavigation.Component(host, appId.Value, componentId),
+                uri => activations.Activate(new AppActivationRequest(uri, appId))).IsAccepted;
         }
 
         public Avalonia.Controls.Control? CreateSettingsView(IExternalAppWindowHandle owner)

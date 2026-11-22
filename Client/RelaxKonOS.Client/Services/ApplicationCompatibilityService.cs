@@ -112,7 +112,8 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
             manage.Click += (_, _) =>
             {
                 if (_session.State == AuthSessionState.Authenticated && _session.ServiceId == host && ReferenceEquals(login, _session.CurrentSession))
-                    _activations.Activate(new AppActivationRequest(ComponentCenterNavigation.ServerModules(host, moduleId), SystemAppId));
+                    ComponentCenterEntry.OpenManagement(ComponentCenterNavigation.ServerModules(host, moduleId),
+                        uri => _activations.Activate(new AppActivationRequest(uri, SystemAppId)));
             };
             content.Children.Add(manage);
         }

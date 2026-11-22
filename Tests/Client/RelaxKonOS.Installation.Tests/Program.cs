@@ -120,6 +120,23 @@ Check(FormatInstallationProblem("elevation-password-invalid") == LocalizedText.G
 if (args.Contains("--installation-elevation-only")) return;
 
 var componentLink = ComponentCenterNavigation.Component("https://host.example/", "relaxkonos.proxy-server", "sing-box");
+var managementAttempts = new List<Uri>();
+var recoveredRoute = ComponentCenterEntry.OpenManagement(componentLink, uri =>
+{
+    managementAttempts.Add(uri);
+    return new(uri == componentLink ? AppActivationStatus.RouteNotFound : AppActivationStatus.Activated);
+});
+Check(recoveredRoute.IsAccepted && managementAttempts.SequenceEqual(
+    [componentLink, new Uri("relaxkonos://applications/relaxkonos.appinstaller")]),
+    "Missing Component Center opens the built-in recovery app.");
+managementAttempts.Clear();
+var blockedRoute = ComponentCenterEntry.OpenManagement(componentLink, uri =>
+{
+    managementAttempts.Add(uri);
+    return new(AppActivationStatus.Unavailable);
+});
+Check(!blockedRoute.IsAccepted && managementAttempts.SequenceEqual([componentLink]),
+    "An unavailable Component Center does not reroute an existing activation.");
 Check(ComponentCenterNavigation.TryParse(componentLink, out var linkTarget)
     && linkTarget is { HostId: "https://host.example/", AppId: "relaxkonos.proxy-server", ComponentId: "sing-box" },
     "Component links preserve the stable target host and a catalog-controlled return application");

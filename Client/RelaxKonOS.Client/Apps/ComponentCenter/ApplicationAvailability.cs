@@ -92,7 +92,8 @@ public sealed partial class ApplicationAvailabilityService : IApplicationLaunchG
                     if (dependency.PackageKind == DeploymentPackageKind.ServerModule)
                     {
                         if (server is not null)
-                            context.Activations.Activate(ComponentCenterNavigation.ServerModules(server, dependency.ComponentId));
+                            ComponentCenterEntry.OpenManagement(ComponentCenterNavigation.ServerModules(server, dependency.ComponentId),
+                                uri => context.Activations.Activate(uri));
                     }
                     else
                         services.GetService<RelaxKonOS.Runtime.ApplicationManager>()?.Launch(new AppId("relaxkonos.appinstaller"));
@@ -107,8 +108,9 @@ public sealed partial class ApplicationAvailabilityService : IApplicationLaunchG
         var openCenter = await ui.ShowAsync(result);
         if (openCenter && Current() && result.State is ComponentAvailabilityKind.Missing or ComponentAvailabilityKind.External
             or ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy)
-            context.Activations.Activate(ComponentCenterNavigation.Component(server!, context.AppId.Value, result.ComponentId,
-                result.State is ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy ? ComponentCenterPage.Tasks : ComponentCenterPage.All));
+            ComponentCenterEntry.OpenManagement(ComponentCenterNavigation.Component(server!, context.AppId.Value, result.ComponentId,
+                result.State is ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy ? ComponentCenterPage.Tasks : ComponentCenterPage.All),
+                uri => context.Activations.Activate(uri));
         return false;
     }
 
