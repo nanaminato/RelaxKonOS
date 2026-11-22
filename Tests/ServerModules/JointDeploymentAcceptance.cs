@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.Tailscale;
 using System.IO.Compression;
 using System.Net.Http.Json;
@@ -428,6 +429,20 @@ internal static class JointDeploymentAcceptance
         var invalid = await subscriptions.ReadAsync(new MemoryStream([0xff]), default);
         Require(normalized.Content == yaml && normalized.Bytes == encoded.Length && invalid.Content is null,
             "the joint-installed signed Proxy parser decodes an authorized subscription body and rejects malformed UTF-8");
+        var subscriptionHttp = new ProxySubscriptionHttpFixture(encoded);
+        var downloader = new ProxySubscriptionDownloader(subscriptionHttp, subscriptionHttp) { Execution = subscriptions };
+        try
+        {
+            await downloader.DownloadAsync("https://127.0.0.1/subscription", ProxySubscriptionDownloadRoute.Direct, default);
+            throw new InvalidOperationException("The downloader accepted a loopback subscription source.");
+        }
+        catch (ProxySubscriptionException error) when (error.ProblemCode == ProxyProblemCodes.SubscriptionInvalid)
+        {
+            Require(subscriptionHttp.RequestCount == 0, "the subscription downloader rejects loopback before sending HTTP");
+        }
+        var downloaded = await downloader.DownloadAsync("https://1.1.1.1/subscription", ProxySubscriptionDownloadRoute.Direct, default);
+        Require(downloaded.Content == yaml && subscriptionHttp.RequestCount == 1,
+            "the production downloader normalizes a permitted response through the installed signed Proxy parser");
         if (Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONTROLLER") is { Length: > 0 } endpoint)
         {
             var expectedConnections = int.Parse(Environment.GetEnvironmentVariable("RK_TEST_MIHOMO_CONNECTIONS") ?? "0",
@@ -1729,6 +1744,32 @@ internal static class JointDeploymentAcceptance
             throw new NotSupportedException();
 
         public void Revoke(System.Security.Claims.ClaimsPrincipal principal) => throw new NotSupportedException();
+    }
+
+    private sealed class ProxySubscriptionHttpFixture(byte[] body) : IHttpClientFactory, IProxySettingsReader
+    {
+        internal int RequestCount { get; private set; }
+
+        public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(ProxySettingsReader.Defaults);
+
+        public HttpClient CreateClient(string name) => name == "ProxySubscriptionDirect"
+            ? new HttpClient(new ResponseHandler(this))
+            : throw new InvalidOperationException("Unexpected subscription transport.");
+
+        private sealed class ResponseHandler(ProxySubscriptionHttpFixture owner) : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (request.RequestUri != new Uri("https://1.1.1.1/subscription"))
+                    throw new InvalidOperationException("Unexpected subscription destination.");
+                owner.RequestCount++;
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(owner.responseBody) });
+            }
+        }
+
+        private readonly byte[] responseBody = body;
     }
 
     private sealed class TailscaleReadHelper : IPrivilegedOperationTransport
