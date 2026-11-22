@@ -1,3 +1,5 @@
+using System.Windows.Input;
+using RelaxKonOS.App.Settings.Views;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Media;
@@ -18,7 +20,7 @@ using RelaxKonOS.WindowManager;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Installed applications and the detail view for one selected application.</summary>
-public sealed partial class AppsPageViewModel : SettingsPageViewModel
+public sealed partial class AppsPageViewModel : SettingsPageViewModel, IAppsPage
 {
     private readonly ApplicationManager _apps;
     private readonly DeveloperPackageManager _packages;
@@ -41,6 +43,15 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
         _apps.RegistryChanged += OnRegistryChanged;
         RefreshApplications();
     }
+
+    public Func<string, string> Labels => key => T(key, key);
+    IReadOnlyList<ISettingsAppEntry> IAppsPage.RegisteredApps => RegisteredApps;
+    object? IAppsPage.ActionStatus => ActionStatus;
+    ICommand IAppsPage.ClearSelectedAppDataCommand => ClearSelectedAppDataCommand;
+    ICommand IAppsPage.EditSelectedPermissionsCommand => EditSelectedPermissionsCommand;
+    ICommand IAppsPage.OpenSelectedAppCommand => OpenSelectedAppCommand;
+    ICommand IAppsPage.ShowAppDetailsCommand => ShowAppDetailsCommand;
+    ICommand IAppsPage.UninstallSelectedAppCommand => UninstallSelectedAppCommand;
 
     public override string Route => "apps";
     public override string DisplayNameKey => "settings.page.applications";
@@ -108,6 +119,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
     protected override void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs eventArgs)
     {
         base.OnLanguageChanged(sender, eventArgs);
+        OnPropertyChanged(nameof(Labels));
         Dispatcher.UIThread.Post(RefreshApplications);
     }
 
@@ -327,7 +339,7 @@ public enum AppsSubpage
 }
 
 /// <summary>Presentation data for an installed app; image loading matches desktop and start-menu entries.</summary>
-public sealed class SettingsAppEntry : IDisposable
+public sealed class SettingsAppEntry : IDisposable, ISettingsAppEntry
 {
     private bool _disposed;
     public SettingsAppEntry(ApplicationInfo app)

@@ -66,7 +66,7 @@ internal static class SettingsWindowChecks
             DispatchProxy.Create<IRelaxKonOSClient, UnusedPreviewServices>(),
             DispatchProxy.Create<ITaskManagerClient, UnusedPreviewServices>(), registry, developer, null,
             DispatchProxy.Create<IBrowserData, UnusedPreviewServices>(), inspector, localization);
-        var view = new SettingsView { DataContext = model };
+        var view = new SettingsWorkspaceView { DataContext = model };
         var window = new Window { Width = 640, Height = 480, Content = view };
         try
         {
@@ -354,8 +354,10 @@ internal static class SettingsWindowChecks
             permissionPage.CreateEditor = (app, complete) => new AppPermissionDialogViewModel(app, permissionStore, localization, complete);
             var firstApp = appsEditor.RegisteredApps.Single(entry => entry.Id.Value == "relaxkonos.taskmanager").App;
             var secondApp = appsEditor.RegisteredApps.Single(entry => entry.Id.Value == "relaxkonos.breadcrumb-test").App;
-            model.OpenPageCommand.Execute("apps");
-            appsEditor.ShowAppDetailsCommand.Execute(firstApp); Pump();
+            model.OpenPageCommand.Execute("apps"); Pump();
+            var appButton = view.GetVisualDescendants().OfType<Button>()
+                .Single(button => ReferenceEquals(button.CommandParameter, firstApp));
+            Click(window, appButton); Pump();
             Check(model.SelectedPage?.Route == "apps/detail" && model.ParentRoute == "apps"
                 && model.SelectedCategory?.Route == "apps", "Application information is not a nested apps route.");
             Check(view.FindControl<TextBlock>("PageHeading")!.Text == appsEditor.SelectedApp!.DisplayName, "Application breadcrumb lost its name.");

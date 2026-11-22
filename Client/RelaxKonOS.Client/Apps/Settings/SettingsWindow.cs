@@ -68,7 +68,7 @@ public sealed class SettingsWindow : ISettingsWindow
 
         var viewModel = new SettingsViewModel(settings, settingsClient, session, context.Services.GetRequiredService<WorkspacePreferencesEditor>(), apps, remote, system, registry, developerMode, packages,
             browserClient, networkInspector, wallpapers: wallpapers, sshDesktop: context.Services.GetRequiredService<Services.ServerCenter.SshDesktopSession>());
-        var view = new SettingsView { DataContext = viewModel };
+        var view = new SettingsWorkspaceView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("settings.title"), view,
             bounds: new Rect(180, 90, 820, 560),
             iconGlyph: context.Manifest?.IconGlyph);

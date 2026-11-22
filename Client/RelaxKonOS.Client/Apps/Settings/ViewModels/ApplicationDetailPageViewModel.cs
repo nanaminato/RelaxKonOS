@@ -1,13 +1,15 @@
+using RelaxKonOS.App.Settings.Views;
 using System.ComponentModel;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-public sealed class ApplicationDetailPageViewModel : SettingsPageViewModel
+public sealed class ApplicationDetailPageViewModel : SettingsPageViewModel, IApplicationDetailPage
 {
     public ApplicationDetailPageViewModel(ShellSettings settings, AppsPageViewModel editor) : base(settings, null)
     { Editor = editor; editor.PropertyChanged += OnEditorChanged; }
+    IAppsPage IApplicationDetailPage.Editor => Editor;
     public AppsPageViewModel Editor { get; }
     public override string Route => "apps/detail";
     public override string DisplayNameKey => "settings.app_information";
