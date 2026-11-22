@@ -1,0 +1,12 @@
+{
+  "id": "relaxkonos.server-center",
+  "displayName": "Install or manage server",
+  "description": "SSH hosts and RelaxKonOS installation",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.ServerCenter.dll",
+  "entryType": "RelaxKonOS.App.ServerCenter.ServerCenterPackageApp",
+  "iconGlyph": "🖧",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": []
+}

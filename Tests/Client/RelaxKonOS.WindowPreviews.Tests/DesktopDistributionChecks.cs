@@ -33,7 +33,6 @@ internal static class DesktopDistributionChecks
         var root = Path.Combine(parent, "desktop-profile-" + Guid.NewGuid().ToString("N"));
         using var services = new ServiceCollection()
             .AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>()
-            .AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>()
             .BuildServiceProvider();
         var builtIns = new BuiltInApplicationRegistry(services);
         try
@@ -75,7 +74,7 @@ internal static class DesktopDistributionChecks
                             || applications.GetManifest(new AppId(id))?.Version != actual[id].Version)
                             throw new InvalidOperationException($"{profile} did not register the published package {id}.");
                     Console.WriteLine($"{profile}: provisioned {actual.Count} official packages from the published distribution.");
-                    foreach (var basicApp in new[] { "relaxkonos.settings", "relaxkonos.component-center", "relaxkonos.explorer" })
+                    foreach (var basicApp in new[] { "relaxkonos.settings", "relaxkonos.component-center", "relaxkonos.explorer", "relaxkonos.server-center" })
                     {
                         var appId = new AppId(basicApp);
                         if (profile == "minimal")

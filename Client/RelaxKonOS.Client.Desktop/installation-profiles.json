@@ -13,6 +13,7 @@
       { "appId": "relaxkonos.taskmanager", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.component-center", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.explorer", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.server-center", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.settings", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.terminal", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }
@@ -43,6 +44,7 @@
       { "appId": "relaxkonos.taskmanager", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.component-center", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.explorer", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.server-center", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.settings", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.terminal", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }

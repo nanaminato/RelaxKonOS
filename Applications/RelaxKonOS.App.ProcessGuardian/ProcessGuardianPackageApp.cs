@@ -55,8 +55,13 @@ public sealed class ProcessGuardianPackageApp : IExternalRemoteApplication
             () => connection.IsCurrent && permissions.IsGranted(AppPermissions.ServerGuardianManage));
         var window = context.Windows.ShowWindow(Label(TitleKey), views.CreateWorkspace(model),
             new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
-        model.OpenComponentManagement = () => context.Activations.Activate(
-            RelaxKonOSActivationUris.LaunchApplication(new AppId("relaxkonos.server-center")));
+        model.OpenComponentManagement = () =>
+        {
+            var opened = context.Activations.Activate(
+                RelaxKonOSActivationUris.LaunchApplication(new AppId("relaxkonos.server-center")));
+            if (!opened.IsAccepted)
+                context.Activations.Activate(RelaxKonOSActivationUris.LaunchApplication(new AppId("relaxkonos.appinstaller")));
+        };
         model.SaveWithAdministratorApprovalAsync = definition => host.SaveWithAdministratorApprovalAsync(window, definition);
         model.ShowPrivilegedHelperUnavailableAsync = _ => window.ShowDialogAsync<bool>(
             Label(HelperKey + ".title"), dialog =>

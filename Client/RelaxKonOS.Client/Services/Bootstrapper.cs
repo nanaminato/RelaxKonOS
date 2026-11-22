@@ -355,7 +355,7 @@ public static class Bootstrapper
 
         // Built-in applications.
         services.AddSingleton<ISettingsWindow, SettingsWindow>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();
+        services.AddSingleton<RelaxKonOS.AppSDK.IServerCenterPackageWorkspace, RelaxKonOS.Client.Apps.ServerCenter.ServerCenterHostWorkspace>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddHttpClient<IServerPostgreSql, Databases.PostgreSqlClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).RemoveAllLoggers();

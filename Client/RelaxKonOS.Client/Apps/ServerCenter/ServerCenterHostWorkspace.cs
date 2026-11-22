@@ -7,36 +7,25 @@ using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Apps.ServerCenter.Views;
-using RelaxKonOS.Core.Applications;
+using RelaxKonOS.WindowManager;
 using RelaxKonOS.Core.Primitives;
-using Rect = RelaxKonOS.Core.Primitives.Rect;
 using Size = RelaxKonOS.Core.Primitives.Size;
-using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.ServerCenter;
 
-/// <summary>Server inventory available inside an SSH desktop.</summary>
-public sealed class ServerCenterApp : RemoteApplicationBase
+internal sealed class ServerCenterHostWorkspace(IServiceProvider services, IWindowManager windowManager)
+    : IServerCenterPackageWorkspace
 {
-    public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("relaxkonos.server-center"),
-        DisplayName: "Install or manage server",
-        Version: "1.0.0",
-        IconGlyph: "🖧",
-        Description: "SSH hosts and RelaxKonOS installation",
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow);
-
-    public override void Activate(AppContext context)
+    public void Open(Func<string, Control, ManagedWindow> showWindow)
     {
-        var sshSession = context.Services.GetRequiredService<SshDesktopSession>();
-        var language = context.Services.GetRequiredService<ISystemLanguage>();
-        UsageMemoryScope CapturePickerMemory() => UsageMemoryStore.Capture(context);
-        var viewModel = context.Services.GetRequiredService<ServerCenterViewModel>();
+        var sshSession = services.GetRequiredService<SshDesktopSession>();
+        var language = services.GetRequiredService<ISystemLanguage>();
+        UsageMemoryScope CapturePickerMemory() => UsageMemoryStore.CaptureServices(services);
+        var viewModel = services.GetRequiredService<ServerCenterViewModel>();
         var view = new ServerCenterWorkspace { DataContext = viewModel };
-        var window = context.ShowWindow(viewModel.Title, view,
-            new Rect(70, 50, 1120, 760), Manifest.IconGlyph);
+        var window = showWindow(viewModel.Title, view);
         view.AttachWindowHeader(window);
-        viewModel.ConfirmRollbackAsync = review => context.ShowDialogAsync<bool>(window, viewModel.RollbackText,
+        viewModel.ConfirmRollbackAsync = review => windowManager.ShowDialogAsync<bool>(window, viewModel.RollbackText,
             dialog => new ServerRollbackConfirmationView(review, dialog), new Size(560, 420));
         viewModel.ShowManagementDialogAsync = async section =>
         {
@@ -44,12 +33,12 @@ public sealed class ServerCenterApp : RemoteApplicationBase
             // network round trip. The user can close this workspace in the meantime (Alt+F4,
             // taskbar preview, window overview), so the captured window is re-checked here
             // instead of assuming the probe returned to a live desktop.
-            if (!context.WindowManager.Windows.Contains(window)) return;
-            await context.ShowDialogAsync<bool>(window,
+            if (!windowManager.Windows.Contains(window)) return;
+            await windowManager.ShowDialogAsync<bool>(window,
                 section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
                 dialog => new ServerCenterManagementDialog(viewModel, section, dialog, language, CapturePickerMemory), new Size(640, 600));
         };
-        viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
+        viewModel.ShowInstallationWizardAsync = () => windowManager.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => new ServerInstallationWizardView(
                 new ServerInstallationWizardViewModel(viewModel, () => dialog.Close(true),
                     async () => { await dialog.CancelAsync(); return dialog.Result.IsCompleted; },

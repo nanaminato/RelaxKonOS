@@ -82,12 +82,30 @@ internal static class SettingsWindowChecks
             null!, null!, memory, null!, null!, null!, null!,
             settingsWindow: workspace,
             componentCenterWorkspace: centerWorkspace ?? new RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace(services),
-            explorerWorkspace: new RelaxKonOS.Client.Apps.Explorer.ExplorerPackageHostWorkspace(services));
+            explorerWorkspace: new RelaxKonOS.Client.Apps.Explorer.ExplorerPackageHostWorkspace(services),
+            serverCenterWorkspace: new RelaxKonOS.Client.Apps.ServerCenter.ServerCenterHostWorkspace(services, windows));
         var factory = CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null);
         var settingsManifest = new RelaxKonOS.App.Settings.SettingsPackageApp().Manifest;
         using var packageLifetime = new CancellationTokenSource();
         var official = RelaxKonOS.Client.Services.Developer.PackageOrigin.OfficialDistribution;
         var local = RelaxKonOS.Client.Services.Developer.PackageOrigin.LocalPackage;
+        var serverCenterManifest = new ApplicationManifest(new AppId("relaxkonos.server-center"),
+            "Server Center", "1.0.0", "open", "Server Center fixture", []);
+        using var serverCenterLifetime = new CancellationTokenSource();
+        var serverCenter = ((IServerCenterPackageContext)factory.CreateForInstalledPackage(
+            serverCenterManifest, official, serverCenterLifetime.Token, null, null)).ServerCenterWorkspace;
+        Check(serverCenter is not null
+            && ((IServerCenterPackageContext)factory.CreateForInstalledPackage(serverCenterManifest, local, default, null, null)).ServerCenterWorkspace is null
+            && ((IServerCenterPackageContext)factory.CreateForInstalledPackage(settingsManifest, official, default, null, null)).ServerCenterWorkspace is null
+            && ((IServerCenterPackageContext)factory.Create(serverCenterManifest)).ServerCenterWorkspace is null,
+            "Only the official Server Center package receives its workspace.");
+        serverCenterLifetime.Cancel();
+        try
+        {
+            serverCenter!.Open((_, _) => throw new Exception("A retired Server Center package opened a window."));
+            throw new Exception("A retired Server Center package retained its workspace.");
+        }
+        catch (OperationCanceledException) { }
         var explorerManifest = new ApplicationManifest(new AppId("relaxkonos.explorer"),
             "Explorer", "1.0.0", "open", "Explorer fixture", []);
         using var explorerLifetime = new CancellationTokenSource();

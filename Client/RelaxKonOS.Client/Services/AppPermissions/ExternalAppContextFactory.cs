@@ -86,6 +86,7 @@ public sealed class ExternalAppContextFactory
     private readonly ISettingsWindow? _settingsWindow;
     private readonly IComponentCenterWorkspace? _componentCenterWorkspace;
     private readonly IExplorerPackageWorkspace? _explorerWorkspace;
+    private readonly IServerCenterPackageWorkspace? _serverCenterWorkspace;
     private readonly DesktopDevicePreferences? _devicePreferences;
     private readonly RelaxKonOS.Client.Apps.Terminal.ITerminalSettingsClient? _terminalSettings;
     private readonly RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? _diagnostics;
@@ -137,7 +138,8 @@ public sealed class ExternalAppContextFactory
         ITailscaleOperationReferences? tailscaleReferences = null, Func<IServerPostgreSql>? createPostgreSqlClient = null,
         Func<IServerMySql>? createMySqlClient = null, Func<IInstallationOperations>? createInstallationClient = null,
         ISettingsWindow? settingsWindow = null, IComponentCenterWorkspace? componentCenterWorkspace = null,
-        IExplorerPackageWorkspace? explorerWorkspace = null)
+        IExplorerPackageWorkspace? explorerWorkspace = null,
+        IServerCenterPackageWorkspace? serverCenterWorkspace = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -187,6 +189,7 @@ public sealed class ExternalAppContextFactory
         _settingsWindow = settingsWindow;
         _componentCenterWorkspace = componentCenterWorkspace;
         _explorerWorkspace = explorerWorkspace;
+        _serverCenterWorkspace = serverCenterWorkspace;
         _diagnostics = diagnostics;
         _devicePreferences = devicePreferences;
         _terminalSettings = terminalSettings;
@@ -194,7 +197,7 @@ public sealed class ExternalAppContextFactory
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
         Action<ManagedWindow>? onWindowCreated = null, string? openedFile = null) =>
-        CreateCore(manifest, lifetime, onWindowCreated, openedFile, null, null, null);
+        CreateCore(manifest, lifetime, onWindowCreated, openedFile, null, null, null, null);
 
     internal IExternalAppContext CreateForInstalledPackage(ApplicationManifest manifest, PackageOrigin origin,
         CancellationToken lifetime, Action<ManagedWindow>? onWindowCreated, string? openedFile) =>
@@ -207,11 +210,15 @@ public sealed class ExternalAppContextFactory
                 : null,
             OfficialDesktopPackages.OwnsExplorerWorkspace(manifest.Id.Value, origin) && _explorerWorkspace is { } explorer
                 ? new ExplorerPackageWorkspace(explorer, lifetime)
+                : null,
+            OfficialDesktopPackages.OwnsServerCenterWorkspace(manifest.Id.Value, origin) && _serverCenterWorkspace is { } serverCenter
+                ? new ServerCenterPackageWorkspace(serverCenter, lifetime)
                 : null);
 
     private IExternalAppContext CreateCore(ApplicationManifest manifest, CancellationToken lifetime,
         Action<ManagedWindow>? onWindowCreated, string? openedFile, ISettingsWindow? settingsWindow,
-        IComponentCenterWorkspace? componentCenterWorkspace, IExplorerPackageWorkspace? explorerWorkspace)
+        IComponentCenterWorkspace? componentCenterWorkspace, IExplorerPackageWorkspace? explorerWorkspace,
+        IServerCenterPackageWorkspace? serverCenterWorkspace)
     {
         var appId = manifest.Id;
         var sshEndpoint = _sshSession.Endpoint;
@@ -290,7 +297,7 @@ public sealed class ExternalAppContextFactory
         _systemLanguage,
         new ExternalAppActivation(appId, _activations),
         _settingsNavigation,
-        new ExternalAppWindowService(manifest, _windowManager, lifetime, onWindowCreated), settingsWindow, componentCenterWorkspace, explorerWorkspace);
+        new ExternalAppWindowService(manifest, _windowManager, lifetime, onWindowCreated), settingsWindow, componentCenterWorkspace, explorerWorkspace, serverCenterWorkspace);
     }
 
     private ISshFileSession GetSshFileCapability(ServerCenterSshEndpoint endpoint, CancellationToken lifetime)
@@ -370,6 +377,16 @@ public sealed class ExternalAppContextFactory
         }
     }
 
+    private sealed class ServerCenterPackageWorkspace(IServerCenterPackageWorkspace workspace, CancellationToken lifetime)
+        : IServerCenterPackageWorkspace
+    {
+        public void Open(Func<string, Control, ManagedWindow> showWindow)
+        {
+            lifetime.ThrowIfCancellationRequested();
+            workspace.Open(showWindow);
+        }
+    }
+
     private sealed record ExternalAppContext(
         AppId AppId,
         IAppPermissionScope Permissions,
@@ -422,7 +439,9 @@ public sealed class ExternalAppContextFactory
         IExternalAppWindowService Windows,
         ISettingsWindow? SettingsWindow,
         IComponentCenterWorkspace? ComponentCenterWorkspace,
-        IExplorerPackageWorkspace? ExplorerWorkspace) : IExternalAppContext, ISettingsPackageContext, IComponentCenterPackageContext, IExplorerPackageContext;
+        IExplorerPackageWorkspace? ExplorerWorkspace,
+        IServerCenterPackageWorkspace? ServerCenterWorkspace)
+        : IExternalAppContext, ISettingsPackageContext, IComponentCenterPackageContext, IExplorerPackageContext, IServerCenterPackageContext;
 
     private sealed class ExternalComponentDependencies(AppId appId, UsageMemoryScope connection,
         IComponentLifecycleClient? lifecycle, IAppPermissionRequestService permissions,

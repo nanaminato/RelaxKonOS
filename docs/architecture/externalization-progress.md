@@ -18,7 +18,7 @@
 | settings | Settings | 是 / 是 | 否 | 工作区设置与宿主设置 | 基础 | Windows 隔离安装、同版本修复、包窗口及深链接已验 |
 | explorer | Explorer | 是 / 是 | 否 | 文件 API；调用存储提供者的聚合入口 | 基础 | Windows 隔离发行安装、修复、未登录深链接通过 |
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
-| server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
+| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 隔离发行安装和修复通过，真实 SSH 待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows Release 包生命周期及授权验证通过，实机待验 |
 | ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 已验，远端桌面待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前桌面发行包含 27 个官方 `.roapp`，桌面宿主登记应用安装器、Explorer 和服务器中心。Standard 离线安装 Browser、Component Center、Event & Alert Center、Image Viewer、Notepad、Registry、Settings、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 保留核心安装入口，可通过发行归档离线安装和修复 Settings 与 Component Center。Developer 额外离线预装 Code Editor，另有 15 个交互式安装项。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前官方目录包含 29 个桌面 .roapp，桌面宿主保留内置应用安装器。Standard 离线安装 Browser、Component Center、Event & Alert Center、Explorer、Image Viewer、Notepad、Registry、Server Center、Settings、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 可通过内置应用安装器从发行归档安装和修复基础应用。Developer 额外离线预装 Code Editor，另有 15 个交互式安装项。
 
 首次可用 `--installation-profile=minimal|standard|developer` 与可重复的 `--exclude-bundled-app=<id>` 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖的包须经交互部署。随包提供的 Task Manager 和 Terminal 在启动时检查所需服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
@@ -594,3 +594,5 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Explorer 独立 .roapp 入口与 SDK 工作区契约已建立，Windows Release DevCli 可生成归档，地址栏专项验证应用入口使用统一目录路由。官方安装注册和宿主能力分发尚待接入。
 - Explorer 包的宿主工作区能力接入桌面容器，只发放给官方来源的 Explorer，并受包生命周期约束。包开窗经过外部窗口服务登记。Windows Release Explorer 与 Settings 窗口专项通过，验证非官方来源和已撤销上下文无法使用能力。
 - Explorer 切换到官方发行包，桌面宿主移除编译引用与内置注册。Windows Release 使用新 Explorer 归档及既有 27 个归档验证摘要、清单和入口程序集。隔离发行预装分别登记 Minimal 0、Standard 12、Developer 13 项，Minimal 可从离线发行归档安装并修复 Explorer。实际安装的包接受有效目录深链接，在未登录时复用由包程序集创建的登录提示窗口，并拒绝无效路由。登录后的真实目录导航待验。
+
+- Server Center 的应用入口及窗口登记切换至官方 .roapp。SSH 会话、部署和对话框仍通过受包生命周期约束的桌面工作区提供。Windows Release 隔离发行目录校验 29 个归档，三档预装数量为 0、13、14，Minimal 离线安装和修复 Server Center 通过。Server Center 工作区视图迁移、真实 SSH 和完整发布待验。

@@ -13,7 +13,7 @@ public static class OfficialDesktopCatalogRules
     public const long MaximumPackageBytes = 128 * 1024 * 1024;
     public static IReadOnlyList<string> ApplicationIds { get; } = Array.AsReadOnly(new[]
     {
-        "relaxkonos.application-deployments", "relaxkonos.browser", "relaxkonos.certificates", "relaxkonos.codeeditor", "relaxkonos.component-center", "relaxkonos.database", "relaxkonos.docker", "relaxkonos.event-alerts", "relaxkonos.explorer", "relaxkonos.file-services", "relaxkonos.firewall", "relaxkonos.git", "relaxkonos.imageviewer", "relaxkonos.notepad", "relaxkonos.port-forwarding", "relaxkonos.processguardian", "relaxkonos.proxy", "relaxkonos.proxy-server", "relaxkonos.registry", "relaxkonos.settings", "relaxkonos.squid", "relaxkonos.ssh-files", "relaxkonos.tailscale", "relaxkonos.taskmanager", "relaxkonos.terminal", "relaxkonos.tunnels", "relaxkonos.webservers", "relaxkonos.welcome"
+        "relaxkonos.application-deployments", "relaxkonos.browser", "relaxkonos.certificates", "relaxkonos.codeeditor", "relaxkonos.component-center", "relaxkonos.database", "relaxkonos.docker", "relaxkonos.event-alerts", "relaxkonos.explorer", "relaxkonos.file-services", "relaxkonos.firewall", "relaxkonos.git", "relaxkonos.imageviewer", "relaxkonos.notepad", "relaxkonos.port-forwarding", "relaxkonos.processguardian", "relaxkonos.proxy", "relaxkonos.proxy-server", "relaxkonos.registry", "relaxkonos.server-center", "relaxkonos.settings", "relaxkonos.squid", "relaxkonos.ssh-files", "relaxkonos.tailscale", "relaxkonos.taskmanager", "relaxkonos.terminal", "relaxkonos.tunnels", "relaxkonos.webservers", "relaxkonos.welcome"
     });
 
     public static bool ValidVersion(string? value) => Version.TryParse(value, out var version)
