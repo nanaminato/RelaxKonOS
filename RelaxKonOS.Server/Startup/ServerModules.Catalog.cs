@@ -70,6 +70,8 @@ internal sealed partial class ServerModules
             new Modules.WebServerModule(),
             new Modules.ProxyModule(),
         ];
-        return installed is { Count: > 0 } ? [.. compiled, .. installed] : compiled;
+        if (installed is not { Count: > 0 }) return compiled;
+        var packagedDatabase = installed.Any(module => module is InstalledIsolatedModule && module.Id == DatabaseId);
+        return [.. compiled.Where(module => !packagedDatabase || module.Id != DatabaseId), .. installed];
     }
 }

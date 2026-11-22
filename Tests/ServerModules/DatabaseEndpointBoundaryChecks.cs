@@ -71,6 +71,18 @@ internal static class DatabaseEndpointBoundaryChecks
             || !Describe(ServerModules.Create(new ConfigurationBuilder().Build())).Capabilities.Contains(ServerCapabilities.Database))
             throw new InvalidOperationException("The database module switch must control both availability and advertised capability.");
 
+        var packagedDatabase = new InstalledIsolatedModule(
+            new InstalledModuleRecord(ServerModules.DatabaseId, "0.1.0", "database-fixture", "test", "test",
+                "", "", "", "", "", [], [], "module-host", DateTimeOffset.UtcNow),
+            builder.Environment.ContentRootPath);
+        var packagedEnabled = ServerModules.Create(new ConfigurationBuilder().Build(), [packagedDatabase]);
+        var packagedDisabled = ServerModules.Create(config, [packagedDatabase]);
+        if (!packagedEnabled.IsEnabled(ServerModules.DatabaseId)
+            || !packagedEnabled.Capabilities.Contains(ServerCapabilities.Database)
+            || packagedDisabled.IsEnabled(ServerModules.DatabaseId)
+            || packagedDisabled.Capabilities.Contains(ServerCapabilities.Database))
+            throw new InvalidOperationException("An installed database ModuleHost must share the database module switch and capability.");
+
         using var native = new ServiceCollection().AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>().BuildServiceProvider();
         var helper = (IdleDatabaseHelper)native.GetRequiredService<IPrivilegedOperationTransport>();
         var queryHost = new DatabaseQueryHost(helper);
