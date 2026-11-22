@@ -1,5 +1,5 @@
+using RelaxKonOS.App.Settings;
 using RelaxKonOS.Client.Apps;
-using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.Terminal;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;

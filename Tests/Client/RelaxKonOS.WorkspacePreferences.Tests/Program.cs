@@ -27,7 +27,7 @@ Check(JsonSerializer.Deserialize<WorkspacePreferencesDto>(readinessJson, RelaxKo
 await WorkspaceEnvironmentTransportChecks.RunAsync();
 
 // Settings activation must reach the new detail routes without accepting arbitrary pages.
-var settingsApp = new RelaxKonOS.Client.Apps.Settings.SettingsApp();
+var settingsApp = new RelaxKonOS.App.Settings.SettingsApp(new RelaxKonOS.Client.Apps.Settings.SettingsWindow());
 foreach (var route in new[] { "home", "accessibility", "system/preferences", "system/environment", "personalization/colors", "personalization/style", "personalization/layout", "personalization/background", "default-apps" })
     Check(settingsApp.CanHandleActivation(new Uri("relaxkonos://settings/" + route)), $"Settings rejected route '{route}'.");
 foreach (var uri in new[] { "relaxkonos://settings/personalization/unknown", "relaxkonos://settings/image-mirrors", "https://settings/home", "relaxkonos://other/home" })

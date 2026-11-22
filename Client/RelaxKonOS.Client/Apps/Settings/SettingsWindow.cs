@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Settings;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.App.Settings.Views;
 using Avalonia.Threading;
@@ -42,20 +43,11 @@ namespace RelaxKonOS.Client.Apps.Settings;
 /// 八个分类；用户偏好通过独立 Workspace 服务保存。用户偏好（壁纸/主题/时间格式/语言/区域/默认程序）
 /// 持久化到服务端 Workspace（<c>/workspaces/{id}/preferences</c>），多设备登录同一 Workspace 共享。
 /// SSH 桌面使用独立本地个性化存储，不访问服务端设置。</summary>
-public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
+public sealed class SettingsWindow : ISettingsWindow
 {
     private SettingsViewModel? _viewModel;
     private ManagedWindow? _window;
-    public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("relaxkonos.settings"),
-        DisplayName: "Settings",
-        Version: "1.0.0",
-        IconGlyph: "⚙️",
-        Description: "Personalization and system settings",
-        RequestedPermissions: [AppPermissions.DesktopWallpaperWrite, AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage],
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow);
-
-    public override void Activate(AppContext context)
+    public void Open(AppContext context)
     {
         var settings = context.Services.GetRequiredService<ShellSettings>();
         var session = context.Services.GetRequiredService<IAuthSession>();
@@ -79,7 +71,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var view = new SettingsView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("settings.title"), view,
             bounds: new Rect(180, 90, 820, 560),
-            iconGlyph: Manifest.IconGlyph);
+            iconGlyph: context.Manifest?.IconGlyph);
         view.AttachWindowHeader(window);
         _viewModel = viewModel;
         _window = window;
@@ -686,46 +678,20 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         _ = viewModel.InitializeAsync();
     }
 
-    public bool CanHandleActivation(Uri uri)
-    {
-        if (!uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
-            || !uri.Host.Equals("settings", StringComparison.OrdinalIgnoreCase))
-            return false;
+    public void Navigate(string route) => _viewModel?.SelectPage(route);
 
-        var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && new[] { "home", "system", "account-security", "personalization", "time-language", "network", "apps", "default-apps", "developer", "accessibility", "about" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
-               || (segments.Length == 2 && segments[0].Equals("system", StringComparison.OrdinalIgnoreCase)
-                   && new[] { "preferences", "environment" }.Contains(segments[1], StringComparer.OrdinalIgnoreCase))
-               || (segments.Length == 2 && segments[0].Equals("personalization", StringComparison.OrdinalIgnoreCase)
-                   && new[] { "colors", "style", "layout", "background" }.Contains(segments[1], StringComparer.OrdinalIgnoreCase))
-               || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
-                   && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
-                   && !string.IsNullOrWhiteSpace(segments[1]));
+    public void OpenEnvironment()
+    {
+        if (_viewModel is not { } viewModel) return;
+        viewModel.SelectPage("system");
+        _ = viewModel.Pages.OfType<SystemPageViewModel>().Single().OpenEnvironmentVariablesCommand.ExecuteAsync(null);
     }
 
-    public void HandleActivation(AppContext context, AppActivationRequest request, ManagedWindow? existingWindow)
+    public void OpenApplicationPermissions(string appId)
     {
-        var viewModel = _viewModel;
-        if (viewModel is null) return;
-        var segments = GetPathSegments(request.Uri);
-        if (segments.Length == 2 && segments[0].Equals("system", StringComparison.OrdinalIgnoreCase)
-            && segments[1].Equals("environment", StringComparison.OrdinalIgnoreCase))
-        {
-            viewModel.SelectPage("system");
-            _ = viewModel.Pages.OfType<SystemPageViewModel>().Single().OpenEnvironmentVariablesCommand.ExecuteAsync(null);
-            return;
-        }
-        if (segments.Length is 1 or 2)
-            viewModel.SelectPage(string.Join("/", segments));
-        else if (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
-                 && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase))
-            _ = viewModel.SelectApplicationPermissionsAsync(segments[1]);
+        if (_viewModel is { } viewModel)
+            _ = viewModel.SelectApplicationPermissionsAsync(appId);
     }
-
-    private static string[] GetPathSegments(Uri uri) => uri.AbsolutePath
-        .Split('/', StringSplitOptions.RemoveEmptyEntries)
-        .Select(Uri.UnescapeDataString)
-        .ToArray();
 
     private static Task ShowThemeMessageAsync(AppContext context, ManagedWindow window, string message) =>
         context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.custom_theme"), dialog => new ConfirmDialogView

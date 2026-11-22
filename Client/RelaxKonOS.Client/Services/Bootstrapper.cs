@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Settings;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -353,6 +354,7 @@ public static class Bootstrapper
         services.AddSingleton<WorkspacePreferencesEditor>();
 
         // Built-in applications.
+        services.AddSingleton<ISettingsWindow, SettingsWindow>();
         services.AddSingleton<SettingsApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();

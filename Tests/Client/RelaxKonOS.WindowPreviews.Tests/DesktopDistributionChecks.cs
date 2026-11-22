@@ -36,7 +36,8 @@ internal static class DesktopDistributionChecks
             .AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>()
             .AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>()
             .AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>()
-            .AddSingleton<RelaxKonOS.Client.Apps.Settings.SettingsApp>()
+            .AddSingleton<RelaxKonOS.App.Settings.ISettingsWindow, RelaxKonOS.Client.Apps.Settings.SettingsWindow>()
+            .AddSingleton<RelaxKonOS.App.Settings.SettingsApp>()
             .BuildServiceProvider();
         var builtIns = new BuiltInApplicationRegistry(services);
         try
