@@ -204,21 +204,4 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void OnSearchResultDoubleTapped(object? sender, Avalonia.Input.TappedEventArgs args) => OpenSelectedResult(sender);
-
-    private void OnSearchResultKeyDown(object? sender, KeyEventArgs args)
-    {
-        if (args.Key != Key.Enter) return;
-        OpenSelectedResult(sender);
-        args.Handled = true;
-    }
-
-    private void OpenSelectedResult(object? sender)
-    {
-        if (sender is ListBox { SelectedItem: SettingsSearchEntry entry } list && DataContext is SettingsViewModel model)
-        {
-            list.SelectedItem = null;
-            model.OpenSearchResultCommand.Execute(entry);
-        }
-    }
 }

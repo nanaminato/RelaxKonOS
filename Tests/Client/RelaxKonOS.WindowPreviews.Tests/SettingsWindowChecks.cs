@@ -91,7 +91,11 @@ internal static class SettingsWindowChecks
             Check(Math.Abs(scroll.Offset.Y - rememberedOffset) < 1, "Returning to a page lost its scroll offset.");
             model.SearchQuery = "region"; Pump();
             var region = model.SearchResults.Single(entry => entry.SettingId == "workspace.region");
-            model.OpenSearchResultCommand.Execute(region); Pump();
+            var searchResults = view.GetVisualDescendants().OfType<SettingsSearchResultsView>().Single();
+            var resultList = searchResults.GetVisualDescendants().OfType<ListBox>().Single();
+            resultList.SelectedItem = region;
+            resultList.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+            Pump();
             Check(model.SearchLocationStatus.Length > 0 && scroll.Offset.Y > rememberedOffset,
                 "Root settings search did not reveal the lower setting.");
             model.BackCommand.Execute(null); Pump();

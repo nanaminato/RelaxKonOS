@@ -1,6 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:settingsModel="clr-namespace:RelaxKonOS.App.Settings;assembly=RelaxKonOS.App.Settings"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
@@ -206,23 +205,13 @@
                     <ContentControl x:Name="PageContent" Content="{Binding SelectedPage}" />
                 </StackPanel>
             </ScrollViewer>
-            <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" IsVisible="{Binding HasSearch}">
-                <TextBlock Text="{Binding CatalogProblem}" TextWrapping="Wrap" />
-                <TextBlock Grid.Row="1" Text="{loc:Loc settings.search.no_results}" IsVisible="{Binding HasNoResults}" TextWrapping="Wrap" />
-                <ListBox Grid.Row="2" ItemsSource="{Binding SearchResults}" DoubleTapped="OnSearchResultDoubleTapped" KeyDown="OnSearchResultKeyDown"
-                         AutomationProperties.Name="{loc:Loc settings.search.results}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="settingsModel:SettingsSearchEntry">
-                            <StackPanel Spacing="3" Margin="8,10">
-                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding Category}" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding Scope}" Opacity="0.7" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding Reason}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Grid>
+            <settingsApp:SettingsSearchResultsView Grid.Row="1" IsVisible="{Binding HasSearch}"
+                                                   Results="{Binding SearchResults}"
+                                                   OpenResultCommand="{Binding OpenSearchResultCommand}"
+                                                   CatalogProblem="{Binding CatalogProblem}"
+                                                   HasNoResults="{Binding HasNoResults}"
+                                                   NoResultsLabel="{loc:Loc settings.search.no_results}"
+                                                   ResultsLabel="{loc:Loc settings.search.results}" />
         </Grid>
     </Grid>
         <Border Grid.Row="1" IsVisible="{Binding HasFailureToast}" Classes="card" HorizontalAlignment="Right" VerticalAlignment="Bottom"

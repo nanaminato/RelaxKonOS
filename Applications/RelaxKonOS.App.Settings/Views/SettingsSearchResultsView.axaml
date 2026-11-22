@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:model="clr-namespace:RelaxKonOS.App.Settings"
+             x:Class="RelaxKonOS.App.Settings.Views.SettingsSearchResultsView"
+             x:Name="ResultsView">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <TextBlock Text="{Binding #ResultsView.CatalogProblem}" TextWrapping="Wrap" />
+        <TextBlock Grid.Row="1" Text="{Binding #ResultsView.NoResultsLabel}"
+                   IsVisible="{Binding #ResultsView.HasNoResults}" TextWrapping="Wrap" />
+        <ListBox Grid.Row="2" ItemsSource="{Binding #ResultsView.Results}"
+                 DoubleTapped="OnDoubleTapped" KeyDown="OnKeyDown"
+                 AutomationProperties.Name="{Binding #ResultsView.ResultsLabel}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="model:SettingsSearchEntry">
+                    <StackPanel Spacing="3" Margin="8,10">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Category}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Scope}" Opacity="0.7" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Reason}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>
