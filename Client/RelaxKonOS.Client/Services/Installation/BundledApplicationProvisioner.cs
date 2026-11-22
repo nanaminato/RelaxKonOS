@@ -75,12 +75,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
                         if (!MeetsVersion(candidate.Manifest.Version, entry.MinimumVersion))
                             throw new InvalidDataException("The bundled release does not meet the profile version.");
 
-                        var platforms = ApplicationPlatformNames.Normalize(candidate.Manifest.ClientPlatforms);
-                        var requirements = candidate.Manifest.ServerRequirements;
-                        if (platforms.Count > 0 && !platforms.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal)
-                            || (requirements is { RequiredCapabilities.Count: > 0 } or { SupportedPlatforms.Count: > 0 }
-                                && !JointAppDeploymentService.AllowsBundledLaunchRequirements(candidate, packages))
-                            || candidate.Manifest.Dependencies?.Required is { Count: > 0 })
+                        if (!CanProvisionOffline(candidate.Manifest, candidate.ExpectedSha256, candidate.LocalPath))
                             throw new InvalidOperationException("The bundled application requires an interactive deployment.");
 
                         var review = await deployment.FindPendingAsync(candidate, cancellationToken, localOnly: true)
@@ -110,9 +105,10 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var (manifest, digest) = await packages.InspectAsync(packages.OfficialSource.BundledPath(id), cancellationToken);
+                var path = packages.OfficialSource.BundledPath(id);
+                var (manifest, digest) = await packages.InspectAsync(path, cancellationToken);
                 if (manifest.Id == id && digest is not null)
-                    archives[id] = new(manifest.DisplayName, manifest.Version);
+                    archives[id] = new(manifest.DisplayName, manifest.Version, CanProvisionOffline(manifest, digest, path));
             }
             catch (Exception error) when (!cancellationToken.IsCancellationRequested && AppPackageInstallerService.IsStoreFailure(error))
             {
@@ -120,6 +116,15 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             }
         }
         return archives;
+    }
+
+    private bool CanProvisionOffline(DeveloperPackageManifest manifest, string? digest, string path)
+    {
+        var platforms = ApplicationPlatformNames.Normalize(manifest.ClientPlatforms);
+        return (platforms.Count == 0 || platforms.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
+            && manifest.Dependencies?.Required is not { Count: > 0 }
+            && (manifest.ServerRequirements is not ({ RequiredCapabilities.Count: > 0 } or { SupportedPlatforms.Count: > 0 })
+                || JointAppDeploymentService.AllowsBundledLaunchRequirements(manifest, digest, path, packages));
     }
 
     private async Task<ProfileSelection?> ReadSelectionAsync(CancellationToken cancellationToken) =>
@@ -185,7 +190,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
 
     internal sealed record ProfileDocument(int SchemaVersion, string DefaultProfile, Dictionary<string, ProfileApplication[]> Profiles);
     internal sealed record ProfileApplication(string AppId, string MinimumVersion, string InstallPolicy);
-    internal sealed record ProfileArchive(string DisplayName, string Version);
+    internal sealed record ProfileArchive(string DisplayName, string Version, bool CanProvisionOffline);
     internal sealed record ProfileSelection(string Profile, string[] Excluded,
         Dictionary<string, string[]>? OtherProfileExclusions = null);
     private sealed record ProvisionedApplication(string Id, string Version);

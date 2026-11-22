@@ -38,13 +38,15 @@ internal sealed class InstallationProfileWindow : Window
             {
                 var archive = archives.GetValueOrDefault(entry.AppId);
                 var name = archive?.DisplayName ?? entry.AppId;
-                var label = entry.InstallPolicy == "interactive"
-                    ? string.Format(Text("in_store", "{0} · available in the app store"), name)
-                    : archive is null
-                        ? string.Format(Text("archive_unavailable", "{0} · bundled archive unavailable"), name)
-                        : !MeetsVersion(archive.Version, entry.MinimumVersion)
-                            ? string.Format(Text("archive_version", "{0} · requires version {1} or later"), name, entry.MinimumVersion)
-                            : name;
+                var label = name;
+                if (entry.InstallPolicy == "interactive")
+                    label = string.Format(Text("in_store", "{0} · available in the app store"), name);
+                else if (archive is null)
+                    label = string.Format(Text("archive_unavailable", "{0} · bundled archive unavailable"), name);
+                else if (!MeetsVersion(archive.Version, entry.MinimumVersion))
+                    label = string.Format(Text("archive_version", "{0} · requires version {1} or later"), name, entry.MinimumVersion);
+                else if (!archive.CanProvisionOffline)
+                    label = string.Format(Text("offline_incompatible", "{0} · cannot be preinstalled offline"), name);
                 var checkbox = new CheckBox
                 {
                     Content = new TextBlock { Text = label, TextWrapping = Avalonia.Media.TextWrapping.Wrap },

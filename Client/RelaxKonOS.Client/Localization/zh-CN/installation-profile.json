@@ -10,6 +10,7 @@
         "installation_profile.continue": "继续",
         "installation_profile.archive_unavailable": "{0} · 随包归档不可用",
         "installation_profile.archive_version": "{0} · 需要版本 {1} 或更高版本",
+        "installation_profile.offline_incompatible": "{0} · 无法离线预装",
         "installation_profile.skip": "跳过预装"
     }
 }

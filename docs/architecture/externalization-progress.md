@@ -872,3 +872,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 首次启动窗口使用通过现有摘要核对的官方归档清单名称，缺失或无效归档以应用 ID 显示。Windows Release 和 Linux x64 WSL 无头发行验收均通过，从窗口按实际 Welcome 名称取消后只预装其余 12 项，切换后保留排除。
 - 首启窗口对无法读取的离线归档按应用 ID 标注不可用，用户可以继续。Windows Release 使用 Welcome 发行归档验证：暂去掉归档后仍能查看并确认配置，应用未登记；放回归档后后续安装、重启与卸载通过。三语资源校验通过。
 - 首启窗口用已验证归档版本比较各配置集的最低版本，离线归档版本不足时在确认前显示最低要求。Windows Release 发行测试在窗口中使用实际 Welcome 归档与提高后的 Developer 最低版本验证提示，并切回 Standard 验证名称与排除操作。三语校验通过。
+- 首启选择与实际离线预装共用客户端平台、必需部署依赖及服务端启动要求判定。不满足时窗口显示无法离线预装。Windows Release 发行验收使用实际归档，确认 Terminal 和 Task Manager 可离线安装并继续受启动守卫保护，Proxy 所需服务端模块使其不能离线预装。三语校验通过。

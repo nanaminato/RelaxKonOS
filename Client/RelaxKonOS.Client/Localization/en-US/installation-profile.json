@@ -10,6 +10,7 @@
         "installation_profile.continue": "Continue",
         "installation_profile.archive_unavailable": "{0} · bundled archive unavailable",
         "installation_profile.archive_version": "{0} · requires version {1} or later",
+        "installation_profile.offline_incompatible": "{0} · cannot be preinstalled offline",
         "installation_profile.skip": "Skip preinstallation"
     }
 }

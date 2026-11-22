@@ -85,6 +85,9 @@ internal static class DesktopDistributionChecks
                         await provisioner.RunAsync([], cancellationToken, (profiles, names) =>
                         {
                             var window = new InstallationProfileWindow(profiles, names, new LoginLocalizationService(new LocalLanguageStore()));
+                            if (!names["relaxkonos.terminal"].CanProvisionOffline || !names["relaxkonos.taskmanager"].CanProvisionOffline
+                                || names["relaxkonos.proxy"].CanProvisionOffline)
+                                throw new InvalidOperationException("The preview disagreed with the bundled launch and server module requirements.");
                             var result = window.ShowSelectionAsync();
                             var layout = (DockPanel)window.Content!;
                             var heading = (StackPanel)layout.Children[0];

@@ -240,17 +240,21 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
 
     // These shipped applications need server capabilities at launch and install no server dependencies.
     internal static bool AllowsBundledLaunchRequirements(AppPackageCandidate candidate, DeveloperPackageManager packages) =>
-        candidate.ExpectedSha256 is not null
-        && candidate.Manifest.Dependencies?.Required is not { Count: > 0 }
-        && candidate.Manifest.ServerRequirements is { SupportedPlatforms.Count: 0 } requirements
-        && (candidate.Manifest.Id switch
+        AllowsBundledLaunchRequirements(candidate.Manifest, candidate.ExpectedSha256, candidate.LocalPath, packages);
+
+    internal static bool AllowsBundledLaunchRequirements(DeveloperPackageManifest manifest, string? digest, string path,
+        DeveloperPackageManager packages) =>
+        digest is not null
+        && manifest.Dependencies?.Required is not { Count: > 0 }
+        && manifest.ServerRequirements is { SupportedPlatforms.Count: 0 } requirements
+        && (manifest.Id switch
         {
             "relaxkonos.taskmanager" => requirements.RequiredCapabilities.ToHashSet(StringComparer.Ordinal)
                 .SetEquals([ServerCapabilities.Metrics, ServerCapabilities.Processes]),
             "relaxkonos.terminal" => requirements.RequiredCapabilities is [ServerCapabilities.Terminal],
             _ => false,
         })
-        && string.Equals(Path.GetFullPath(candidate.LocalPath), Path.GetFullPath(packages.OfficialSource.BundledPath(candidate.Manifest.Id)),
+        && string.Equals(Path.GetFullPath(path), Path.GetFullPath(packages.OfficialSource.BundledPath(manifest.Id)),
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private static ApplicationManifest RuntimeManifest(DeveloperPackageManifest manifest) =>
