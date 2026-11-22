@@ -494,6 +494,21 @@ internal static class JointDeploymentAcceptance
             Require((await packages.SwitchAsync(AppIdText, rollback: true, launch: false, default)).Ok
                 && packages.FindInstalled(AppIdText)?.Version == installed.Version,
                 "rolling back the desktop application restores its original module dependency before switching");
+
+            var secondWindows = new RelaxKonOS.WindowManager.WindowManager();
+            var secondApplications = new ApplicationManager(secondWindows, services);
+            var secondDrive = new VirtualSystemDrive(Path.Combine(root, "second-desktop-drive"));
+            var secondPackages = new DeveloperPackageManager(secondApplications, null!, secondWindows, permissions,
+                new Diagnostics(), secondDrive, official, moduleHttp: factory, moduleSession: auth);
+            await secondPackages.LoadInstalledAsync();
+            var secondInstaller = new AppPackageInstallerService(secondPackages, null!, trust);
+            var secondCoordinator = new JointAppDeploymentService(factory, auth, secondInstaller, secondPackages,
+                secondApplications, new(Path.Combine(root, "second-desktop-journal")));
+            var secondReview = await secondCoordinator.PrepareAsync(await secondInstaller.InspectLocalAsync(packagePath), [], default);
+            Require(secondReview.Plan.Id != review.Plan.Id
+                && (await secondCoordinator.ExecuteAsync(secondReview, default)).Version == "1.1.0",
+                "a second desktop under the same account independently registers the same module dependency");
+
             session.Online = false;
             await packages.UninstallAsync(AppIdText);
             var releaseDirectory = drive.ResolveRootChild("System/desktop-module-releases");
@@ -503,6 +518,17 @@ internal static class JointDeploymentAcceptance
             await packages.LoadInstalledAsync();
             Require(!Directory.EnumerateFiles(releaseDirectory, "*.json").Any(),
                 "startup releases an offline uninstall record on the original server and account");
+            var sharedClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+            var sharedInventory = await sharedClient.ReadAsync();
+            var sharedDisable = new ServerModulePlanRequest(serviceId, ServerModuleAction.Disable, [ModuleId],
+                sharedInventory.Where(module => module.DesiredEnabled && module.Id != ModuleId).Select(module => module.Id).ToArray(),
+                sharedInventory[0].DesiredRevision!, "second-desktop-still-installed");
+            Require((await sharedClient.PreviewAsync(sharedDisable)).BlockedBy.Any(blocker =>
+                    blocker.ProblemCode == "module-desktop-dependency-blocked" && blocker.ModuleId == ModuleId),
+                "uninstalling one desktop leaves the other desktop's module protection in force");
+            Require(await secondPackages.UninstallAsync(AppIdText)
+                && (await sharedClient.PreviewAsync(sharedDisable with { IdempotencyKey = "both-desktops-uninstalled" })).BlockedBy.Count == 0,
+                "uninstalling the last desktop allows the module to be disabled");
 
             await installer.InstallAsync(await installer.InspectLocalAsync(prerequisitePath));
             var replacementMixed = await joint.PrepareAsync(mixedCandidate, [], default);
