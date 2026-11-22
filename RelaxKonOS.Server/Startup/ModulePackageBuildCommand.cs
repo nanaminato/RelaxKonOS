@@ -123,6 +123,8 @@ internal static class ModulePackageBuildCommand
                 archiveSha256 = result.ArchiveSha256,
                 archiveBytes = result.ArchiveBytes,
                 publicKeySpki = result.PublicKeySpkiBase64,
+                release = new ModulePackageRelease(result.Manifest, result.ManifestSha256, result.ArchiveSha256,
+                    result.ArchiveBytes, result.DownloadUri),
             }, ModulePackageJson.Options));
             return 0;
         }

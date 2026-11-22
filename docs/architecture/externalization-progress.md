@@ -771,3 +771,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 离线 pack-package 在生成归档与签名之前共用宿主的内置模块替换检查。包格式文档列出七个官方执行包的入口、能力及附加依赖。Windows Release 离线打包、目录和安装组件专项通过，错误 Git 替换在签名前被拒绝。
 - 默认官方模块源策略修订升至 6，覆盖七个已接入的签名执行包，保留既有五个模块。来源仍默认关闭且不附带签名公钥。Windows Release 包专项从发行配置核对显式启用、可信公钥注入及完整授权集合；生产目录尚待发布方签名和发布。
 - 新增离线 modules sign-catalog，将多个 .rkmodule 发布条目汇入同一官方签名目录。写出前通过生产验证器检查目标源策略与签名，并复用内置模块替换契约。Windows Release 模块包专项通过，验证两个不可变版本的聚合目录可验签。生产签名密钥和目录发布仍由发布方负责。
+- pack-package 的 JSON 输出新增完整 release 对象，可直接汇入聚合签名目录。Windows Release 包专项验证该对象经过 sign-catalog 后可用于生产验证器核对实际 .rkmodule 的内容、长度和摘要。

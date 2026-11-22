@@ -102,7 +102,7 @@ RelaxKonOS.Server modules pack-package \
 
 离线打包读取入口程序集的 CLR 元数据，核对清单中的完整入口类型名。程序集缺少该类型时，打包会在生成归档和签名前失败。
 
-发布多个版本或 RID 时，将单包目录 payload 中的 `releases` 条目汇入同一 `ModulePackageCatalog` JSON，填写来源、递增序号、UTC 有效期及撤销集合，再生成签名目录。
+发布多个模块、版本或 RID 时，将各次 `pack-package` 标准输出 JSON 中的 `release` 对象汇入同一 `ModulePackageCatalog` 的 `releases` 数组。填写来源、递增序号、UTC 有效期及撤销集合，再生成签名目录。
 
 ```text
 RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <启用的官方源策略JSON> --private-key <离线PEM> --key-id <keyId> --output <新catalog.json>

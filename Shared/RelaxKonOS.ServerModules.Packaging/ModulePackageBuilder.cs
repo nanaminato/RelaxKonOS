@@ -35,7 +35,8 @@ public sealed record ModulePackageBuildOptions(
     IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
 
 public sealed record ModulePackageBuildResult(ModulePackageManifest Manifest, string ManifestSha256,
-    string ArchivePath, string ArchiveSha256, long ArchiveBytes, string CatalogPath, string PublicKeySpkiBase64);
+    string ArchivePath, string ArchiveSha256, long ArchiveBytes, string CatalogPath, string PublicKeySpkiBase64,
+    string DownloadUri);
 
 /// <summary>
 /// Builds a manifest, a `.rkmodule` ZIP and a signed catalog envelope from a published module
@@ -60,7 +61,8 @@ public static class ModulePackageBuilder
         await File.WriteAllBytesAsync(Path.Combine(output, "manifest.json"),
             JsonSerializer.SerializeToUtf8Bytes(release.Manifest, ModulePackageJson.Options), cancellationToken);
         await File.WriteAllTextAsync(Path.Combine(output, "public-key.spki"), spki, cancellationToken);
-        return new(release.Manifest, release.ManifestSha256, archivePath, release.ArchiveSha256, release.ArchiveBytes, catalogPath, spki);
+        return new(release.Manifest, release.ManifestSha256, archivePath, release.ArchiveSha256, release.ArchiveBytes,
+            catalogPath, spki, release.DownloadUri);
     }
 
     public static async Task<ModulePackageRelease> BuildArchiveAsync(ModulePackageBuildOptions options,
