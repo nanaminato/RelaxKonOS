@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.ImageMirrors;
+using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Storage;
 
 namespace RelaxKonOS.Server.ImageMirrors;
@@ -14,40 +15,14 @@ public interface IDockerImageMirrorResolver
 
 public sealed class DockerImageMirrorResolver(IImageMirrorRepository mirrors) : IDockerImageMirrorResolver
 {
+    internal DockerComposeExecution Execution { private get; init; } = DockerComposeExecution.Shared;
+
     public string Resolve(Guid userId, string imageReference)
     {
         var selected = mirrors.GetSelected(userId, ImageMirrorTarget.Docker);
-        return selected is not null && TryGetDockerHubPath(imageReference, out var path)
-            ? $"{selected.Endpoint}/{path}"
-            : imageReference;
-    }
+        if (selected is null) return imageReference;
 
-    private static bool TryGetDockerHubPath(string imageReference, out string path)
-    {
-        path = string.Empty;
-        var slash = imageReference.IndexOf('/');
-        if (slash < 0)
-        {
-            path = $"library/{imageReference}";
-            return true;
-        }
-
-        var firstSegment = imageReference[..slash];
-        var remainder = imageReference[(slash + 1)..];
-        if (firstSegment.Equals("docker.io", StringComparison.OrdinalIgnoreCase)
-            || firstSegment.Equals("index.docker.io", StringComparison.OrdinalIgnoreCase))
-        {
-            path = remainder.Contains('/') ? remainder : $"library/{remainder}";
-            return true;
-        }
-
-        // Docker treats a first path component containing '.' or ':' (and localhost) as an
-        // explicit registry. Leave those references intact rather than redirecting them.
-        if (firstSegment.Contains('.') || firstSegment.Contains(':')
-            || firstSegment.Equals("localhost", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        path = imageReference;
-        return true;
+        using var lease = Execution.Acquire<IDockerImageMirrorExecution>(DockerComposeExecution.ImageMirrorEntryType);
+        return lease.Executor.Resolve(selected.Endpoint, imageReference);
     }
 }

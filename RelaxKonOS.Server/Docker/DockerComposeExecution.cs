@@ -10,6 +10,7 @@ internal sealed class DockerComposeExecution
     internal const string AssemblyFile = "RelaxKonOS.ServerModule.Docker.dll";
     internal const string EntryType = "RelaxKonOS.Server.Docker.DockerComposeExecutor";
     internal const string EngineControlEntryType = "RelaxKonOS.Server.Docker.DockerEngineControlExecution";
+    internal const string ImageMirrorEntryType = "RelaxKonOS.Server.Docker.DockerImageMirrorExecution";
     internal static DockerComposeExecution Shared { get; } = new(TimeSpan.FromSeconds(30));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
@@ -40,7 +41,7 @@ internal sealed class DockerComposeExecution
 
     internal Lease<IDockerComposeService> Acquire(string dataDirectory) => Acquire<IDockerComposeService>(EntryType, dataDirectory);
 
-    internal Lease<T> Acquire<T>(string entryType, object argument) where T : class
+    internal Lease<T> Acquire<T>(string entryType, object? argument = null) where T : class
     {
         lock (gate)
         {
@@ -49,7 +50,7 @@ internal sealed class DockerComposeExecution
             try
             {
                 var type = current.Assembly.GetType(entryType, throwOnError: true)!;
-                var executor = (T)Activator.CreateInstance(type, argument)!;
+                var executor = (T)(argument is null ? Activator.CreateInstance(type) : Activator.CreateInstance(type, argument))!;
                 active++;
                 return new Lease<T>(this, executor);
             }
@@ -96,12 +97,13 @@ internal sealed class DockerComposeExecution
         var assembly = context.LoadFromStream(stream);
         RequireEntry<IDockerComposeService>(EntryType, typeof(string));
         RequireEntry<IDockerEngineControlService>(EngineControlEntryType, typeof(IDockerEngineControlHost));
+        RequireEntry<IDockerImageMirrorExecution>(ImageMirrorEntryType);
         return assembly;
 
-        void RequireEntry<T>(string name, Type argument)
+        void RequireEntry<T>(string name, params Type[] arguments)
         {
             var entry = assembly.GetType(name);
-            if (entry is null || entry.IsAbstract || !typeof(T).IsAssignableFrom(entry) || entry.GetConstructor([argument]) is null)
+            if (entry is null || entry.IsAbstract || !typeof(T).IsAssignableFrom(entry) || entry.GetConstructor(arguments) is null)
                 throw new InvalidDataException("Docker execution assembly does not implement the required module entry points.");
         }
     }

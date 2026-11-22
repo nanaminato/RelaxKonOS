@@ -2,6 +2,8 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.Server.Docker;
+using RelaxKonOS.Server.ImageMirrors;
+using RelaxKonOS.Server.Storage;
 
 namespace RelaxKonOS.Server.Startup.Modules;
 
@@ -27,8 +29,8 @@ internal class DockerModule : IServerModule, IServerModuleDeactivationGuard, ISe
 
     public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
-        builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver,
-            RelaxKonOS.Server.ImageMirrors.DockerImageMirrorResolver>();
+        builder.Services.AddScoped<IDockerImageMirrorResolver>(services => new DockerImageMirrorResolver(
+            services.GetRequiredService<IImageMirrorRepository>()) { Execution = Execution });
         builder.Services.AddScoped<IDockerComposeService>(services => new DockerComposeService(
             services.GetRequiredService<IHostEnvironment>(), services.GetRequiredService<IOptions<DockerComposeOptions>>(), Execution));
         // Compose stack operations are durable: the ledger outlives the HTTP request, the phone that
