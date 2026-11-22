@@ -63,6 +63,10 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
         var networkInspector = context.Services.GetRequiredService<NetworkInspectorWindowService>();
         var wallpapers = context.Services.GetRequiredService<WallpaperService>();
         var browserClient = context.Services.GetRequiredService<IBrowserData>();
+        var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
+        var hostNetworkService = context.Services.GetRequiredService<Services.HostSettings.IHostNetworkService>();
+        var hostIdentityService = context.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>();
+        var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
 
         var viewModel = new SettingsViewModel(settings, settingsClient, session, context.Services.GetRequiredService<WorkspacePreferencesEditor>(), apps, remote, system, registry, developerMode, packages,
@@ -79,6 +83,20 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
         }
         _viewModel = viewModel;
         _window = window;
+        EventHandler<ManagedWindow>? closed = null;
+        closed = (_, closedWindow) =>
+        {
+            if (!ReferenceEquals(closedWindow, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            if (ReferenceEquals(_window, window))
+            {
+                _window = null;
+                _viewModel = null;
+            }
+            viewModel.Dispose();
+        };
+        context.WindowManager.WindowClosed += closed;
+
         var outboundProxy = viewModel.Pages.OfType<NetworkPageViewModel>().Single().OutboundProxy;
         outboundProxy.RequestConfirmationAsync = async message =>
         {
@@ -104,7 +122,6 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
             }
             finally { registration.Dispose(); editor?.Clear(); }
         };
-        var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
         // The elevation dialog only needs the shared connection check, so every host-settings domain
         // reuses one prompt implementation instead of growing its own copy.
         async Task<bool> AuthorizeHostSettingsAsync(Func<HostSettingsConnection, bool> isCurrent,
@@ -218,11 +235,8 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
             {
                 DataContext = new ConfirmDialogViewModel(message, result => dialog.Close(result), LocalizedText.Get("common.ok")),
             });
-        var hostNetworkService = context.Services.GetRequiredService<Services.HostSettings.IHostNetworkService>();
         viewModel.Pages.OfType<NetworkPageViewModel>().Single().HostNetwork.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(hostNetworkService.IsCurrent, connection, "settings.network.authorize", (password, administrator) => hostNetworkService.AuthorizeAsync(connection, password, administrator));
-        var hostIdentityService = context.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>();
-        var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();
         systemPage.RequestServerModules = () =>
         {
@@ -520,20 +534,6 @@ public sealed class SettingsWindow(IServiceProvider services) : ISettingsWindow
             return selection is null ? null : await appData.ClearAsync(app.Id,
                 new AppDataClearOptions(selection.ClearPermissionDecisions, selection.ClearServerData));
         };
-
-        EventHandler<ManagedWindow>? closed = null;
-        closed = (_, closedWindow) =>
-        {
-            if (!ReferenceEquals(closedWindow, window)) return;
-            context.WindowManager.WindowClosed -= closed;
-            if (ReferenceEquals(_window, window))
-            {
-                _window = null;
-                _viewModel = null;
-            }
-            viewModel.Dispose();
-        };
-        context.WindowManager.WindowClosed += closed;
 
         // 窗口打开后异步加载服务端偏好。
         _ = viewModel.InitializeAsync();

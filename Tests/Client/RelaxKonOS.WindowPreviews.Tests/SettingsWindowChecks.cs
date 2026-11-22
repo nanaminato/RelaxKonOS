@@ -531,6 +531,15 @@ internal static class SettingsWindowChecks
             Check(home.Status == AppActivationStatus.Activated && windows.Windows.Single() == opened
                 && ((ISettingsWorkspace)((Control)opened.View.Content!).DataContext!).SelectedPage?.Route == "home",
                 "A second deep link did not reuse the installed Settings window.");
+            var firstWorkspace = ((Control)opened.View.Content!).DataContext;
+            windows.Close(opened);
+            PumpUntil(() => windows.Windows.Count == 0);
+            var reopened = applications.Activate(new AppActivationRequest(new Uri("relaxkonos://settings/about")));
+            Check(reopened.Status == AppActivationStatus.Activated, "Installed Settings could not reopen after closing.");
+            PumpUntil(() => windows.Windows.Count == 1);
+            Check(windows.Windows.Single().View.Content is Control { DataContext: ISettingsWorkspace nextWorkspace }
+                && !ReferenceEquals(firstWorkspace, nextWorkspace) && nextWorkspace.SelectedPage?.Route == "about",
+                "Reopening Settings did not create a fresh workspace and dispatch the deep link.");
             Console.WriteLine("PASS: installed Settings opens the production host workspace and dispatches deep links.");
         }
         finally
