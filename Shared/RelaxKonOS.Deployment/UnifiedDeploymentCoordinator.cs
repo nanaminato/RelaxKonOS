@@ -12,6 +12,7 @@ public sealed record PreparedDeploymentStep(DeploymentPackageKey Package, Guid I
     DateTimeOffset ExpiresAt, ImmutableArray<DeploymentPermission> Permissions);
 
 public sealed record DeploymentComponentRelease(string SourceId, string ComponentId, string PublisherId, string ReleaseIdentity);
+public sealed record DeploymentServerArchive(Guid AccountId, string ConnectionIdentity, string Path);
 
 public sealed record DeploymentClientBinding(Guid AccountId, string ConnectionIdentity, string? InstalledPath)
 {
@@ -21,6 +22,8 @@ public sealed record DeploymentClientBinding(Guid AccountId, string ConnectionId
     public bool RecoverFromOfficialCatalog { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DeploymentComponentRelease? ComponentRelease { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DeploymentServerArchive? ServerArchive { get; init; }
 }
 
 public sealed record DeploymentPlan(Guid Id, DeploymentTarget Target, DateTimeOffset ExpiresAt,

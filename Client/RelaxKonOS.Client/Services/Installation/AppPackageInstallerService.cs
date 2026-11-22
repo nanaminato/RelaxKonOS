@@ -2,6 +2,7 @@ using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using System.IO.Compression;
 using RelaxKonOS.Client.Services.Developer;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Deployment;
 using System.Security.Cryptography;
 using RelaxKonOS.ManagedRuntimes.Catalog;
@@ -19,12 +20,15 @@ public sealed class AppPackageInstallerService
     private readonly IExplorerClient _files;
     private readonly SemaphoreSlim _installLock = new(1, 1);
     private readonly ComponentCatalogSourceStore _catalogSources;
+    private readonly IAuthSession? _session;
 
-    public AppPackageInstallerService(DeveloperPackageManager packages, IExplorerClient files, ComponentCatalogSourceStore catalogSources)
+    public AppPackageInstallerService(DeveloperPackageManager packages, IExplorerClient files, ComponentCatalogSourceStore catalogSources,
+        IAuthSession? session = null)
     {
         _packages = packages;
         _files = files;
         _catalogSources = catalogSources;
+        _session = session;
     }
 
     public async Task<AppPackageCandidate> InspectLocalAsync(string localPath, string? displayName = null, bool deleteWhenFinished = false,
@@ -56,6 +60,10 @@ public sealed class AppPackageInstallerService
 
     public async Task<AppPackageCandidate> StageServerPackageAsync(string serverPath, CancellationToken cancellationToken = default)
     {
+        if (_session?.State != AuthSessionState.Authenticated || _session.CurrentUser is not { } actor
+            || _session.ServiceId is not { } connection || _session.CurrentSession is not { } login)
+            throw new InvalidOperationException("deployment-account-changed");
+        var origin = new DeploymentServerArchive(actor.Id, connection, serverPath);
         var download = await _files.DownloadAsync(serverPath, cancellationToken)
             ?? throw new FileNotFoundException("The selected server package no longer exists.", serverPath);
         var temporaryPath = NewStagingPath();
@@ -64,8 +72,11 @@ public sealed class AppPackageInstallerService
             await using (download.Stream)
             await using (var destination = File.Create(temporaryPath))
                 await download.Stream.CopyToAsync(destination, cancellationToken);
-            return await InspectLocalAsync(temporaryPath, Path.GetFileName(serverPath), deleteWhenFinished: true,
+            var candidate = await InspectLocalAsync(temporaryPath, Path.GetFileName(serverPath), deleteWhenFinished: true,
                 cancellationToken: cancellationToken);
+            if (!ReferenceEquals(login, _session.CurrentSession) || !MatchesServerArchive(_session, origin))
+                throw new InvalidOperationException("deployment-account-changed");
+            return candidate with { ServerArchive = origin };
         }
         catch
         {
@@ -73,6 +84,10 @@ public sealed class AppPackageInstallerService
             throw;
         }
     }
+
+    internal static bool MatchesServerArchive(IAuthSession? session, DeploymentServerArchive archive) =>
+        session?.State == AuthSessionState.Authenticated && session.CurrentUser?.Id == archive.AccountId
+        && session.ServiceId == archive.ConnectionIdentity;
 
     public Task<DeveloperAppInfo> InstallAsync(AppPackageCandidate candidate, CancellationToken cancellationToken = default) =>
         InstallAsync(candidate, cancellationToken, null);
@@ -83,6 +98,8 @@ public sealed class AppPackageInstallerService
         await _installLock.WaitAsync(cancellationToken);
         try
         {
+            if (candidate.ServerArchive is { } archive && !MatchesServerArchive(_session, archive))
+                throw new InvalidOperationException("deployment-account-changed");
             using var authorization = candidate.CatalogAuthorization is { } frozen ? _catalogSources.AcquireInstallLease(frozen) : null;
             DeveloperAppInfo installed;
             await using (var package = new FileStream(candidate.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -246,6 +263,7 @@ public sealed record AppPackageCandidate(
     internal OfficialDesktopRelease? OfficialRelease { get; init; }
     internal string? ExpectedInstalledPath { get; init; }
     internal string? CatalogComponentId { get; init; }
+    internal DeploymentServerArchive? ServerArchive { get; init; }
     internal bool IsRecoveredDeployment { get; init; }
     public bool IsUpdate => InstalledVersion is not null && InstalledVersion != Manifest.Version.Trim();
     public bool IsRepair => InstalledVersion is not null && InstalledVersion == Manifest.Version.Trim();

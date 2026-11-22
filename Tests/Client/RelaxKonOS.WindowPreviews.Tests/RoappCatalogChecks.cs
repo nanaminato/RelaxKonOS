@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Avalonia;
@@ -12,8 +13,10 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 using RelaxKonOS.Client.Apps.ComponentCenter;
+using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
@@ -74,6 +77,41 @@ internal static class RoappCatalogChecks
         try
         {
             await PublishAsync("1.0.0");
+            var auth = DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>();
+            var actor = (TailscaleScopeAuthFixture)(object)auth;
+            var files = DispatchProxy.Create<IExplorerClient, RecoveryArchiveTransport>();
+            var transport = (RecoveryArchiveTransport)(object)files;
+            transport.Bytes = await File.ReadAllBytesAsync(packagePath);
+            var serverInstaller = new AppPackageInstallerService(packages, files, catalogSources, auth);
+            var serverJournalPath = Path.Combine(root, "server-archive-recovery");
+            var serverJournal = new FileDeploymentJournal(serverJournalPath);
+            var serverDeployment = new JointAppDeploymentService(null!, auth, serverInstaller, packages, applications, serverJournal);
+            var remoteArchive = await serverInstaller.StageServerPackageAsync("/archives/example.roapp");
+            var remoteReview = await serverDeployment.PrepareAsync(remoteArchive, [], CancellationToken.None);
+            await using (var lease = await serverJournal.OpenAsync(remoteReview.Plan, CancellationToken.None))
+                await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
+            serverInstaller.Discard(remoteArchive);
+            var reopenedServer = new JointAppDeploymentService(null!, auth, serverInstaller, packages, applications,
+                new FileDeploymentJournal(serverJournalPath));
+            var reviewedServer = actor.ServiceId;
+            actor.ServiceId = "http://another-fixture.invalid";
+            Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 1,
+                "Changing servers must prevent even a download of a recorded server archive.");
+            actor.ServiceId = reviewedServer;
+            var recoveredServer = (await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Single();
+            try
+            {
+                Check(recoveredServer.ServerArchive == remoteArchive.ServerArchive
+                    && recoveredServer.LocalPath != remoteArchive.LocalPath && transport.Downloads == 2
+                    && packages.FindInstalled(id) is null,
+                    "Reopening the journal must stage the server archive again without installing it.");
+                Check((await reopenedServer.FindPendingAsync(recoveredServer, CancellationToken.None, localOnly: true))?.Plan.Id == remoteReview.Plan.Id,
+                    "A re-downloaded server archive must match the original pending plan.");
+            }
+            finally { serverInstaller.Discard(recoveredServer); }
+            transport.Bytes = [.. transport.Bytes, 0];
+            Check((await reopenedServer.RecoverArchivesAsync([], CancellationToken.None)).Count == 0 && transport.Downloads == 3,
+                "A server archive whose bytes changed must not enter the recovery queue.");
             var plan = await provider.PlanAsync(source, id);
             using (var review = new AppInstallerViewModel(installer) { AllowPackageSelection = false })
             {
@@ -220,6 +258,19 @@ internal static class RoappCatalogChecks
         }
     }
     internal sealed class Diagnostics : IAppActivationDiagnostics { public void Record(string message) { } }
+    public class RecoveryArchiveTransport : DispatchProxy
+    {
+        public byte[] Bytes { get; set; } = [];
+        public int Downloads { get; private set; }
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method?.Name != nameof(IExplorerClient.DownloadAsync) || args?[0] is not "/archives/example.roapp")
+                throw new NotSupportedException(method?.Name);
+            Downloads++;
+            return Task.FromResult<(Stream Stream, string FileName)?>((new MemoryStream(Bytes, writable: false), "example.roapp"));
+        }
+    }
     internal sealed class Permissions : IAppPermissionManager
     {
         public int Clears;

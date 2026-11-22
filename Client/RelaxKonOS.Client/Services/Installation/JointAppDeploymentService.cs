@@ -21,6 +21,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review> PrepareAsync(AppPackageCandidate candidate, IEnumerable<DeploymentRequirement> selectedOptional,
         CancellationToken cancellationToken)
     {
+        if (candidate.ServerArchive is { } serverArchive && !AppPackageInstallerService.MatchesServerArchive(session, serverArchive))
+            throw new InvalidOperationException("deployment-account-changed");
         var supported = ApplicationPlatformNames.Normalize(candidate.Manifest.ClientPlatforms);
         if (supported.Count > 0 && !supported.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
             throw new InvalidOperationException("deployment-client-platform-unsupported");
@@ -79,6 +81,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             ArchivePath = archivePath,
             RecoverFromOfficialCatalog = candidate.OfficialRelease is not null && candidate.CatalogAuthorization is null,
             ComponentRelease = ComponentReleaseOf(candidate),
+            ServerArchive = candidate.ServerArchive,
         };
     }
 
@@ -89,12 +92,13 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         var key = App(candidate.Manifest.Id);
         var componentRelease = ComponentReleaseOf(candidate);
         var plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
-            digest, Guid.Empty, "", cancellationToken, componentRelease);
+            digest, Guid.Empty, "", cancellationToken, componentRelease, candidate.ServerArchive);
         if (!localOnly && plan is null && session.CurrentUser is { } user && session.ServiceId is { } connection)
             plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
-                digest, user.Id, connection, cancellationToken, componentRelease);
+                digest, user.Id, connection, cancellationToken, componentRelease, candidate.ServerArchive);
         if (plan?.ClientBinding is not { } binding) return null;
         if (!MatchesComponentRelease(binding, candidate, digest)) return null;
+        if (!MatchesServerArchive(binding, candidate, session)) return null;
         return new(plan, candidate with
         {
             ExpectedSha256 = digest,
@@ -114,6 +118,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             && candidate.CatalogAuthorization is { } authorization
             && AppPackageInstallerService.MatchesReviewedComponentRelease(reviewed, digest, authorization);
 
+    private static bool MatchesServerArchive(DeploymentClientBinding binding, AppPackageCandidate candidate, IAuthSession? session) =>
+        binding.ServerArchive == candidate.ServerArchive
+        && (binding.ServerArchive is not { } archive || AppPackageInstallerService.MatchesServerArchive(session, archive));
+
     private static async Task<string> ReadArtifactIdentityAsync(AppPackageCandidate candidate, CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(candidate.LocalPath);
@@ -131,13 +139,13 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             plans = [.. plans, .. await journal.ReadPendingPlansAsync(user.Id, connection, cancellationToken)];
 
         var candidates = new List<AppPackageCandidate>();
-        var recovered = new HashSet<(DeploymentPackageKey Package, string Digest, DeploymentComponentRelease? Source)>();
+        var recovered = new HashSet<(DeploymentPackageKey Package, string Digest, DeploymentComponentRelease? Source, DeploymentServerArchive? Server)>();
         foreach (var plan in plans)
         {
             if (cancellationToken.IsCancellationRequested) break;
             if (plan.ClientBinding is not { } binding || !CanRecover(binding)) continue;
             var root = plan.OrderedReleases[^1];
-            var identity = (root.Package, root.ArtifactIdentity, binding.ComponentRelease);
+            var identity = (root.Package, root.ArtifactIdentity, binding.ComponentRelease, binding.ServerArchive);
             if (recovered.Contains(identity)) continue;
             AppPackageCandidate? candidate = null;
             try
@@ -150,11 +158,13 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                     candidate = await installer.StageOfficialAsync(release, cancellationToken);
                 else if (binding.ComponentRelease is { } component)
                     candidate = await installer.RecoverComponentArchiveAsync(component, root.ArtifactIdentity, cancellationToken);
+                else if (binding.ServerArchive is { } archive)
+                    candidate = await installer.StageServerPackageAsync(archive.Path, cancellationToken);
                 if (candidate is null) continue;
                 if (root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version) continue;
                 var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
                 if (digest == root.ArtifactIdentity && MatchesComponentRelease(binding, candidate, digest)
-                    && CanRecover(binding) && recovered.Add(identity))
+                    && MatchesServerArchive(binding, candidate, session) && CanRecover(binding) && recovered.Add(identity))
                 {
                     candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true });
                     candidate = null; // The installer queue now owns the staged archive.
@@ -167,9 +177,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         return candidates;
 
         bool CanRecover(DeploymentClientBinding binding) =>
-            binding.AccountId == Guid.Empty && binding.ConnectionIdentity == ""
+            (binding.ServerArchive is not { } archive || AppPackageInstallerService.MatchesServerArchive(session, archive))
+            && (binding.AccountId == Guid.Empty && binding.ConnectionIdentity == ""
             || session?.State == AuthSessionState.Authenticated && binding.AccountId == session.CurrentUser?.Id
-                && binding.ConnectionIdentity == session.ServiceId;
+                && binding.ConnectionIdentity == session.ServiceId);
     }
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)
@@ -232,6 +243,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         private ModuleDeploymentExecutor? modules;
 
         private bool MatchesAccount(DeploymentPlan plan) => plan.ClientBinding is { } binding
+            && MatchesServerArchive(binding, candidate, session)
             && (plan.Target == LocalTarget ? binding.AccountId == Guid.Empty && binding.ConnectionIdentity == ""
                 : binding.AccountId == session.CurrentUser?.Id && binding.ConnectionIdentity == session.ServiceId);
 
