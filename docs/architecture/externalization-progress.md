@@ -67,6 +67,29 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 4. 启动守卫、本机共享依赖保护、基础包预装与同版本修复已有验收。Windows 与 Linux 通过三档配置安装及切换，Linux 原生入口逐档核对首次预装。Ubuntu 通过桌面发起的 Databases 独立模块 HTTPS 联合安装及重启恢复。后续仍包括其余业务模块迁移，以及矩阵中待验的真实业务链路和多设备实机验收。
 5. 恢复时从本分支运行 `dotnet build Shared/RelaxKonOS.Deployment -m:1`，查看当前差异与最新提交，再从第 3 项继续。部署存续期间须先观察现有服务端回执，再决定是否重试，保留共享依赖。
 
+### 原始验收清单索引
+
+编号对应任务说明第十二节。以下记录各项现有证据及环境范围。
+
+| 编号 | 验收项 | 证据与范围 |
+| --- | --- | --- |
+| 1 | 最小核心启动 | Windows Minimal 发行版图形入口及 Linux 原生 Minimal 入口已启动。服务端发行 Core 也在移除已停用模块程序集后通过健康检查。参见 [Windows 启动检查](../../Tests/Client/verify-windows-desktop-startup.ps1) 和本页测试记录。 |
+| 2–4 | 基础应用独立构建、默认预装、缺失修复 | Standard 的 13 个项目独立 Release 构建通过。实际发行目录复验三档离线登记数量 0、13、14，Windows Minimal 逐一安装和修复 13 个基础包。参见 [桌面发行验证](../../Tests/Client/verify-desktop-distribution.py) 和 [预装验收](../../Tests/Client/RelaxKonOS.WindowPreviews.Tests/DesktopDistributionChecks.cs)。 |
+| 5 | 可选应用独立安装 | 应用矩阵记录各官方可选包的独立生命周期。Windows 和 Linux 联合专项复验 10 个发行归档，真实 Core 验证 Databases 双包及 Project Editor 复用 Git。具体业务环境覆盖见矩阵。 |
+| 6–8 | Shell、协调器依赖边界 | 两平台发行依赖图和散装程序集检查通过。Shell 的 RelaxKonOS 依赖限于 Core，协调器传递依赖限于 Protocol。协调器本身另有 [程序集引用检查](../../Tests/Deployment/RelaxKonOS.Deployment.Tests/Program.cs)。 |
+| 9–11 | 默认选择、必需不可取消、可选可取消 | [生产对话框回归](../../Tests/Client/RelaxKonOS.WindowPreviews.Tests/OfficialRoappChecks.cs) 验证可选默认勾选、取消勾选及必需项无取消控件。[联合回归](../../Tests/ServerModules/JointDeploymentAcceptance.cs) 验证取消只移除可选模块。 |
+| 12–13 | 模块复用、共享依赖保护 | 同一真实 Ubuntu Core 上，Windows 与 Linux 桌面实例共用 Databases，第二端没有新增安装回执，第一端卸载后停用仍受阻，最后一端释放后解除阻止。两端位于同一物理主机。 |
+| 14–16 | 计划过期、服务端切换、网络中断 | 协调器测试拒绝过期和错误实例。联调验证丢失响应后从原回执恢复，真实 Core 重启后完成原计划。网络丢失使用受控请求与响应故障。 |
+| 17 | 升级与卸载 | 联合专项覆盖升级换绑、回滚及离线卸载补偿。Ubuntu 独立模块 0.1.0 到 0.2.0 的热更新保留 Core 和 Git 服务。Windows 与 Ubuntu 两端实际安装后的独立卸载及依赖释放另已验证。 |
+| 18 | 启动依赖检查 | 发行 Terminal 和 Task Manager 的能力缺失阻止激活，恢复后可启动。联合专项覆盖故障模块拒绝启动，Databases 使用真实 Core 验证模块就绪后进入独立组件权限检查。 |
+| 19 | DevCli 与 Direct Deploy | Windows Debug 桌面与 DevCli 通过登录界面直传、卸载、监听更新、失败保留和双配置隔离回归。真实 Docker 归档通过候选启动依赖专项。 |
+| 20 | 真实双包部署 | Ubuntu 发行 Core 从无独立包记录开始，经 HTTPS 下载签名 `.rkmodule`，重启后由桌面协调器登记 `.roapp`。桌面测试副本仅提高模块最低版本；四条观察者查询经真实 Helper 通过。 |
+| 21 | Windows 与 Linux 构建、可执行测试 | Windows Release 完整模块 1,433 项检查，Linux x64 自包含完整模块 1,445 项检查。两平台桌面配置与发行归档已验。 |
+| 22 | Android 回归 | 离线 Debug 及测试 APK 构建，1,906 项 JVM 测试和 11 项模拟器测试通过。设备测试覆盖应用目录与服务维护恢复，使用只读模拟器。 |
+| 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,372 个桌面宿主键和 39 套独立应用资源。 |
+
+原任务还要求持续迁移可拆分的业务功能。服务端矩阵中仍有随 Core 发行的模块，Databases 目前独立监督的是观察入口。其余未覆盖的业务环境和多台物理设备联调见应用矩阵及测试记录。
+
 ### 复跑 Databases 双包验收
 
 1. 从同一提交发布 Linux Core、PrivilegedHelper、ServerModuleHost 和 Databases 观察模块。用 [离线打包命令](RelaxKonOS.ServerModulePackage.Format.md#离线打包命令)为观察模块生成 Linux x64 签名候选。包使用官方 Databases 模块 ID、`module-host` 运行方式及项目的 `module-release.json` 入口。包内能力列表留空，由 Core 为该官方模块发布 `server.database`。
