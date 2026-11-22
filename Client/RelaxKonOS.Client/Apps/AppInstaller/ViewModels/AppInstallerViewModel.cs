@@ -218,6 +218,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
             LocalizedText.Format("app_installer.deployment.module_recovery_operation", recovery.ModuleId, operation),
         ModuleDeploymentRecoveryException recovery =>
             LocalizedText.Format("app_installer.deployment.module_recovery", recovery.ModuleId),
+        ModulePackageDeploymentFailedException failure =>
+            LocalizedText.Format("app_installer.deployment.module_package_failed", failure.ModuleId, failure.OperationId),
         { Message: "module-desktop-dependency-unavailable" } => LocalizedText.Get("app_installer.deployment.module_protection_unavailable"),
         { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),

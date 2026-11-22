@@ -68,6 +68,8 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                 || operation.Version != release.Version || operation.ReleaseId != serverPlan.ReleaseId
                 || operation.ArtifactSha256 != serverPlan.ArtifactSha256)
                 throw new InvalidOperationException("deployment-module-receipt-unavailable");
+            if (operation.State == "Failed")
+                throw new ModulePackageDeploymentFailedException(operation.ModuleId, operation.OperationId, operation.ProblemCode);
             if (operation.State != "Succeeded")
                 throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
             await EnsureEnabledAsync(plan, release, serverPlan.ArtifactSha256, cancellationToken);
@@ -190,4 +192,11 @@ internal sealed class ModuleDeploymentRecoveryException(string moduleId, Guid? o
 {
     public string ModuleId { get; } = moduleId;
     public Guid? OperationId { get; } = operationId;
+}
+
+internal sealed class ModulePackageDeploymentFailedException(string moduleId, Guid operationId, string? problemCode)
+    : DeploymentPlanReviewRequiredException(problemCode ?? "deployment-module-package-failed")
+{
+    public string ModuleId { get; } = moduleId;
+    public Guid OperationId { get; } = operationId;
 }

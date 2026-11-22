@@ -387,6 +387,15 @@ internal static class JointDeploymentAcceptance
             var installed = await joint.ExecuteAsync(review, default);
             var executor = new ModuleDeploymentExecutor(new(factory.CreateClient("joint-fixture"), auth));
             var moduleRelease = review.Plan.OrderedReleases.Single(item => item.Package.Id == ModuleId);
+            factory.SubstituteFailedPackage = true;
+            try
+            {
+                await executor.ApplyOrReconcileAsync(review.Plan, moduleRelease, default);
+                throw new InvalidOperationException("Expected a failed package receipt to require a new review.");
+            }
+            catch (ModulePackageDeploymentFailedException error) when (error.ModuleId == ModuleId
+                && error.OperationId != Guid.Empty && error.Message == "fixture-package-failure") { }
+            finally { factory.SubstituteFailedPackage = false; }
             factory.FaultedModule = ModuleId;
             try
             {
@@ -938,6 +947,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteBlockedHealth { get => handler.SubstituteBlockedHealth; set => handler.SubstituteBlockedHealth = value; }
         public bool HideEffectiveVersion { get => handler.HideEffectiveVersion; set => handler.HideEffectiveVersion = value; }
         public bool SubstituteInventoryDigest { get => handler.SubstituteInventoryDigest; set => handler.SubstituteInventoryDigest = value; }
+        public bool SubstituteFailedPackage { get => handler.SubstituteFailedPackage; set => handler.SubstituteFailedPackage = value; }
         public string? SubstituteServerIdentity { set => handler.SubstituteServerIdentity = value; }
         public bool SubstituteInstalledDigest { get => handler.SubstituteInstalledDigest; set => handler.SubstituteInstalledDigest = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
@@ -976,6 +986,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteBlockedHealth { get; set; }
         public bool HideEffectiveVersion { get; set; }
         public bool SubstituteInventoryDigest { get; set; }
+        public bool SubstituteFailedPackage { get; set; }
         public string? SubstituteServerIdentity { get; set; }
         public bool SubstituteInstalledDigest { get; set; }
         public int SubmittedEnableApplies { get; private set; }
@@ -1041,7 +1052,7 @@ internal static class JointDeploymentAcceptance
                     }, options: RelaxKonOSJsonOptions.Default),
                 };
             }
-            if (SubstituteReceiptRelease && request.Method == HttpMethod.Get
+            if ((SubstituteReceiptRelease || SubstituteFailedPackage) && request.Method == HttpMethod.Get
                 && path?.StartsWith(ServerModuleManagementRoutes.PackageOperations + "/", StringComparison.Ordinal) == true)
             {
                 using var response = await base.SendAsync(request, cancellationToken);
@@ -1050,7 +1061,9 @@ internal static class JointDeploymentAcceptance
                     RelaxKonOSJsonOptions.Default, cancellationToken);
                 return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(receipt! with { ReleaseId = "other-release" }, options: RelaxKonOSJsonOptions.Default),
+                    Content = JsonContent.Create(SubstituteFailedPackage
+                        ? receipt! with { State = "Failed", ProblemCode = "fixture-package-failure" }
+                        : receipt! with { ReleaseId = "other-release" }, options: RelaxKonOSJsonOptions.Default),
                 };
             }
             if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules

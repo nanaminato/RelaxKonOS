@@ -38,7 +38,7 @@ public sealed record DeploymentCheckpoint(int CompletedSteps, bool Verified)
     public bool RequiresReview { get; init; }
 }
 
-public sealed class DeploymentPlanReviewRequiredException(string problem) : InvalidOperationException(problem);
+public class DeploymentPlanReviewRequiredException(string problem) : InvalidOperationException(problem);
 
 /// <summary>A backend must use the plan ID and step index to reconcile retries with durable installer receipts.</summary>
 public interface IDeploymentBackend

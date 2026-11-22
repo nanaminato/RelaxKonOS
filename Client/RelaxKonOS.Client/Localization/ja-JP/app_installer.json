@@ -49,6 +49,7 @@
         "app_installer.deployment.satisfied": "{0} {1} は要件を満たしています",
         "app_installer.deployment.change": "{0} を {1} にインストールまたは更新",
         "app_installer.deployment.version_change": "{0}  {1} → {2}",
+        "app_installer.deployment.module_package_failed": "モジュール {0} のパッケージ操作 {1} が失敗しました。コンポーネントセンターで操作を確認してから、新しいデプロイ計画を確認してください。",
         "app_installer.deployment.restart_pending": "デプロイを続行するにはサーバーの再起動が必要です。再接続後に再試行してください。",
         "app_installer.deployment.module_protection_unavailable": "必須モジュールの依存関係をサーバーに登録できませんでした。コンポーネントセンターでモジュールが有効か確認してから、もう一度お試しください。",
         "app_installer.deployment.module_recovery": "モジュール {0} の復旧が必要です。コンポーネントセンターで接続先サーバーのモジュール操作を復旧してから、デプロイを再試行してください。",
