@@ -13,12 +13,15 @@ using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.Protocol.ImageMirrors;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
 using RelaxKonOS.Server.Git;
+using RelaxKonOS.Server.ImageMirrors;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Tailscale;
 
 internal static class ModulePackageHttpChecks
@@ -452,6 +455,12 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                var mirrorOwner = Guid.NewGuid();
+                var mirrors = new InMemoryImageMirrorRepository();
+                var selectedMirror = mirrors.Create(new RelaxKonOS.Server.Domain.ImageMirror
+                { UserId = mirrorOwner, Target = ImageMirrorTarget.Docker, Name = "Acceptance", Endpoint = "mirror.example:8443" });
+                check(mirrors.Select(mirrorOwner, ImageMirrorTarget.Docker, selectedMirror.Id), "the Docker fixture selects a mirror for its test owner");
+                dockerHost.Services.AddSingleton<IImageMirrorRepository>(mirrors);
                 dockerHost.Services.AddSingleton<IPrivilegedOperationTransport, DisabledPrivilegedOperationTransport>();
                 dockerHost.Services.AddSingleton(System.Reflection.DispatchProxy.Create<IDockerEngineService, GitRepositoryAssemblyChecks.RejectTransport>());
                 var dockerModules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.DockerId }, InstalledModuleCatalog.Load(root));
@@ -466,6 +475,11 @@ internal static class ModulePackageHttpChecks
                     var restart = await engine.ApplyAsync("restart", confirmed: false);
                     check(!restart.Success && restart.ProblemCode == DockerEngineProblem.ConfirmationRequired,
                         "the restored signed Docker package refuses an unconfirmed Engine restart");
+                    var mirrorResolver = composeScope.ServiceProvider.GetRequiredService<IDockerImageMirrorResolver>();
+                    check(mirrorResolver.Resolve(mirrorOwner, "docker.io/nginx:alpine") == "mirror.example:8443/library/nginx:alpine"
+                        && mirrorResolver.Resolve(mirrorOwner, "ghcr.io/example/app:tag") == "ghcr.io/example/app:tag"
+                        && mirrorResolver.Resolve(Guid.NewGuid(), "nginx:alpine") == "nginx:alpine",
+                        "the restored signed Docker package rewrites only the owner's eligible Docker Hub reference");
                     if (liveDocker) await VerifyLiveComposeAsync(compose, check);
                 }
                 using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
