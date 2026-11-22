@@ -31,7 +31,8 @@ public sealed class ComponentCenterPackageApp : IExternalRemoteApplication, IExt
             (dialog, presentation) => new TaskPlanConfirmationView(dialog, presentation.Plan, presentation.Label,
                 presentation.Format, presentation.DescribeStep),
             ComponentTaskDialogLayout.Create,
-            () => new ComponentTaskPlanningView());
+            () => new ComponentTaskPlanningView(),
+            () => new ComponentTaskResultsView());
         RequireWorkspace(context).Open(views, (title, content) => context.Windows.ShowWindow(title, content,
             InitialBounds, Manifest.IconGlyph).Window);
         return Task.CompletedTask;

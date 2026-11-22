@@ -22,8 +22,36 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft) : IComponent
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
 public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage,
-    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation, IComponentTaskDialogModel, IComponentTaskPlanning
+    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation, IComponentTaskDialogModel, IComponentTaskPlanning, IComponentTaskResults
 {
+    IEnumerable<IComponentTaskHistoryItem> IComponentTaskResults.TaskHistory => TaskHistory;
+    IComponentTaskHistoryItem? IComponentTaskResults.SelectedTask
+    {
+        get => SelectedTask;
+        set => SelectedTask = (ComponentTaskHistoryItem?)value;
+    }
+    ICommand IComponentTaskResults.ReloadTaskHistoryCommand => ReloadTaskHistoryCommand;
+    string IComponentTaskResults.TaskState => TaskState.Resolve();
+    string IComponentTaskResults.TaskResultSummary => TaskResultSummary.Resolve();
+    string IComponentTaskResults.TaskResultIdentity => TaskResultIdentity.Resolve();
+    IComponentTaskOperationProgress IComponentTaskResults.Runtime => Runtime;
+    string IComponentTaskResults.TaskNotice => TaskNotice.Resolve();
+    ICommand IComponentTaskResults.ReadTaskEvidenceCommand => ReadTaskEvidenceCommand;
+    ICommand IComponentTaskResults.RefreshTaskCommand => RefreshTaskCommand;
+    ICommand IComponentTaskResults.ResumeTaskCommand => ResumeTaskCommand;
+    ICommand IComponentTaskResults.CancelTaskCommand => CancelTaskCommand;
+    IEnumerable<IComponentTaskEvidenceItem> IComponentTaskResults.TaskEvidence => TaskEvidence;
+    ICommand IComponentTaskResults.RecheckTaskRecoveryCommand => RecheckTaskRecoveryCommand;
+    string IComponentTaskResults.TaskRecoverySummary => TaskRecoverySummary.Resolve();
+    string IComponentTaskResults.RecoveryServiceState => RecoveryServiceState.Resolve();
+    string IComponentTaskResults.RecoveryVersions => RecoveryVersions.Resolve();
+    ICommand IComponentTaskResults.ReadTaskRecoveryCommand => ReadTaskRecoveryCommand;
+    ICommand IComponentTaskResults.RetryTaskCompensationCommand => RetryTaskCompensationCommand;
+    ICommand IComponentTaskResults.StopTaskRecoveryCommand => StopTaskRecoveryCommand;
+    ICommand IComponentTaskResults.CloseTaskRecoveryCommand => CloseTaskRecoveryCommand;
+    IEnumerable<IComponentRecoveryAttemptItem> IComponentTaskResults.RecoveryAttempts => RecoveryAttempts;
+    IEnumerable<IComponentTaskStepItem> IComponentTaskResults.TaskSteps => TaskSteps;
+
 
     string IComponentTaskPlanning.Notice => Notice.Resolve();
     string IComponentTaskPlanning.InspectionNotice => InspectionNotice.Resolve();

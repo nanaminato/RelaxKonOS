@@ -8,12 +8,20 @@ using RelaxKonOS.Protocol.TaskOrchestration;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record ComponentTaskHistoryItem(ComponentTaskReference Reference)
+public sealed record ComponentTaskHistoryItem(ComponentTaskReference Reference) : IComponentTaskHistoryItem
 {
+    string IComponentTaskHistoryItem.Title => Title.Resolve();
+
     public LocalizedStatus Title => LocalizedStatus.Format("component_center.task_reference", Reference.Plan.CreatedAt.LocalDateTime);
 }
-public sealed record ComponentTaskStepItem(TaskStep Plan, TaskStepRun Run)
+public sealed record ComponentTaskStepItem(TaskStep Plan, TaskStepRun Run) : IComponentTaskStepItem
 {
+    string IComponentTaskStepItem.Title => Title.Resolve();
+    string IComponentTaskStepItem.State => State.Resolve();
+    string IComponentTaskStepItem.Operation => Operation.Resolve();
+    string IComponentTaskStepItem.DataImpact => DataImpact.Resolve();
+    string IComponentTaskStepItem.Problem => Problem.Resolve();
+
     public LocalizedStatus Title => new ComponentInspectionStep(Plan).Title;
     public LocalizedStatus State => LocalizedStatus.Key("component_center.task_step." + Run.State);
     public bool HasOperation => Run.DomainOperationId is not null;

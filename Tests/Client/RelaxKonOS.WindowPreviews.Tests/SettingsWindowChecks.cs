@@ -609,6 +609,9 @@ internal static class SettingsWindowChecks
             Check(taskLayout!.GetLogicalDescendants().Any(control =>
                     control.GetType().Name == nameof(ComponentTaskPlanningView) && control.GetType().Assembly == packageAssembly),
                 "The installed package must create the workload, inspection and plan controls.");
+            Check(taskLayout.GetLogicalDescendants().Any(control =>
+                    control.GetType().Name == nameof(ComponentTaskResultsView) && control.GetType().Assembly == packageAssembly),
+                "The installed package must create the task history, evidence and recovery controls.");
             windows.Close(taskDialog);
             PumpUntil(() => taskWindow.IsCompleted && windows.Windows.Count == 1);
             taskWindow.GetAwaiter().GetResult();

@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
+ xmlns:conv="using:Avalonia.Data.Converters"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentTaskResultsView" x:DataType="sdk:IComponentTaskResults">
+ <Border Classes="panel-card" IsVisible="{Binding ShowTasks}">
+  <StackPanel Spacing="12">
+   <StackPanel Spacing="3">
+    <TextBlock Classes="section-title" Text="{local:Loc component_center.task_title}" />
+    <TextBlock Text="{local:Loc component_center.task_dialog.empty}" IsVisible="{Binding !HasTaskHistory}" Classes="section-hint" />
+   </StackPanel>
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding HasTaskHistory}">
+    <ComboBox ItemsSource="{Binding TaskHistory}" SelectedItem="{Binding SelectedTask}" IsEnabled="{Binding CanSelectTask}" HorizontalAlignment="Stretch">
+     <ComboBox.ItemTemplate>
+      <DataTemplate x:DataType="sdk:IComponentTaskHistoryItem">
+       <TextBlock Text="{Binding Title}" />
+      </DataTemplate>
+     </ComboBox.ItemTemplate>
+    </ComboBox>
+    <Button Grid.Column="1" Classes="ghost-action" Content="{local:Loc component_center.task_reload}"
+            Command="{Binding ReloadTaskHistoryCommand}" IsEnabled="{Binding CanSelectTask}" VerticalAlignment="Center" />
+   </Grid>
+   <StackPanel IsVisible="{Binding HasTaskHistory}" Spacing="12">
+    <TextBlock Text="{Binding TaskState}" TextWrapping="Wrap" FontSize="12" />
+    <Border Classes="inset-block" IsVisible="{Binding ShowTaskResult}">
+     <StackPanel Spacing="6">
+      <TextBlock Classes="field-label" Text="{local:Loc component_center.result_title}" />
+      <TextBlock Text="{Binding TaskResultSummary}" TextWrapping="Wrap" FontSize="12" />
+      <TextBlock Text="{Binding TaskResultIdentity}" TextWrapping="Wrap" FontSize="11" Classes="mono"
+                 Foreground="{DynamicResource TextTertiaryBrush}" />
+      <TextBlock Text="{local:Loc component_center.result_evidence_hint}" TextWrapping="Wrap" FontSize="11"
+                 Foreground="{DynamicResource TextTertiaryBrush}" />
+     </StackPanel>
+    </Border>
+    <TextBlock Text="{Binding Runtime.OperationText}" IsVisible="{Binding ShowTaskDomainProgress}" TextWrapping="Wrap" FontSize="12" />
+    <StackPanel IsVisible="{Binding ShowTaskDomainProgress}" Spacing="6">
+     <TextBlock Classes="field-label" Text="{local:Loc component_center.stage_progress}" />
+     <ProgressBar Minimum="0" Maximum="100" Value="{Binding Runtime.OperationProgress}" IsIndeterminate="{Binding Runtime.IsOperationIndeterminate}" />
+     <TextBlock Text="{Binding Runtime.OperationProgress, StringFormat={}{0}%}" FontSize="11" IsVisible="{Binding !Runtime.IsOperationIndeterminate}"
+                Foreground="{DynamicResource TextTertiaryBrush}" />
+    </StackPanel>
+    <TextBlock Text="{Binding TaskNotice}" TextWrapping="Wrap" FontSize="12"
+               IsVisible="{Binding TaskNotice, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+    <WrapPanel ItemSpacing="8" LineSpacing="8">
+     <Button Classes="ghost-action" Content="{local:Loc component_center.evidence_read}" Command="{Binding ReadTaskEvidenceCommand}" IsEnabled="{Binding CanReadTaskEvidence}" />
+     <Button Classes="ghost-action" Content="{local:Loc component_center.task_refresh}" Command="{Binding RefreshTaskCommand}" IsEnabled="{Binding CanRefreshTask}" />
+     <Button Classes="ghost-action" Content="{local:Loc component_center.task_resume}" Command="{Binding ResumeTaskCommand}" IsEnabled="{Binding CanResumeTask}" />
+     <Button Classes="ghost-action" Content="{local:Loc component_center.task_cancel}" Command="{Binding CancelTaskCommand}" IsEnabled="{Binding CanCancelTask}" />
+    </WrapPanel>
+    <ItemsControl ItemsSource="{Binding TaskEvidence}">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="sdk:IComponentTaskEvidenceItem">
+       <Border Classes="inset-block" Margin="0,4">
+        <StackPanel Spacing="4">
+         <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" FontSize="12" />
+         <TextBlock Text="{Binding Operation}" TextWrapping="Wrap" FontSize="11" Classes="mono" />
+         <TextBlock Text="{Binding DomainState}" TextWrapping="Wrap" FontSize="12" />
+         <TextBlock Text="{Binding Observation}" TextWrapping="Wrap" FontSize="12" />
+         <TextBlock Text="{Binding Receipt}" TextWrapping="Wrap" FontSize="12" />
+         <TextBlock Text="{Binding Commit}" TextWrapping="Wrap" FontSize="12" />
+        </StackPanel>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsTaskBusy}" />
+    <Button Classes="ghost-action" Content="{local:Loc component_center.task_recheck_recovery}"
+            Command="{Binding RecheckTaskRecoveryCommand}" IsVisible="{Binding CanRecheckTaskRecovery}" HorizontalAlignment="Left" />
+    <Border Classes="inset-block" IsVisible="{Binding HasTaskRecovery}">
+     <StackPanel Spacing="8">
+      <TextBlock Text="{Binding TaskRecoverySummary}" TextWrapping="Wrap" FontSize="12" />
+      <TextBlock Text="{Binding RecoveryServiceState}" TextWrapping="Wrap" FontSize="12" />
+      <TextBlock Text="{Binding RecoveryVersions}" TextWrapping="Wrap" FontSize="12" />
+      <WrapPanel ItemSpacing="8" LineSpacing="8">
+       <Button Classes="ghost-action" Content="{local:Loc component_center.task_recovery_read}" Command="{Binding ReadTaskRecoveryCommand}" IsEnabled="{Binding CanReadTaskRecovery}" />
+       <Button Classes="ghost-action" Content="{local:Loc component_center.task_recovery_action.RetryCompensation}" Command="{Binding RetryTaskCompensationCommand}" IsEnabled="{Binding CanRetryTaskCompensation}" />
+       <Button Classes="ghost-action" Content="{local:Loc component_center.task_recovery_action.EmergencyStop}" Command="{Binding StopTaskRecoveryCommand}" IsEnabled="{Binding CanStopTaskRecovery}" />
+       <Button Classes="ghost-action" Content="{local:Loc component_center.task_recovery_action.Close}" Command="{Binding CloseTaskRecoveryCommand}" IsEnabled="{Binding CanCloseTaskRecovery}" />
+      </WrapPanel>
+      <ItemsControl ItemsSource="{Binding RecoveryAttempts}">
+       <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="sdk:IComponentRecoveryAttemptItem">
+         <StackPanel Spacing="3" Margin="0,4">
+          <TextBlock Text="{Binding Action}" FontWeight="SemiBold" FontSize="12" />
+          <TextBlock Text="{Binding Result}" TextWrapping="Wrap" FontSize="12" />
+          <TextBlock Text="{Binding Identity}" FontSize="11" Classes="mono" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextTertiaryBrush}" />
+         </StackPanel>
+        </DataTemplate>
+       </ItemsControl.ItemTemplate>
+      </ItemsControl>
+     </StackPanel>
+    </Border>
+    <ItemsControl ItemsSource="{Binding TaskSteps}" Classes="step-list">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="sdk:IComponentTaskStepItem">
+       <Border Classes="step">
+        <StackPanel Spacing="3">
+         <TextBlock Classes="step-title" Text="{Binding Title}" />
+         <TextBlock Text="{Binding State}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+         <TextBlock Text="{Binding Operation}" IsVisible="{Binding HasOperation}" TextWrapping="Wrap" FontSize="11" Classes="mono" />
+         <TextBlock Text="{Binding DataImpact}" IsVisible="{Binding HasDataImpact}" TextWrapping="Wrap" FontSize="12" />
+         <TextBlock Classes="problem" Text="{Binding Problem}" IsVisible="{Binding HasProblem}" />
+        </StackPanel>
+       </Border>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+  </StackPanel>
+ </Border>
+</UserControl>

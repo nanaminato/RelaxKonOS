@@ -20,12 +20,13 @@ public partial class ComponentCenterTasksView : UserControl
         DetachedFromVisualTree += (_, _) => { if (_model is not null) _model.PropertyChanged -= ModelChanged; };
     }
     public ComponentCenterTasksView(ComponentCenterViewModel model, Action? requestClose = null)
-        : this(model, requestClose, ComponentTaskDialogLayout.Create, () => new ComponentTaskPlanningView()) { }
+        : this(model, requestClose, ComponentTaskDialogLayout.Create, () => new ComponentTaskPlanningView(), () => new ComponentTaskResultsView()) { }
 
     internal ComponentCenterTasksView(ComponentCenterViewModel model, Action? requestClose,
-        Func<ComponentTaskDialogPresentation, Control> createLayout, Func<Control> createPlanning) : this()
+        Func<ComponentTaskDialogPresentation, Control> createLayout, Func<Control> createPlanning, Func<Control> createResults) : this()
     {
         Planning.Content = createPlanning();
+        Results.Content = createResults();
         var body = (Control)Content!;
         Content = null;
         DataContext = model;

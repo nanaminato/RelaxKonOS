@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -5,8 +6,15 @@ using RelaxKonOS.Protocol.TaskOrchestration;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record ComponentTaskEvidenceItem(TaskStepResultEvidence Evidence)
+public sealed record ComponentTaskEvidenceItem(TaskStepResultEvidence Evidence) : IComponentTaskEvidenceItem
 {
+    string IComponentTaskEvidenceItem.Kind => Kind.Resolve();
+    string IComponentTaskEvidenceItem.Operation => Operation.Resolve();
+    string IComponentTaskEvidenceItem.DomainState => DomainState.Resolve();
+    string IComponentTaskEvidenceItem.Observation => Observation.Resolve();
+    string IComponentTaskEvidenceItem.Receipt => Receipt.Resolve();
+    string IComponentTaskEvidenceItem.Commit => Commit.Resolve();
+
     public LocalizedStatus Kind => LocalizedStatus.Key(Evidence.RecoveryCheck ? "component_center.evidence_recovery" : "component_center.evidence_original");
     public LocalizedStatus Operation => LocalizedStatus.Format("component_center.result_operation", Evidence.OperationId.ToString("D"));
     public LocalizedStatus DomainState => LocalizedStatus.Key("component_center.evidence_domain." + Evidence.OperationState);

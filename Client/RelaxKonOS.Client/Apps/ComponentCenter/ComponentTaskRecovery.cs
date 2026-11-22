@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -6,8 +7,11 @@ using System.Collections.ObjectModel;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record ComponentRecoveryAttemptItem(TaskRecoveryAttempt Attempt)
+public sealed record ComponentRecoveryAttemptItem(TaskRecoveryAttempt Attempt) : IComponentRecoveryAttemptItem
 {
+    string IComponentRecoveryAttemptItem.Action => Action.Resolve();
+    string IComponentRecoveryAttemptItem.Result => Result.Resolve();
+
     public LocalizedStatus Action => LocalizedStatus.Key("component_center.task_recovery_action." + Attempt.Action);
     public LocalizedStatus Result => LocalizedStatus.Key(!Attempt.ResponseRecorded ? "component_center.recovery_attempt_unknown"
         : Attempt.ProblemCode is null ? "component_center.recovery_attempt_recorded" : "component_center.recovery_attempt_failed");

@@ -31,8 +31,9 @@ public sealed record RuntimeReleaseOption(RuntimeRelease Release, bool Installed
 /// Managed runtime page: version discovery, target selection, and guarded execution. It never renders a
 /// version list as installable when the Host has not both confirmed the source and declared configuration support.
 /// </summary>
-public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) : ObservableObject, IDisposable, RelaxKonOS.AppSDK.IComponentCenterRefreshState
+public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) : ObservableObject, IDisposable, RelaxKonOS.AppSDK.IComponentCenterRefreshState, RelaxKonOS.AppSDK.IComponentTaskOperationProgress
 {
+    string RelaxKonOS.AppSDK.IComponentTaskOperationProgress.OperationText => OperationText.Resolve();
     /// <summary>The runtime identity this page observes. It is the component id the center keys on.</summary>
     public string RuntimeId => client.RuntimeId;
     private readonly CancellationTokenSource _lifetime = new();
