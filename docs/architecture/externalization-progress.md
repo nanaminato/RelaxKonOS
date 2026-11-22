@@ -608,3 +608,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 使用完整重发的 Windows Release 发行目录复验三档预装，分别登记 0、13、14 个离线官方包。Minimal 可以离线安装和修复 Settings、Component Center、Explorer 与 Server Center，配置切换保留用户主动移除的状态。允许本机环回连接后，完整 Server Center 客户端套件通过，覆盖首次 TLS 信任前阻止 HTTP 请求及显式确认后的 HTTPS 登录探测。Linux 专用 Secret Service 写入往返检查在 Windows 跳过。
 - Linux x64 WSL 以 .NET 10.0.14 和同一完整发行目录运行可移植无头测试，通过 Server Center 包的工作区、管理弹窗、向导取消和卸载关闭回归。三档预装分别登记 0、13、14 个包，Minimal 的四个基础包离线安装与修复通过，配置切换保留用户主动卸载。此轮未运行 Linux 原生图形窗口或真实远端部署。
 - Windows Release 使用完整发行目录中的 Explorer 归档验证未登录提示、无效路由拒绝及登录后目录导航。登录态测试使用生产工作区和受控文件服务，确认带空格的目录路径在地址栏正确显示且仅创建一个包所属窗口。真实服务器目录导航仍待验。
+- Linux x64 WSL 使用同一发行归档和可移植测试程序集通过 Explorer 无头回归，覆盖未登录提示、无效路由拒绝，以及登录态下带空格的 POSIX 路径导航。登录和文件服务使用测试夹具。
