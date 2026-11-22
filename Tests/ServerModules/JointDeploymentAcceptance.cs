@@ -327,6 +327,18 @@ internal static class JointDeploymentAcceptance
                     "the rejected account does not send any module requests");
             }
             finally { session.AccountId = originalAccount; }
+            var originalConnection = session.ConnectionIdentity;
+            session.ConnectionIdentity = "different-joint-test-server";
+            try
+            {
+                Require(await joint.FindPendingAsync(candidate, default) is null,
+                    "the same account on a different connection cannot find the pending plan");
+                Require((await joint.RecoverArchivesAsync([], default)).Count == 0,
+                    "the recovery queue does not surface archives from a different connection");
+                Require(factory.Requests == requestsBeforeAccountChange,
+                    "looking for recovery on the other connection does not send module requests");
+            }
+            finally { session.ConnectionIdentity = originalConnection; }
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing pending deployment.");
             using (var cancellation = new CancellationTokenSource())
             {
@@ -1074,6 +1086,7 @@ internal static class JointDeploymentAcceptance
         private string url = "";
         public bool Online { get; set; } = true;
         public bool KeepDisconnectedIdentity { get; set; }
+        public string ConnectionIdentity { get; set; } = "local-joint-test";
         public string Url
         {
             get => url;
@@ -1087,7 +1100,7 @@ internal static class JointDeploymentAcceptance
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
         {
             "get_State" => Online ? AuthSessionState.Authenticated : AuthSessionState.Unauthenticated,
-            "get_ServiceId" => Online || KeepDisconnectedIdentity ? "local-joint-test" : null,
+            "get_ServiceId" => Online || KeepDisconnectedIdentity ? ConnectionIdentity : null,
             "get_EffectiveBaseUrl" => Url,
             "get_CurrentSession" => Online || KeepDisconnectedIdentity ? login : null,
             "get_CurrentUser" => Online || KeepDisconnectedIdentity

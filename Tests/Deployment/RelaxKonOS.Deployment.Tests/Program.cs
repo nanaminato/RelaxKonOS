@@ -98,6 +98,10 @@ Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, "di
     binding.AccountId, binding.ConnectionIdentity) is null);
 Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, root.ArtifactIdentity,
     binding.AccountId, "another-connection") is null);
+Check((await reopenedJournal.ReadPendingRecoveriesAsync(binding.AccountId, binding.ConnectionIdentity))
+    .Any(recovery => recovery.Plan.Id == plan.Id));
+Check((await reopenedJournal.ReadPendingRecoveriesAsync(binding.AccountId, "another-connection")).Count == 0);
+Check((await reopenedJournal.ReadPendingRecoveriesAsync(Guid.NewGuid(), binding.ConnectionIdentity)).Count == 0);
 var checkpointPath = Path.Combine(journalDirectory, plan.Id.ToString("N"));
 var checkpointJson = await File.ReadAllTextAsync(checkpointPath);
 var corrupt = JsonNode.Parse(checkpointJson)!.AsObject();
