@@ -14,7 +14,7 @@ internal sealed partial class ServerModules
         && !InstalledTailscaleModule.MatchesManifest(manifest) && !InstalledFirewallModule.MatchesManifest(manifest)
         && !InstalledGitModule.MatchesManifest(manifest) && !InstalledDockerModule.MatchesManifest(manifest)
         && !InstalledWebServerModule.MatchesManifest(manifest) && !InstalledCertificateModule.MatchesManifest(manifest)
-        && !InstalledProxyModule.MatchesManifest(manifest);
+        && !InstalledProxyModule.MatchesManifest(manifest) && !InstalledTunnelsModule.MatchesManifest(manifest);
 
     internal static bool IsOfficialDatabaseModuleHost(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
         manifest.ModuleId == DatabaseId && manifest.Runtime == "module-host" && manifest.Purpose == "official";
@@ -83,6 +83,7 @@ internal sealed partial class ServerModules
             new Modules.DatabaseModule(),
             new Modules.WebServerModule(),
             new Modules.ProxyModule(),
+            new Modules.TunnelsModule(),
         ];
         if (installed is not { Count: > 0 }) return compiled;
         var packagedDatabase = installed.Any(module => module is InstalledIsolatedModule && module.Id == DatabaseId);
@@ -93,7 +94,9 @@ internal sealed partial class ServerModules
         var packagedWebServer = installed.Any(module => module is InstalledWebServerModule);
         var packagedCertificates = installed.Any(module => module is InstalledCertificateModule);
         var packagedProxy = installed.Any(module => module is InstalledProxyModule);
-        return [.. compiled.Where(module => (!packagedDatabase || module.Id != DatabaseId)
+        var packagedTunnels = installed.Any(module => module is InstalledTunnelsModule);
+        return [.. compiled.Where(module => (!packagedTunnels || module.Id != Modules.TunnelsModule.ModuleId)
+            && (!packagedDatabase || module.Id != DatabaseId)
             && (!packagedTailscale || module.Id != Modules.TailscaleModule.ModuleId)
             && (!packagedFirewall || module.Id != FirewallId)
             && (!packagedGit || module.Id != GitId) && (!packagedDocker || module.Id != DockerId)

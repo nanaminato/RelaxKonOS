@@ -31,10 +31,10 @@ internal static class ModulePackageBuilderChecks
                     [source + ":PublicKeysSpki:fixture"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()),
                 }).Build();
             var official = ModulePackageHostConfiguration.Source(provisioned, "official-modules");
-            check(official.Enabled && official.Revision == 6 && official.AuthorizedModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(
+            check(official.Enabled && official.Revision == 7 && official.AuthorizedModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(
                 ["cloud-storage", "cloud-webdav", "cloud-s3", "cloud-baidu", ServerModules.DatabaseId,
                     "relaxkonos.tailscale", ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId,
-                    ServerModules.WebServerId, ServerModules.CertificatesId, ServerModules.ProxyId]),
+                    ServerModules.WebServerId, ServerModules.CertificatesId, ServerModules.ProxyId, "relaxkonos.tunnels"]),
                 "the provisioned official source authorizes every supported signed execution package and the existing modules");
             var keyPath = Path.Combine(root, "signing-key.pem");
             await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());

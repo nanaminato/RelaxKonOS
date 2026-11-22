@@ -528,7 +528,7 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
     using var execution = new CollectibleTunnelExecution();
     services.AddSingleton(execution.Module);
     services.AddSingleton<IRuntimeManager>(runtime);
-    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>(), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport), execution.Module));
+    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>(), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport), () => execution.Module));
     await using var container = services.BuildServiceProvider();
     await using (var scope = container.CreateAsyncScope())
     {
@@ -551,7 +551,7 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
             }
             TestAssert.Assert(current.Single().State == TunnelConnectionState.Connected, "Successful FRP login was overwritten by the startup state.");
             var reopened = new FrpTunnelProvider(container.GetRequiredService<IServiceScopeFactory>(), environment, runtime,
-                new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport), execution.Module);
+                new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport), () => execution.Module);
             TestAssert.Assert((await reopened.ListAsync("apply-user", CancellationToken.None)).Single().State == TunnelConnectionState.Connected,
                 "Reopening the FRPC provider lost its independent service applied identity.");
             var original = current.Single();

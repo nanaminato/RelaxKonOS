@@ -90,6 +90,7 @@ internal static class ModulePackageHttpChecks
             ModulePackageBuildResult[] webServer = [];
             ModulePackageBuildResult[] certificates = [];
             ModulePackageBuildResult[] proxy = [];
+            ModulePackageBuildResult[] tunnels = [];
             ModulePackageBuildResult? incompatibleGit = null;
             if (!isolated)
             {
@@ -196,12 +197,26 @@ internal static class ModulePackageHttpChecks
                 proxy = [await ModulePackageBuilder.BuildAsync(proxyOptions, now),
                     await ModulePackageBuilder.BuildAsync(proxyOptions with
                     { Version = "2.0.0", ReleaseId = "proxy-2.0.0-" + rid }, now)];
+                var tunnelOptions = dockerOptions with
+                {
+                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "Tunnels"),
+                    OutputDirectory = Path.Combine(root, "tunnel-package"),
+                    ModuleId = "relaxkonos.tunnels",
+                    ReleaseId = "tunnels-1.0.0-" + rid,
+                    EntryAssembly = RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.AssemblyFile,
+                    EntryType = RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.EntryType,
+                    Capabilities = [ServerCapabilities.Tunnels],
+                    Ui = new("Tunnels", "", "", null, "UNLICENSED"),
+                };
+                tunnels = [await ModulePackageBuilder.BuildAsync(tunnelOptions, now),
+                    await ModulePackageBuilder.BuildAsync(tunnelOptions with
+                    { Version = "2.0.0", ReleaseId = "tunnels-2.0.0-" + rid }, now)];
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
                     now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
                         .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release),
-                        .. docker.Select(Release), .. webServer.Select(Release), .. certificates.Select(Release), .. proxy.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
+                        .. docker.Select(Release), .. webServer.Select(Release), .. certificates.Select(Release), .. proxy.Select(Release), .. tunnels.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
@@ -209,7 +224,7 @@ internal static class ModulePackageHttpChecks
                 "https://modules.example/", dependent is null ? ["fixture-http"]
                     : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale",
                         ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId, ServerModules.WebServerId,
-                        ServerModules.CertificatesId, ServerModules.ProxyId],
+                        ServerModules.CertificatesId, ServerModules.ProxyId, "relaxkonos.tunnels"],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -285,7 +300,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + webServer.Length + certificates.Length + proxy.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + webServer.Length + certificates.Length + proxy.Length + tunnels.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -508,6 +523,18 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledCertificateModule>(client, root, certificates, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledProxyModule>(client, root, proxy, check);
+                await VerifyExecutionPackageVersionsAsync<InstalledTunnelsModule>(client, root, tunnels, check);
+                var tunnelHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                var tunnelModules = ServerModules.CreateManaged(new HashSet<string> { "relaxkonos.tunnels" }, InstalledModuleCatalog.Load(root));
+                tunnelModules.ConfigureServices(tunnelHost, ServerModuleContext.Create(tunnelHost.Configuration, tunnelHost.Environment, "sqlite"));
+                await using (var restoredTunnelHost = tunnelHost.Build())
+                {
+                    var execution = restoredTunnelHost.Services.GetRequiredService<RelaxKonOS.ServerModule.Tunnels.ITunnelExecution>();
+                    var request = new RelaxKonOS.Protocol.Tunnels.UpsertTunnelDefinitionRequest(Guid.Empty, "name",
+                        RelaxKonOS.Protocol.Tunnels.TunnelProtocol.Http, "127.0.0.1", 8080, null, null, true, false, false);
+                    check(execution.ValidateDefinition(request) == "tunnel.domain_required",
+                        "a fresh Core host validates tunnel definitions through the restored signed execution package");
+                }
                 var proxyHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
                 var proxyModules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }, InstalledModuleCatalog.Load(root));
                 proxyModules.ConfigureServices(proxyHost, ServerModuleContext.Create(proxyHost.Configuration, proxyHost.Environment, "memory"));

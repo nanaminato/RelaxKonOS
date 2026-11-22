@@ -786,3 +786,5 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Tunnels 的档案与隧道定义校验、FRP 客户端 TOML 生成已迁入独立业务程序集，项目仅引用 Protocol。Core 继续负责用户授权、秘密存储、持久化及进程管理。Windows Release 独立构建及 Core 发布通过，发行目录包含隧道程序集。FRP 状态、协议、配置转义、夹具运行时及秘密生命周期检查通过。当前程序集随 Core 发行，签名包安装和真实 FRP 服务联调待完成。
 - Tunnels 通过共享执行契约加载 Modules/Tunnels 中的随附执行程序集。Core 仅编译引用契约，执行上下文拒绝反向加载 Server 实现。Windows Release 状态、协议、TOML 和秘密生命周期检查通过。Linux x64 自包含产物确认执行程序集只位于独立目录，状态、协议和 TOML 检查通过。Linux 生命周期夹具在托管 FRP 启动断言失败，签名包及真实 FRP 联调仍待验证。
 - Linux x64 自包含 FRP 生命周期夹具已复跑通过。失败来自测试仍期待 Starting，而模拟 Helper 的启动回执已确认 Connected。断言按实际回执修正，随后通过重新打开 provider、已应用版本对账、秘密生命周期以及夹具运行时安装、回滚与卸载检查。
+- Tunnels 已注册为可选服务端模块，SQLite 路由与能力由启用状态决定。Core 保留 FRP 运行时和 Helper 管理。默认官方来源策略修订升至 7 并授权 Tunnels 签名执行包。Windows Release HTTP 验收安装 1.0.0、升级 2.0.0 和回滚，随后新 Core 宿主通过恢复后的签名执行包校验隧道定义。Windows FRP 专项通过。桌面包联合选择及真实 FRP 服务联调仍待验。
+- Tunnels 签名执行包接入后，Windows Release 完整模块回归通过（1498 条 PASS 记录），覆盖禁用后的能力撤回和官方来源授权。

@@ -511,7 +511,7 @@ Check(ServerModules.Create(Config(("Modules:Firewall:Enabled", "false")))
 Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabilities.Firewall,
         ServerCapabilities.Metrics, ServerCapabilities.Processes, ServerCapabilities.Git, ServerCapabilities.Docker,
         ServerCapabilities.Certificates, ServerCapabilities.WebServer, ServerCapabilities.Tailscale, ServerCapabilities.Database,
-        ServerCapabilities.Proxy, ServerCapabilities.GatewayProxy, ServerCapabilities.ProxyServer]),
+        ServerCapabilities.Proxy, ServerCapabilities.GatewayProxy, ServerCapabilities.ProxyServer, ServerCapabilities.Tunnels]),
     "default capability set is exactly the declared module capabilities");
 
 // Web server / website publication is asserted without a host: its publication coordinator is bound
@@ -528,6 +528,8 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
     Check(advertised.Host!.Capabilities.Tunnels && advertised.Capabilities.Contains(ServerCapabilities.Tunnels)
           && !memory.Host!.Capabilities.Tunnels && !memory.Capabilities.Contains(ServerCapabilities.Tunnels),
         "the server descriptor advertises tunnels only with the required storage provider");
+    Check(!Describe(ServerModules.Create(Config(("Modules:Tunnels:Enabled", "false")))).Capabilities.Contains(ServerCapabilities.Tunnels),
+        "the server descriptor omits tunnels when the module is disabled");
     Check(advertised.Capabilities.Contains(ServerCapabilities.Database)
           && !Describe(ServerModules.Create(Config(("Modules:Database:Enabled", "false")))).Capabilities.Contains(ServerCapabilities.Database),
         "the server descriptor follows database module enablement");
@@ -807,6 +809,8 @@ foreach (var enabled in new[] { true, false })
         // The proxy module is asserted in its own block below with the Host backbone registered.
         // Starting it here would run its background guards against a host this test does not build.
         ["Modules:Proxy:Enabled"] = "false",
+        // Tunnel routes require the Core FRP and SQLite registrations omitted by this synthetic host.
+        ["Modules:Tunnels:Enabled"] = "false",
         // Database endpoint and scheduler coverage use their own host fixtures.
         ["Modules:Database:Enabled"] = "false",
     });

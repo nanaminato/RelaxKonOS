@@ -80,6 +80,7 @@ public static class ServerDescriptorFactory
         {
             Capabilities = capabilities with
             {
+                Tunnels = capabilities.Tunnels && enabledModuleCapabilities.Contains(ServerCapabilities.Tunnels),
                 Terminal = capabilities.Terminal && enabledModuleCapabilities.Contains(ServerCapabilities.Terminal),
                 Git = capabilities.Git && enabledModuleCapabilities.Contains(ServerCapabilities.Git),
                 Metrics = capabilities.Metrics && enabledModuleCapabilities.Contains(ServerCapabilities.Metrics),

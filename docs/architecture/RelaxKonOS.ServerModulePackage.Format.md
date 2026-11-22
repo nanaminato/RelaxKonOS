@@ -121,6 +121,7 @@ RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <�
 | `relaxkonos.webserver` | `WebServer` | `RelaxKonOS.Server.WebsitePublishing.WebsitePublicationExecutor` | `server.web-server` |
 | `relaxkonos.certificates` | `Certificates` | `RelaxKonOS.Server.Certificate.AnvilAcmeExecutor` | `server.certificates` |
 | `relaxkonos.proxy` | `Proxy` | `RelaxKonOS.Server.Proxy.ProxyOverviewExecutor` | `server.proxy,server.gateway-proxy,server.proxy-server` |
+| `relaxkonos.tunnels` | `Tunnels` | `RelaxKonOS.ServerModule.Tunnels.TunnelExecution` | `server.tunnels` |
 
 入口程序集文件名为 `RelaxKonOS.ServerModule.<目录>.dll`。Git 的 `capabilityContractVersions` 必须声明当前 `GitApiRoutes.CapabilityContractVersion`。Web Server 的依赖声明必须包含 `relaxkonos.certificates` 的受支持版本区间。Certificates 的发布目录须包含 `Certify.ACME.Anvil.dll`、`BouncyCastle.Cryptography.dll` 和 `Newtonsoft.Json.dll`。这些执行包的版本切换在 Core 重启时生效。
 
