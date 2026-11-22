@@ -51,12 +51,12 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             && localResolution.ProblemPackage?.Kind != DeploymentPackageKind.ServerModule)
         {
             var plan = await coordinator.PlanAsync(LocalTarget, root, local, optional, cancellationToken);
-            return new(plan with { ClientBinding = new(Guid.Empty, "", candidate.ExpectedInstalledPath) { ArchivePath = archivePath } }, candidate);
+            return new(plan with { ClientBinding = CreateBinding(Guid.Empty, "") }, candidate);
         }
 
         var actor = session.CurrentUser?.Id ?? throw new InvalidOperationException("deployment-account-changed");
         var connection = session.ServiceId ?? throw new InvalidOperationException("deployment-account-changed");
-        var binding = new DeploymentClientBinding(actor, connection, candidate.ExpectedInstalledPath) { ArchivePath = archivePath };
+        var binding = CreateBinding(actor, connection);
         var client = NewModuleClient(binding);
         var catalog = new ModuleDeploymentCatalog(client);
         var modules = new ModuleDeploymentExecutor(client);
@@ -73,6 +73,12 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             throw new InvalidOperationException("deployment-application-incompatible");
         resolution = resolution with { ClientBinding = binding };
         return new(await modules.PrepareAsync(resolution, snapshot, cancellationToken), candidate);
+
+        DeploymentClientBinding CreateBinding(Guid account, string identity) => new(account, identity, candidate.ExpectedInstalledPath)
+        {
+            ArchivePath = archivePath,
+            RecoverFromOfficialCatalog = candidate.OfficialRelease is not null && candidate.CatalogAuthorization is null,
+        };
     }
 
     public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
@@ -103,7 +109,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         return digest;
     }
 
-    public async Task<IReadOnlyList<AppPackageCandidate>> RecoverLocalArchivesAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<AppPackageCandidate>> RecoverArchivesAsync(
+        IReadOnlyList<OfficialDesktopRelease> releases, CancellationToken cancellationToken)
     {
         var plans = await journal.ReadPendingPlansAsync(Guid.Empty, "", cancellationToken);
         if (session?.State == AuthSessionState.Authenticated && session.CurrentUser is { } user && session.ServiceId is { } connection)
@@ -113,17 +120,31 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         var recovered = new HashSet<(DeploymentPackageKey Package, string Digest)>();
         foreach (var plan in plans)
         {
-            if (plan.ClientBinding is not { ArchivePath: { } path } binding || !CanRecover(binding) || !File.Exists(path)) continue;
+            if (cancellationToken.IsCancellationRequested) break;
+            if (plan.ClientBinding is not { } binding || !CanRecover(binding)) continue;
+            var root = plan.OrderedReleases[^1];
+            if (recovered.Contains((root.Package, root.ArtifactIdentity))) continue;
+            AppPackageCandidate? candidate = null;
             try
             {
-                var candidate = await installer.InspectLocalAsync(path, cancellationToken: cancellationToken);
-                var root = plan.OrderedReleases[^1];
+                if (binding.ArchivePath is { } path && File.Exists(path))
+                    candidate = await installer.InspectLocalAsync(path, cancellationToken: cancellationToken);
+                else if (binding.RecoverFromOfficialCatalog
+                    && releases.FirstOrDefault(item => App(item.AppId) == root.Package
+                        && item.Version == root.Version && item.Sha256 == root.ArtifactIdentity) is { } release)
+                    candidate = await installer.StageOfficialAsync(release, cancellationToken);
+                if (candidate is null) continue;
                 if (root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version) continue;
                 var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
                 if (digest == root.ArtifactIdentity && CanRecover(binding) && recovered.Add((root.Package, digest)))
+                {
                     candidates.Add(candidate with { ExpectedSha256 = digest, IsRecoveredDeployment = true });
+                    candidate = null; // The installer queue now owns the staged archive.
+                }
             }
-            catch (Exception error) when (!cancellationToken.IsCancellationRequested && AppPackageInstallerService.IsStoreFailure(error)) { }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
+            catch (Exception error) when (AppPackageInstallerService.IsStoreFailure(error)) { }
+            finally { if (candidate is not null) installer.Discard(candidate); }
         }
         return candidates;
 

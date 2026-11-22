@@ -159,11 +159,11 @@ internal static class OfficialRoappChecks
                     "Archive bytes that differ from the reviewed digest must not resume a pending plan.");
                 var reopened = new JointAppDeploymentService(null!, null!, installer, packages, applications,
                     new FileDeploymentJournal(Path.Combine(root, "resume-package-digest")));
-                var discovered = await reopened.RecoverLocalArchivesAsync(CancellationToken.None);
+                var discovered = await reopened.RecoverArchivesAsync([], CancellationToken.None);
                 Check(discovered is [{ IsRecoveredDeployment: true }] && discovered[0].LocalPath == candidate.LocalPath,
                     "Reopening the recovery journal must discover the original archive without choosing it again.");
                 await File.AppendAllTextAsync(path, "changed after deployment review");
-                Check((await reopened.RecoverLocalArchivesAsync(CancellationToken.None)).Count == 0,
+                Check((await reopened.RecoverArchivesAsync([], CancellationToken.None)).Count == 0,
                     "Recovery discovery must exclude the original path when its archive no longer matches.");
                 File.Copy(artifact, path, overwrite: true);
             }
@@ -292,6 +292,22 @@ internal static class OfficialRoappChecks
             var staged = await installer.StageOfficialAsync(published, default);
             Check(staged.ExpectedSha256 == candidate.ExpectedSha256,
                 "The existing store must offer the reviewed bundled artifact for interactive deployment.");
+            if (isSshFiles)
+            {
+                var catalogJournal = new FileDeploymentJournal(Path.Combine(root, "resume-catalog-release"));
+                var deployment = new JointAppDeploymentService(null!, null!, installer, packages, applications, catalogJournal);
+                var review = await deployment.PrepareAsync(staged, [], CancellationToken.None);
+                await using (var lease = await catalogJournal.OpenAsync(review.Plan, CancellationToken.None))
+                    await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
+                var reopened = new JointAppDeploymentService(null!, null!, installer, packages, applications,
+                    new FileDeploymentJournal(Path.Combine(root, "resume-catalog-release")));
+                Check((await reopened.RecoverArchivesAsync([published with { Sha256 = new string('0', 64) }],
+                    CancellationToken.None)).Count == 0, "A different catalog digest must not recover a deployment.");
+                var recovered = await reopened.RecoverArchivesAsync([published], CancellationToken.None);
+                Check(recovered is [{ IsRecoveredDeployment: true }] && recovered[0].OfficialRelease == published
+                    && recovered[0].ExpectedSha256 == candidate.ExpectedSha256,
+                    "The current catalog must recover the exact reviewed release without an archive path.");
+            }
             await WriteProfileAsync("offline");
             await File.AppendAllTextAsync(path, "corrupted distribution package");
             await provisioner.RunAsync();

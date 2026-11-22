@@ -87,13 +87,20 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
 
     internal async Task OpenAsync()
     {
+        await RefreshOfficialCommand.ExecuteAsync(null);
+        if (_disposed) return;
         if (JointDeployment is { } deployment)
         {
             IsBusy = true;
             try
             {
-                var recovered = await deployment.RecoverLocalArchivesAsync(_storeLifetime.Token);
-                if (_disposed) return;
+                var recovered = await deployment.RecoverArchivesAsync(_officialReleases, _storeLifetime.Token);
+                if (_disposed)
+                {
+                    foreach (var candidate in recovered)
+                        _installer.Discard(candidate);
+                    return;
+                }
                 foreach (var candidate in recovered)
                     _pending.Enqueue(candidate);
                 ShowNext();
@@ -105,7 +112,6 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
             }
             finally { IsBusy = false; }
         }
-        if (!_disposed) await RefreshOfficialCommand.ExecuteAsync(null);
     }
 
     public async Task QueueServerPackagesAsync(IEnumerable<string> paths)

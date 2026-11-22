@@ -15,6 +15,8 @@ public sealed record DeploymentClientBinding(Guid AccountId, string ConnectionId
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ArchivePath { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RecoverFromOfficialCatalog { get; init; }
 }
 
 public sealed record DeploymentPlan(Guid Id, DeploymentTarget Target, DateTimeOffset ExpiresAt,
