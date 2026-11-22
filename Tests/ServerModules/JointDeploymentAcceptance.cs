@@ -201,6 +201,14 @@ internal static class JointDeploymentAcceptance
             catch (InvalidOperationException error) when (error.Message == "deployment-module-unhealthy") { }
             finally { factory.SubstituteHealthVersion = false; }
             await executor.VerifyAsync(review.Plan, moduleRelease, default);
+            factory.SubstituteInstalledDigest = true;
+            try
+            {
+                await executor.VerifyAsync(review.Plan, moduleRelease, default);
+                throw new InvalidOperationException("Expected changed installed package identity to be rejected.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-module-not-effective") { }
+            finally { factory.SubstituteInstalledDigest = false; }
             factory.SubstituteBlockedHealth = true;
             try
             {
@@ -549,6 +557,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteBlockedHealth { get => handler.SubstituteBlockedHealth; set => handler.SubstituteBlockedHealth = value; }
         public bool HideEffectiveVersion { get => handler.HideEffectiveVersion; set => handler.HideEffectiveVersion = value; }
         public bool SubstituteInventoryDigest { get => handler.SubstituteInventoryDigest; set => handler.SubstituteInventoryDigest = value; }
+        public bool SubstituteInstalledDigest { get => handler.SubstituteInstalledDigest; set => handler.SubstituteInstalledDigest = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
         public Task HoldNextEnableApply()
@@ -578,6 +587,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteBlockedHealth { get; set; }
         public bool HideEffectiveVersion { get; set; }
         public bool SubstituteInventoryDigest { get; set; }
+        public bool SubstituteInstalledDigest { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
@@ -587,6 +597,21 @@ internal static class JointDeploymentAcceptance
             Requests++;
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (SubstituteInstalledDigest && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.InstalledPackages)
+            {
+                using var response = await base.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var page = (await response.Content.ReadFromJsonAsync<ServerInstalledModulePageDto>(
+                    RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(page with
+                    {
+                        Items = page.Items.Select(item => item.ModuleId == ModuleId
+                            ? item with { ArtifactSha256 = new string('0', 64) } : item).ToArray(),
+                    }, options: RelaxKonOSJsonOptions.Default),
+                };
+            }
             if ((SubstituteHealthVersion || SubstituteBlockedHealth)
                 && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleHealth)
             {

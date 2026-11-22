@@ -123,6 +123,16 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             || identity.Length == 64 && module.ArtifactDigest != identity)
             throw new InvalidOperationException("deployment-module-not-effective");
 
+        if (module.Packaging == "independent")
+        {
+            var packages = await client.InstalledPackagesAsync(cancellationToken);
+            if (!packages.Items.Any(package => package.ModuleId == module.Id && package.Active && !package.Quarantined
+                && package.Version == module.EffectiveVersion && package.ArtifactSha256 == identity
+                && (release.ActivationOnly
+                    || $"{package.SourceId}/{package.ReleaseId}/{package.ArtifactSha256}" == release.ArtifactIdentity)))
+                throw new InvalidOperationException("deployment-module-not-effective");
+        }
+
         var health = await client.CheckHealthAsync(cancellationToken);
         if (!health.Modules.Any(item => item.ModuleId == release.Package.Id && item.Enabled
             && item.Status is "host" or "loaded" or "healthy"
