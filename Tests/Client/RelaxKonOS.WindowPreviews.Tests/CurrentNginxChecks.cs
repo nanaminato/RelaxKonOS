@@ -10,6 +10,7 @@ using Avalonia.VisualTree;
 using Avalonia.Headless;
 using RelaxKonOS.Client.Apps.WebServers;
 using RelaxKonOS.Client.Apps.WebServers.Views;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
@@ -63,8 +64,8 @@ internal static class CurrentNginxChecks
         var client = DispatchProxy.Create<IServerWebServers, CurrentNginxClient>();
         var host = (CurrentNginxClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
-        var model = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(session),
-            HostPlatformKind.Windows, new FirewallTestPermissions(), null!, CurrentNginxChecks.Language) { IsComponentCenter = true };
+        var model = new ComponentNginxSelection(client, new WebServerWindowConnection(session),
+            HostPlatformKind.Windows, new FirewallTestPermissions(), null!);
         model.SelectedServer = host.Servers[0] with { Capabilities = new(true, true, true, CanUninstall: true) };
         Check(!model.UninstallManagedCommand.CanExecute(null), "Runtime uninstall requires a Component Center action.");
         var calls = 0;
@@ -123,13 +124,14 @@ internal static class CurrentNginxChecks
         var host = (CurrentNginxClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         ((SiteEditorSession)(object)session).Platform = platform;
-        WebServerManagerViewModel Model(bool center) => new(client, null!, new WebServerWindowConnection(session), platform, new FirewallTestPermissions(),
-            new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()), CurrentNginxChecks.Language) { IsComponentCenter = center };
-        var manager = Model(false);
-        var center = Model(true);
+        var authorization = new WebServerAuthorization(DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>());
+        using var manager = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(session),
+            platform, new FirewallTestPermissions(), authorization, Language);
+        var center = new ComponentNginxSelection(client, new WebServerWindowConnection(session),
+            platform, new FirewallTestPermissions(), authorization);
         manager.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         center.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-        Check(manager.SelectedServer?.Id == "first" && !manager.ShowInstanceSelection, platform + " manager resolves the host selection without a picker.");
+        Check(manager.SelectedServer?.Id == "first", platform + " manager resolves the host selection without a picker.");
         center.SelectedServer = host.Servers[1];
         center.SelectCurrentNginxCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(host.Current == "second", "Component Center persists the explicit host selection.");
@@ -140,7 +142,8 @@ internal static class CurrentNginxChecks
         manager.EndSiteEditing();
         Check(typeof(WebServerManagerViewModel).GetProperty("InstallManagedCommand") is null,
             platform + " manager has no application installation command.");
-        Check(!manager.SelectCurrentNginxCommand.CanExecute(null), "The manager cannot set the host selection.");
+        Check(typeof(WebServerManagerViewModel).GetProperty("SelectCurrentNginxCommand") is null,
+            "The manager cannot set the host selection.");
         Capture(new RelaxKonOS.App.WebServers.Views.WebServerSitesPageView { DataContext = manager },
             platform + "-sites", 1060);
         foreach (var width in new[] { 1060, 520 })
@@ -148,7 +151,17 @@ internal static class CurrentNginxChecks
             Capture(new WebServerInstancesPageView { DataContext = manager }, platform + "-manager-" + width, width);
             Capture(new CurrentNginxSelectionView { DataContext = center }, platform + "-selection-" + width, width);
         }
-        center.SelectedIntegrationCandidate = new("external", "nginx", WebServerType.Nginx, "/external/nginx", "/external/nginx.conf", "1.28", DateTimeOffset.UtcNow);
+        var candidate = new WebServerIntegrationCandidateDto("external", "nginx", WebServerType.Nginx,
+            "/external/nginx", "/external/nginx.conf", "1.28", DateTimeOffset.UtcNow);
+        center.SelectedIntegrationCandidate = candidate;
+        center.RequestIntegrationConfirmationAsync = () =>
+        {
+            center.SelectedIntegrationCandidate = null;
+            return Task.FromResult(true);
+        };
+        center.IntegrateCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(host.IntegrationCalls == 0, "Changing the integration candidate during confirmation blocks dispatch.");
+        center.SelectedIntegrationCandidate = candidate;
         center.RequestIntegrationConfirmationAsync = () => Task.FromResult(true);
         center.IntegrateCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(host.IntegrationCalls == 1, "Component Center integration uses the domain flow without an installation panel.");

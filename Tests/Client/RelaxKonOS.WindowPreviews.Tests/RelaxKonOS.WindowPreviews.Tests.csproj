@@ -13,6 +13,7 @@
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Git/RelaxKonOS.App.Git.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.FileServices/RelaxKonOS.App.FileServices.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Certificates/RelaxKonOS.App.Certificates.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.WebServers/RelaxKonOS.App.WebServers.csproj" />
     <ProjectReference Include="../../../Framework/RelaxKonOS.UI.SshFiles/RelaxKonOS.UI.SshFiles.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyManager/RelaxKonOS.App.ProxyManager.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyServer/RelaxKonOS.App.ProxyServer.csproj" />

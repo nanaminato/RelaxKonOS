@@ -95,10 +95,10 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
                     new(RelaxKonOS.Deployment.DeploymentPackageKind.ServerModule, moduleId)) ?? [],
             };
         if (context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerWebServers)) is RelaxKonOS.AppSDK.IServerWebServers web
-            && context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerCertificates)) is RelaxKonOS.AppSDK.IServerCertificates certificates
             && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker)) is RelaxKonOS.Client.Services.Privileged.IHostElevationBroker elevations)
         {
-            model.NginxSelection = new(web, certificates, new WebServerWindowConnection(session), session.CurrentServer?.Platform, context.Permissions, new WebServerAuthorization(elevations), (RelaxKonOS.AppSDK.ISystemLanguage)context.Services.GetService(typeof(RelaxKonOS.AppSDK.ISystemLanguage))!) { IsComponentCenter = true, FormatHostProblem = WebServerAuthorization.FormatProblem };
+            model.NginxSelection = new(web, new WebServerWindowConnection(session), session.CurrentServer?.Platform,
+                context.Permissions, new WebServerAuthorization(elevations));
         }
         if (context.Services.GetService(typeof(RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore))
             is RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore componentSources)

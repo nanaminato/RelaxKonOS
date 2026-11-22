@@ -24,28 +24,9 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
     public string InstancesPageTitle => Text("webservers.current.server_management");
     public string CurrentLanguage => _language.CurrentLanguage;
     public string ActionsTitle => Text("webservers.current.server_management");
-    public bool IsComponentCenter { get; set; }
-    public bool ShowInstanceSelection => IsComponentCenter;
-    /// <summary>Nginx installation lives in Component Center; settings only observes and navigates.</summary>
-    [RelayCommand(CanExecute = nameof(CanSelectCurrentNginx))] private async Task SelectCurrentNginxAsync()
-    {
-        if (!CanSelectCurrentNginx || SelectedServer is not { } server) return;
-        IsLoading = true;
-        try
-        {
-            await _client.SelectCurrentNginxAsync(new(server.Id));
-            if (_windowConnection.IsCurrent)
-                StatusText = Status("webservers.current.saved");
-        }
-        catch { StatusText = Status("webservers.current.failed"); }
-        finally { IsLoading = false; }
-    }
-
-    public bool CanSelectCurrentNginx => IsComponentCenter && HasManagePermission && SelectedServer is not null && !IsLoading && !IsOperationRunning;
-
     public async Task SynchronizeCurrentNginxAsync()
     {
-        if (IsComponentCenter || !CanRefresh) return;
+        if (!CanRefresh) return;
         try
         {
             var current = await _client.GetCurrentNginxAsync();
@@ -56,16 +37,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
             await RefreshAsync();
         }
         catch { SelectedServer = null; StatusText = Status("webservers.current.failed"); }
-    }
-
-    private Action? _dismissRuntimeFeedback;
-    private Func<Task>? _uninstallRuntimeAsync;
-
-    public void AttachManagedRuntimeActions(Action dismissFeedback, Func<Task> uninstallAsync)
-    {
-        _dismissRuntimeFeedback = dismissFeedback;
-        _uninstallRuntimeAsync = uninstallAsync;
-        UninstallManagedCommand.NotifyCanExecuteChanged();
     }
 
     private readonly IServerWebServers _client;
@@ -156,10 +127,9 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
     public IReadOnlyList<SiteCertificateSourceOption> SiteCertificateSources { get; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     [NotifyPropertyChangedFor(nameof(IsIntegratedServer), nameof(IsManagedServer), nameof(IsIntegratedOrManagedServer), nameof(IsManagedServerRunning), nameof(ManagementHint), nameof(ManagedLifecycleActionText))]
     [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
-    [NotifyCanExecuteChangedFor(nameof(SelectCurrentNginxCommand))]
     private WebServerDto? _selectedServer;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(IntegrateCommand))]
     private WebServerIntegrationCandidateDto? _selectedIntegrationCandidate;
@@ -196,15 +166,13 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
     private bool _siteFactsAvailable;
     private long _siteReadVersion;
     [ObservableProperty] private WebServerStatusText _siteStatusText = string.Empty;
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
-    [NotifyCanExecuteChangedFor(nameof(SelectCurrentNginxCommand))]
     private bool _isLoading;
     // Every action uses IsOperationRunning in its CanExecute predicate. Keep the command state
     // in sync before and after polling, otherwise controls can retain a stale disabled state.
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
-    [NotifyCanExecuteChangedFor(nameof(SelectCurrentNginxCommand))]
     private bool _isOperationRunning;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsManagedInstallAvailable))]
     private bool _hasManagedInstallation;
@@ -233,16 +201,10 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
         WebServerRuntimeState.Stopped => Text("webservers.runtime.stopped_hint"),
         _ => Text("webservers.runtime.unknown_hint"),
     };
-    public string ManagementHint => !IsComponentCenter ? Text("webservers.current.management_hint") : SelectedServer?.ManagementMode switch
-    {
-        WebServerManagementMode.Integrated => Text("webservers.management_hint.integrated"),
-        WebServerManagementMode.Managed => Text("webservers.management_hint.managed"),
-        _ => Text("webservers.management_hint.none"),
-    };
+    public string ManagementHint => Text("webservers.current.management_hint");
 
     /// <summary>Supplied by the application shell so the view model never constructs UI directly.</summary>
     public Func<Task<bool>>? RequestIntegrationConfirmationAsync { get; set; }
-    public Func<Task<bool>>? RequestManagedUninstallConfirmationAsync { get; set; }
     /// <summary>Routes a known static-site directory into RemoteExplorer.</summary>
     public Func<string, Task>? OpenFileBrowserAtPathAsync { get; set; }
     /// <summary>Opens the RemoteExplorer picker for certificate or key files on the server.</summary>
@@ -286,11 +248,8 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
             var current = await _client.GetCurrentNginxAsync();
             if (!HasReadPermission) return;
             ApplyDiscoveryResults(servers, candidates);
-            if (!IsComponentCenter || current is not null)
-            {
-                SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
-                if (!IsComponentCenter) StatusText = Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
-            }
+            SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
+            StatusText = Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
         }
         catch (Exception)
         {
@@ -318,11 +277,8 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
             var current = await _client.GetCurrentNginxAsync();
             if (!HasReadPermission) return;
             ApplyDiscoveryResults(servers, candidates);
-            if (!IsComponentCenter || current is not null)
-            {
-                SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
-                if (!IsComponentCenter) StatusText = Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
-            }
+            SelectedServer = Servers.FirstOrDefault(server => server.Id == current?.ServerId);
+            StatusText = Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready");
         }
         catch (Exception)
         {
@@ -349,7 +305,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
         var managedCount = servers.Count(server => server.ManagementMode == WebServerManagementMode.Managed);
         var integratedCount = servers.Count(server => server.ManagementMode == WebServerManagementMode.Integrated);
         HasManagedInstallation = managedCount > 0;
-        StatusText = IsLinuxServer && !IsComponentCenter
+        StatusText = IsLinuxServer
             ? Status(SelectedServer is null ? "webservers.current.unavailable" : "webservers.current.ready")
             : Status(
             "webservers.discovery.summary",
@@ -418,7 +374,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
         var candidate = SelectedIntegrationCandidate;
         if (candidate is null) return;
         if (RequestIntegrationConfirmationAsync is null || !await RequestIntegrationConfirmationAsync()) return;
-        _dismissRuntimeFeedback?.Invoke();
         await RunOperationAsync("integrate", ct => _authorization.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, candidate.Id,
             () => _client.IntegrateCandidateAsync(candidate.Id, new IntegrateWebServerRequest(true), ct), ct));
     }
@@ -451,17 +406,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
             ? Task.CompletedTask
             : RunOperationAsync(kind, ct => _authorization.ExecuteAsync(capability, server.Id,
                 () => _client.ApplyLifecycleAsync(server.Id, action, ct), ct));
-    }
-
-    [RelayCommand(CanExecute = nameof(CanUninstallManaged))]
-    private async Task UninstallManagedAsync()
-    {
-        if (_uninstallRuntimeAsync is not { } uninstall || !CanUninstallManaged
-            || RequestManagedUninstallConfirmationAsync is null) return;
-        var original = SelectedServer?.Id;
-        if (!await RequestManagedUninstallConfirmationAsync() || !CanUninstallManaged || SelectedServer?.Id != original) return;
-        await uninstall();
-        await RefreshAsync();
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenSiteEditor))]
@@ -952,8 +896,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject, IDispo
     private bool CanToggleManaged => IsManagedServerRunning ? CanStop : CanStart;
     private bool CanRestart => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRestart == true;
     private bool CanReload => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanReload == true;
-    private bool CanUninstallManaged => _uninstallRuntimeAsync is not null && HasManagePermission
-        && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanUninstall == true;
     private bool CanManageSites => HasManagePermission && SiteFactsAvailable && !IsSavingSite && !IsLoading && !IsOperationRunning && SelectedServer?.ManagementMode is WebServerManagementMode.Integrated or WebServerManagementMode.Managed;
     private bool CanSaveSite => CanManageSites && _siteEditorOpen && _siteEditorTargetVersion == _siteTargetVersion && SelectedSite?.Id == _siteEditorSiteId;
     private bool CanOpenSiteEditor => CanManageSites;

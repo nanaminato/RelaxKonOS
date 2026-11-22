@@ -26,15 +26,13 @@ def require(condition, problem):
 
 def verify_published(publish_dir, manifests, profile_document):
     host_dependencies = publish_dir / "RelaxKonOS.deps.json"
+    require(host_dependencies.is_file(), f"Desktop host dependency manifest is missing under {publish_dir}.")
     host_libraries = {
         dependency.split("/", 1)[0]
         for dependency in read_json(host_dependencies)["libraries"]
-    } if host_dependencies.is_file() else set()
-    for app_id in ("relaxkonos.settings", "relaxkonos.component-center", "relaxkonos.explorer",
-                   "relaxkonos.server-center", "relaxkonos.terminal", "relaxkonos.ssh-files",
-                   "relaxkonos.git", "relaxkonos.codeeditor", "relaxkonos.file-services",
-                   "relaxkonos.certificates"):
-        assembly_name = Path(manifests[app_id]["entryAssembly"]).stem
+    }
+    for app_id, manifest in manifests.items():
+        assembly_name = Path(manifest["entryAssembly"]).stem
         require(assembly_name not in host_libraries,
                 f"The desktop host dependency graph includes the {app_id} package implementation.")
         require(not (publish_dir / f"{assembly_name}.dll").exists(),

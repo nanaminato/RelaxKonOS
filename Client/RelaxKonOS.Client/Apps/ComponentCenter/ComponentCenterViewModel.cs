@@ -475,7 +475,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable, I
         SelectedNode = VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf()).FirstOrDefault(node =>
             target.WorkloadId is { } workload ? node.WorkloadId == workload && node.ComponentId is null : node.ComponentId == target.ComponentId);
     }
-    public RelaxKonOS.App.WebServers.WebServerManagerViewModel? NginxSelection { get; set; }
+    internal ComponentNginxSelection? NginxSelection { get; set; }
     public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection is not null;
 
     private ComponentGitEngineStatus? _gitEngineStatus;
