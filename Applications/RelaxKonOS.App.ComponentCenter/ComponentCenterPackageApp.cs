@@ -21,7 +21,7 @@ public sealed class ComponentCenterPackageApp : IExternalRemoteApplication, IExt
     public Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        RequireWorkspace(context).Open(ComponentCenterLayout.Create, (title, content) => context.Windows.ShowWindow(title, content,
+        RequireWorkspace(context).Open(ComponentCenterLayout.Create, () => new ServerModuleSecurityView(), (title, content) => context.Windows.ShowWindow(title, content,
             InitialBounds, Manifest.IconGlyph).Window);
         return Task.CompletedTask;
     }

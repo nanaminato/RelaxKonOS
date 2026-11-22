@@ -1,4 +1,5 @@
 using Avalonia;
+using RelaxKonOS.App.ComponentCenter;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -12,7 +13,13 @@ public partial class ServerModulesView : UserControl
     private bool _compact;
     private bool _layoutApplied;
 
-    public ServerModulesView() => InitializeComponent();
+    public ServerModulesView() : this(new ServerModuleSecurityView()) { }
+
+    internal ServerModulesView(Control securityView)
+    {
+        InitializeComponent();
+        Security.Content = securityView;
+    }
 
     /// <summary>
     /// A module rail beside a detail pane needs roughly 900 px. Below that the two panes would each

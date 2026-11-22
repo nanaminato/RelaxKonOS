@@ -48,7 +48,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
         // Navigation only changes context, never a draft or approval.
         _model.Notice = LocalizedStatus.Key("component_center.located");
     }
-    public void Open(Func<ComponentCenterPresentation, Control> createView, Func<string, Control, ManagedWindow> showWorkspace)
+    public void Open(Func<ComponentCenterPresentation, Control> createView, Func<Control> createModuleSecurityView, Func<string, Control, ManagedWindow> showWorkspace)
     {
         var context = new AppContext(ComponentCenterPackageApp.Id, services.GetRequiredService<IWindowManager>(), services);
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
@@ -102,7 +102,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
             model.CatalogSources = new CatalogSourcesViewModel(componentSources);
         }
         var login = session.CurrentSession;
-        var view = new ComponentCenterWorkspace(model, createView);
+        var view = new ComponentCenterWorkspace(model, createView, createModuleSecurityView);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
         RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallationSnapshot? lastObservation = null;
         System.ComponentModel.PropertyChangedEventHandler observed = (sender, args) =>

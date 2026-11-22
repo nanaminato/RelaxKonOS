@@ -16,13 +16,14 @@ public sealed class ComponentCenterWorkspace : UserControl
     public Action<string>? OpenApplication { get; set; }
 
     public ComponentCenterWorkspace(ComponentCenterViewModel model)
-        : this(model, ComponentCenterLayout.Create) { }
+        : this(model, ComponentCenterLayout.Create, () => new ServerModuleSecurityView()) { }
 
-    internal ComponentCenterWorkspace(ComponentCenterViewModel model, Func<ComponentCenterPresentation, Control> createView)
+    internal ComponentCenterWorkspace(ComponentCenterViewModel model, Func<ComponentCenterPresentation, Control> createView,
+        Func<Control> createModuleSecurityView)
     {
         DataContext = model;
 
-        var modules = new ServerModulesView { DataContext = model.ServerModules };
+        var modules = new ServerModulesView(createModuleSecurityView()) { DataContext = model.ServerModules };
         var nginx = new ContentControl
         {
             Content = model.NginxSelection,

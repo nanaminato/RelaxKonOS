@@ -564,11 +564,10 @@ internal static class SettingsWindowChecks
                 nameof(ComponentCenterHeaderActions), nameof(ComponentCenterNavigationView), nameof(ComponentCenterLayout),
                 nameof(ComponentIdentityView), nameof(ComponentDesktopPackageView), nameof(ComponentGitInstallationView),
                 nameof(ComponentOfficialDownloadsView), nameof(ComponentPackageCandidateView), nameof(CatalogSourcesView),
+                nameof(ServerModuleSecurityView),
             })
                 Check(controls.Any(control => control.Name == viewName && control.Assembly == packageAssembly),
                     $"The installed Component Center must create {viewName} from the package.");
-            Check(controls.Contains(typeof(ServerModuleSecurityView)),
-                "The component workspace is missing the host-provided module security view.");
             var secondUri = ComponentCenterNavigation.Component("test-service", "relaxkonos.proxy-server", "sing-box", ComponentCenterPage.Installed);
             var second = applications.Activate(new AppActivationRequest(secondUri));
             Pump();

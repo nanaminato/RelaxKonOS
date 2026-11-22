@@ -1,5 +1,4 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:component="using:RelaxKonOS.App.ComponentCenter"
  xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:p="using:RelaxKonOS.Protocol.Common"
  xmlns:loc="using:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulesView"
  x:DataType="vm:ServerModulesViewModel">
@@ -790,6 +789,6 @@
    </Border>
   </StackPanel>
 
-  <component:ServerModuleSecurityView IsVisible="{Binding IsSecurityTab}" />
+  <ContentControl x:Name="Security" IsVisible="{Binding IsSecurityTab}" />
  </StackPanel>
 </UserControl>

@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="using:RelaxKonOS.App.ComponentCenter"
  x:Class="RelaxKonOS.App.ComponentCenter.ServerModuleSecurityView"
- x:DataType="local:IServerModuleSecurity">
+ x:DataType="sdk:IServerModuleSecurity">
  <StackPanel Spacing="16">
   <Border Classes="panel-card">
    <StackPanel Spacing="12">
@@ -23,7 +24,7 @@
     </WrapPanel>
     <ItemsControl ItemsSource="{Binding HealthRows}" IsVisible="{Binding HasHealthReport}">
      <ItemsControl.ItemTemplate>
-      <DataTemplate x:DataType="local:IServerModuleHealthRow">
+      <DataTemplate x:DataType="sdk:IServerModuleHealthRow">
        <Border Classes="list-row">
         <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
          <StackPanel Spacing="2">
