@@ -368,3 +368,4 @@
 - Windows Release 模块包专项通过。受监督的测试模块在坏版本回滚和健康版本热更新后，均使用当前进程代次的令牌实际读取 HTTP 端点。Linux Databases 的隔离激活与真实 Helper 查询待验。
 - Databases 桌面包 0.3.0 声明同 ID 的服务端模块和 server.database 能力。Windows Release 使用实际 .roapp 验证清单、拒绝绕过联合部署、只读启动、升级、重启和卸载。客户端生命周期测试使用受控的联合部署回执，真实 Linux 联合安装仍待验。
 - Windows 隔离 HTTP 联合部署使用实际 Databases 0.3.0 归档验证复用已生效的内置数据库模块。安装登记模块依赖，卸载移除该依赖，两步均不新增模块包操作。Linux 独立包的联合安装与真实 Helper 查询待验。
+- Windows 隔离 HTTP 联合部署使用实际 Databases 0.3.0 归档验证内置数据库模块停用后的启用计划。启用既有模块无需下载，Core 重启确认前桌面安装保持待处理，重启后可继续完成安装。

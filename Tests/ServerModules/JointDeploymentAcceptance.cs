@@ -234,11 +234,10 @@ internal static class JointDeploymentAcceptance
             await packages.UninstallAsync(AppIdText);
 
             var activationArchives = bundledModuleArchives.Where(path =>
-                Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId)
+                Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId or ServerModules.DatabaseId)
                 .ToDictionary(path => Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal);
-            var activationDependencies = activationArchives.ContainsKey(ServerModules.GitId)
-                ? new[] { ServerModules.FirewallId, ModuleId, ServerModules.GitId }
-                : new[] { ServerModules.FirewallId, ModuleId };
+            var activationDependencies = new[] { ServerModules.FirewallId, ModuleId }
+                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId }.Where(activationArchives.ContainsKey));
             foreach (var dependencyId in activationDependencies)
             {
                 var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
