@@ -173,6 +173,12 @@ if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundled
     return;
 }
 
+if (args is ["--signed-git-joint-acceptance", var signedGitApp])
+{
+    JointDeploymentAcceptance.RunSignedGit(signedGitApp);
+    return;
+}
+
 if (args is ["--live-databases-joint-deployment", var liveServer, var liveArchive, var liveState, var livePhase])
 {
     JointDeploymentAcceptance.RunLiveDatabases(liveServer, liveArchive, liveState, livePhase);

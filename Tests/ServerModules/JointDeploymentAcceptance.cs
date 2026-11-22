@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Headless;
@@ -22,11 +23,13 @@ using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.Git;
 using RelaxKonOS.Server.Startup;
 
 internal static class JointDeploymentAcceptance
@@ -36,6 +39,90 @@ internal static class JointDeploymentAcceptance
 
     public static void Run(string archive, IReadOnlyList<string> bundledModuleArchives) =>
         RunWithDispatcher(() => RunAsync(Path.GetFullPath(archive), bundledModuleArchives.Select(Path.GetFullPath).ToArray()));
+
+    public static void RunSignedGit(string archive) => RunWithDispatcher(() => RunSignedGitAsync(Path.GetFullPath(archive)));
+
+    private static async Task RunSignedGitAsync(string archive)
+    {
+        var parent = Path.Combine(AppContext.BaseDirectory, "test-data");
+        var root = Directory.CreateDirectory(Path.Combine(parent, "signed-git-joint-" + Guid.NewGuid().ToString("N"))).FullName;
+        TestHost? host = null;
+        try
+        {
+            var official = Directory.CreateDirectory(Path.Combine(root, "OfficialApps")).FullName;
+            var appArchive = Path.Combine(official, "relaxkonos.git.roapp");
+            const string version = "99.0.0";
+            await RewriteDesktopArchiveAsync(archive, appArchive, manifest =>
+                manifest["dependencies"]!["required"]![0]!["minimumVersion"] = version);
+            var serverRoot = Directory.CreateDirectory(Path.Combine(root, "server")).FullName;
+            using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var key = Path.Combine(root, "signing.pem");
+            await File.WriteAllTextAsync(key, signer.ExportPkcs8PrivateKeyPem());
+            var now = DateTimeOffset.UtcNow;
+            var rid = ModulePackagePlatform.CurrentRid;
+            var package = await ModulePackageBuilder.BuildAsync(new(Path.GetDirectoryName(CollectibleGitExecution.ResolveBundledPath())!,
+                Path.Combine(root, "module"), ServerModules.GitId, version, "joint-git-" + rid, "fixture", "official", rid,
+                CollectibleGitExecution.AssemblyFile, CollectibleGitExecution.EntryType, "joint-git", new string('a', 40), "official", 1,
+                "https://modules.example/", key, "fixture-key", 3600, Capabilities: [ServerCapabilities.Git],
+                CapabilityContractVersions: new Dictionary<string, string> { [ServerCapabilities.Git] = GitApiRoutes.CapabilityContractVersion }), now);
+            var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", "official", "https://modules.example/",
+                [ServerModules.GitId], new Dictionary<string, string> { ["fixture-key"] = package.PublicKeySpkiBase64 }, 3600);
+            var config = new ConfigurationBuilder().AddJsonStream(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                ModuleManagement = new { Authority = "managed" },
+                ModulePackages = new { Sources = new Dictionary<string, ModulePackageTrustPolicy> { ["official"] = policy } },
+            }, RelaxKonOSJsonOptions.Default))).Build();
+            string serviceId;
+            using (var manager = new ModuleManagementStore(config, serverRoot)) serviceId = manager.ServiceId;
+            using (var catalogs = new ModulePackageCatalogStore(serverRoot, serviceId))
+                catalogs.Accept(await File.ReadAllBytesAsync(package.CatalogPath), policy,
+                    new(serviceId, rid, ModulePackageHostConfiguration.HostApiVersion, false), ModulePackageCatalogStore.InitialRevision,
+                    ModuleTestAuthentication.Admin, "joint-git", now);
+
+            host = await TestHost.StartAsync(serverRoot, config);
+            var auth = DispatchProxy.Create<IAuthSession, SessionProxy>();
+            var session = (SessionProxy)(object)auth;
+            session.Url = host.Url;
+            using var factory = new FixtureHttpFactory(await File.ReadAllBytesAsync(package.ArchivePath));
+            using var services = new ServiceCollection().BuildServiceProvider();
+            var windows = new RelaxKonOS.WindowManager.WindowManager();
+            var apps = new ApplicationManager(windows, services);
+            var packages = new DeveloperPackageManager(apps, null!, windows, DispatchProxy.Create<IAppPermissionManager, PermissionProxy>(),
+                new Diagnostics(), new VirtualSystemDrive(Path.Combine(root, "desktop")), official, moduleHttp: factory, moduleSession: auth);
+            await packages.LoadInstalledAsync();
+            using var trust = new ComponentCatalogSourceStore(Path.Combine(root, "sources"), "joint-git");
+            var installer = new AppPackageInstallerService(packages, null!, trust);
+            var joint = new JointAppDeploymentService(factory, auth, installer, packages, apps, new(Path.Combine(root, "journal")));
+            var candidate = await installer.InspectLocalAsync(appArchive);
+            var review = await joint.PrepareAsync(candidate, [], default);
+            Require(review.Plan.PreparedSteps.Length == 1, "the Git desktop package selects the independent signed server release");
+            await ExpectRestartAsync(joint, review);
+            Require(!apps.IsRegistered(new AppId(candidate.Manifest.Id)), "the desktop waits for the signed Git package to become effective");
+            await host.DisposeAsync();
+            host = null;
+            host = await TestHost.StartAsync(serverRoot, config);
+            session.Url = host.Url;
+            var resumed = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Git joint plan was not recoverable.");
+            var installed = await joint.ExecuteAsync(resumed, default);
+            Require(apps.IsRegistered(new AppId(installed.Id)) && InstalledModuleStore.Read(serverRoot).Single() is { Version: version }
+                && ModulePackageOperationStore.Read(serverRoot).Count == 1,
+                "after restart the desktop registers Git against the signed execution package without resubmitting installation");
+            Require(await packages.UninstallAsync(installed.Id) && !apps.IsRegistered(new AppId(installed.Id))
+                && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
+                "uninstalling the desktop Git package releases the app without removing the server module");
+        }
+        finally
+        {
+            if (host is not null) await host.DisposeAsync();
+            if (Path.GetDirectoryName(root) == parent)
+            {
+                // Windows can retain loaded application assemblies until this process exits.
+                try { Directory.Delete(root, recursive: true); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                { Console.WriteLine($"Fixture cleanup deferred until process exit: {root}"); }
+            }
+        }
+    }
 
     public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
         RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, ServerModules.DatabaseId));
@@ -989,7 +1076,12 @@ internal static class JointDeploymentAcceptance
             var modules = ServerModules.CreateManaged(store.DesiredIds, installed);
             var online = installed.Where(module => modules.IsEnabled(module.Id)).ToArray();
             var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
-            foreach (var module in online) module.ConfigureServices(builder, context);
+            if (online.Any(module => module.Id == ServerModules.GitId))
+            {
+                builder.Services.AddSingleton(DispatchProxy.Create<RelaxKonOS.Server.Files.IFileService, GitRepositoryAssemblyChecks.RejectTransport>());
+                ServerModules.CreateManaged(new HashSet<string> { ServerModules.GitId }, installed).ConfigureServices(builder, context);
+            }
+            foreach (var module in online.Where(module => module.Id != ServerModules.GitId)) module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
             builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
@@ -1002,9 +1094,10 @@ internal static class JointDeploymentAcceptance
             builder.Services.AddAuthentication("module-test").AddScheme<AuthenticationSchemeOptions, ModuleTestAuthentication>("module-test", _ => { });
             builder.Services.AddAuthorization(options => options.AddPolicy(ServerModuleManagementEndpoints.ManagePolicy,
                 policy => policy.RequireAuthenticatedUser().RequireAssertion(user => ServerModuleManagementEndpoints.CanManage(user.User))));
-            var app = builder.Build();
+            WebApplication? app = null;
             try
             {
+                app = builder.Build();
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.MapGet(ServerApiRoutes.Modules, async (HttpContext http, CancellationToken ct) => Results.Ok(
@@ -1020,7 +1113,12 @@ internal static class JointDeploymentAcceptance
                     store.ProcessGeneration, DateTimeOffset.UtcNow);
                 return new(app, store);
             }
-            catch { await app.DisposeAsync(); store.Dispose(); throw; }
+            catch
+            {
+                try { if (app is not null) await app.DisposeAsync(); }
+                finally { store.Dispose(); }
+                throw;
+            }
         }
 
         public async ValueTask DisposeAsync()
