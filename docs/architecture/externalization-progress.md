@@ -29,7 +29,7 @@
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | Windows 和 Linux 签名双包、真实 Engine 临时项目部署和删除已验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
-| firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期和隔离宿主联合部署已验，真实防火墙操作待验 |
+| firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows 和 Linux 签名双包、生产路由授权拒绝及 Windows 真实 Helper 状态读取已验 |
 | proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows Release 包生命周期已验，真实 mihomo 待验 |
 | proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows Release 包生命周期及启动守卫已验，真实 sing-box 待验 |
 | squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows Release 包生命周期已验，真实 Squid 待验 |
@@ -837,3 +837,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的 --signed-firewall-joint-acceptance 使用官方 Firewall Manager 归档测试副本提高模块最低版本，验证一次独立签名包安装与 Core 重启续跑。匿名状态读取被拒且未调用 Helper。认证请求经生产 HTTP 和签名执行模块，通过测试传输得到预期状态。桌面卸载后服务端包保留。真实防火墙尚未纳入本用例。
 - Firewall 签名双包在 Windows 使用 RK_TEST_FIREWALL_HOST_CONFIG，经现有 Helper 认证命名管道成功读取真实防火墙状态，未改写规则。Linux x64 同轮使用测试传输验证匿名请求不增加调用，认证请求恰增加一次读取。Linux 启动与联合管理阶段已存在 Helper 调用，测试按请求前后的差值断言。
 - Windows 签名 Firewall 双包通过写入授权拒绝。认证用户缺少 FirewallChange 提升授权时，生产路由返回 firewall.elevation_required。测试传输确认拒绝未产生额外调用，已有 Windows Helper 的真实读取模式也通过同一拒绝检查。
+- Linux x64 自包含签名 Firewall 双包复验无提升授权的写入请求，返回 firewall.elevation_required，测试传输没有新增调用。现有隔离 WSL 有 iptables 但未发现 ufw，因此 Linux 真实 UFW Helper 仍待验。
