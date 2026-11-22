@@ -363,7 +363,6 @@ public static class Bootstrapper
         services.AddHttpClient<IServerMySql, Databases.MySqlClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).RemoveAllLoggers();
         services.AddSingleton<RelaxKonOS.AppSDK.IComponentCenterWorkspace, RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterHostWorkspace>();
-        services.AddSingleton<RelaxKonOS.App.ComponentCenter.ComponentCenterApp>();
         services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDraftStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-drafts")));
         services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentTaskReferenceStore(Path.Combine(

@@ -28,3 +28,9 @@ MSIX upgrades in place only when `IdentityName` and `Publisher` stay unchanged a
 Standard and Developer install the bundled Settings package on first startup.
 Minimal starts with the App Installer recovery entry. To install or repair Settings
 offline, open the distribution's `OfficialApps/relaxkonos.settings.roapp` in App Installer.
+
+## Component Center
+
+Standard and Developer also preinstall Component Center. In Minimal, the same
+App Installer recovery entry can install or repair it from
+`OfficialApps/relaxkonos.component-center.roapp`.
