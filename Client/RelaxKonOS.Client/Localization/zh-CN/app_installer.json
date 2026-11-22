@@ -55,6 +55,7 @@
         "app_installer.deployment.module_unavailable": "没有可用的兼容服务端模块 {0}。请在组件中心检查该模块及其来源。",
         "app_installer.deployment.app_unavailable": "已安装的应用中没有兼容版本可满足对 {0} 的依赖。",
         "app_installer.deployment.session_changed": "登录会话已变更。请登录后重新审阅部署计划。",
+        "app_installer.deployment.review_again": "部署计划已失效。请重新审阅部署计划后再安装。",
         "app_installer.deployment.server_changed": "连接的服务器已变更。请为当前服务器审阅新的部署计划。",
         "app_installer.deployment.enable_installed": "启用已安装模块 {0}（{1}）",
         "app_installer.deployment.enable_review": "部署将启用列出的服务端模块，需要安装的模块会先安装。若服务端需要重启，请重新连接后重试。",
