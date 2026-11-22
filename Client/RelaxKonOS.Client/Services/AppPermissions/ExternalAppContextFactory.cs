@@ -26,6 +26,7 @@ using RelaxKonOS.Protocol.Capabilities;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.WindowManager;
+using RelaxKonOS.Runtime;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
 
 namespace RelaxKonOS.Client.Services.AppPermissions;
@@ -236,6 +237,9 @@ public sealed class ExternalAppContextFactory
             ? new ExternalSshFileSession(_sshSession, sshEndpoint, lifetime) : null,
         appId.Value == "relaxkonos.ssh-files" && sshEndpoint is not null
             ? new SshTransferPicker(() => fileSession) : null,
+        appId.Value == "relaxkonos.ssh-files" && sshEndpoint is not null && _activations is ApplicationManager applications
+            ? new SshFileOpener(applications,
+                () => !lifetime.IsCancellationRequested && ReferenceEquals(_sshSession.Endpoint, sshEndpoint)) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -293,6 +297,7 @@ public sealed class ExternalAppContextFactory
         IExternalTerminal? Terminal,
         ISshFileSession? SshFiles,
         ISshTransferPicker? SshTransferPicker,
+        ISshFileOpener? SshFileOpener,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

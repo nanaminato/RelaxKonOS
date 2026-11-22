@@ -72,6 +72,7 @@ public interface IExternalAppContext
     /// <summary>File operations for the SSH connection captured for the official SSH Files application.</summary>
     ISshFileSession? SshFiles { get; }
     ISshTransferPicker? SshTransferPicker { get; }
+    ISshFileOpener? SshFileOpener { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }

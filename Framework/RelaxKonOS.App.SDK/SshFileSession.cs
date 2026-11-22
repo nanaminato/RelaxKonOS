@@ -3,6 +3,12 @@ namespace RelaxKonOS.AppSDK;
 /// <summary>An opaque reference to one SSH connection. Compare by reference.</summary>
 public interface ISshFileConnection { }
 
+public interface ISshFileOpener
+{
+    bool CanOpen(string path);
+    bool Open(string path);
+}
+
 public sealed record SshDirectoryItem(string Name, string Path, bool IsDirectory, bool IsLink, long Size, DateTime Modified);
 
 public sealed class SshDirectoryAccessDeniedException(Exception cause) : IOException(cause.Message, cause);
