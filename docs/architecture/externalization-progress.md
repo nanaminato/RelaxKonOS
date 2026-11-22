@@ -838,3 +838,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Firewall 签名双包在 Windows 使用 RK_TEST_FIREWALL_HOST_CONFIG，经现有 Helper 认证命名管道成功读取真实防火墙状态，未改写规则。Linux x64 同轮使用测试传输验证匿名请求不增加调用，认证请求恰增加一次读取。Linux 启动与联合管理阶段已存在 Helper 调用，测试按请求前后的差值断言。
 - Windows 签名 Firewall 双包通过写入授权拒绝。认证用户缺少 FirewallChange 提升授权时，生产路由返回 firewall.elevation_required。测试传输确认拒绝未产生额外调用，已有 Windows Helper 的真实读取模式也通过同一拒绝检查。
 - Linux x64 自包含签名 Firewall 双包复验无提升授权的写入请求，返回 firewall.elevation_required，测试传输没有新增调用。现有隔离 WSL 有 iptables 但未发现 ufw，因此 Linux 真实 UFW Helper 仍待验。
+- Windows Release 的 --signed-proxy-joint-acceptance 用官方 Proxy Manager 归档测试副本提高模块最低版本。协调器只提交一次含三项能力的 Proxy 签名包，重启后续跑登记应用。生产加载器从已安装执行包运行代理总览，使用测试宿主观察值确认 TUN 状态和连接数。卸载桌面保留服务端包。真实 Mihomo 与 Linux 复验待完成。

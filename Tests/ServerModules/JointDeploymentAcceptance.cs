@@ -35,6 +35,7 @@ using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Tunnels;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Runtimes;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Tunnels;
@@ -396,9 +397,31 @@ internal static class JointDeploymentAcceptance
             "the signed Firewall route declines a change without host firewall elevation");
     }
 
+    public static void RunSignedProxy(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        ServerModules.ProxyId, ServerCapabilities.Proxy, "Proxy", ProxyExecutionLoadContext.AssemblyFile,
+        ProxyConnectionExecutionGate.OverviewEntryType, null, VerifySignedProxyAsync,
+        additionalCapabilities: [ServerCapabilities.GatewayProxy, ServerCapabilities.ProxyServer]));
+
+    private static async Task VerifySignedProxyAsync(TestHost _, string root)
+    {
+        var serverRoot = Path.Combine(root, "server");
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
+        var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }, InstalledModuleCatalog.Load(serverRoot));
+        modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+        await using var host = builder.Build();
+        var execution = host.Services.GetRequiredService<ProxyConnectionExecutionGate>();
+        using var overview = execution.AcquireOverview();
+        var reads = new ProxyOverviewReads(_ => Task.CompletedTask, _ => Task.FromResult(false), _ => Task.FromResult<bool?>(true),
+            _ => throw new InvalidOperationException("Runtime observation must take precedence."), _ => Task.FromResult(true), _ => Task.FromResult(3));
+        Require(!ReferenceEquals(execution, ProxyConnectionExecutionGate.Shared)
+            && await overview.ReadAsync(reads, default) is { TunEnabled: true, ActiveConnections: 3 },
+            "the joint-installed signed Proxy package computes an overview from host observations");
+    }
+
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
         string directory, string entryAssembly, string entryType, IReadOnlyDictionary<string, string>? contractVersions,
-        Func<TestHost, string, Task> verifyBusiness, IReadOnlyList<ModulePackageDependency>? dependencies = null)
+        Func<TestHost, string, Task> verifyBusiness, IReadOnlyList<ModulePackageDependency>? dependencies = null,
+        IReadOnlyList<string>? additionalCapabilities = null)
     {
         var parent = Path.Combine(AppContext.BaseDirectory, "test-data");
         var root = Directory.CreateDirectory(Path.Combine(parent, "signed-execution-joint-" + Guid.NewGuid().ToString("N"))).FullName;
@@ -420,7 +443,7 @@ internal static class JointDeploymentAcceptance
             var package = await ModulePackageBuilder.BuildAsync(new(executionDirectory,
                 Path.Combine(root, "module"), moduleId, version, "joint-execution-" + rid, "fixture", "official", rid,
                 entryAssembly, entryType, "joint-execution", new string('a', 40), "official", 1,
-                "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability],
+                "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability, .. additionalCapabilities ?? []],
                 Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", "official", "https://modules.example/",
                 [moduleId], new Dictionary<string, string> { ["fixture-key"] = package.PublicKeySpkiBase64 }, 3600);
@@ -1751,7 +1774,7 @@ internal static class JointDeploymentAcceptance
                 builder.Services.AddSingleton<IHostElevationSessionStore, NoElevation>();
                 ServerModules.CreateManaged(new HashSet<string> { ServerModules.FirewallId }, installed).ConfigureServices(builder, context);
             }
-            foreach (var module in online.Where(module => module.Id is not (ServerModules.FirewallId or ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId)))
+            foreach (var module in online.Where(module => module.Id is not (ServerModules.FirewallId or ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId or ServerModules.ProxyId)))
                 module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
@@ -1809,7 +1832,7 @@ internal static class JointDeploymentAcceptance
                         .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User)))).RequireAuthorization();
                 app.MapGet("/fixture-core", () => "ready");
                 app.MapServerModuleManagementEndpoints();
-                foreach (var module in online.Where(module => module.Id is not (ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId))) module.MapEndpoints(app, context);
+                foreach (var module in online.Where(module => module.Id is not (ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId or ServerModules.ProxyId))) module.MapEndpoints(app, context);
                 app.Urls.Add("http://127.0.0.1:0");
                 await app.StartAsync();
                 store.VerifyStartup(modules.EnabledIds);

@@ -173,6 +173,12 @@ if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundled
     return;
 }
 
+if (args is ["--signed-proxy-joint-acceptance", var signedProxyApp])
+{
+    JointDeploymentAcceptance.RunSignedProxy(signedProxyApp);
+    return;
+}
+
 if (args is ["--signed-firewall-joint-acceptance", var signedFirewallApp])
 {
     JointDeploymentAcceptance.RunSignedFirewall(signedFirewallApp);
