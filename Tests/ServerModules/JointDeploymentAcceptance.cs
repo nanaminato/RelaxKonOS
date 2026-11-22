@@ -377,13 +377,14 @@ internal static class JointDeploymentAcceptance
     {
         const string route = "/api/v1.0/firewall/status";
         using var client = new HttpClient { BaseAddress = new Uri(host.Url) };
-        var transport = (FirewallResidencyChecks.FirewallTransport)host.Services.GetRequiredService<IPrivilegedOperationTransport>();
+        var fixture = host.Services.GetRequiredService<IPrivilegedOperationTransport>() as FirewallResidencyChecks.FirewallTransport;
+        var callsBeforeRead = fixture?.Calls;
         using var anonymous = await client.GetAsync(route);
-        Require(anonymous.StatusCode == System.Net.HttpStatusCode.Unauthorized && transport.Calls == 0,
-            "anonymous firewall reads cannot reach the Helper transport");
+        Require(anonymous.StatusCode == System.Net.HttpStatusCode.Unauthorized && (fixture is null || fixture.Calls == callsBeforeRead),
+            $"anonymous firewall reads cannot reach the Helper transport ({anonymous.StatusCode}, calls {callsBeforeRead} to {fixture?.Calls})");
         client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
         var status = await client.GetFromJsonAsync<FirewallStatusDto>(route, RelaxKonOSJsonOptions.Default);
-        Require(status is { IsAvailable: true, IsEnabled: true } && transport.Calls == 1,
+        Require(status is { IsAvailable: true } && (fixture is null || status.IsEnabled && fixture.Calls == callsBeforeRead + 1),
             "the joint-installed signed Firewall module returns status through the production route and Helper adapter");
     }
 
@@ -1747,10 +1748,12 @@ internal static class JointDeploymentAcceptance
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
             builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
-            if (hasTailscale && Environment.GetEnvironmentVariable("RK_TEST_TAILSCALE_HOST_CONFIG") is { Length: > 0 } configPath)
+            var helperConfigPath = hasTailscale ? Environment.GetEnvironmentVariable("RK_TEST_TAILSCALE_HOST_CONFIG")
+                : hasFirewall ? Environment.GetEnvironmentVariable("RK_TEST_FIREWALL_HOST_CONFIG") : null;
+            if (helperConfigPath is { Length: > 0 })
             {
                 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The installed Helper probe requires Windows.");
-                using var installedConfig = (ConfigurationRoot)new ConfigurationBuilder().AddJsonFile(Path.GetFullPath(configPath), optional: false).Build();
+                using var installedConfig = (ConfigurationRoot)new ConfigurationBuilder().AddJsonFile(Path.GetFullPath(helperConfigPath), optional: false).Build();
                 var helperSection = installedConfig.GetRequiredSection("PrivilegedHelper");
                 builder.Services.AddSingleton(new PrivilegedHelperOptions
                 {
