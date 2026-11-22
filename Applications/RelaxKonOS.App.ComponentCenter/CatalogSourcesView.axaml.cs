@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.ComponentCenter;
+namespace RelaxKonOS.App.ComponentCenter;
 public partial class CatalogSourcesView : UserControl
 {
     public CatalogSourcesView() => InitializeComponent();

@@ -1,3 +1,6 @@
+using System.Windows.Input;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.ComponentCenter;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -9,8 +12,11 @@ using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record CatalogSourceRow(ComponentCatalogSourceView View)
+public sealed record CatalogSourceRow(ComponentCatalogSourceView View) : ICatalogSourceRow
 {
+    string ICatalogSourceRow.Status => Status.Resolve();
+    string ICatalogSourceRow.Trust => Trust.Resolve();
+
     public string Id => View.Policy.SourceId;
     public string Name => View.Policy.DisplayName;
     public string Publisher => View.Policy.PublisherId;
@@ -24,8 +30,22 @@ public sealed record CatalogSourceRow(ComponentCatalogSourceView View)
 }
 
 /// <summary>Device-local source approval. This never changes a server's runtime/Helper trust policy.</summary>
-public sealed partial class CatalogSourcesViewModel : ObservableObject, IDisposable
+public sealed partial class CatalogSourcesViewModel : ObservableObject, IDisposable, ICatalogSourcesViewModel
 {
+    public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
+    public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
+
+    IEnumerable<ICatalogSourceRow> ICatalogSourcesViewModel.Sources => Sources;
+    string ICatalogSourcesViewModel.ReviewTrust => ReviewTrust.Resolve();
+    string ICatalogSourcesViewModel.Notice => Notice.Resolve();
+    ICommand ICatalogSourcesViewModel.RefreshCommand => RefreshCommand;
+    ICommand ICatalogSourcesViewModel.EditCommand => EditCommand;
+    ICommand ICatalogSourcesViewModel.DisableCommand => DisableCommand;
+    ICommand ICatalogSourcesViewModel.RemoveCommand => RemoveCommand;
+    ICommand ICatalogSourcesViewModel.ReviewCommand => ReviewCommand;
+    ICommand ICatalogSourcesViewModel.ConfirmCommand => ConfirmCommand;
+    ICommand ICatalogSourcesViewModel.CancelReviewCommand => CancelReviewCommand;
+
     private readonly ComponentCatalogSourceStore _store;
     private ComponentCatalogSourcePolicy? _review;
     private long _expectedRevision;
