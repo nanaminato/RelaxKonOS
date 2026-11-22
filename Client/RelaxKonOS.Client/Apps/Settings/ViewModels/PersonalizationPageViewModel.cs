@@ -21,7 +21,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 /// 三者是独立的用户意图：切换颜色不会改变菜单布局，切换风格不会改写调色板，
 /// 而“采用推荐风格”始终是一次显式、可撤销的操作。
 /// 透传读写 <see cref="ShellSettings"/>，改动即时反映到桌面并触发保存。</summary>
-public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel, IPersonalizationOverview, IPersonalizationBackground
+public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel, IPersonalizationOverview, IPersonalizationBackground, IPersonalizationLayout
 {
     private readonly IShellCatalog _shellCatalog;
     private readonly ISystemStyleRegistry _systemStyles;
@@ -372,6 +372,10 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     /// ComboBox receives a new ItemsSource. Recreating this list on every getter made that
     /// transient null flow back into the shell setting and repeatedly swap the desktop shell.
     /// </summary>
+    IReadOnlyList<DesktopLayoutOption> IPersonalizationLayout.ShellChoices =>
+        ShellChoices.Select(choice => new DesktopLayoutOption(choice.Id, choice.SelectionDisplayName, choice.UnavailableReason)).ToArray();
+    System.Windows.Input.ICommand IPersonalizationLayout.ResetLayoutCommand => ResetLayoutCommand;
+
     public IReadOnlyList<ShellChoice> ShellChoices => _shellChoices;
 
     /// <summary>Device-local presentation choice; changing it immediately swaps only the shell view.</summary>

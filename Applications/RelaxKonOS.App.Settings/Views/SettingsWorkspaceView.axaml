@@ -41,6 +41,9 @@
         <DataTemplate DataType="settingsApp:IPersonalizationBackgroundPage">
             <settingsApp:PersonalizationBackgroundView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
+        <DataTemplate DataType="settingsApp:IPersonalizationLayoutPage">
+            <settingsApp:PersonalizationLayoutView DataContext="{Binding Editor}" VerticalAlignment="Top" />
+        </DataTemplate>
     </UserControl.DataTemplates>
 
 

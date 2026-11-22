@@ -10,9 +10,6 @@
         <DataTemplate DataType="vm:PersonalizationStylePageViewModel">
                 <pages:PersonalizationStyleView DataContext="{Binding Editor}" VerticalAlignment="Top" />
         </DataTemplate>
-        <DataTemplate DataType="vm:PersonalizationLayoutPageViewModel">
-                <pages:PersonalizationLayoutView DataContext="{Binding Editor}" VerticalAlignment="Top" />
-        </DataTemplate>
 
         <DataTemplate DataType="vm:AccountSecurityPageViewModel">
                 <pages:AccountSecurityPageView VerticalAlignment="Top" />

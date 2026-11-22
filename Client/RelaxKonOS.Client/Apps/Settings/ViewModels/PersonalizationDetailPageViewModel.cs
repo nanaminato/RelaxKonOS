@@ -20,8 +20,9 @@ public sealed class PersonalizationStylePageViewModel(ShellSettings settings, Pe
     public override string DisplayNameKey => "settings.system_style";
     public override string DisplayName => "System style";
 }
-public sealed class PersonalizationLayoutPageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor)
+public sealed class PersonalizationLayoutPageViewModel(ShellSettings settings, PersonalizationPageViewModel editor) : PersonalizationDetailPageViewModel(settings, editor), IPersonalizationLayoutPage
 {
+    IPersonalizationLayout IPersonalizationLayoutPage.Editor => Editor;
     public override string Route => "personalization/layout";
     public override string DisplayNameKey => "settings.desktop_layout";
     public override string DisplayName => "Desktop layout";
