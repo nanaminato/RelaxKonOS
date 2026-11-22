@@ -106,6 +106,11 @@ if (args.Contains("--explorer-address-only"))
         "relaxkonos://explorer/open?path=%00", "relaxkonos://account@explorer/open?path=%2Fa", "/open?path=%2Fa" })
         Check(!RelaxKonOS.AppSDK.RelaxKonOSActivationUris.TryReadExplorerPath(new Uri(url, UriKind.RelativeOrAbsolute), out _),
             "Explorer activation rejects ambiguous or malformed routes");
+    var packagedExplorer = new RelaxKonOS.App.Explorer.ExplorerPackageApp();
+    Check(packagedExplorer.Manifest.Id.Value == "relaxkonos.explorer"
+        && packagedExplorer.CanHandleActivation(RelaxKonOS.AppSDK.RelaxKonOSActivationUris.ExplorerPath("/data"))
+        && !packagedExplorer.CanHandleActivation(new Uri("relaxkonos://explorer/open?path=%2Fa&path=%2Fb")),
+        "The Explorer package uses the shared directory activation contract.");
     var explorer = new RelaxKonOS.Client.Apps.Explorer.ExplorerApp();
     var explorerWindows = new RelaxKonOS.WindowManager.WindowManager();
     explorerWindows.Attach(new Canvas());
