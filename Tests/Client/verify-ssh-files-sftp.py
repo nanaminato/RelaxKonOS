@@ -7,6 +7,7 @@ runner DLL and the built .roapp with its companion .sha256 file.
 import argparse
 import base64
 import hashlib
+import io
 import os
 import secrets
 import socket
@@ -19,11 +20,16 @@ import paramiko
 
 
 class Directory(paramiko.SFTPServerInterface):
+    content = b"RelaxKonOS SFTP fixture\n"
+
     def canonicalize(self, path):
         return "/" + super().canonicalize(path).lstrip("/")
 
     def stat(self, path):
-        if self.canonicalize(path) != "/":
+        path = self.canonicalize(path)
+        if path == "/fixture.txt":
+            return self.file_attributes()
+        if path != "/":
             return paramiko.SFTP_NO_SUCH_FILE
         directory = paramiko.SFTPAttributes()
         directory.st_mode = stat.S_IFDIR | 0o555
@@ -34,12 +40,24 @@ class Directory(paramiko.SFTPServerInterface):
     def list_folder(self, path):
         if self.canonicalize(path) != "/":
             return paramiko.SFTP_NO_SUCH_FILE
+        return [self.file_attributes()]
+
+    def open(self, path, flags, attr):
+        if flags != os.O_RDONLY:
+            return paramiko.SFTP_PERMISSION_DENIED
+        if self.canonicalize(path) != "/fixture.txt":
+            return paramiko.SFTP_NO_SUCH_FILE
+        handle = paramiko.SFTPHandle(flags)
+        handle.readfile = io.BytesIO(self.content)
+        return handle
+
+    def file_attributes(self):
         file = paramiko.SFTPAttributes()
         file.filename = "fixture.txt"
         file.st_mode = stat.S_IFREG | 0o444
-        file.st_size = 0
+        file.st_size = len(self.content)
         file.st_mtime = 1
-        return [file]
+        return file
 
 
 class Server(paramiko.ServerInterface):

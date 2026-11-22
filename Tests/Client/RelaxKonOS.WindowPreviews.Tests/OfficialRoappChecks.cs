@@ -20,6 +20,7 @@ using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Protocol.Browser;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Runtime;
 using System.Reflection;
 using WindowManager = RelaxKonOS.WindowManager.WindowManager;
@@ -80,6 +81,7 @@ internal static class OfficialRoappChecks
         var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
         EventAlertsAuthFixture? browserAuth = null;
         DatabasePackageAuthFixture? databaseAuth = null;
+        SshDesktopSession? sshFixture = null;
         try
         {
             var (packages, applications, windows) = CreateRuntime();
@@ -364,7 +366,31 @@ internal static class OfficialRoappChecks
                         Check(entries.Cast<object>().Any(entry =>
                             Equals(entry.GetType().GetProperty("Name")!.GetValue(entry), "fixture.txt")),
                             $"The official SSH Files window must list the loopback fixture. Status: {((Control)view).FindControl<TextBlock>("StatusText")?.Text}");
-                        Console.WriteLine("SSH Files package read the loopback SFTP directory using the pinned host key.");
+                        var files = (ISshFileSession)sessionField.GetValue(view)!;
+                        var connection = files.Connection!;
+                        using var downloaded = new MemoryStream();
+                        await files.DownloadFileAsync(connection, "/fixture.txt", downloaded, _ => { });
+                        Check(downloaded.ToArray().AsSpan().SequenceEqual("RelaxKonOS SFTP fixture\n"u8),
+                            "The package file capability must download the fixture's exact bytes.");
+
+                        var pin = typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!;
+                        var expected = pin.GetValue(sshFixture);
+                        pin.SetValue(sshFixture, ServerHostTrustRules.Fingerprint("different key"u8));
+                        try
+                        {
+                            using var rejected = new MemoryStream();
+                            try
+                            {
+                                await files.DownloadFileAsync(connection, "/fixture.txt", rejected, _ => { });
+                                throw new InvalidOperationException("A mismatched SSH host key was accepted.");
+                            }
+                            catch (Renci.SshNet.Common.SshConnectionException)
+                            {
+                                Check(rejected.Length == 0, "A rejected host must not deliver any bytes.");
+                            }
+                        }
+                        finally { pin.SetValue(sshFixture, expected); }
+                        Console.WriteLine("SSH Files listed and downloaded over loopback SFTP and rejected a mismatched host key.");
                     }
                 }
                 if (isDatabase)
@@ -617,6 +643,7 @@ internal static class OfficialRoappChecks
                         : ServerCenterSshEndpoint.Create("127.0.0.1", int.Parse(sftpPort), "preview"));
                 if (sftpPort is not null)
                 {
+                    sshFixture = ssh;
                     typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Password))!
                         .SetValue(ssh, Environment.GetEnvironmentVariable("RK_TEST_SFTP_PASSWORD"));
                     typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.HostKeyFingerprint))!
