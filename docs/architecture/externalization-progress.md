@@ -875,3 +875,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 首启选择与实际离线预装共用客户端平台、必需部署依赖及服务端启动要求判定。不满足时窗口显示无法离线预装。Windows Release 发行验收使用实际归档，确认 Terminal 和 Task Manager 可离线安装并继续受启动守卫保护，Proxy 所需服务端模块使其不能离线预装。三语校验通过。
 - 当前 Linux x64 自包含模块完整套件在无外网 Ubuntu 容器通过 1,510 项检查。容器使用 Git 和已有 Docker Compose CLI 进行离线解析，无 Engine 套接字。重新发布当前 Linux 桌面宿主、重建清单已变化的 Tunnels 归档并复用其余归档后，29 个摘要、清单、入口程序集及宿主依赖图核对通过。
 - 当前 Windows Release 服务端模块完整套件通过 1,498 项检查。Windows x64 自包含桌面完整重发全部 29 个官方归档，验证摘要、清单、入口程序集及宿主边界，并用同一发行目录通过原生首次启动到登录和 Server Center 包工作区、主机地址弹窗及卸载回归。
+- Linux x64 自包含桌面从当前源码完整重建 29 个官方归档，摘要、清单、入口程序集及宿主依赖图通过。相同发行目录在 WSL X11 验证原生首启选择窗口，关闭后保存 Minimal、零预装并进入登录。显式 Standard 启动实测预装 13 项。Server Center 实际归档加载、主机地址弹窗、向导取消与卸载也通过，地址查询使用测试 SSH 响应。

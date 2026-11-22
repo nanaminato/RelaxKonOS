@@ -48,13 +48,14 @@ def request_close(window):
         x11.XCloseDisplay(display)
 
 
-def find_window(process):
+def find_window(process, titles=("RelaxKonOS",)):
+    title_pattern = "|".join(re.escape(title) for title in titles)
     deadline = time.monotonic() + 40
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError(f"Desktop exited before opening a window (status {process.returncode}).")
         tree = subprocess.check_output(["xwininfo", "-root", "-tree"], text=True, timeout=5)
-        for window in re.findall(r'^\s+(0x[\da-f]+)\s+"RelaxKonOS":', tree, re.MULTILINE):
+        for window in re.findall(rf'^\s+(0x[\da-f]+)\s+"(?:{title_pattern})":', tree, re.MULTILINE):
             properties = subprocess.run(
                 ["xprop", "-id", window, "_NET_WM_PID", "WM_PROTOCOLS"],
                 capture_output=True, text=True, timeout=5,
@@ -66,7 +67,7 @@ def find_window(process):
             if "WM_DELETE_WINDOW" in properties.stdout and "Map State: IsViewable" in state.stdout:
                 return window
         time.sleep(0.2)
-    raise RuntimeError("No visible RelaxKonOS window belonging to the test process appeared.")
+    raise RuntimeError(f"No visible window titled {titles!r} belonging to the test process appeared.")
 
 
 def main():
@@ -74,7 +75,9 @@ def main():
     parser.add_argument("publish_directory", type=Path)
     parser.add_argument("--dotnet", default="dotnet")
     parser.add_argument("--apphost", action="store_true", help="Run the published RelaxKonOS executable directly.")
-    parser.add_argument("--profile", choices=["minimal", "standard", "developer"], default="minimal")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--profile", choices=["minimal", "standard", "developer"])
+    selection.add_argument("--first-run", action="store_true", help="Dismiss the initial app selection and verify Minimal.")
     args = parser.parse_args()
     publish = args.publish_directory.resolve(strict=True)
     entry = publish / ("RelaxKonOS" if args.apphost else "RelaxKonOS.dll")
@@ -82,12 +85,13 @@ def main():
     if not args.apphost:
         command.insert(0, args.dotnet)
     profile_path = publish / "OfficialApps" / "installation-profiles.json"
+    profile = args.profile or "minimal"
     expected = set()
-    if args.profile != "minimal" or profile_path.is_file():
+    if profile != "minimal" or profile_path.is_file():
         profiles = json.loads(profile_path.read_bytes())
-        expected = {entry["appId"] for entry in profiles["profiles"][args.profile] if entry["installPolicy"] == "offline"}
-    if args.profile != "standard":
-        command.append(f"--installation-profile={args.profile}")
+        expected = {entry["appId"] for entry in profiles["profiles"][profile] if entry["installPolicy"] == "offline"}
+    if not args.first_run:
+        command.append(f"--installation-profile={profile}")
     with tempfile.TemporaryDirectory(prefix="relaxkonos-desktop-") as temporary:
         home = Path(temporary)
         env = {**os.environ, "HOME": temporary}
@@ -97,10 +101,17 @@ def main():
             process = subprocess.Popen(command,
                                        cwd=publish, env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
+                if args.first_run:
+                    dialog = find_window(process, ("Choose desktop apps", "选择桌面应用", "デスクトップアプリの選択"))
+                    request_close(dialog)
                 window = find_window(process)
                 drive = home / "data" / "RelaxKonOS" / "SystemDrive"
                 if not (drive / "System").is_dir():
                     raise RuntimeError("Desktop did not initialize the system drive under the isolated data directory.")
+                if args.first_run or profile_path.is_file():
+                    saved = drive / "System" / "installation-profile.json"
+                    if not saved.is_file() or json.loads(saved.read_bytes()).get("profile") != profile:
+                        raise RuntimeError(f"Desktop did not save the {profile} selection.")
                 installed = {path.parent.name for path in (drive / "Programs" / "External").glob("*/current.json")}
                 if installed != expected:
                     raise RuntimeError(f"Profile provisioning mismatch: missing {sorted(expected - installed)}, "
@@ -115,7 +126,10 @@ def main():
                 if process.poll() is None:
                     process.kill()
                     process.wait()
-    print(f"Linux Release opened a visible X11 window with {len(expected)} {args.profile} packages and exited with status 0.")
+    if args.first_run:
+        print("Linux Release opened the first-run app selection, reached sign-in with no preinstalled apps, and exited with status 0.")
+    else:
+        print(f"Linux Release opened a visible X11 window with {len(expected)} {profile} packages and exited with status 0.")
 
 
 if __name__ == "__main__":
