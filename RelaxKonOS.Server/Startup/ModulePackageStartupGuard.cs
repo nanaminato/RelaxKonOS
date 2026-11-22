@@ -19,6 +19,7 @@ internal static class ModulePackageStartupGuard
     {
         var marker = PathFor(contentRoot);
         if (File.Exists(marker)) Recover(contentRoot, configuration, processGeneration);
+        ModulePackageCatalogStore.QuarantineRevokedInstalledReleases(contentRoot);
         var directory = Path.GetDirectoryName(marker)!;
         Directory.CreateDirectory(directory);
         var temporary = marker + "." + Guid.NewGuid().ToString("N") + ".tmp";

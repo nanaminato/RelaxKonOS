@@ -104,7 +104,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
         try
         {
             var configuredModules = ServerModules.Create(configuration, installedModules);
-            var configured = configuredModules.EnabledIds.Order(StringComparer.Ordinal).ToArray();
+            var configured = configuredModules.ConfiguredIds.Order(StringComparer.Ordinal).ToArray();
             var residency = ModuleResidencyOptions.Parse(configuration, configuredModules.KnownModuleIds, configuredModules.KnownReleasableModuleIds);
             var policies = configuredModules.KnownReleasableModuleIds.ToDictionary(id => id,
                 id => new ServerModuleResidencyPolicyDto(residency.For(id).Strategy.ToString(), (int)residency.For(id).IdleGracePeriod.TotalSeconds), StringComparer.Ordinal);

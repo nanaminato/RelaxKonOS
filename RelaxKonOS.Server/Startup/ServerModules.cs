@@ -158,7 +158,7 @@ internal sealed partial class ServerModules
     /// <summary>Every module in the compiled catalog, enabled or not. Used to validate configuration.</summary>
     internal IReadOnlySet<string> KnownModuleIds { get; }
     private IReadOnlySet<string> QuarantinedDependencies { get; }
-    private IReadOnlySet<string> ConfiguredIds { get; }
+    internal IReadOnlySet<string> ConfiguredIds { get; }
     internal IReadOnlyDictionary<string, IReadOnlyList<string>> RuntimeDependencies
     {
         get

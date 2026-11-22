@@ -777,3 +777,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 当前分支的 Linux x64 自包含模块测试宿主重新发布，在 WSL 本地临时目录通过 157 项模块包检查和 192 项生命周期检查。使用现有 Linux 发行 Welcome、Web Server Manager、Docker Manager 归档另通过联合部署专项，覆盖依赖复用、登记、卸载释放及离线客户端依赖。联合专项使用隔离测试宿主。
 - 启动回执核验拒绝把隔离的安装目标标记为成功，即便版本、发行 ID 与摘要全部相同。Windows Release 模块包专项覆盖该情形并通过。
 - 卸载已停用的官方独立替换包后，运行中 Core 的部署清单立即重新显示停用的随附模块。Windows Release 卸载专项 21 项通过，覆盖正常停用并卸载 Git 独立替换后随附模块重新可见，同时保持停用意图。
+- Core 启动前按已接纳目录的历史撤销记录隔离当前安装包，覆盖发行 ID 和归档摘要。期望配置保留，隔离包不进入有效模块列表。Windows Release 生命周期验收通过，验证 Firewall 撤销后在启动时隔离且 Git 保持启用。运行中撤销仍在下一次启动时生效。

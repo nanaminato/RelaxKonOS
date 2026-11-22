@@ -69,11 +69,33 @@ internal sealed class ModulePackageCatalogStore : IDisposable
 
     internal static void EnsureInstalledReleaseNotRevoked(string contentRoot, InstalledModuleRecord record)
     {
+        var document = ReadInstalledCatalogHistory(contentRoot);
+        if (document is not null) EnsureNotRevoked(document, record.ReleaseId, record.ArtifactSha256);
+    }
+
+    internal static void QuarantineRevokedInstalledReleases(string contentRoot)
+    {
+        var installed = InstalledModuleStore.Read(contentRoot).ToArray();
+        if (!installed.Any(record => !record.Quarantined) || ReadInstalledCatalogHistory(contentRoot) is not { } document) return;
+        var (ids, digests) = GlobalRevocations(document);
+        var changed = false;
+        for (var index = 0; index < installed.Length; index++)
+        {
+            var record = installed[index];
+            if (record.Quarantined || !ids.Contains(record.ReleaseId) && !digests.Contains(record.ArtifactSha256)) continue;
+            installed[index] = record with { Quarantined = true };
+            changed = true;
+        }
+        if (changed) InstalledModuleStore.Write(contentRoot, installed);
+    }
+
+    private static Document? ReadInstalledCatalogHistory(string contentRoot)
+    {
         var directory = Path.Combine(contentRoot, "data", "module-management");
         if (!RegularFile(Path.Combine(directory, "package-catalogs.json"))
-            && !RegularFile(Path.Combine(directory, "package-catalogs.initialized"))) return;
+            && !RegularFile(Path.Combine(directory, "package-catalogs.initialized"))) return null;
         var serviceId = ModuleManagementStore.ReadRecoveryReport(contentRoot).ServiceId;
-        EnsureNotRevoked(Read(contentRoot, serviceId), record.ReleaseId, record.ArtifactSha256);
+        return Read(contentRoot, serviceId);
     }
     private static (Document Document, string? Hash) ReadSnapshot(string contentRoot, string serviceId)
     {

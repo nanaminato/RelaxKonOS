@@ -551,7 +551,7 @@ internal static class ModulePackageHttpChecks
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "2.0.0"), RelaxKonOSJsonOptions.Default);
                 selectSecond.EnsureSuccessStatusCode();
                 var revocation = await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 2, now,
-                    now.AddHours(1), [Release(git[1])], [], [git[0].ArchiveSha256]), "builder-key", keyPath);
+                    now.AddHours(1), [Release(git[1])], [firewall[0].Manifest.ReleaseId], [git[0].ArchiveSha256]), "builder-key", keyPath);
                 using (var catalogs = new ModulePackageCatalogStore(root, serviceId, takeHostLock: false))
                     catalogs.Accept(revocation.Envelope, policy, context, ModulePackageCatalogStore.Read(root, serviceId).Revision,
                         "package-http", "revoke-git-archive", now);
@@ -564,6 +564,12 @@ internal static class ModulePackageHttpChecks
                     "HTTP rollback rejects a revoked archived digest and preserves the current installed target");
                 var selected = (await selectSecond.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
                 ModulePackageStartupGuard.Begin(root, builder.Configuration, "failed-signed-startup");
+                var afterRevocation = InstalledModuleStore.Read(root);
+                var guarded = ServerModules.CreateManaged(new HashSet<string> { ServerModules.FirewallId, ServerModules.GitId }, InstalledModuleCatalog.Load(root));
+                check(afterRevocation.Single(record => record.ModuleId == ServerModules.FirewallId).Quarantined
+                    && !guarded.IsEnabled(ServerModules.FirewallId) && guarded.ConfiguredIds.Contains(ServerModules.FirewallId)
+                    && guarded.IsEnabled(ServerModules.GitId),
+                    "startup quarantines the revoked installed release, preserves desired state and leaves an unrelated module enabled");
                 ModulePackageStartupGuard.Begin(root, builder.Configuration, "recover-signed-startup");
                 check(InstalledModuleStore.Read(root).Single(record => record.ModuleId == ServerModules.GitId) is
                     { Version: "2.0.0", Quarantined: true }
