@@ -15,7 +15,6 @@ using Avalonia.VisualTree;
 using RelaxKonOS.WindowPreviews.Tests;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Git;
-using RelaxKonOS.Client.Apps.Git.Views;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;

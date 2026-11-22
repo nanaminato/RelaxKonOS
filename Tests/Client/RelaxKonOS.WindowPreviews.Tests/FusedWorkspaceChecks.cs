@@ -43,7 +43,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Apps.Git;
-using RelaxKonOS.Client.Apps.Git.Views;
 using RelaxKonOS.Client.Controls;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;

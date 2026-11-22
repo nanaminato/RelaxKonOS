@@ -12,8 +12,10 @@ using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Apps.Git;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using IServerGit = RelaxKonOS.AppSDK.IServerGit;
 
 internal static class ComponentInstallEntryChecks
 {
@@ -56,7 +58,7 @@ internal static class ComponentInstallEntryChecks
             lifecycle: new EntryLifecycle("git"), hostPlatform: "linux");
         using var gitHandler = new EntryHandler();
         using var gitHttp = new HttpClient(gitHandler);
-        gitCenter.GitEngine = new GitClientViewModel(null!, LocalizedText.Get) { IsGitAvailable = false };
+        gitCenter.GitEngine = new ComponentGitEngineStatus(null!) { IsGitAvailable = false };
         gitCenter.AttachPackageInstallation("git", new(DesktopInstallationText.Instance, new InstallationClient(gitHttp, DispatchProxy.Create<IAuthSession, EntrySession>()), null!, InstallationServiceId.Git,
             true, () => Task.CompletedTask, () => Task.FromResult(false)));
         gitCenter.SelectedNode = gitCenter.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
@@ -76,7 +78,12 @@ internal static class ComponentInstallEntryChecks
         using (var windowsGit = new ComponentCenterViewModel(gitRuntime, new(), "https://test.invalid", Guid.NewGuid(),
             lifecycle: new EntryLifecycle("git"), hostPlatform: "windows"))
         {
-            windowsGit.GitEngine = new GitClientViewModel(null!, LocalizedText.Get) { IsGitAvailable = false };
+            var engineClient = DispatchProxy.Create<IServerGit, ComponentGitStatusFixture>();
+            var engineFixture = (ComponentGitStatusFixture)(object)engineClient;
+            windowsGit.GitEngine = new ComponentGitEngineStatus(engineClient);
+            windowsGit.GitEngine.RefreshEngineStatusCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            Check(!windowsGit.GitEngine.IsGitAvailable && windowsGit.GitEngine.IsGitInstallRequired,
+                "A missing Git engine is distinguished from an unavailable status.");
             windowsGit.SelectedNode = windowsGit.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
             Check(!windowsGit.ShowPackageFreeze && windowsGit.ShowGitInstallation,
                 "A Windows host reports the existing Git program instead of the Linux package plan.");
@@ -88,7 +95,8 @@ internal static class ComponentInstallEntryChecks
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
                 var panel = workspace.GetVisualDescendants().OfType<ComponentGitInstallationView>().Single();
-                windowsGit.GitEngine.EngineVersion = "git version fixture";
+                engineFixture.Status = new(true, "", "git version fixture", "/fixture/git");
+                windowsGit.GitEngine.RefreshEngineStatusCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                 Dispatcher.UIThread.RunJobs();
                 Check(panel.IsEffectivelyVisible && panel.GetVisualDescendants().OfType<TextBlock>()
                         .Any(text => text.Text == "git version fixture"),
@@ -160,4 +168,15 @@ internal static class ComponentInstallEntryChecks
 public class EntrySession : SiteEditorSession
 {
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name == "GetAccessTokenAsync" ? Task.FromResult("token") : base.Invoke(method, args);
+}
+
+public class ComponentGitStatusFixture : DispatchProxy
+{
+    public GitEngineStatusDto Status { get; set; } = new(false, "not_installed");
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+    {
+        nameof(IServerGit.GetEngineStatusAsync) => Task.FromResult(Status),
+        _ => throw new NotSupportedException(method?.Name),
+    };
 }

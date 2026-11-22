@@ -79,7 +79,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
             hostPlatform: session.CurrentServer?.Platform switch { HostPlatformKind.Windows => "windows", HostPlatformKind.Linux => "linux", _ => null });
         if (context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerGit)) is RelaxKonOS.AppSDK.IServerGit git)
         {
-            model.GitEngine = new(git, LocalizedText.Get);
+            model.GitEngine = new(git);
             model.GitEngine.PropertyChanged += (_, _) => model.RefreshGitState();
         }
         model.ConnectionAvailable = true;

@@ -14,7 +14,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Git;
-using RelaxKonOS.Client.Apps.Git.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.Git;

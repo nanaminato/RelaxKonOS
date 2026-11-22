@@ -1,4 +1,3 @@
-using RelaxKonOS.App.Git;
 using RelaxKonOS.AppSDK;
 using System.Windows.Input;
 using System.Collections.ObjectModel;
@@ -479,36 +478,21 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable, I
     public RelaxKonOS.App.WebServers.WebServerManagerViewModel? NginxSelection { get; set; }
     public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection is not null;
 
-    private GitEngineStatus? _gitEngineStatus;
+    private ComponentGitEngineStatus? _gitEngineStatus;
 
-    public GitClientViewModel? GitEngine
+    internal ComponentGitEngineStatus? GitEngine
     {
-        get => _gitEngineStatus?.Model;
+        get => _gitEngineStatus;
         set
         {
-            if (ReferenceEquals(GitEngine, value)) return;
-            _gitEngineStatus = value is null ? null : new GitEngineStatus(value);
-            OnPropertyChanged();
+            if (!SetProperty(ref _gitEngineStatus, value)) return;
             OnPropertyChanged(nameof(ShowGitInstallation));
         }
     }
 
-    IComponentGitEngineStatus? IComponentGitInstallation.GitEngine => _gitEngineStatus;
+    IComponentGitEngineStatus? IComponentGitInstallation.GitEngine => GitEngine;
     ICommand IComponentInstallationProgress.ReviewServiceStopActionCommand => ReviewServiceStopActionCommand;
 
-    private sealed class GitEngineStatus(GitClientViewModel model) : IComponentGitEngineStatus
-    {
-        public GitClientViewModel Model { get; } = model;
-        public string EngineVersion => Model.EngineVersion;
-        public string EnginePath => Model.EnginePath;
-        public ICommand RefreshEngineStatusCommand => Model.RefreshEngineStatusCommand;
-
-        public event PropertyChangedEventHandler? PropertyChanged
-        {
-            add => Model.PropertyChanged += value;
-            remove => Model.PropertyChanged -= value;
-        }
-    }
     public bool ShowGitInstallation => SelectedDefinition?.ComponentId == "git" && HostPlatform == "windows" && GitEngine is not null;
     public LocalizedStatus GitStatusText => LocalizedStatus.Key(GitEngine?.IsGitAvailable == true
         ? "component_center.domain.available" : GitEngine?.IsGitInstallRequired == true

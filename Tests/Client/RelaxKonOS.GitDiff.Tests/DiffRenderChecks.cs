@@ -16,7 +16,6 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.App.Git;
 using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.Client.Apps.Git;
-using RelaxKonOS.Client.Apps.Git.Views;
 using RelaxKonOS.UI.TextEditing.Diff;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;

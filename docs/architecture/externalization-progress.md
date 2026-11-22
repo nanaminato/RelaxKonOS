@@ -246,6 +246,7 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 独立部署设备、Linux 图形桌面、Android 真实服务端联调和全应用三语言界面验收仍待执行。
 - Git 的服务器操作由 SDK 中的 `IServerGit` 声明，桌面宿主仍负责提供远程实现。Windows Release 编译和 Git Dock 回归通过。项目编辑器回归在资源预检中因现有 `registry.error.empty_response` 翻译为空而中断。Git 界面和独立发行包待迁移。
 - Git 的中英日资源已迁入独立的 RelaxKonOS.App.Git 程序集，由现有桌面语言服务加载。移除三种语言中与有效注册表错误文案重复的空条目，恢复项目编辑器回归。
+- Component Center 通过应用 SDK 的 Git 状态查询展示 Windows 引擎版本和路径。Windows Git 状态面板和 Linux 共用安装入口通过专项回归。Git 与 Code Editor 文案由宿主从同源 JSON 嵌入，两个应用程序集仅随官方应用包进入发行，Windows Release 的宿主依赖清单、发布根目录及 29 个官方归档均已核验。
 - Git 的冲突标记解析、提交文件选择和推送预览树模型已迁入应用程序集。桌面 XAML 使用迁移后的类型，服务器侧测试直接引用应用程序集验证冲突标记解析。Windows Release 客户端与服务器测试项目构建通过，Git Dock、项目编辑器和冲突标记解析检查通过。完整 Git 冲突集成回归停在继续合并的断言，后续集成检查暂跳过。
 - Git 的差异窗格及其展示模型已在应用程序集编译，桌面日志页与对话框共用该视图。窗口关闭按钮保留宿主语言绑定。Windows Release 的 70 项补丁解析检查和 47 项无头渲染检查通过。
 - Git 提交图的分支轨道计算、标签与渲染控件，以及控制台视图，已迁入 RelaxKonOS.App.Git。桌面宿主提供控制台文案并继续调度日志页和命令记录。Windows Release 构建和 Git Dock 回归通过，覆盖合并父节点、分支和标签、命令记录及清空控制台。
