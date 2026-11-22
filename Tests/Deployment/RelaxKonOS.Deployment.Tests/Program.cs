@@ -172,6 +172,7 @@ backend.FinishStepAsync = () =>
 };
 var appliedBefore = backend.Applied.Count;
 var verifiedBefore = backend.Verifications;
+var preflightsBefore = backend.Preflights;
 var firstExecution = coordinator.ExecuteAsync(concurrentPlan);
 var secondCoordinator = new UnifiedDeploymentCoordinator(backend, reopenedJournal, TimeProvider.System);
 try
@@ -183,7 +184,8 @@ try
         throw new Exception("Expected a concurrent execution to be rejected.");
     }
     catch (IOException error) when (error.Message == "deployment-plan-in-progress") { }
-    Check(backend.Applied.Count == appliedBefore + 1 && backend.Verifications == verifiedBefore);
+    Check(backend.Applied.Count == appliedBefore + 1 && backend.Verifications == verifiedBefore
+        && backend.Preflights == preflightsBefore + 1);
 }
 finally
 {
@@ -233,6 +235,16 @@ await using (var lease = await reopenedJournal.OpenAsync(reviewAtPreflight, Canc
     Check(lease.Checkpoint is { RequiresReview: true, CompletedSteps: 1, Verified: false });
 await Reject(reviewAtPreflight, "deployment-plan-review-required");
 Check(backend.Applied.Count == appliedBeforePreflight);
+var cancelledDirectory = Path.Combine(journalDirectory, "cancelled");
+using var alreadyCancelled = new CancellationTokenSource();
+alreadyCancelled.Cancel();
+try
+{
+    await using var lease = await new FileDeploymentJournal(cancelledDirectory).OpenAsync(plan, alreadyCancelled.Token);
+    throw new Exception("Expected a cancelled journal open.");
+}
+catch (OperationCanceledException) when (alreadyCancelled.IsCancellationRequested) { }
+Check(!Directory.Exists(cancelledDirectory));
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
@@ -247,8 +259,10 @@ sealed class Backend : IDeploymentBackend
     public bool ReviewRequiredOnVerification;
     public bool VerificationOffline;
     public bool ReviewRequiredOnPreflight;
+    public int Preflights;
     public Task VerifyBeforeExecutionAsync(DeploymentPlan plan, CancellationToken cancellationToken)
     {
+        Preflights++;
         if (ReviewRequiredOnPreflight)
             throw new DeploymentPlanReviewRequiredException("deployment-client-dependency-changed");
         return Task.CompletedTask;

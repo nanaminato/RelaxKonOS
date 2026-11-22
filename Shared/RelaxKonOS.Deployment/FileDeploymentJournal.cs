@@ -65,6 +65,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
 
     public async Task<IDeploymentLease> OpenAsync(DeploymentPlan plan, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, plan.Id.ToString("N"));
         FileStream fileLock;
