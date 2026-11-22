@@ -32,7 +32,7 @@
                                     <StackPanel Spacing="3">
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                         <TextBlock Text="{Binding InstalledText}" Opacity="0.7" FontSize="12" />
-                                        <TextBlock Text="{loc:Loc app_installer.store.profile_selection}" IsVisible="{Binding SelectedByProfile}" FontSize="12" />
+                                        <TextBlock Text="{Binding ProfileStatus}" IsVisible="{Binding SelectedByProfile}" FontSize="12" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="1" Text="{Binding AvailableVersion}" FontSize="12" VerticalAlignment="Center" />
                                 </Grid>

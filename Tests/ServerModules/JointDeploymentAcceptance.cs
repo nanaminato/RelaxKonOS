@@ -686,9 +686,14 @@ internal static class JointDeploymentAcceptance
             if (moduleId == ServerModules.ProxyId && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SHARED_APPS") == "1")
             {
                 var profilePath = Path.Combine(Path.GetDirectoryName(archive)!, "installation-profiles.json");
-                File.Copy(profilePath, packages.OfficialSource.BundledProfilesPath);
                 var profiles = JsonNode.Parse(await File.ReadAllTextAsync(profilePath))!;
-                var exclusions = profiles["profiles"]!["developer"]!.AsArray()
+                var developer = profiles["profiles"]!["developer"]!.AsArray();
+                developer.Single(entry => (string?)entry!["appId"] == "relaxkonos.git")!["minimumVersion"] = "99.0.0";
+                await File.WriteAllTextAsync(packages.OfficialSource.BundledProfilesPath, profiles.ToJsonString());
+                const string gitArchive = "relaxkonos.git.roapp";
+                File.Copy(Path.Combine(Path.GetDirectoryName(archive)!, gitArchive), Path.Combine(official, gitArchive));
+                File.Copy(Path.Combine(Path.GetDirectoryName(archive)!, gitArchive + ".sha256"), Path.Combine(official, gitArchive + ".sha256"));
+                var exclusions = developer
                     .Where(entry => (string?)entry!["installPolicy"] == "offline")
                     .Select(entry => "--exclude-bundled-app=" + (string)entry!["appId"]!);
                 var provisioner = new BundledApplicationProvisioner(packages, installer, joint, drive);
@@ -698,6 +703,16 @@ internal static class JointDeploymentAcceptance
                 await store.RefreshOfficialCommand.ExecuteAsync(null);
                 Require(store.SelectedOfficialApp is { SelectedByProfile: true } selected && selected.Id == candidate.Manifest.Id,
                     "the official store selects the Developer-profile Proxy archive for review");
+                foreach (var unavailableId in new[] { "relaxkonos.git", "relaxkonos.docker" })
+                {
+                    store.SelectedOfficialApp = store.OfficialApps.Single(item => item.Id == unavailableId);
+                    Require(store.SelectedOfficialApp is { SelectedByProfile: true, ProfileReleaseUnavailable: true }
+                        && !store.DownloadOfficialCommand.CanExecute(null),
+                        $"the Developer profile retains {unavailableId} but blocks staging an unavailable release");
+                    await store.DownloadOfficialCommand.ExecuteAsync(null);
+                    Require(store.CurrentPackage is null, $"the store does not stage {unavailableId} without a matching release");
+                }
+                store.SelectedOfficialApp = store.OfficialApps.Single(item => item.Id == candidate.Manifest.Id);
                 await store.DownloadOfficialCommand.ExecuteAsync(null);
                 var staged = store.CurrentPackage;
                 DeploymentPlan? declined = null;

@@ -30,6 +30,7 @@ public sealed partial class AppInstallerViewModel
 
     private bool CanRefreshOfficial() => ShowOfficialStore && !IsBusy && !_disposed;
     private bool CanDownloadOfficial() => CanRefreshOfficial() && SelectedOfficialApp is { } row
+        && !row.ProfileReleaseUnavailable
         && row.Release is { } release && AppPackageInstallerService.CanInstallRelease(release, row.Installed);
     private bool CanUninstallOfficial() => CanRefreshOfficial() && SelectedOfficialApp?.Installed is not null
         && ConfirmUninstallAsync is not null;
@@ -57,7 +58,7 @@ public sealed partial class AppInstallerViewModel
     [RelayCommand(CanExecute = nameof(CanDownloadOfficial), IncludeCancelCommand = true)]
     private async Task DownloadOfficialAsync(CancellationToken cancellationToken)
     {
-        if (SelectedOfficialApp?.Release is not { } release) return;
+        if (SelectedOfficialApp is not { Release: { } release, ProfileReleaseUnavailable: false }) return;
         IsBusy = true;
         Status = LocalizedText.Ref("app_installer.status.downloading");
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(_storeLifetime.Token, cancellationToken);
@@ -112,17 +113,21 @@ public sealed partial class AppInstallerViewModel
         var latest = _officialReleases.GroupBy(release => release.AppId).ToDictionary(group => group.Key,
             group => group.OrderByDescending(item => Version.Parse(item.Version)).First(), StringComparer.Ordinal);
         var current = SelectedOfficialApp?.Id;
-        OfficialApps = latest.Keys.Union(installed.Keys, StringComparer.Ordinal)
+        OfficialApps = latest.Keys.Union(installed.Keys, StringComparer.Ordinal).Union(_profileMinimumVersions.Keys, StringComparer.Ordinal)
             .Select(id =>
             {
                 var release = latest.GetValueOrDefault(id);
                 var currentInstallation = installed.GetValueOrDefault(id);
                 var selectedByProfile = _profileMinimumVersions.TryGetValue(id, out var minimum)
-                    && release is not null && BundledApplicationProvisioner.MeetsVersion(release.Version, minimum)
                     && (currentInstallation is null || !BundledApplicationProvisioner.MeetsVersion(currentInstallation.Version, minimum));
-                return new OfficialAppListing(id, release, currentInstallation) { SelectedByProfile = selectedByProfile };
+                return new OfficialAppListing(id, release, currentInstallation)
+                {
+                    SelectedByProfile = selectedByProfile,
+                    ProfileMinimumVersion = selectedByProfile ? minimum : null,
+                };
             })
-            .OrderByDescending(item => item.SelectedByProfile).ThenBy(item => item.DisplayName).ToArray();
+            .OrderByDescending(item => item.SelectedByProfile).ThenBy(item => item.ProfileReleaseUnavailable)
+            .ThenBy(item => item.DisplayName).ToArray();
         SelectedOfficialApp = OfficialApps.FirstOrDefault(item => item.Id == current) ?? OfficialApps.FirstOrDefault();
     }
 
@@ -150,6 +155,12 @@ public sealed class OfficialAppListing
     internal DeveloperAppInfo? Installed { get; }
     public string Id { get; }
     public bool SelectedByProfile { get; init; }
+    internal string? ProfileMinimumVersion { get; init; }
+    public bool ProfileReleaseUnavailable => ProfileMinimumVersion is { } minimum
+        && (Release is null || !BundledApplicationProvisioner.MeetsVersion(Release.Version, minimum));
+    public string ProfileStatus => ProfileReleaseUnavailable
+        ? LocalizedText.Format("app_installer.store.profile_release_missing", ProfileMinimumVersion!)
+        : LocalizedText.Get("app_installer.store.profile_selection");
     public string DisplayName => Release?.DisplayName ?? Installed?.DisplayName ?? Id;
     public string AvailableVersion => Release?.Version ?? "";
     public string Description => Release?.Description ?? "";

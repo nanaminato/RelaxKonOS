@@ -9,6 +9,7 @@
         "app_installer.security_warning": "Package origin is unverified. Permissions guide normal SDK calls but do not sandbox malicious code; install only packages whose source and code you trust.",
         "app_installer.store.title": "Official apps",
         "app_installer.store.profile_selection": "Selected in your installation profile",
+        "app_installer.store.profile_release_missing": "No official release meets the profile’s minimum version ({0}).",
         "app_installer.store.refresh": "Refresh catalog",
         "app_installer.store.loading": "Checking official apps…",
         "app_installer.store.empty": "There are no official apps available.",

@@ -9,6 +9,7 @@
         "app_installer.security_warning": "パッケージの出所は検証されていません。アクセス許可は通常の SDK 呼び出しを管理するだけで、悪意のあるコードをサンドボックス化しません。出所とコードを確認したパッケージだけをインストールしてください。",
         "app_installer.store.title": "公式アプリ",
         "app_installer.store.profile_selection": "インストール構成で選択済み",
+        "app_installer.store.profile_release_missing": "構成の最低バージョン（{0}）を満たす公式リリースがありません。",
         "app_installer.store.refresh": "カタログを更新",
         "app_installer.store.loading": "公式アプリを確認しています…",
         "app_installer.store.empty": "利用できる公式アプリはありません。",
