@@ -91,14 +91,18 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
         bool localOnly = false)
     {
+        var login = !localOnly && session?.State == AuthSessionState.Authenticated ? session.CurrentSession : null;
         var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
         var key = App(candidate.Manifest.Id);
         var componentRelease = ComponentReleaseOf(candidate);
         var plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
             digest, Guid.Empty, "", cancellationToken, componentRelease, candidate.ServerArchive);
-        if (!localOnly && plan is null && session.CurrentUser is { } user && session.ServiceId is { } connection)
+        if (plan is null && HasOriginalLogin() && session.CurrentUser is { } user && session.ServiceId is { } connection)
+        {
             plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
                 digest, user.Id, connection, cancellationToken, componentRelease, candidate.ServerArchive);
+            if (!HasOriginalLogin() || session.CurrentUser?.Id != user.Id || session.ServiceId != connection) return null;
+        }
         if (plan?.ClientBinding is not { } binding) return null;
         if (!MatchesComponentRelease(binding, candidate, digest)) return null;
         if (!MatchesServerArchive(binding, candidate, session)) return null;
@@ -108,6 +112,9 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             InstalledVersion = plan.OrderedReleases[^1].CurrentVersion,
             ExpectedInstalledPath = binding.InstalledPath,
         });
+
+        bool HasOriginalLogin() => login is not null && session.State == AuthSessionState.Authenticated
+            && ReferenceEquals(login, session.CurrentSession);
     }
 
     private static DeploymentComponentRelease? ComponentReleaseOf(AppPackageCandidate candidate) =>

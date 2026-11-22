@@ -172,6 +172,12 @@ internal static class JointDeploymentAcceptance
             host = await TestHost.StartAsync(serverRoot, config);
             session.Url = host.Url;
             joint = Service();
+            session.Online = false;
+            session.KeepDisconnectedIdentity = true;
+            Require(await joint.FindPendingAsync(candidate, default) is null,
+                "a disconnected client cannot recover a server plan using cached account and service IDs");
+            session.KeepDisconnectedIdentity = false;
+            session.Online = true;
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing pending deployment.");
             using (var cancellation = new CancellationTokenSource())
             {
@@ -749,6 +755,7 @@ internal static class JointDeploymentAcceptance
             SessionStatus.Active, Guid.Parse(ModuleTestAuthentication.Admin), "test", default);
         private string url = "";
         public bool Online { get; set; } = true;
+        public bool KeepDisconnectedIdentity { get; set; }
         public string Url
         {
             get => url;
@@ -762,10 +769,11 @@ internal static class JointDeploymentAcceptance
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
         {
             "get_State" => Online ? AuthSessionState.Authenticated : AuthSessionState.Unauthenticated,
-            "get_ServiceId" => Online ? "local-joint-test" : null,
+            "get_ServiceId" => Online || KeepDisconnectedIdentity ? "local-joint-test" : null,
             "get_EffectiveBaseUrl" => Url,
-            "get_CurrentSession" => Online ? login : null,
-            "get_CurrentUser" => Online ? new UserDto(actor, "controller", HostPlatformKind.Windows, "fixture", default, null) : null,
+            "get_CurrentSession" => Online || KeepDisconnectedIdentity ? login : null,
+            "get_CurrentUser" => Online || KeepDisconnectedIdentity
+                ? new UserDto(actor, "controller", HostPlatformKind.Windows, "fixture", default, null) : null,
             "get_CurrentServer" => null,
             "add_StateChanged" or "remove_StateChanged" => null,
             _ => throw new NotSupportedException(method?.Name),
