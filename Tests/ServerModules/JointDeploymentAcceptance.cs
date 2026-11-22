@@ -132,7 +132,8 @@ internal static class JointDeploymentAcceptance
         TestHost? host = null;
         try
         {
-            await PrepareDesktopArchiveAsync(archive, packagePath, optionalModuleId: ServerModules.FirewallId);
+            await PrepareDesktopArchiveAsync(archive, packagePath, optionalModuleId: ServerModules.FirewallId,
+                capability: ServerCapabilities.Metrics, contractVersion: "2");
             File.Copy(Path.Combine(AppContext.BaseDirectory, "FixtureModule.dll"), Path.Combine(publish, "FixtureModule.dll"));
             using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var key = Path.Combine(root, "fixture-signing-key.pem");
@@ -143,7 +144,17 @@ internal static class JointDeploymentAcceptance
                 "1.0.0", "joint-fixture-1.0.0-" + rid, "fixture", "official", rid, "FixtureModule.dll",
                 "FixtureModule.FixtureInstalledModule", "joint-fixture", new string('a', 40), "official", 1,
                 "https://modules.example/", key, "fixture-key", 3600,
-                Ui: new("Joint Fixture", "", "", null, "UNLICENSED")), now);
+                Ui: new("Joint Fixture", "", "", null, "UNLICENSED"), Capabilities: [ServerCapabilities.Metrics],
+                CapabilityContractVersions: new Dictionary<string, string> { [ServerCapabilities.Metrics] = "2" }), now);
+            try
+            {
+                ModulePackageVerifier.ValidateManifest(build.Manifest with
+                {
+                    CapabilityContractVersions = new Dictionary<string, string> { [ServerCapabilities.Files] = "2" }
+                });
+                throw new InvalidOperationException("Expected an undeclared capability contract to be rejected.");
+            }
+            catch (ModulePackageException error) when (error.ProblemCode == "module-package-capability-contract-version-invalid") { }
             File.Delete(key);
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -398,6 +409,9 @@ internal static class JointDeploymentAcceptance
                 factory.HideEffectiveVersion = false;
                 var moduleCatalog = new ModuleDeploymentCatalog(new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth));
                 var healthy = await moduleCatalog.ReadAsync(default);
+                Require(healthy.Releases.Single(release => release.Package.Id == ModuleId && release.Satisfied)
+                    .Capabilities.GetValueOrDefault(ServerCapabilities.Metrics) == "2",
+                    "the signed package capability contract is preserved by installed module inventory");
                 factory.SubstituteCapabilities = true;
                 Require(await moduleCatalog.ObserveAsync(default) != healthy.Target,
                     "changing only the module's advertised capabilities invalidates the deployment target");
@@ -644,7 +658,8 @@ internal static class JointDeploymentAcceptance
     }
 
     private static Task PrepareDesktopArchiveAsync(string source, string path,
-        string appId = AppIdText, DeploymentPackageKey? dependency = null, string? optionalModuleId = null) =>
+        string appId = AppIdText, DeploymentPackageKey? dependency = null, string? optionalModuleId = null,
+        string? capability = null, string? contractVersion = null) =>
         RewriteDesktopArchiveAsync(source, path, manifest =>
         {
             var package = dependency ?? new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ModuleId);
@@ -658,6 +673,12 @@ internal static class JointDeploymentAcceptance
                     ["maximumVersionExclusive"] = "2.0.0",
                 }),
             };
+            if (capability is not null)
+            {
+                var required = manifest["dependencies"]!["required"]![0]!;
+                required["capability"] = capability;
+                required["contractVersion"] = contractVersion;
+            }
             if (optionalModuleId is not null)
                 manifest["dependencies"]!["optional"] = new JsonArray(new JsonObject
                 {

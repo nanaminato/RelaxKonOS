@@ -25,7 +25,8 @@ internal sealed record InstalledModuleRecord(
     string[] Requires,
     string Runtime,
     DateTimeOffset InstalledAt,
-    bool Quarantined = false);
+    bool Quarantined = false,
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
 
 internal sealed record InstalledModuleDocument(int SchemaVersion, InstalledModuleRecord[] Modules);
 
@@ -173,6 +174,10 @@ internal static class InstalledModuleStore
             var digest = Convert.ToHexStringLower(SHA256.HashData(stream));
             if (digest != file.Sha256) throw new ModulePackageException("module-package-installed-integrity");
         }
+        if ((manifest.CapabilityContractVersions?.Count ?? 0) != (record.CapabilityContractVersions?.Count ?? 0)
+            || manifest.CapabilityContractVersions?.Any(item =>
+                record.CapabilityContractVersions?.GetValueOrDefault(item.Key) != item.Value) == true)
+            throw new ModulePackageException("module-package-installed-identity");
         return manifest;
     }
 
@@ -271,6 +276,8 @@ internal sealed class InstalledServerModule : IServerModule, IInstalledModuleInf
 
     public string Id => _record.ModuleId;
     public IReadOnlyList<string> Capabilities => _record.Quarantined ? [] : _record.Capabilities;
+    public IReadOnlyDictionary<string, string>? CapabilityContractVersions =>
+        _record.Quarantined ? null : _record.CapabilityContractVersions;
     public IReadOnlyList<string> Requires => _record.Requires;
     public string InstalledVersion => _record.Version;
     public string ArtifactDigest => _record.ArtifactSha256;

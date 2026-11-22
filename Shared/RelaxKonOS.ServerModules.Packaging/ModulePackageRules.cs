@@ -56,6 +56,11 @@ internal static partial class ModulePackageRules
             Require(dependency is not null && Id(dependency.ModuleId) && dependency.ModuleId != m.ModuleId
                 && dependencies.Add(dependency.ModuleId) && Version(dependency.MinimumVersion) < Version(dependency.MaximumVersionExclusive), "dependency-invalid");
         Require(m.Capabilities!.All(Id) && m.Capabilities.Distinct(StringComparer.Ordinal).Count() == m.Capabilities.Length, "capability-invalid");
+        Require(m.CapabilityContractVersions is null || m.CapabilityContractVersions.Count <= m.Capabilities.Length
+            && m.CapabilityContractVersions.All(item => m.Capabilities.Contains(item.Key, StringComparer.Ordinal)
+                && item.Value is { Length: > 0 and <= 128 }
+                && item.Value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_' or '+')),
+            "capability-contract-version-invalid");
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long total = 0;
         foreach (var file in m.Files!)

@@ -13,7 +13,8 @@ public sealed record ServerModuleReleaseDto([property: JsonRequired] string Rele
     [property: JsonRequired] string BuildId, [property: JsonRequired] string SourceCommit,
     [property: JsonRequired] IReadOnlyList<ServerModuleReleaseDependencyDto> Dependencies, [property: JsonRequired] IReadOnlyList<string> Capabilities,
     [property: JsonRequired] string TrustState, [property: JsonRequired] bool RidCompatible, [property: JsonRequired] bool HostApiCompatible,
-    [property: JsonRequired] bool ArtifactVerified, [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy);
+    [property: JsonRequired] bool ArtifactVerified, [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy,
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
 
 public sealed record ServerModuleReleasePageDto([property: JsonRequired] string ServiceId, [property: JsonRequired] string ModuleId,
     [property: JsonRequired] string SourceId, [property: JsonRequired] string CatalogRevision, [property: JsonRequired] long CatalogSequence,

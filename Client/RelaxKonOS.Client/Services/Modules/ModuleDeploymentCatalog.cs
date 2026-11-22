@@ -94,7 +94,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         {
             var release = entry.Value;
             releases.Add(new(Key(release.ModuleId), release.Version, entry.Key, false,
-                [..release.Dependencies.Select(ToRequirement)], UnversionedCapabilities(release.Capabilities))
+                [..release.Dependencies.Select(ToRequirement)], Capabilities(release.Capabilities, release.CapabilityContractVersions))
             {
                 CurrentVersion = modules.SingleOrDefault(item => item.Id == release.ModuleId)?.EffectiveVersion
                     ?? installed.SingleOrDefault(item => item.ModuleId == release.ModuleId)?.Version,
@@ -183,10 +183,10 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         $"{sourceId}/{releaseId}/{digest}";
 
     internal static ImmutableDictionary<string, string> ObservedCapabilities(ServerModuleDto module) =>
-        module.Capabilities.Distinct(StringComparer.Ordinal).ToImmutableDictionary(name => name,
-            name => module.CapabilityContractVersions?.GetValueOrDefault(name) ?? "", StringComparer.Ordinal);
+        Capabilities(module.Capabilities, module.CapabilityContractVersions);
 
-    // Signed releases currently list names. A package version does not prove a capability contract version.
-    private static ImmutableDictionary<string, string> UnversionedCapabilities(IEnumerable<string> capabilities) =>
-        capabilities.Distinct(StringComparer.Ordinal).ToImmutableDictionary(name => name, _ => "", StringComparer.Ordinal);
+    private static ImmutableDictionary<string, string> Capabilities(IEnumerable<string> capabilities,
+        IReadOnlyDictionary<string, string>? contractVersions) =>
+        capabilities.Distinct(StringComparer.Ordinal).ToImmutableDictionary(name => name,
+            name => contractVersions?.GetValueOrDefault(name) ?? "", StringComparer.Ordinal);
 }

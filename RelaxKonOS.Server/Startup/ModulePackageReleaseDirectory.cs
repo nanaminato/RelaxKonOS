@@ -39,7 +39,7 @@ internal static class ModulePackageReleaseDirectory
                 release.ManifestSha256, release.ArchiveSha256, release.ArchiveBytes, m.HostApiMinimum, m.HostApiMaximumExclusive,
                 m.BuildId, m.SourceCommit, m.Dependencies.Select(d => new ServerModuleReleaseDependencyDto(d.ModuleId,
                     d.MinimumVersion, d.MaximumVersionExclusive)).ToArray(), m.Capabilities, revoked ? "revoked" : "catalog-verified",
-                rid, api, false, blockers);
+                rid, api, false, blockers, m.CapabilityContractVersions);
         }).ToArray();
         var reason = modules.IsInstalled(host.ContentRootPath, moduleId) ? "module-package-actions-unsupported"
             : modules.KnownModuleIds.Contains(moduleId) ? "module-packaging-bundled"

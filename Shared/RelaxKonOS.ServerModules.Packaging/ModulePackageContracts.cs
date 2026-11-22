@@ -7,7 +7,8 @@ public sealed record ModulePackageManifest(int SchemaVersion, string PackageKind
     string Version, string PublisherId, string Purpose, string Rid, string HostApiMinimum, string HostApiMaximumExclusive,
     string EntryAssembly, string EntryType, string BuildId, string SourceCommit,
     ModulePackageDependency[] Dependencies, string[] Capabilities, ModulePackageFile[] Files,
-    string Runtime, ModulePackageCapability[] Privileges, ModulePackageUi Ui);
+    string Runtime, ModulePackageCapability[] Privileges, ModulePackageUi Ui,
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
 public sealed record ModulePackageRelease(ModulePackageManifest Manifest, string ManifestSha256, string ArchiveSha256,
     long ArchiveBytes, string DownloadUri);
 public sealed record ModulePackageCatalog(int SchemaVersion, string SourceId, long Sequence, DateTimeOffset IssuedAt,

@@ -6,7 +6,8 @@ namespace RelaxKonOS.Server.Startup;
 /// <summary>Offline build tool for an official `.rkmodule` and its signed catalog. No Host state is read or written.</summary>
 internal static class ModulePackageBuildCommand
 {
-    private sealed record BuildMetadata(ModulePackageCapability[] Privileges, ModulePackageUi Ui);
+    private sealed record BuildMetadata(ModulePackageCapability[] Privileges, ModulePackageUi Ui,
+        IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
     private static readonly string[] Required =
     [
         "--publish-dir", "--output-dir", "--module-id", "--version", "--release-id", "--publisher-id",
@@ -55,7 +56,7 @@ internal static class ModulePackageBuildCommand
                 validity,
                 values.GetValueOrDefault("--host-api-min", runtime == "module-host" ? "2.0.0" : "1.0.0"),
                 values.GetValueOrDefault("--host-api-max", runtime == "module-host" ? "3.0.0" : "2.0.0"),
-                capabilities, dependencies, runtime, metadata?.Privileges, metadata?.Ui);
+                capabilities, dependencies, runtime, metadata?.Privileges, metadata?.Ui, metadata?.CapabilityContractVersions);
             var result = await ModulePackageBuilder.BuildAsync(options, DateTimeOffset.UtcNow);
             Console.WriteLine(JsonSerializer.Serialize(new
             {

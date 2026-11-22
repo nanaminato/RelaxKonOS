@@ -80,7 +80,8 @@ public sealed record ServerModuleStoreItemDto([property: JsonRequired] string So
     [property: JsonRequired] IReadOnlyList<ServerModuleReleaseDependencyDto> Dependencies,
     [property: JsonRequired] IReadOnlyList<string> Capabilities, [property: JsonRequired] bool RidCompatible,
     [property: JsonRequired] bool HostApiCompatible, [property: JsonRequired] bool Revoked,
-    [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy);
+    [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy,
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
 public sealed record ServerModuleStorePageDto([property: JsonRequired] IReadOnlyList<ServerModuleStoreItemDto> Items,
     int? NextOffset, [property: JsonRequired] IReadOnlyList<ServerModuleBlocker> BlockedBy);
 public sealed record ServerModuleStoreDownloadRequest([property: JsonRequired] string SourceId,

@@ -94,7 +94,9 @@ RelaxKonOS.Server modules pack-package \
   --private-key <ECDSA P-256 PKCS#8 PEM> --key-id <公钥ID> --validity-seconds <1..2678400>
 ```
 
-可选参数：`--runtime in-process|module-host`、`--metadata <JSON文件>`（严格包含 `privileges` 与 `ui`）、`--host-api-min`、`--host-api-max`、`--capabilities a,b`、`--dependencies id:min:max,...`。命令把 publish 目录下所有普通文件放到 `server/<rid>/`，生成 `manifest.json`、`.rkmodule`、`catalog.json` 和 `public-key.spki`；私钥只用于本次签名，不写入输出或日志。它不读取/写入 Host 状态，也不安装模块。
+可选参数：`--runtime in-process|module-host`、`--metadata <JSON文件>`（包含 `privileges`、`ui` 和可省略的 `capabilityContractVersions`）、`--host-api-min`、`--host-api-max`、`--capabilities a,b`、`--dependencies id:min:max,...`。命令把 publish 目录下所有普通文件放到 `server/<rid>/`，生成 `manifest.json`、`.rkmodule`、`catalog.json` 和 `public-key.spki`；私钥只用于本次签名，不写入输出或日志。它不读取/写入 Host 状态，也不安装模块。
+
+`capabilityContractVersions` 将已列入 `capabilities` 的能力名称映射到显式契约版本字符串。版本值为 1 至 128 个 ASCII 字符，可使用字母、数字、点、连字符、下划线或加号。发布目录和安装后的模块清单提供声明值，联合部署按精确值比较应用要求的版本。省略版本的能力只能满足无版本要求。`module-host` 仍受 Core 能力声明限制。
 
 离线打包读取入口程序集的 CLR 元数据，核对清单中的完整入口类型名。程序集缺少该类型时，打包会在生成归档和签名前失败。
 

@@ -47,7 +47,7 @@ internal static class ModulePackageStore
                             dependency.MinimumVersion, dependency.MaximumVersionExclusive)).ToArray(),
                         // Core supplies this capability through the fixed database routes and read broker.
                         ServerModules.IsOfficialDatabaseModuleHost(manifest) ? [ServerCapabilities.Database] : manifest.Capabilities,
-                        rid, api, revoked, blockers));
+                        rid, api, revoked, blockers, manifest.CapabilityContractVersions));
                 }
             }
             catch (ModulePackageException) { }

@@ -31,7 +31,8 @@ public sealed record ModulePackageBuildOptions(
     string HostApiMaximumExclusive = "2.0.0",
     IReadOnlyList<string>? Capabilities = null,
     IReadOnlyList<ModulePackageDependency>? Dependencies = null,
-    string Runtime = "in-process", IReadOnlyList<ModulePackageCapability>? Privileges = null, ModulePackageUi? Ui = null);
+    string Runtime = "in-process", IReadOnlyList<ModulePackageCapability>? Privileges = null, ModulePackageUi? Ui = null,
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
 
 public sealed record ModulePackageBuildResult(ModulePackageManifest Manifest, string ManifestSha256,
     string ArchivePath, string ArchiveSha256, long ArchiveBytes, string CatalogPath, string PublicKeySpkiBase64);
@@ -107,7 +108,9 @@ public static class ModulePackageBuilder
             options.HostApiMinimum, options.HostApiMaximumExclusive, entryPath, options.EntryType,
             options.BuildId, options.SourceCommit, options.Dependencies?.ToArray() ?? [],
             options.Capabilities?.Distinct(StringComparer.Ordinal).ToArray() ?? [], files.ToArray(), options.Runtime, options.Privileges?.ToArray() ?? [],
-            options.Ui ?? new(options.ModuleId, "", "", null, "UNLICENSED"));
+            options.Ui ?? new(options.ModuleId, "", "", null, "UNLICENSED"),
+            options.CapabilityContractVersions?.OrderBy(item => item.Key, StringComparer.Ordinal)
+                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal));
         ModulePackageRules.Manifest(manifest);
         ValidateEntryType(entryFile, options.EntryType);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
