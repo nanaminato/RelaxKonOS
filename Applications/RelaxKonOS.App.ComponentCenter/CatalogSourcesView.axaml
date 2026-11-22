@@ -1,13 +1,14 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:sdk="using:RelaxKonOS.AppSDK"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:loc="using:RelaxKonOS.App.ComponentCenter" xmlns:vm="using:RelaxKonOS.App.ComponentCenter"
- x:Class="RelaxKonOS.App.ComponentCenter.CatalogSourcesView" x:DataType="vm:ICatalogSourcesViewModel">
+ x:Class="RelaxKonOS.App.ComponentCenter.CatalogSourcesView" x:DataType="sdk:ICatalogSourcesViewModel">
  <StackPanel Spacing="18" MaxWidth="820" HorizontalAlignment="Left">
   <TextBlock Text="{loc:Loc component_center.sources.title}" FontSize="22" FontWeight="SemiBold" />
   <TextBlock Text="{loc:Loc component_center.sources.scope}" TextWrapping="Wrap" />
   <TextBlock Text="{loc:Loc component_center.sources.local}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
   <ItemsControl ItemsSource="{Binding Sources}" IsEnabled="{Binding !IsBusy}">
    <ItemsControl.ItemTemplate>
-    <DataTemplate x:DataType="vm:ICatalogSourceRow">
+    <DataTemplate x:DataType="sdk:ICatalogSourceRow">
      <Border Classes="card" Padding="16" Margin="0,0,0,12">
       <StackPanel Spacing="8">
        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
@@ -16,10 +17,10 @@
        <TextBlock Text="{Binding Origin}" TextWrapping="Wrap" /><TextBlock Text="{Binding Fingerprints}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" />
        <TextBlock Text="{Binding Providers}" TextWrapping="Wrap" /><TextBlock Text="{Binding Problem}" TextWrapping="Wrap" FontSize="11" />
        <WrapPanel ItemSpacing="8" LineSpacing="6">
-        <Button Content="{loc:Loc common.refresh}" Command="{Binding $parent[UserControl].((vm:ICatalogSourcesViewModel)DataContext).RefreshCommand}" CommandParameter="{Binding}" />
-        <Button Content="{loc:Loc component_center.sources.edit}" Command="{Binding $parent[UserControl].((vm:ICatalogSourcesViewModel)DataContext).EditCommand}" CommandParameter="{Binding}" />
-        <Button Content="{loc:Loc component_center.sources.disable}" Command="{Binding $parent[UserControl].((vm:ICatalogSourcesViewModel)DataContext).DisableCommand}" CommandParameter="{Binding}" />
-        <Button Content="{loc:Loc common.delete}" Command="{Binding $parent[UserControl].((vm:ICatalogSourcesViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}" />
+        <Button Content="{loc:Loc common.refresh}" Command="{Binding $parent[UserControl].((sdk:ICatalogSourcesViewModel)DataContext).RefreshCommand}" CommandParameter="{Binding}" />
+        <Button Content="{loc:Loc component_center.sources.edit}" Command="{Binding $parent[UserControl].((sdk:ICatalogSourcesViewModel)DataContext).EditCommand}" CommandParameter="{Binding}" />
+        <Button Content="{loc:Loc component_center.sources.disable}" Command="{Binding $parent[UserControl].((sdk:ICatalogSourcesViewModel)DataContext).DisableCommand}" CommandParameter="{Binding}" />
+        <Button Content="{loc:Loc common.delete}" Command="{Binding $parent[UserControl].((sdk:ICatalogSourcesViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}" />
        </WrapPanel>
       </StackPanel>
      </Border>

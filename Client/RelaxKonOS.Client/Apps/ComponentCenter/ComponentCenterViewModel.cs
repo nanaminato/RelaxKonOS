@@ -1,5 +1,5 @@
 using RelaxKonOS.App.Git;
-using RelaxKonOS.App.ComponentCenter;
+using RelaxKonOS.AppSDK;
 using System.Windows.Input;
 using System.Collections.ObjectModel;
 using System.ComponentModel;

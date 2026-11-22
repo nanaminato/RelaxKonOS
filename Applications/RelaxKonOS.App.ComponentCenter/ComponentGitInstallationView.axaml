@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="using:RelaxKonOS.App.ComponentCenter"
  x:Class="RelaxKonOS.App.ComponentCenter.ComponentGitInstallationView"
- x:DataType="local:IComponentGitInstallation">
+ x:DataType="sdk:IComponentGitInstallation">
  <Border Classes="panel-card">
   <StackPanel Spacing="12">
    <StackPanel Spacing="3">

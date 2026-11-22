@@ -1,6 +1,6 @@
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.App.ComponentCenter;
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;

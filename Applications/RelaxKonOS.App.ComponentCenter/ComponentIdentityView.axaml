@@ -1,7 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="using:RelaxKonOS.App.ComponentCenter"
- x:Class="RelaxKonOS.App.ComponentCenter.ComponentIdentityView" x:DataType="local:IComponentIdentity">
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentIdentityView" x:DataType="sdk:IComponentIdentity">
  <Border Classes="panel-card">
   <StackPanel Spacing="14">
    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -54,7 +55,7 @@
     <ItemsControl ItemsSource="{Binding SelectedHostSources}">
      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
      <ItemsControl.ItemTemplate>
-      <DataTemplate x:DataType="local:IComponentSourceChip">
+      <DataTemplate x:DataType="sdk:IComponentSourceChip">
        <Border Classes="pill" Classes.accent="{Binding Ready}">
         <StackPanel Orientation="Horizontal" Spacing="6">
          <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" />
@@ -70,7 +71,7 @@
     <ItemsControl ItemsSource="{Binding SelectedOtherSources}">
      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
      <ItemsControl.ItemTemplate>
-      <DataTemplate x:DataType="local:IComponentSourceChip">
+      <DataTemplate x:DataType="sdk:IComponentSourceChip">
        <Border Classes="pill">
         <StackPanel Orientation="Horizontal" Spacing="6">
          <TextBlock Text="{Binding Platform}" FontWeight="SemiBold" />

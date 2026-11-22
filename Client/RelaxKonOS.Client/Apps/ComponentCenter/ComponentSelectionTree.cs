@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.App.ComponentCenter;
+using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 

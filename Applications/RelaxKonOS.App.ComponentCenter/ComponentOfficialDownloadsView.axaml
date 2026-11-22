@@ -1,9 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="using:RelaxKonOS.App.ComponentCenter"
  xmlns:mr="clr-namespace:RelaxKonOS.Protocol.ManagedRuntimes;assembly=RelaxKonOS.Protocol"
  xmlns:converters="using:Avalonia.Data.Converters"
- x:Class="RelaxKonOS.App.ComponentCenter.ComponentOfficialDownloadsView" x:DataType="local:IComponentOfficialDownloads">
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentOfficialDownloadsView" x:DataType="sdk:IComponentOfficialDownloads">
  <Border Classes="panel-card">
   <StackPanel Spacing="14">
    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -20,7 +21,7 @@
      <TextBlock Classes="field-label" Text="{local:Loc component_center.download.method}" />
      <ComboBox ItemsSource="{Binding DownloadMethods}" SelectedItem="{Binding SelectedDownloadMethod, Mode=TwoWay}"
                HorizontalAlignment="Stretch" IsEnabled="{Binding !IsInstallingOfficial}">
-      <ComboBox.ItemTemplate><DataTemplate x:DataType="local:IComponentDownloadMethodChoice"><TextBlock Text="{Binding Text}" /></DataTemplate></ComboBox.ItemTemplate>
+      <ComboBox.ItemTemplate><DataTemplate x:DataType="sdk:IComponentDownloadMethodChoice"><TextBlock Text="{Binding Text}" /></DataTemplate></ComboBox.ItemTemplate>
      </ComboBox>
     </StackPanel>
     <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowOnlineVersions}">

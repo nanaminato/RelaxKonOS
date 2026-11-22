@@ -1,7 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="using:RelaxKonOS.App.ComponentCenter"
- x:Class="RelaxKonOS.App.ComponentCenter.ComponentCenterEmptyView" x:DataType="local:IComponentCenterEmptyState">
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentCenterEmptyView" x:DataType="sdk:IComponentCenterEmptyState">
  <Border HorizontalAlignment="Center" Margin="0,64,0,0">
   <StackPanel Spacing="12" MaxWidth="380" HorizontalAlignment="Center">
    <Border Width="46" Height="46" CornerRadius="23" HorizontalAlignment="Center"

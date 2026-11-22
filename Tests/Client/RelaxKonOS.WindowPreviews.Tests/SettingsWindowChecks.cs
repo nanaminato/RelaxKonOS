@@ -553,18 +553,22 @@ internal static class SettingsWindowChecks
             var model = workspace?.DataContext as ComponentCenterViewModel;
             Check(window.Info.OwnerAppId.Value == id && model?.SelectedPage == ComponentCenterPage.Updates,
                 "The installed package did not open the production workspace and dispatch navigation.");
-            var controls = workspace!.GetLogicalDescendants().ToArray();
-            Check(controls.OfType<ComponentCenterHeaderActions>().Any()
-                && controls.OfType<ComponentCenterNavigationView>().Any()
-                && controls.OfType<ComponentCenterLayout>().Any()
-                && controls.OfType<ComponentIdentityView>().Any()
-                && controls.OfType<ComponentDesktopPackageView>().Any()
-                && controls.OfType<ComponentGitInstallationView>().Any()
-                && controls.OfType<ComponentOfficialDownloadsView>().Any()
-                && controls.OfType<ComponentPackageCandidateView>().Any()
-                && controls.OfType<CatalogSourcesView>().Any()
-                && controls.OfType<ServerModuleSecurityView>().Any(),
-                "The installed package workspace is missing a migrated Component Center view.");
+            var layout = workspace!.Content as Control;
+            var packageAssembly = layout?.GetType().Assembly;
+            Check(packageAssembly is not null
+                && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(packageAssembly)?.IsCollectible == true,
+                "The main layout must come from the installed package's load context.");
+            var controls = workspace.GetLogicalDescendants().Select(control => control.GetType()).ToArray();
+            foreach (var viewName in new[]
+            {
+                nameof(ComponentCenterHeaderActions), nameof(ComponentCenterNavigationView), nameof(ComponentCenterLayout),
+                nameof(ComponentIdentityView), nameof(ComponentDesktopPackageView), nameof(ComponentGitInstallationView),
+                nameof(ComponentOfficialDownloadsView), nameof(ComponentPackageCandidateView), nameof(CatalogSourcesView),
+            })
+                Check(controls.Any(control => control.Name == viewName && control.Assembly == packageAssembly),
+                    $"The installed Component Center must create {viewName} from the package.");
+            Check(controls.Contains(typeof(ServerModuleSecurityView)),
+                "The component workspace is missing the host-provided module security view.");
             var secondUri = ComponentCenterNavigation.Component("test-service", "relaxkonos.proxy-server", "sing-box", ComponentCenterPage.Installed);
             var second = applications.Activate(new AppActivationRequest(secondUri));
             Pump();

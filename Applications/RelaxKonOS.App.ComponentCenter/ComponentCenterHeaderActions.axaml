@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="using:RelaxKonOS.App.ComponentCenter"
  x:Class="RelaxKonOS.App.ComponentCenter.ComponentCenterHeaderActions"
- x:DataType="local:IComponentCenterHeaderActions" VerticalAlignment="Center">
+ x:DataType="sdk:IComponentCenterHeaderActions" VerticalAlignment="Center">
  <UserControl.Styles>
   <!-- The task entry borrows the header's secondary-command shape so the two read as one row. The
        trailing ellipsis is part of the label ("opens a dialog"), so the button keeps a floor width. -->

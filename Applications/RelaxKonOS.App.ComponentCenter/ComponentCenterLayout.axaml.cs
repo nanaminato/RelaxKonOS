@@ -1,6 +1,8 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.App.ComponentCenter;
 
@@ -18,6 +20,30 @@ public partial class ComponentCenterLayout : UserControl
     private bool _compact;
 
     public ComponentCenterLayout() => InitializeComponent();
+
+    public static ComponentCenterLayout Create(ComponentCenterPresentation presentation)
+    {
+        var layout = new ComponentCenterLayout
+        {
+            ModulesView = presentation.ModulesView,
+            NginxView = presentation.NginxView,
+            RuntimeView = presentation.RuntimeView,
+            DataContext = presentation.Model,
+        };
+        layout.OpenApplicationRequested += (_, _) => presentation.OpenApplication();
+        if (presentation.Model is INotifyPropertyChanged model)
+        {
+            layout.AttachedToVisualTree += (_, _) => model.PropertyChanged += SelectionChanged;
+            layout.DetachedFromVisualTree += (_, _) => model.PropertyChanged -= SelectionChanged;
+        }
+
+        void SelectionChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(IComponentCenterNavigation.SelectedNavigation) or nameof(IComponentCenterNavigation.SelectedNode))
+                layout.CloseCompactNavigation();
+        }
+        return layout;
+    }
 
     public Control? ModulesView
     {
@@ -77,29 +103,4 @@ public partial class ComponentCenterLayout : UserControl
         DetailsScroll.IsVisible = !_compact || !showNavigation;
         if (_compact && !showNavigation && navigationFocused) NavigationToggle.Focus();
     }
-}
-
-public interface IComponentCenterLayout
-{
-    string HostIdentity { get; }
-    string ConnectionText { get; }
-    string HostTargetText { get; }
-    bool HasTargetText { get; }
-    string HeaderOutcomeText { get; }
-    bool HasHeaderOutcome { get; }
-
-    bool ShowServerModules { get; }
-    bool ShowCatalogSources { get; }
-    ICatalogSourcesViewModel? CatalogSources { get; }
-    bool ShowComponentBrowser { get; }
-    bool HasComponentDetails { get; }
-    bool ShowDesktopPackage { get; }
-    bool ShowNginxSelection { get; }
-    bool ShowGitInstallation { get; }
-    bool ShowNotIntegrated { get; }
-    bool ShowHostObservation { get; }
-    bool ShowOfficialDownloads { get; }
-    bool ShowPackageFreeze { get; }
-    bool HasRuntimeDetails { get; }
-    bool HasResults { get; }
 }

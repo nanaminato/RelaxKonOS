@@ -1,8 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:sdk="using:RelaxKonOS.AppSDK"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:component="using:RelaxKonOS.App.ComponentCenter"
  x:Class="RelaxKonOS.App.ComponentCenter.ComponentCenterLayout"
- x:Name="Layout" x:DataType="component:IComponentCenterLayout"
+ x:Name="Layout" x:DataType="sdk:IComponentCenterLayout"
  Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
  <UserControl.Styles>
   <StyleInclude Source="avares://RelaxKonOS.App.ComponentCenter/ComponentCenterStyles.axaml" />

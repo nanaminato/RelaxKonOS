@@ -1,4 +1,4 @@
-using RelaxKonOS.App.ComponentCenter;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.ManagedRuntimes.Catalog;
