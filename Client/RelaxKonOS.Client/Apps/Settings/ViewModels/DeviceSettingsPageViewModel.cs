@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.App.Settings;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
@@ -20,17 +22,25 @@ public abstract partial class DeviceSettingsPageViewModel : SettingsPageViewMode
     protected override void DisposeCore() => Preferences.PropertyChanged -= OnDeviceChanged;
 }
 
-public sealed partial class AccessibilityPageViewModel : DeviceSettingsPageViewModel
+public sealed class AccessibilityPageViewModel : SettingsPageViewModel
 {
-    public AccessibilityPageViewModel(ShellSettings settings, DesktopDevicePreferences preferences) : base(settings, preferences) { }
+    public AccessibilityPageViewModel(ShellSettings settings, DesktopDevicePreferences preferences) : base(settings, null)
+    {
+        Content = new(preferences, T);
+    }
+
     public override string Route => "accessibility";
     public override string DisplayNameKey => "settings.page.accessibility";
     public override string DisplayName => "Accessibility";
-    public IReadOnlyList<int> ScaleChoices => DesktopDevicePreferences.ScaleChoices;
-    public int InterfaceScale { get => Preferences.Value.InterfaceScale; set => Preferences.Update(p => p with { InterfaceScale = value }); }
-    public bool ReducedMotion { get => Preferences.Value.ReducedMotion; set => Preferences.Update(p => p with { ReducedMotion = value }); }
-    public bool HighContrast { get => Preferences.Value.HighContrast; set => Preferences.Update(p => p with { HighContrast = value }); }
-    [RelayCommand] private void ResetAccessibility() => Preferences.Update(p => p with { InterfaceScale = 100, ReducedMotion = false, HighContrast = false });
+    public AccessibilityPageContent Content { get; }
+
+    protected override void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
+    {
+        Content.RefreshLanguage();
+        base.OnLanguageChanged(sender, e);
+    }
+
+    protected override void DisposeCore() => Content.Dispose();
 }
 
 public sealed partial class DailySettingsPageViewModel : DeviceSettingsPageViewModel

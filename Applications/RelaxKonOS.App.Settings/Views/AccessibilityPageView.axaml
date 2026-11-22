@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:nav="clr-namespace:RelaxKonOS.App.Settings.Views"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.Settings"
+             x:Class="RelaxKonOS.App.Settings.Views.AccessibilityPageView"
+             x:DataType="vm:AccessibilityPageContent" Classes="builtin-app">
+    <StackPanel Spacing="16">
+        <Border Classes="card"><StackPanel Spacing="10">
+            <TextBlock Text="{Binding ScaleLabel}" Classes="title" />
+            <TextBlock Text="{Binding ScaleHint}" TextWrapping="Wrap" Classes="subtle" />
+            <ComboBox nav:SettingsSearchTarget.Id="client.interfaceScale" AutomationProperties.Name="{Binding ScaleLabel}" ItemsSource="{Binding ScaleChoices}" SelectedItem="{Binding InterfaceScale, Mode=TwoWay}">
+                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding StringFormat={}{0}%}" /></DataTemplate></ComboBox.ItemTemplate>
+            </ComboBox>
+        </StackPanel></Border>
+        <Border Classes="card"><StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{Binding MotionLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding MotionLabel}" nav:SettingsSearchTarget.Id="client.reducedMotion" IsChecked="{Binding ReducedMotion, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{Binding MotionHint}" TextWrapping="Wrap" Classes="subtle" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{Binding ContrastLabel}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{Binding ContrastLabel}" nav:SettingsSearchTarget.Id="client.highContrast" IsChecked="{Binding HighContrast, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{Binding ContrastHint}" TextWrapping="Wrap" Classes="subtle" />
+        </StackPanel></Border>
+        <Button Content="{Binding ResetLabel}" Command="{Binding ResetAccessibilityCommand}" />
+        <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
+        <Button IsVisible="{Binding SaveFailed}" Content="{Binding RetryLabel}" Command="{Binding RetrySaveCommand}" />
+    </StackPanel>
+</UserControl>

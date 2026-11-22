@@ -1,5 +1,5 @@
 using Avalonia.Controls;
-namespace RelaxKonOS.Client.Apps.Settings.Views.Pages;
+namespace RelaxKonOS.App.Settings.Views;
 public partial class AccessibilityPageView : UserControl
 {
     public AccessibilityPageView() => InitializeComponent();

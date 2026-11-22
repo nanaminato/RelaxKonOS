@@ -27,7 +27,8 @@ internal static class DesktopDeviceSettingsChecks
         using var runtime = new DesktopAccessibilityService(Application.Current!, preferences, appearance);
         try
         {
-            using var accessibility = new AccessibilityPageViewModel(settings, preferences);
+            using var accessibilityPage = new AccessibilityPageViewModel(settings, preferences);
+            var accessibility = accessibilityPage.Content;
             using var daily = new DailySettingsPageViewModel(settings, preferences);
             accessibility.InterfaceScale = 150;
             accessibility.ReducedMotion = true;

@@ -1,16 +1,29 @@
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.App.Settings;
 
 namespace RelaxKonOS.Client.Services;
 
 /// <summary>Non-sensitive device choices; never included in workspace preference payloads.</summary>
-public sealed class DesktopDevicePreferences : ObservableObject
+public sealed class DesktopDevicePreferences : ObservableObject, IAccessibilityPreferences
 {
     public static readonly int[] ScaleChoices = [100, 125, 150, 175, 200];
     private readonly string _path;
     public DesktopDeviceOptions Value { get; private set; } = new();
     public bool SaveFailed { get; private set; }
     public event EventHandler? Changed;
+
+    IReadOnlyList<int> IAccessibilityPreferences.ScaleChoices => ScaleChoices;
+    AccessibilityOptions IAccessibilityPreferences.Accessibility
+    {
+        get => new(Value.InterfaceScale, Value.ReducedMotion, Value.HighContrast);
+        set => Update(current => current with
+        {
+            InterfaceScale = value.InterfaceScale,
+            ReducedMotion = value.ReducedMotion,
+            HighContrast = value.HighContrast,
+        });
+    }
 
     public DesktopDevicePreferences() : this(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "desktop-device.json")) { }
