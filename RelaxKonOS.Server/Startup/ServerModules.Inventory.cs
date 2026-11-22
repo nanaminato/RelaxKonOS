@@ -69,7 +69,7 @@ internal sealed partial class ServerModules
             var recoveryRequired = runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
             var installed = module as IInstalledModuleInfo;
             var host = hostStatuses?.GetValueOrDefault(module.Id);
-            var fixedExecutionPackage = module.Id is Modules.TailscaleModule.ModuleId or FirewallId or GitId or DockerId or WebServerId;
+            var fixedExecutionPackage = module.Id is Modules.TailscaleModule.ModuleId or FirewallId or GitId or DockerId or WebServerId or CertificatesId;
             var package = module is InstalledIsolatedModule || fixedExecutionPackage
                 ? currentPackages.GetValueOrDefault(module.Id) : null;
             var moduleVersion = package?.Version ?? installed?.InstalledVersion ?? version;

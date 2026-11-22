@@ -15,6 +15,7 @@ using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.ImageMirrors;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
@@ -86,6 +87,7 @@ internal static class ModulePackageHttpChecks
             ModulePackageBuildResult[] git = [];
             ModulePackageBuildResult[] docker = [];
             ModulePackageBuildResult[] webServer = [];
+            ModulePackageBuildResult[] certificates = [];
             ModulePackageBuildResult? incompatibleGit = null;
             if (!isolated)
             {
@@ -164,19 +166,33 @@ internal static class ModulePackageHttpChecks
                 webServer = [await ModulePackageBuilder.BuildAsync(webOptions, now),
                     await ModulePackageBuilder.BuildAsync(webOptions with
                     { Version = "2.0.0", ReleaseId = "webserver-2.0.0-" + rid }, now)];
+                var certificateOptions = dockerOptions with
+                {
+                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "Certificates"),
+                    OutputDirectory = Path.Combine(root, "certificates-package"),
+                    ModuleId = ServerModules.CertificatesId,
+                    ReleaseId = "certificates-1.0.0-" + rid,
+                    EntryAssembly = AcmeExecution.AssemblyFile,
+                    EntryType = AcmeExecution.EntryType,
+                    Capabilities = [ServerCapabilities.Certificates],
+                    Ui = new("Certificates", "", "", null, "UNLICENSED"),
+                };
+                certificates = [await ModulePackageBuilder.BuildAsync(certificateOptions, now),
+                    await ModulePackageBuilder.BuildAsync(certificateOptions with
+                    { Version = "2.0.0", ReleaseId = "certificates-2.0.0-" + rid }, now)];
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
                     now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
                         .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release),
-                        .. docker.Select(Release), .. webServer.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
+                        .. docker.Select(Release), .. webServer.Select(Release), .. certificates.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", dependent is null ? ["fixture-http"]
                     : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale",
-                        ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId, ServerModules.WebServerId],
+                        ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId, ServerModules.WebServerId, ServerModules.CertificatesId],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -252,7 +268,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + webServer.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + webServer.Length + certificates.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -472,6 +488,7 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledFirewallModule>(client, root, firewall, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
+                await VerifyExecutionPackageVersionsAsync<InstalledCertificateModule>(client, root, certificates, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);
                 await VerifyRestoredWebServerAsync(root, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
@@ -542,6 +559,8 @@ internal static class ModulePackageHttpChecks
         await using var host = builder.Build();
         var execution = host.Services.GetRequiredService<WebServerExecutionCode>();
         check(!ReferenceEquals(execution, WebServerExecutionCode.Shared), "the restored Web Server module registers its installed execution loader");
+        check(!ReferenceEquals(host.Services.GetRequiredService<AcmeExecution>(), AcmeExecution.Shared),
+            "the Web Server dependency starts with its own verified signed Certificates execution package");
         var ports = new WebServerReloadProbe();
         using var lease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", ports);
         check(await lease.Executor.ReloadAsync(default) == "" && ports.Confirmed,

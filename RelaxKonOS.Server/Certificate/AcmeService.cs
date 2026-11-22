@@ -16,7 +16,7 @@ internal sealed class AnvilAcmeService : IAcmeService, IAcmeRenewalInfoProvider
         CertificateMetadataRepository metadata, ILogger<AnvilAcmeService> logger, Func<Uri, HttpClient>? createHttpClient = null)
         : this(webRoot, direct, options, metadata, logger, AcmeExecution.Shared, createHttpClient) { }
 
-    internal AnvilAcmeService(FileHttp01ChallengeStore webRoot, DirectHttp01ChallengeStore direct, CertificateOptions options,
+    public AnvilAcmeService(FileHttp01ChallengeStore webRoot, DirectHttp01ChallengeStore direct, CertificateOptions options,
         CertificateMetadataRepository metadata, ILogger<AnvilAcmeService> logger, AcmeExecution execution, Func<Uri, HttpClient>? createHttpClient = null)
     {
         this.execution = execution;

@@ -14,15 +14,17 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// The module owns only the ACME account workflow, the renewal loop, the operation ledger it serves,
 /// and the management routes.
 /// </summary>
-internal sealed class CertificateModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
+internal class CertificateModule : IServerModule, IServerModuleDeactivationGuard, IServerModuleWorkResidency
 {
     public string Id => ServerModules.CertificatesId;
     public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new RelaxKonOS.Server.Residency.ResidentModuleWorkRuntimeFactory(ServerModules.CertificatesId);
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Certificates];
     public IReadOnlyList<string> Requires => [];
+    private protected virtual AcmeExecution Execution => AcmeExecution.Shared;
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
+        builder.Services.AddSingleton(Execution);
         // FileHttp01ChallengeStore stays in Core: the Nginx manager writes the challenge location
         // that points at its root, so it must exist whether or not ACME issuance is enabled.
         builder.Services.AddSingleton<DirectHttp01ChallengeStore>();
@@ -37,7 +39,7 @@ internal sealed class CertificateModule : IServerModule, IServerModuleDeactivati
         builder.Services.AddHostedService<CertificateRenewalWorker>();
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) =>
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context) =>
         endpoints.MapCertificateEndpoints();
 
     public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(IServiceProvider services, ServerModuleContext context, CancellationToken ct)

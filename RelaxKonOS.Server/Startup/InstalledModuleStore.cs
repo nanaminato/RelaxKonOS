@@ -263,6 +263,7 @@ internal static class InstalledModuleCatalog
             { ModuleId: ServerModules.GitId, Runtime: "in-process" } => new InstalledGitModule(record, contentRoot),
             { ModuleId: ServerModules.DockerId, Runtime: "in-process" } => new InstalledDockerModule(record, contentRoot),
             { ModuleId: ServerModules.WebServerId, Runtime: "in-process" } => new InstalledWebServerModule(record, contentRoot),
+            { ModuleId: ServerModules.CertificatesId, Runtime: "in-process" } => new InstalledCertificateModule(record, contentRoot),
             { Runtime: "module-host" } => new InstalledIsolatedModule(record, contentRoot),
             _ => new InstalledServerModule(record, contentRoot),
         }).ToArray();

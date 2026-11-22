@@ -7,19 +7,24 @@ namespace RelaxKonOS.Server.Certificate;
 /// <summary>One bounded collectible generation, shared by request and durable operation scopes.</summary>
 internal sealed class AcmeExecution
 {
+    internal const string AssemblyFile = "RelaxKonOS.ServerModule.Certificates.dll";
+    internal const string EntryType = "RelaxKonOS.Server.Certificate.AnvilAcmeExecutor";
+    internal static IReadOnlyList<string> Dependencies { get; } = ["Certify.ACME.Anvil", "BouncyCastle.Cryptography", "Newtonsoft.Json"];
     internal static AcmeExecution Shared { get; } = new(TimeSpan.FromSeconds(30));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
     private readonly List<WeakReference> generations = [];
     private readonly TimeSpan idleDelay;
+    private readonly Func<string> resolvePath;
     private readonly Timer timer;
     private Generation? current;
     private int active;
     private long lastRelease;
 
-    internal AcmeExecution(TimeSpan idleDelay)
+    internal AcmeExecution(TimeSpan idleDelay, Func<string>? resolvePath = null)
     {
         this.idleDelay = idleDelay;
+        this.resolvePath = resolvePath ?? ResolveBundledPath;
         if (ExecutionContext.IsFlowSuppressed()) timer = CreateTimer();
         else
         {
@@ -56,18 +61,13 @@ internal sealed class AcmeExecution
         generations.RemoveAll(reference => !reference.IsAlive);
         if (generations.Count >= MaximumGenerations)
             throw new InvalidDataException("ACME execution code collection is pending.");
-        var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Certificates");
-        var path = Path.Combine(directory, "RelaxKonOS.ServerModule.Certificates.dll");
-        if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
-            || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Bundled ACME execution assembly is missing or linked.");
-
-        var context = new ExecutionLoadContext(directory);
+        var path = resolvePath();
+        var context = new ExecutionLoadContext(Path.GetDirectoryName(path)!);
         var code = new WeakReference(context);
         generations.Add(code);
         try
         {
-            var executor = context.LoadFromAssemblyPath(path).GetType("RelaxKonOS.Server.Certificate.AnvilAcmeExecutor", throwOnError: true)!;
+            var executor = ReadExecutor(context, path);
             return new Generation(context, executor, code);
         }
         catch (Exception)
@@ -75,6 +75,38 @@ internal sealed class AcmeExecution
             context.Unload();
             throw new InvalidDataException("Bundled ACME execution could not be loaded.");
         }
+    }
+
+    internal static void ValidateEntryPoint(string path)
+    {
+        var context = new ExecutionLoadContext(Path.GetDirectoryName(path)!);
+        try
+        {
+            _ = ReadExecutor(context, path);
+            foreach (var name in Dependencies) _ = context.LoadFromAssemblyName(new AssemblyName(name));
+        }
+        finally { context.Unload(); }
+    }
+
+    private static Type ReadExecutor(ExecutionLoadContext context, string path)
+    {
+        using var stream = File.OpenRead(path);
+        var entry = context.LoadFromStream(stream).GetType(EntryType);
+        if (entry is null || entry.IsAbstract || !typeof(IAcmeService).IsAssignableFrom(entry)
+            || !typeof(IAcmeRenewalInfoProvider).IsAssignableFrom(entry)
+            || entry.GetConstructor([typeof(AcmeExecutionPorts), typeof(ILogger)]) is null)
+            throw new InvalidDataException("ACME execution assembly does not implement the required module entry point.");
+        return entry;
+    }
+
+    private static string ResolveBundledPath()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Certificates");
+        var path = Path.Combine(directory, AssemblyFile);
+        if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
+            || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("Bundled ACME execution assembly is missing or linked.");
+        return path;
     }
 
     private void ScheduleRelease()
@@ -137,12 +169,13 @@ internal sealed class AcmeExecution
             // share the SDK lifetime or they retain those types in the default context.
             if (name.Name == "System.ComponentModel.TypeConverter")
                 return LoadFromAssemblyPath(typeof(System.ComponentModel.TypeDescriptor).Assembly.Location);
-            if (name.Name is "Certify.ACME.Anvil" or "BouncyCastle.Cryptography" or "Newtonsoft.Json")
+            if (name.Name is { } dependencyName && Dependencies.Contains(dependencyName, StringComparer.Ordinal))
             {
                 var dependency = Path.Combine(directory, name.Name + ".dll");
                 if (!File.Exists(dependency) || (File.GetAttributes(dependency) & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException("Bundled ACME dependency is missing or linked.");
-                return LoadFromAssemblyPath(dependency);
+                using var stream = File.OpenRead(dependency);
+                return LoadFromStream(stream);
             }
             return null;
         }
