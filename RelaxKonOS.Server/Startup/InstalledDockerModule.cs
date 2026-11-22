@@ -25,7 +25,7 @@ internal sealed class InstalledDockerModule(InstalledModuleRecord record, string
     public override void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         if (record.Quarantined) return;
-        _ = ResolveEntry(record, contentRoot);
+        DockerComposeExecution.ValidateEntryPoints(ResolveEntry(record, contentRoot));
         base.ConfigureServices(builder, context);
     }
 

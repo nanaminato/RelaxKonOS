@@ -12,7 +12,7 @@ public sealed class DockerEngineControlService(
 
     public async Task<DockerEngineControlResult> ApplyAsync(string action, bool confirmed, CancellationToken cancellationToken = default)
     {
-        using var lease = Execution.Acquire<IDockerEngineControlService>("RelaxKonOS.Server.Docker.DockerEngineControlExecution",
+        using var lease = Execution.Acquire<IDockerEngineControlService>(DockerComposeExecution.EngineControlEntryType,
             new Host(controller, engine, logger));
         return await lease.Executor.ApplyAsync(action, confirmed, cancellationToken).ConfigureAwait(false);
     }

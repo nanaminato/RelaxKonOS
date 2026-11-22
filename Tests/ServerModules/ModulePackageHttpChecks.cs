@@ -17,6 +17,7 @@ using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
 using RelaxKonOS.Server.Git;
+using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Tailscale;
 
@@ -451,6 +452,8 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                dockerHost.Services.AddSingleton<IPrivilegedOperationTransport, DisabledPrivilegedOperationTransport>();
+                dockerHost.Services.AddSingleton(System.Reflection.DispatchProxy.Create<IDockerEngineService, GitRepositoryAssemblyChecks.RejectTransport>());
                 var dockerModules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.DockerId }, InstalledModuleCatalog.Load(root));
                 dockerModules.ConfigureServices(dockerHost, ServerModuleContext.Create(dockerHost.Configuration, dockerHost.Environment, "memory"));
                 await using (var composeHost = dockerHost.Build())
@@ -459,6 +462,10 @@ internal static class ModulePackageHttpChecks
                     var compose = composeScope.ServiceProvider.GetRequiredService<IDockerComposeService>();
                     var preview = await compose.PreviewAsync(new("package-check", "services:\n  web:\n    image: nginx:alpine\n"));
                     check(preview.Services.Single().Service == "web", "a fresh Core host parses a Compose preview using the restored signed execution package");
+                    var engine = composeScope.ServiceProvider.GetRequiredService<IDockerEngineControlService>();
+                    var restart = await engine.ApplyAsync("restart", confirmed: false);
+                    check(!restart.Success && restart.ProblemCode == DockerEngineProblem.ConfirmationRequired,
+                        "the restored signed Docker package refuses an unconfirmed Engine restart");
                     if (liveDocker) await VerifyLiveComposeAsync(compose, check);
                 }
                 using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,

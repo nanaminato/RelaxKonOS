@@ -9,6 +9,7 @@ internal sealed class DockerComposeExecution
 {
     internal const string AssemblyFile = "RelaxKonOS.ServerModule.Docker.dll";
     internal const string EntryType = "RelaxKonOS.Server.Docker.DockerComposeExecutor";
+    internal const string EngineControlEntryType = "RelaxKonOS.Server.Docker.DockerEngineControlExecution";
     internal static DockerComposeExecution Shared { get; } = new(TimeSpan.FromSeconds(30));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
@@ -72,14 +73,36 @@ internal sealed class DockerComposeExecution
         generations.Add(code);
         try
         {
-            using var stream = File.OpenRead(path);
-            var assembly = context.LoadFromStream(stream);
+            var assembly = ReadAssembly(context, path);
             return new Generation(context, assembly, code);
         }
         catch (Exception)
         {
             context.Unload();
             throw new InvalidDataException("Docker Compose execution could not be loaded.");
+        }
+    }
+
+    internal static void ValidateEntryPoints(string path)
+    {
+        var context = new ExecutionLoadContext();
+        try { _ = ReadAssembly(context, path); }
+        finally { context.Unload(); }
+    }
+
+    private static Assembly ReadAssembly(ExecutionLoadContext context, string path)
+    {
+        using var stream = File.OpenRead(path);
+        var assembly = context.LoadFromStream(stream);
+        RequireEntry<IDockerComposeService>(EntryType, typeof(string));
+        RequireEntry<IDockerEngineControlService>(EngineControlEntryType, typeof(IDockerEngineControlHost));
+        return assembly;
+
+        void RequireEntry<T>(string name, Type argument)
+        {
+            var entry = assembly.GetType(name);
+            if (entry is null || entry.IsAbstract || !typeof(T).IsAssignableFrom(entry) || entry.GetConstructor([argument]) is null)
+                throw new InvalidDataException("Docker execution assembly does not implement the required module entry points.");
         }
     }
 

@@ -753,3 +753,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Docker Compose 执行程序集可作为官方签名 .rkmodule 安装并在 Core 请求作用域加载。现有 Engine 传输、权限检查、台账与启动调度继续由 Core 提供。Windows Release HTTP 回归验证两个签名版本的安装、更新和回滚，回滚后新建 Core 宿主成功调用已安装执行程序集解析 Compose。真实 Compose config 回归通过，Engine 写操作及 Docker Manager 其余实现的独立化待验或待迁移。
 - Windows Release 的 --docker-signed-package-live 通过。经管理 HTTP 安装两个签名执行版本并回滚后，新建 Core 宿主用本机已有的 Debian 镜像部署唯一命名的临时项目，无端口发布。真实 Engine 报告容器运行，删除后未残留同前缀容器或网络。验收调用恢复版本的 Compose 服务，整套 Docker Manager 独立化仍待完成。
 - Docker Engine 控制的动作解析、平台判断及停止和重启确认进入 Docker 签名执行程序集，与 Compose 共用可卸载代码代次。Core 保留路由授权、平台控制器、Helper 和状态回读，执行代码只通过窄端口提交类型化动作。Windows Release Engine 控制、镜像及 Compose 上下文回收回归均通过。验收未重启实际 Engine。
+- 已安装 Docker 签名执行包在启动时校验 Compose 与 Engine 控制两个类型及构造契约，每次驻留加载也复核。Windows Release HTTP 回归通过，回滚后新建 Core 宿主既能解析 Compose，又会拒绝未确认的 Engine 重启。测试没有执行 Engine 控制命令。
