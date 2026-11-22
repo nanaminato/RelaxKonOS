@@ -9,6 +9,7 @@
         "installation_profile.empty": "You can install apps later from the app store.",
         "installation_profile.continue": "Continue",
         "installation_profile.archive_unavailable": "{0} · bundled archive unavailable",
+        "installation_profile.archive_version": "{0} · requires version {1} or later",
         "installation_profile.skip": "Skip preinstallation"
     }
 }

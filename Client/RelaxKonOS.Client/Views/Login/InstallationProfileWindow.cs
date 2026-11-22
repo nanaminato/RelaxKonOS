@@ -10,7 +10,8 @@ internal sealed class InstallationProfileWindow : Window
 {
     private readonly TaskCompletionSource<ProfileSelection> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    internal InstallationProfileWindow(ProfileDocument document, IReadOnlyDictionary<string, string> names, LoginLocalizationService language)
+    internal InstallationProfileWindow(ProfileDocument document, IReadOnlyDictionary<string, ProfileArchive> archives,
+        LoginLocalizationService language)
     {
         string Text(string key, string fallback) => language.Get("installation_profile." + key, fallback);
         Title = Text("title", "Choose desktop apps");
@@ -35,12 +36,15 @@ internal sealed class InstallationProfileWindow : Window
             entries.Children.Clear();
             foreach (var entry in document.Profiles[profile])
             {
-                var name = names.GetValueOrDefault(entry.AppId);
-                if (name is null)
-                    name = entry.InstallPolicy == "interactive" ? entry.AppId
-                        : string.Format(Text("archive_unavailable", "{0} · bundled archive unavailable"), entry.AppId);
+                var archive = archives.GetValueOrDefault(entry.AppId);
+                var name = archive?.DisplayName ?? entry.AppId;
                 var label = entry.InstallPolicy == "interactive"
-                    ? string.Format(Text("in_store", "{0} · available in the app store"), name) : name;
+                    ? string.Format(Text("in_store", "{0} · available in the app store"), name)
+                    : archive is null
+                        ? string.Format(Text("archive_unavailable", "{0} · bundled archive unavailable"), name)
+                        : !MeetsVersion(archive.Version, entry.MinimumVersion)
+                            ? string.Format(Text("archive_version", "{0} · requires version {1} or later"), name, entry.MinimumVersion)
+                            : name;
                 var checkbox = new CheckBox
                 {
                     Content = new TextBlock { Text = label, TextWrapping = Avalonia.Media.TextWrapping.Wrap },

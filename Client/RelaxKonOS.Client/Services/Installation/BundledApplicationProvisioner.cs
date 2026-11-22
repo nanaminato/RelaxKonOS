@@ -38,7 +38,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
     }
 
     public async Task RunAsync(IEnumerable<string>? arguments = null, CancellationToken cancellationToken = default,
-        Func<ProfileDocument, IReadOnlyDictionary<string, string>, Task<ProfileSelection>>? chooseProfile = null)
+        Func<ProfileDocument, IReadOnlyDictionary<string, ProfileArchive>, Task<ProfileSelection>>? chooseProfile = null)
     {
         try
         {
@@ -49,7 +49,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             var selection = saved is null && chooseProfile is not null
                 && !options.Any(option => option.StartsWith(ProfileFlag, StringComparison.Ordinal)
                     || option.StartsWith(ExcludeFlag, StringComparison.Ordinal))
-                ? await chooseProfile(profiles, await ReadBundledNamesAsync(profiles, cancellationToken))
+                ? await chooseProfile(profiles, await ReadBundledArchivesAsync(profiles, cancellationToken))
                 : SelectProfile(profiles, saved, options);
             if (!profiles.Profiles.TryGetValue(selection.Profile, out var selectedEntries) || selection.Excluded is null)
                 throw new InvalidDataException("Invalid installation profile selection.");
@@ -102,9 +102,9 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         }
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> ReadBundledNamesAsync(ProfileDocument profiles, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, ProfileArchive>> ReadBundledArchivesAsync(ProfileDocument profiles, CancellationToken cancellationToken)
     {
-        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        var archives = new Dictionary<string, ProfileArchive>(StringComparer.Ordinal);
         foreach (var id in profiles.Profiles.Values.SelectMany(entries => entries).Select(entry => entry.AppId).Distinct(StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -112,14 +112,14 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             {
                 var (manifest, digest) = await packages.InspectAsync(packages.OfficialSource.BundledPath(id), cancellationToken);
                 if (manifest.Id == id && digest is not null)
-                    names[id] = manifest.DisplayName;
+                    archives[id] = new(manifest.DisplayName, manifest.Version);
             }
             catch (Exception error) when (!cancellationToken.IsCancellationRequested && AppPackageInstallerService.IsStoreFailure(error))
             {
                 packages.RecordActivationDiagnostic($"Bundled application {id} could not be inspected: {error.GetType().Name}.");
             }
         }
-        return names;
+        return archives;
     }
 
     private async Task<ProfileSelection?> ReadSelectionAsync(CancellationToken cancellationToken) =>
@@ -185,6 +185,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
 
     internal sealed record ProfileDocument(int SchemaVersion, string DefaultProfile, Dictionary<string, ProfileApplication[]> Profiles);
     internal sealed record ProfileApplication(string AppId, string MinimumVersion, string InstallPolicy);
+    internal sealed record ProfileArchive(string DisplayName, string Version);
     internal sealed record ProfileSelection(string Profile, string[] Excluded,
         Dictionary<string, string[]>? OtherProfileExclusions = null);
     private sealed record ProvisionedApplication(string Id, string Version);

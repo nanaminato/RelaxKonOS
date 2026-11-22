@@ -9,6 +9,7 @@
         "installation_profile.empty": "アプリは後からアプリストアでインストールできます。",
         "installation_profile.continue": "続行",
         "installation_profile.archive_unavailable": "{0} · 同梱アーカイブを利用できません",
+        "installation_profile.archive_version": "{0} · バージョン {1} 以降が必要です",
         "installation_profile.skip": "事前インストールをスキップ"
     }
 }

@@ -92,6 +92,17 @@ internal static class DesktopDistributionChecks
                             if (profiles.Profiles.Keys.ElementAt(picker.SelectedIndex) != "standard")
                                 throw new InvalidOperationException("The first-run window must default to Standard.");
                             var entries = (StackPanel)((ScrollViewer)layout.Children[2]).Content!;
+                            var standardIndex = picker.SelectedIndex;
+                            var developer = profiles.Profiles["developer"];
+                            var welcomeIndex = Array.FindIndex(developer, item => item.AppId == excludedApp);
+                            var original = developer[welcomeIndex];
+                            developer[welcomeIndex] = original with { MinimumVersion = "99.0.0" };
+                            picker.SelectedIndex = Array.IndexOf(profiles.Profiles.Keys.ToArray(), "developer");
+                            var outdated = entries.Children.OfType<CheckBox>().Single(item => Equals(item.Tag, excludedApp));
+                            if (outdated.Content is not TextBlock { Text: { } versionLabel } || !versionLabel.Contains("99.0.0", StringComparison.Ordinal))
+                                throw new InvalidOperationException("The first-run window did not display the unmet offline version requirement.");
+                            developer[welcomeIndex] = original;
+                            picker.SelectedIndex = standardIndex;
                             var welcome = entries.Children.OfType<CheckBox>().Single(item => Equals(item.Tag, excludedApp));
                             if (welcome.Content is not TextBlock { Text: "Welcome" })
                                 throw new InvalidOperationException("The Welcome choice did not show the verified package name.");
