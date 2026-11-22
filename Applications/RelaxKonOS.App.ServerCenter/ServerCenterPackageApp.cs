@@ -1,4 +1,5 @@
 using RelaxKonOS.AppSDK;
+using RelaxKonOS.App.ServerCenter.Views;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 
@@ -18,8 +19,14 @@ public sealed class ServerCenterPackageApp : IExternalRemoteApplication
         if (context.AppId != Id || context is not IServerCenterPackageContext { ServerCenterWorkspace: { } workspace })
             throw new InvalidOperationException("Server Center requires its official desktop workspace capability.");
 
-        workspace.Open((title, content) => context.Windows.ShowWindow(title, content,
-            new Rect(70, 50, 1120, 760), Manifest.IconGlyph).Window);
+        workspace.Open((presentation, createPage) =>
+        {
+            var content = new ServerCenterWorkspace(presentation, createPage);
+            var window = context.Windows.ShowWindow(presentation.Title, content,
+                new Rect(70, 50, 1120, 760), Manifest.IconGlyph).Window;
+            content.AttachWindowHeader(window);
+            return window;
+        });
         return Task.CompletedTask;
     }
 }

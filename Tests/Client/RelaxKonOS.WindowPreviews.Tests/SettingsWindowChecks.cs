@@ -616,9 +616,11 @@ internal static class SettingsWindowChecks
             Check(!applications.IsBuiltIn(appId) && applications.Launch(appId), "Installed Server Center did not launch.");
             PumpUntil(() => windows.Windows.Any(window => window.Info.OwnerAppId == appId));
             var window = windows.Windows.Single(item => item.Info.OwnerAppId == appId);
-            Check(window.View.Content is ServerCenterWorkspace { DataContext: ServerCenterViewModel },
+            Check(window.View.Content is Control { DataContext: ServerCenterViewModel } content
+                && content.GetType().Name == "ServerCenterWorkspace"
+                && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(content.GetType().Assembly)?.IsCollectible == true,
                 "The installed Server Center did not present the production host workspace.");
-            var model = (ServerCenterViewModel)((ServerCenterWorkspace)window.View.Content!).DataContext!;
+            var model = (ServerCenterViewModel)((Control)window.View.Content!).DataContext!;
             PumpUntil(() => !model.IsBusy);
             Check(string.IsNullOrEmpty(model.ErrorMessage) && !model.HasHosts && model.ShowInstallationWizardAsync is not null,
                 "Server Center failed to load the empty local inventory or wire its deployment wizard.");
