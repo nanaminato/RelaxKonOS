@@ -65,13 +65,13 @@ internal static class JointDeploymentAcceptance
     private static async Task VerifySignedTailscaleAsync(TestHost host, string _)
     {
         using var client = new HttpClient { BaseAddress = new Uri(host.Url) };
-        var helper = (TailscaleReadHelper)host.Services.GetRequiredService<IPrivilegedOperationTransport>();
+        var fixture = host.Services.GetRequiredService<IPrivilegedOperationTransport>() as TailscaleReadHelper;
         using var anonymous = await client.GetAsync(TailscaleEndpoints.Control);
-        Require(anonymous.StatusCode == System.Net.HttpStatusCode.Unauthorized && helper.ReadCount == 0,
+        Require(anonymous.StatusCode == System.Net.HttpStatusCode.Unauthorized && (fixture is null || fixture.ReadCount == 0),
             "anonymous Tailscale control reads are rejected before reaching Helper");
         client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
         var snapshot = await client.GetFromJsonAsync<TailscaleControlSnapshot>(TailscaleEndpoints.Control, RelaxKonOSJsonOptions.Default);
-        Require(snapshot == TailscaleReadHelper.Snapshot && helper.ReadCount == 1,
+        Require(fixture is null ? snapshot is { Revision.Length: 64 } : snapshot == TailscaleReadHelper.Snapshot && fixture.ReadCount == 1,
             "the HTTP control route reads through the joint-installed Tailscale executor and production Helper adapter");
     }
 
@@ -1405,7 +1405,19 @@ internal static class JointDeploymentAcceptance
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
             builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
-            if (hasTailscale)
+            if (hasTailscale && Environment.GetEnvironmentVariable("RK_TEST_TAILSCALE_HOST_CONFIG") is { Length: > 0 } configPath)
+            {
+                if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The installed Helper probe requires Windows.");
+                using var installedConfig = (ConfigurationRoot)new ConfigurationBuilder().AddJsonFile(Path.GetFullPath(configPath), optional: false).Build();
+                var helperSection = installedConfig.GetRequiredSection("PrivilegedHelper");
+                builder.Services.AddSingleton(new PrivilegedHelperOptions
+                {
+                    PipeName = helperSection["PipeName"] ?? string.Empty,
+                    SharedSecret = helperSection["SharedSecret"] ?? string.Empty,
+                });
+                builder.Services.AddSingleton<IPrivilegedOperationTransport, WindowsNamedPipePrivilegedOperationTransport>();
+            }
+            else if (hasTailscale)
                 builder.Services.AddSingleton<IPrivilegedOperationTransport, TailscaleReadHelper>();
             else
                 builder.Services.AddSingleton<IPrivilegedOperationTransport, IdleDatabaseHelper>();
