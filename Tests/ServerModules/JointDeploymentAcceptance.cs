@@ -276,10 +276,12 @@ internal static class JointDeploymentAcceptance
             await packages.UninstallAsync(AppIdText);
 
             var activationArchives = bundledModuleArchives.Where(path =>
-                Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId or ServerModules.DatabaseId)
+                Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId
+                    or ServerModules.DatabaseId or ServerModules.DockerId)
                 .ToDictionary(path => Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal);
             var activationDependencies = new[] { ServerModules.FirewallId, ModuleId }
-                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId }.Where(activationArchives.ContainsKey));
+                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId, ServerModules.DockerId }
+                    .Where(activationArchives.ContainsKey));
             foreach (var dependencyId in activationDependencies)
             {
                 var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
@@ -344,6 +346,7 @@ internal static class JointDeploymentAcceptance
                     "relaxkonos.git" => [ServerModules.GitId],
                     "relaxkonos.firewall" => [ServerModules.FirewallId],
                     "relaxkonos.database" => [ServerModules.DatabaseId],
+                    "relaxkonos.docker" => [ServerModules.DockerId],
                     "relaxkonos.proxy" or "relaxkonos.proxy-server" or "relaxkonos.squid" => [ServerModules.ProxyId],
                     _ => throw new ArgumentException($"Unrecognized bundled-module test package: {appId}"),
                 };
@@ -512,6 +515,9 @@ internal static class JointDeploymentAcceptance
             var online = installed.Where(module => modules.IsEnabled(module.Id)).ToArray();
             var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
             foreach (var module in online) module.ConfigureServices(builder, context);
+            builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
+                options.DataDirectory = Path.Combine(root, "docker-compose"));
+            builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
             builder.Services.AddSingleton(store);
             builder.Services.AddSingleton(modules);
             builder.Services.AddSingleton(context);

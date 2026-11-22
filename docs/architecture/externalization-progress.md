@@ -27,7 +27,7 @@
 | registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Release 包验收；真实服务器待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
-| docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
+| docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包生命周期及隔离宿主联合部署；真实 Engine 待验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期和隔离宿主联合部署已验，真实防火墙操作待验 |
 | proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows Release 包生命周期已验，真实 mihomo 待验 |
@@ -443,3 +443,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Android 图标同步恢复了十个已迁出桌面宿主的图标来源，保留原 Android 资源名和文件内容。补齐组件中心衍生图标并同步品牌图标。162 项图标检查通过，Android Debug 离线构建及 1,904 项 JVM 单元测试通过。本轮没有可用模拟器，未重跑设备测试。
 - 使用只读 Medium_Phone（API 37）模拟器安装重新构建的 Debug APK 和测试 APK。ADB 确认 MainActivity 冷启动成功。`WorkspaceNavigationTest` 的 7 项和 `InstallationPackagePickerTest` 的 3 项均通过，覆盖宽窄布局、导航恢复、草稿归属及安装包来源选择。本次仅执行这两组设备测试。
 - Windows x64 Release 重新构建 ServerModules 测试，与当前桌面发行归档运行两轮 `--joint-deployment-acceptance` 并通过。两轮均经环回模块管理 HTTP API 验证签名测试模块上传、安装、启用、响应丢失后的对账、重启和桌面登记。真实 Firewall、Databases 和 Git 归档验证仅启用和重启恢复，Certificates 复用现有模块。Proxy Manager、Proxy Server 和 Squid Gateway 同时安装后逐个卸载，仍在使用同一模块的应用保留依赖记录。离线客户端依赖阻止不兼容升级，移除依赖者后同一升级成功。测试使用隔离授权和模块状态，未执行生产业务或跨设备依赖保护验收。
+- Windows Release 将实际 Docker Manager 官方归档加入 `--joint-deployment-acceptance`。隔离环回宿主使用实际 Compose 操作台账，验证随附 Docker 模块停用后仅生成启用计划，服务端重启后才登记应用。直接复用已启用模块时未产生新的模块包操作，卸载应用只移除依赖记录。测试未调用 Docker Engine。
