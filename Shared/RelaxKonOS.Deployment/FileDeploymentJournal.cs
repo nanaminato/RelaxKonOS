@@ -169,7 +169,20 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
                         cancellationToken: cancellationToken);
                     output.Flush(flushToDisk: true);
                 }
-                File.Move(staging, path, overwrite: true);
+                for (var attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        File.Move(staging, path, overwrite: true);
+                        break;
+                    }
+                    catch (Exception error) when (OperatingSystem.IsWindows() && attempt < 4
+                        && (error is UnauthorizedAccessException || error is IOException io && IsLockContention(io)))
+                    {
+                        // Windows can briefly deny replacement while a background reader holds the file.
+                        await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken);
+                    }
+                }
                 _startedAt = startedAt;
                 Checkpoint = value;
             }

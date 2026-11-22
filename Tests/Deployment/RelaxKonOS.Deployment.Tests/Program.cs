@@ -174,10 +174,11 @@ await using (var lease = await reopenedJournal.OpenAsync(switchedPlan, Cancellat
     await lease.SaveAsync(new DeploymentCheckpoint(1, false), CancellationToken.None);
 backend.Target = plan.Target with { ServerIdentity = "replacement-server" };
 var beforeSwitch = backend.Applied.Count;
+var preflightsBeforeSwitch = backend.Preflights;
 await Reject(switchedPlan, "deployment-server-changed");
 backend.Target = plan.Target;
 await Reject(switchedPlan, "deployment-plan-review-required");
-Check(backend.Applied.Count == beforeSwitch);
+Check(backend.Applied.Count == beforeSwitch && backend.Preflights == preflightsBeforeSwitch);
 await using (var lease = await reopenedJournal.OpenAsync(switchedPlan, CancellationToken.None))
     Check(lease.Checkpoint is { CompletedSteps: 1, RequiresReview: true, Verified: false });
 Check(await reopenedJournal.ReadPendingRecoveriesAsync(switchedBinding.AccountId, switchedBinding.ConnectionIdentity)

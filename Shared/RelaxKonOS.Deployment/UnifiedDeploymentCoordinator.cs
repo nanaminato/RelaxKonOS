@@ -92,23 +92,21 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
             || checkpoint.Verified && checkpoint.CompletedSteps != plan.OrderedReleases.Length))
             throw new InvalidDataException("Invalid deployment checkpoint.");
 
-        try { await backend.VerifyBeforeExecutionAsync(plan, cancellationToken); }
+        try
+        {
+            if (checkpoint is not null)
+                await ObserveTargetAsync();
+            await backend.VerifyBeforeExecutionAsync(plan, cancellationToken);
+        }
         catch (DeploymentPlanReviewRequiredException) when (checkpoint is { Verified: false })
         {
             await lease.SaveAsync(checkpoint with { RequiresReview = true }, CancellationToken.None);
             throw;
         }
 
-        var current = await backend.ObserveAsync(cancellationToken);
-        if (current.ServerIdentity != plan.Target.ServerIdentity)
-        {
-            if (checkpoint is { Verified: false })
-                await lease.SaveAsync(checkpoint with { RequiresReview = true }, CancellationToken.None);
-            throw new DeploymentPlanReviewRequiredException("deployment-server-changed");
-        }
-
         if (checkpoint is null)
         {
+            var current = await ObserveTargetAsync();
             CheckExpiration();
             if (current != plan.Target)
                 throw new InvalidOperationException("deployment-snapshot-changed");
@@ -140,6 +138,14 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
             throw;
         }
         await lease.SaveAsync(new(plan.OrderedReleases.Length, true), CancellationToken.None);
+
+        async Task<DeploymentTarget> ObserveTargetAsync()
+        {
+            var current = await backend.ObserveAsync(cancellationToken);
+            if (current.ServerIdentity != plan.Target.ServerIdentity)
+                throw new DeploymentPlanReviewRequiredException("deployment-server-changed");
+            return current;
+        }
 
         void CheckExpiration()
         {
