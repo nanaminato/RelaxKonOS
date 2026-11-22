@@ -288,6 +288,65 @@ internal static class JointDeploymentAcceptance
             && ReferenceEquals(host.Services.GetRequiredService<AcmeExecution>(), AcmeExecution.Shared)
             && await lease.Executor.ReloadAsync(default) == "" && probe.Confirmed,
             "the joint-installed signed Web Server executor uses its reload port and reuses bundled Certificates");
+        if (Environment.GetEnvironmentVariable("RK_TEST_NGINX") is { Length: > 0 } executable)
+            await VerifyLiveNginxReloadAsync(execution, Path.GetFullPath(executable), Directory.CreateDirectory(Path.Combine(root, "nginx")).FullName);
+    }
+
+    private static async Task VerifyLiveNginxReloadAsync(WebServerExecutionCode execution, string executable, string root)
+    {
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        var config = Path.Combine(root, "nginx.conf");
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = budget.Token;
+        await WriteConfigAsync("before");
+        using var nginx = Start("-g", "daemon off;");
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            await WaitForResponseAsync("before");
+            await WriteConfigAsync("after");
+            var ports = new ModulePackageHttpChecks.WebServerReloadProbe(async token =>
+            {
+                using var reload = Start("-s", "reload");
+                await reload.WaitForExitAsync(token);
+                return reload.ExitCode == 0;
+            });
+            using var lease = execution.Acquire<INginxReloadExecutor>("RelaxKonOS.Server.WebServer.NginxReloadExecutor", ports);
+            Require(await lease.Executor.ReloadAsync(ct) == "" && ports.Confirmed, "the signed executor confirms a real Nginx reload");
+            await WaitForResponseAsync("after");
+            Require(!nginx.HasExited, "the original loopback Nginx master serves the new response after reload");
+
+            async Task WaitForResponseAsync(string expected)
+            {
+                while (true)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (nginx.HasExited) throw new InvalidOperationException($"Nginx exited with code {nginx.ExitCode}.");
+                    try { if (await client.GetStringAsync("/", ct) == expected) return; }
+                    catch (HttpRequestException) { }
+                    await Task.Delay(100, ct);
+                }
+            }
+        }
+        finally
+        {
+            if (!nginx.HasExited) nginx.Kill(entireProcessTree: true);
+            await nginx.WaitForExitAsync();
+        }
+
+        Task WriteConfigAsync(string response) => File.WriteAllTextAsync(config,
+            $"pid nginx.pid; error_log error.log; events {{}} http {{ access_log off; client_body_temp_path client; proxy_temp_path proxy; fastcgi_temp_path fastcgi; uwsgi_temp_path uwsgi; scgi_temp_path scgi; server {{ listen 127.0.0.1:{port}; return 200 '{response}'; }} }}", ct);
+
+        System.Diagnostics.Process Start(params string[] arguments)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false };
+            foreach (var argument in new[] { "-p", root + Path.DirectorySeparatorChar, "-c", config }.Concat(arguments))
+                start.ArgumentList.Add(argument);
+            return System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Nginx did not start.");
+        }
     }
 
     private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,

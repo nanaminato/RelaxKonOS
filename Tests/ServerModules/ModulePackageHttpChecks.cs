@@ -654,7 +654,7 @@ internal static class ModulePackageHttpChecks
             "a quarantined Certificates package blocks the dependent Web Server without advertising either capability");
     }
 
-    internal sealed class WebServerReloadProbe : INginxReloadPorts
+    internal sealed class WebServerReloadProbe(Func<CancellationToken, Task<bool>>? direct = null) : INginxReloadPorts
     {
         public Guid OperationId { get; } = Guid.NewGuid();
         public bool UsesSystemPackage => false;
@@ -668,7 +668,7 @@ internal static class ModulePackageHttpChecks
         }
         public Task<PrivilegedOperationResult> RunTrackedAsync(Guid operationId, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("The direct reload must not use the system package Helper port.");
-        public Task<bool> RunDirectAsync(CancellationToken cancellationToken) => Task.FromResult(DirectSuccess);
+        public Task<bool> RunDirectAsync(CancellationToken cancellationToken) => direct?.Invoke(cancellationToken) ?? Task.FromResult(DirectSuccess);
         public string ToReloadProblem(PrivilegedProblemCode problem) => throw new InvalidOperationException();
     }
 
