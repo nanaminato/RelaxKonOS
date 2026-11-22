@@ -423,6 +423,42 @@ internal static class JointDeploymentAcceptance
         var store = squidScope.ServiceProvider.GetRequiredService<SquidConfigurationStore>();
         var configuration = new SquidConfiguration();
         var renderedConfiguration = SquidConfigurationRenderer.Preview(configuration).Configuration!;
+        if (Environment.GetEnvironmentVariable("RK_TEST_SQUID") is { Length: > 0 } squidExecutable)
+        {
+            var configPath = Path.Combine(root, "squid-native.conf");
+            var localPaths = "";
+            if (Environment.GetEnvironmentVariable("RK_TEST_SQUID_ROOT") is { Length: > 0 } squidRoot)
+            {
+                var extracted = Path.GetFullPath(squidRoot);
+                if (extracted.Any(char.IsWhiteSpace)) throw new InvalidOperationException("The extracted Squid path cannot contain whitespace.");
+                localPaths = $"\nmime_table {extracted}/usr/share/squid/mime.conf\n"
+                    + $"unlinkd_program {extracted}/usr/lib/squid/unlinkd\n"
+                    + $"icon_directory {extracted}/usr/share/squid/icons\n";
+            }
+            await File.WriteAllTextAsync(configPath, renderedConfiguration + localPaths);
+            var command = new System.Diagnostics.ProcessStartInfo(Path.GetFullPath(squidExecutable))
+            {
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                ArgumentList = { "-k", "parse", "-f", configPath },
+            };
+            using var process = System.Diagnostics.Process.Start(command)
+                ?? throw new InvalidOperationException("Could not start the Squid parser.");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                var diagnostics = process.StandardError.ReadToEndAsync(timeout.Token);
+                await process.WaitForExitAsync(timeout.Token);
+                var output = await diagnostics;
+                if (process.ExitCode != 0 || output.Contains("FATAL:", StringComparison.Ordinal))
+                    throw new InvalidOperationException("Squid rejected the rendered publication candidate: " + output);
+                Console.WriteLine("PASS: the real Squid parser accepts the rendered publication candidate");
+            }
+            finally
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+            }
+        }
         var configurationDigest = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(renderedConfiguration)));
         var operationId = Guid.NewGuid();
         var receipt = new SquidPublicationReceipt(operationId, configurationDigest, configurationDigest, true);
