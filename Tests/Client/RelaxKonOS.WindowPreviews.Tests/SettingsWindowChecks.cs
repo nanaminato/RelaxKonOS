@@ -552,17 +552,34 @@ internal static class SettingsWindowChecks
             else if (packageSource is not null && serverCenterPackage)
             {
                 var ssh = new SshDesktopSession(null!, settings);
-                var targets = new HostTargetStore(Path.Combine(Path.GetTempPath(), "rk-server-center-" + Guid.NewGuid().ToString("N")));
+                var fixtureRoot = Path.Combine(Path.GetTempPath(), "rk-server-center-" + Guid.NewGuid().ToString("N"));
+                var targets = new HostTargetStore(fixtureRoot);
+                var target = HostAddressSshFixture.Target;
+                var hostKeys = new SshHostKeyTrustStore(fixtureRoot);
+                var resolver = DispatchProxy.Create<IServerCenterConnectionResolver, HostAddressSshFixture>();
+                if (Environment.GetEnvironmentVariable("RK_TEST_SSH_ADDRESS_PORT") is { Length: > 0 } port)
+                {
+                    target = ServerHostTargetRules.Create("127.0.0.1", int.Parse(port), "fixture-user", null, DateTimeOffset.UtcNow);
+                    var blob = Convert.FromBase64String(Environment.GetEnvironmentVariable("RK_TEST_SSH_ADDRESS_PUBLIC_KEY")
+                        ?? throw new InvalidOperationException("The loopback SSH fixture public key is required."));
+                    Task.Run(async () =>
+                    {
+                        await hostKeys.TrustAsync(ServerCenterSshEndpoint.Create(target.SshHost, target.SshPort, target.SshUserName),
+                            new(target.SshHost, target.SshPort, "ecdsa-sha2-nistp256", blob));
+                        await targets.UpsertAsync(target);
+                    }).GetAwaiter().GetResult();
+                    resolver = new ServerCenterConnectionResolver(hostKeys, targets, new SshNetServerCenterTransportFactory());
+                }
                 using var hostServices = new ServiceCollection()
                     .AddSingleton(ssh)
                     .AddSingleton<ISystemLanguage>(localization)
                     .AddTransient(_ => new ServerCenterViewModel(targets,
-                        DispatchProxy.Create<IServerCenterConnectionResolver, HostAddressSshFixture>(), null!, null!, ssh, null!, null!,
+                        resolver, hostKeys, null!, ssh, null!, null!,
                         new LoginLocalizationService(new LocalLanguageStore())))
                     .BuildServiceProvider();
                 var hostWorkspace = new ServerCenterHostWorkspace(hostServices, windows);
                 CheckServerCenterPackage(packageSource, windows, apps,
-                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null, hostWorkspace));
+                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null, hostWorkspace), target);
             }
             else if (packageSource is not null && explorerPackage)
             {
@@ -625,7 +642,7 @@ internal static class SettingsWindowChecks
     }
 
     private static void CheckServerCenterPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
-        ApplicationManager applications, ExternalAppContextFactory factory)
+        ApplicationManager applications, ExternalAppContextFactory factory, ServerHostTarget target)
     {
         var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
             Path.Combine(Path.GetTempPath(), "rk-server-center-package-" + Guid.NewGuid().ToString("N")));
@@ -648,8 +665,10 @@ internal static class SettingsWindowChecks
                 "The installed Server Center did not present the production host workspace.");
             var model = (ServerCenterViewModel)((Control)window.View.Content!).DataContext!;
             PumpUntil(() => !model.IsBusy);
-            Check(string.IsNullOrEmpty(model.ErrorMessage) && !model.HasHosts && model.ShowInstallationWizardAsync is not null,
-                "Server Center failed to load the empty local inventory or wire its deployment wizard.");
+            var inventoryMatches = target == HostAddressSshFixture.Target ? !model.HasHosts
+                : model.Hosts.Count == 1 && model.Hosts[0].HostId == target.HostId;
+            Check(string.IsNullOrEmpty(model.ErrorMessage) && inventoryMatches && model.ShowInstallationWizardAsync is not null,
+                "Server Center failed to load the fixture inventory or wire its deployment wizard.");
             Check(applications.Launch(appId), "Installed Server Center did not accept repeat launch.");
             Pump();
             Check(ReferenceEquals(window, windows.Windows.Single(item => item.Info.OwnerAppId == appId)),
@@ -702,12 +721,12 @@ internal static class SettingsWindowChecks
             Check(wizardWindow.Info.OwnerAppId == appId && wizardWindow.View.Content is ServerInstallationWizardView,
                 "Server Center did not open its installation wizard as a package-owned modal.");
             var wizard = (ServerInstallationWizardViewModel)((ServerInstallationWizardView)wizardWindow.View.Content!).DataContext!;
-            model.SelectedHost = HostAddressSshFixture.Target;
+            model.SelectedHost = target;
             model.SelectedPlatform = model.Platforms.Single(option => option.Platform == RelaxKonOS.Protocol.Common.HostPlatformKind.Linux);
             model.SshPassword = "fixture-password";
             var showAddresses = wizard.ShowHostAddressesCommand.ExecuteAsync(null);
             PumpUntil(() => showAddresses.IsCompleted || windows.Windows.Count(item => item.IsModalDialog) == 2);
-            Check(!showAddresses.IsCompleted, "The host address dialog did not open.");
+            Check(!showAddresses.IsCompleted, "The host address dialog did not open. " + model.ErrorMessage);
             var addressWindow = windows.Windows.Single(item => item.IsModalDialog && item != wizardWindow);
             var addressView = (Border)addressWindow.View.Content!;
             var addressPanel = (StackPanel)addressView.Child!;
