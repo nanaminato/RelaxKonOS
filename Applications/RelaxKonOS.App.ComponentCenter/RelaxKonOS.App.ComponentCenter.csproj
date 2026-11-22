@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
+    <ProjectReference Include="../../Shared/RelaxKonOS.ModuleHost.Protocol/RelaxKonOS.ModuleHost.Protocol.csproj" />
     <PackageReference Include="Avalonia" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>

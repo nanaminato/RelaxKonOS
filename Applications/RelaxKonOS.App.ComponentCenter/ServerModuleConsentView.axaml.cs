@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.ComponentCenter;
+namespace RelaxKonOS.App.ComponentCenter;
 
 /// <summary>
 /// Review, grant and revoke standing background permission. Closing is always safe: a prepared

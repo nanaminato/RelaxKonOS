@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ComponentCenter;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -5,27 +6,22 @@ using RelaxKonOS.ModuleHost.Protocol;
 
 namespace RelaxKonOS.Client.Apps.ComponentCenter;
 
-public sealed record ServerModuleConsentKindChoice(string Kind, string Action, string LabelKey)
-{
-    public LocalizedStatus Label => LocalizedStatus.Key(LabelKey);
-}
-
 public sealed partial class ServerModulesViewModel
 {
     public IReadOnlyList<ServerModuleConsentKindChoice> ConsentKinds { get; } =
     [
-        new(ModuleCapabilityCatalog.ServiceManage, "start", "server_modules.capability.service_manage.start"),
-        new(ModuleCapabilityCatalog.ServiceManage, "stop", "server_modules.capability.service_manage.stop"),
-        new(ModuleCapabilityCatalog.ServiceManage, "restart", "server_modules.capability.service_manage.restart"),
-        new(ModuleCapabilityCatalog.PackageManage, "install", "server_modules.capability.package_manage.install"),
-        new(ModuleCapabilityCatalog.PackageManage, "update", "server_modules.capability.package_manage.update"),
-        new(ModuleCapabilityCatalog.PackageManage, "repair", "server_modules.capability.package_manage.repair"),
-        new(ModuleCapabilityCatalog.FileManage, "write", "server_modules.capability.file_manage.write"),
-        new(ModuleCapabilityCatalog.DataManage, "preserve", "server_modules.capability.data_manage.preserve"),
-        new(ModuleCapabilityCatalog.ApplicationManage, "query", "server_modules.capability.app_manage.query"),
+        new(ModuleCapabilityCatalog.ServiceManage, "start", "server_modules.capability.service_manage.start", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.ServiceManage, "stop", "server_modules.capability.service_manage.stop", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.ServiceManage, "restart", "server_modules.capability.service_manage.restart", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.PackageManage, "install", "server_modules.capability.package_manage.install", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.PackageManage, "update", "server_modules.capability.package_manage.update", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.PackageManage, "repair", "server_modules.capability.package_manage.repair", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.FileManage, "write", "server_modules.capability.file_manage.write", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.DataManage, "preserve", "server_modules.capability.data_manage.preserve", LocalizedText.Get),
+        new(ModuleCapabilityCatalog.ApplicationManage, "query", "server_modules.capability.app_manage.query", LocalizedText.Get),
     ];
     [ObservableProperty] private ServerModuleConsentKindChoice consentKind =
-        new(ModuleCapabilityCatalog.ServiceManage, "restart", "server_modules.capability.service_manage.restart");
+        new(ModuleCapabilityCatalog.ServiceManage, "restart", "server_modules.capability.service_manage.restart", LocalizedText.Get);
     [ObservableProperty] private string consentTarget = "";
     [ObservableProperty] private string consentReason = "";
     [ObservableProperty] private string consentContentSha256 = "";

@@ -5,10 +5,16 @@ using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.App.ComponentCenter;
 
-public interface IServerModulePlanReview : INotifyPropertyChanged
+public interface IServerModuleReview : INotifyPropertyChanged
 {
     Func<string, string> Labels { get; }
     ISystemLanguage Language { get; }
+    bool HasStatus { get; }
+    string StatusText { get; }
+}
+
+public interface IServerModulePlanReview : IServerModuleReview
+{
     bool Busy { get; }
     bool CanApply { get; }
     bool CanApplyPackagePlan { get; }
@@ -16,7 +22,6 @@ public interface IServerModulePlanReview : INotifyPropertyChanged
     bool HasPackagePlanPrivileges { get; }
     bool HasPlan { get; }
     bool HasPlanBlockers { get; }
-    bool HasStatus { get; }
     string PackagePlanDigestText { get; }
     string PackagePlanExpiresText { get; }
     string PackagePlanModuleText { get; }
@@ -36,7 +41,6 @@ public interface IServerModulePlanReview : INotifyPropertyChanged
     string PlanRestartText { get; }
     string PlanServiceText { get; }
     string PlanTargetText { get; }
-    string StatusText { get; }
     IAsyncRelayCommand ApplyCommand { get; }
     IAsyncRelayCommand ApplyPackagePlanCommand { get; }
     ICommand DiscardPlanCommand { get; }

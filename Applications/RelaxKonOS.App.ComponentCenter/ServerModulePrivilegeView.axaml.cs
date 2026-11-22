@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.ComponentCenter;
+namespace RelaxKonOS.App.ComponentCenter;
 
 /// <summary>
 /// Review and decide one frozen privilege plan. Closing the dialog is not a decision: a refused

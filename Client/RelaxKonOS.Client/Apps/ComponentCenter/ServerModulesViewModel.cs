@@ -94,7 +94,7 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
 /// protocol; this type owns presentation and the exact same recovery bookkeeping as before.
 /// </summary>
 public sealed partial class ServerModulesViewModel(ServerModuleManagementClient client,
-    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview
+    ServerModuleReferenceStore? references = null, string? connectionId = null, Guid actor = default) : ObservableObject, IServerModulePlanReview, IServerModulePrivilegeReview, IServerModuleConsentReview
 {
     public Func<string, string> Labels => key => LocalizedText.Get(key, $"[missing: {key}]");
     public RelaxKonOS.AppSDK.ISystemLanguage Language => App.Services.GetRequiredService<Services.LocalizationService>();
@@ -109,7 +109,17 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     string IServerModulePlanReview.PlanRemovedText => PlanRemovedText.Resolve();
     string IServerModulePlanReview.PlanRestartText => PlanRestartText.Resolve();
     string IServerModulePlanReview.PlanTargetText => PlanTargetText.Resolve();
-    string IServerModulePlanReview.StatusText => StatusText.Resolve();
+    string IServerModuleReview.StatusText => StatusText.Resolve();
+
+    ICommand IServerModulePrivilegeReview.LoadPrivilegeCommand => LoadPrivilegeCommand;
+    ICommand IServerModulePrivilegeReview.ApprovePrivilegeCommand => ApprovePrivilegeCommand;
+    ICommand IServerModulePrivilegeReview.CancelPrivilegeCommand => CancelPrivilegeCommand;
+    ICommand IServerModuleConsentReview.PrepareConsentCommand => PrepareConsentCommand;
+    ICommand IServerModuleConsentReview.ApproveConsentCommand => ApproveConsentCommand;
+    ICommand IServerModuleConsentReview.RefreshConsentsCommand => RefreshConsentsCommand;
+    ICommand IServerModuleConsentReview.RevokeConsentCommand => RevokeConsentCommand;
+    string IServerModuleConsentReview.ConsentCountText => ConsentCountText.Resolve();
+    string IServerModuleConsentReview.ConsentModuleText => ConsentModuleText.Resolve();
 
     private static readonly ServerModuleFilterChoice[] FilterItems =
     [

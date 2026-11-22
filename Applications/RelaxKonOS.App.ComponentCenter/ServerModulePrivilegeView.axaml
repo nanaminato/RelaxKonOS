@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:loc="using:RelaxKonOS.Client.Localization"
- x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulePrivilegeView" x:DataType="vm:ServerModulesViewModel"
+ xmlns:vm="using:RelaxKonOS.App.ComponentCenter" xmlns:loc="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ServerModulePrivilegeView" x:DataType="vm:IServerModulePrivilegeReview"
  Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
  <!-- Privilege approval is a single task: name a plan, read what the host froze, then approve or
       refuse it. Administrator credentials live here because approving is the only thing that uses

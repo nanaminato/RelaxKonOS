@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:loc="using:RelaxKonOS.Client.Localization"
+ xmlns:vm="using:RelaxKonOS.App.ComponentCenter" xmlns:loc="using:RelaxKonOS.App.ComponentCenter"
  xmlns:mp="using:RelaxKonOS.ModuleHost.Protocol" xmlns:conv="using:Avalonia.Data.Converters"
- x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModuleConsentView" x:DataType="vm:ServerModulesViewModel"
+ x:Class="RelaxKonOS.App.ComponentCenter.ServerModuleConsentView" x:DataType="vm:IServerModuleConsentReview"
  Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
  <!-- Standing background permission is a review task, not a form to fill on every page visit:
       one module, one declared action, one exact target, one deadline. -->

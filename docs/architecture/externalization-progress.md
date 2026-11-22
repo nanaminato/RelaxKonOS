@@ -539,3 +539,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows Release 完整打包以退出码 0 结束。把该次新建的全部 26 个官方归档与最新版无 Settings 实现 DLL 的桌面宿主组合后，摘要、清单、入口和核心隔离校验通过。三档预装与 Minimal 归档修复通过，实际 Settings 包生产工作区启动、离线文档、深链接及重开均通过。
 - 开始拆分 Component Center。受管任务计划确认视图迁入独立应用项目，宿主提供本地化文字和步骤说明。Windows Release 组件中心专项通过本地/远程 .roapp 回归及三语双主题布局。内置入口、实际发布包及生产宿主操作验收待完成。
 - Component Center 服务端模块及包计划审核视图和共享样式迁入应用程序集。宿主持有冻结计划并执行应用或丢弃命令。Windows Release 模块专项验证原计划审核及打开时的实时语言切换。
+- Component Center 模块权限审批与长期授权界面迁入应用程序集，复用模块审核展示契约。Windows Release 模块专项通过，覆盖掩码凭据绑定及文件授权摘要的显示与清理；测试未提交真实权限变更。

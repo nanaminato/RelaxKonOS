@@ -250,6 +250,23 @@ internal static class ServerModuleCatalogChecks
                 "The security tab states privilege approval and standing permission as one entry each.");
             Check(!view.GetVisualDescendants().OfType<TextBox>().Any(box => box.IsEffectivelyVisible && box.PasswordChar != '\0'),
                 "No administrator password field sits permanently on the security page.");
+            var privilegeView = new ServerModulePrivilegeView { DataContext = model };
+            var privilegeWindow = new Window { Content = privilegeView, Width = 600, Height = 560 };
+            privilegeWindow.Show(); Dispatcher.UIThread.RunJobs();
+            try
+            {
+                var credential = privilegeView.GetVisualDescendants().OfType<TextBox>()
+                    .Single(box => box.IsEffectivelyVisible && box.PasswordChar != '\0');
+                credential.Text = "test-only";
+                Dispatcher.UIThread.RunJobs();
+                Check(model.PrivilegePassword == "test-only",
+                    "The module privilege dialog did not bind its masked credential field.");
+            }
+            finally
+            {
+                model.PrivilegePassword = "";
+                privilegeWindow.Close(); Dispatcher.UIThread.RunJobs();
+            }
             // The content digest belongs to the file-write scope and lives inside the consent dialog.
             var consentView = new ServerModuleConsentView { DataContext = model };
             var consentWindow = new Window { Content = consentView, Width = 720, Height = 760 };
