@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Server.Firewall;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -244,8 +245,12 @@ internal static class InstalledModuleInstaller
 
     private static void VerifyExecutionContract(string packageRoot, ModulePackageManifest manifest)
     {
-        if (!InstalledProxyModule.MatchesManifest(manifest)) return;
-        try { InstalledProxyModule.VerifyStagedExecution(Path.Combine(packageRoot, manifest.EntryAssembly)); }
+        var entry = Path.Combine(packageRoot, manifest.EntryAssembly);
+        try
+        {
+            if (InstalledProxyModule.MatchesManifest(manifest)) InstalledProxyModule.VerifyStagedExecution(entry);
+            else if (InstalledFirewallModule.MatchesManifest(manifest)) CollectibleFirewallExecution.VerifyStagedExecution(entry);
+        }
         catch (InvalidDataException) { throw new ModulePackageException("module-package-execution-contract"); }
     }
 

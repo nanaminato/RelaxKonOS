@@ -127,6 +127,8 @@ RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <�
 
 Proxy 包解包并验证文件摘要后，宿主检查总览、连接快照、订阅解析、排队订阅、Mihomo 发布和 Squid 回执入口的接口和公开构造签名。检查在提交版本目录前完成，无需创建执行器实例。重用暂存版本或回退至历史版本时重新检查契约。执行契约不兼容时返回 `module-package-execution-contract`，保留当前选中的版本。
 
+Firewall 包在相同的安装、暂存复用和回退边界校验 `IFirewallExecutionModule` 接口及接收 `FirewallExecutionContext` 的公开构造函数。
+
 ## 在线上传与安装 API
 
 ```text

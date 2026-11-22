@@ -676,16 +676,17 @@ internal static class JointDeploymentAcceptance
                 "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability, .. additionalCapabilities ?? []],
                 Dependencies: dependencies, CapabilityContractVersions: contractVersions), now);
             ModulePackageBuildResult? incompatible = null;
-            if (moduleId == ServerModules.ProxyId)
+            if (moduleId is ServerModules.ProxyId or ServerModules.FirewallId)
             {
-                var incompatibleSource = Directory.CreateDirectory(Path.Combine(root, "incompatible-proxy")).FullName;
+                var incompatibleSource = Directory.CreateDirectory(Path.Combine(root, "incompatible-execution")).FullName;
                 var bytes = await File.ReadAllBytesAsync(Path.Combine(executionDirectory, entryAssembly));
-                var name = bytes.AsSpan().IndexOf("ProxyQueuedSubscriptionExecutor\0"u8);
-                if (name < 0) throw new InvalidOperationException("The fixture could not find the queued executor type name.");
+                var name = bytes.AsSpan().IndexOf(moduleId == ServerModules.ProxyId
+                    ? "ProxyQueuedSubscriptionExecutor\0"u8 : "IFirewallExecutionModule\0"u8);
+                if (name < 0) throw new InvalidOperationException("The fixture could not find the incompatible execution type name.");
                 bytes[name] = (byte)'X';
                 await File.WriteAllBytesAsync(Path.Combine(incompatibleSource, entryAssembly), bytes);
                 incompatible = await ModulePackageBuilder.BuildAsync(new(incompatibleSource,
-                    Path.Combine(root, "incompatible-module"), moduleId, "98.0.0", "incompatible-proxy-" + rid,
+                    Path.Combine(root, "incompatible-module"), moduleId, "98.0.0", "incompatible-execution-" + rid,
                     "fixture", "official", rid, entryAssembly, entryType, "joint-execution", new string('a', 40),
                     "official", 1, "https://modules.example/", key, "fixture-key", 3600,
                     Capabilities: [capability, .. additionalCapabilities ?? []]), now);
@@ -694,13 +695,13 @@ internal static class JointDeploymentAcceptance
                 {
                     await InstalledModuleInstaller.InstallVerifiedAsync(serverRoot, "official", incompatible.Manifest,
                         incompatible.ManifestSha256, incompatible.ArchiveSha256, invalidArchive, now);
-                    throw new InvalidOperationException("The incompatible Proxy execution package was accepted.");
+                    throw new InvalidOperationException($"The incompatible {moduleId} execution package was accepted.");
                 }
                 catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
                 {
                     Require(InstalledModuleStore.Read(serverRoot).Count == 0
                         && !Directory.Exists(Path.Combine(serverRoot, "data", "module-management", "packages", moduleId, "98.0.0")),
-                        "an incompatible signed Proxy execution package is rejected before committing a version");
+                        $"an incompatible signed {moduleId} execution package is rejected before committing a version");
                 }
             }
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", "official", "https://modules.example/",
@@ -831,23 +832,23 @@ internal static class JointDeploymentAcceptance
                     {
                         await InstalledModuleInstaller.InstallVerifiedAsync(serverRoot, prior.SourceId, incompatible.Manifest,
                             prior.ManifestSha256, prior.ArtifactSha256, retryArchive, now, activate: false);
-                        throw new InvalidOperationException("An incompatible staged Proxy package was reused.");
+                        throw new InvalidOperationException($"An incompatible staged {moduleId} package was reused.");
                     }
                     catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
                     {
                         Require(Directory.Exists(priorRoot) && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == active.ArtifactSha256,
-                            "a staged reuse rejects incompatible Proxy code without changing either immutable version");
+                            $"a staged reuse rejects incompatible {moduleId} code without changing either immutable version");
                     }
                 }
                 try
                 {
                     await InstalledModuleInstaller.RollbackAsync(serverRoot, config, moduleId, prior.Version);
-                    throw new InvalidOperationException("Rollback accepted the incompatible Proxy execution package.");
+                    throw new InvalidOperationException($"Rollback accepted the incompatible {moduleId} execution package.");
                 }
                 catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
                 {
                     Require(InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == active.ArtifactSha256,
-                        "an incompatible historical Proxy version cannot displace the active version during rollback");
+                        $"an incompatible historical {moduleId} version cannot displace the active version during rollback");
                 }
             }
             await verifyBusiness(host, root);

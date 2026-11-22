@@ -30,9 +30,7 @@ internal sealed class CollectibleFirewallExecution : IAsyncDisposable
         created?.Invoke(CodeReference);
         try
         {
-            using var stream = File.OpenRead(entry);
-            var assembly = context.LoadFromStream(stream);
-            var type = assembly.GetType(EntryType, throwOnError: true)!;
+            var type = ReadEntryType(context, entry);
             _module = (IFirewallExecutionModule)Activator.CreateInstance(type, services)!;
             _context = context;
         }
@@ -43,6 +41,25 @@ internal sealed class CollectibleFirewallExecution : IAsyncDisposable
             // Only a fresh bounded Host failure may escape this current bundled-code boundary.
             throw new InvalidDataException("Firewall execution could not be activated.");
         }
+    }
+
+    internal static void VerifyStagedExecution(string entry)
+    {
+        var context = new ExecutionLoadContext();
+        try { ReadEntryType(context, entry); }
+        catch { throw new InvalidDataException("Firewall execution entry does not match its host contract."); }
+        finally { context.Unload(); }
+    }
+
+    private static Type ReadEntryType(ExecutionLoadContext context, string entry)
+    {
+        using var stream = File.OpenRead(entry);
+        var assembly = context.LoadFromStream(stream);
+        var type = assembly.GetType(EntryType, throwOnError: true)!;
+        if (type.IsAbstract || !typeof(IFirewallExecutionModule).IsAssignableFrom(type)
+            || type.GetConstructor([typeof(FirewallExecutionContext)]) is null)
+            throw new InvalidDataException("Firewall execution entry does not match its host contract.");
+        return type;
     }
     public async ValueTask DisposeAsync()
     {

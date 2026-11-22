@@ -890,3 +890,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 当前 Windows Debug 重建桌面、DevCli 与测试宿主后，完整 Direct Deploy 回归通过。原生登录窗口完成不启动应用的安装与重启回退；源代码监听、构建和激活失败保留窗口、串行部署、两配置隔离、Notepad 与 Image Viewer 生命周期均通过。Release 安装指针在测试前后一致。
 - Windows Release 的 Server Center 官方归档通过真实环回 SSH 地址查询。验收固定临时 ECDSA 主机公钥，经生产连接解析器与 SSH.NET 握手，SSH 测试服务仅响应 hostname -I。已安装包弹窗显示过滤和去重后的 IPv4、IPv6，关闭后返回向导。主机响应由测试服务提供，真实远端部署仍待验。
 - Server Center 环回 SSH 地址验收可由 Tests/Client/verify-server-center-address-ssh.py 重现。脚本使用临时公钥、一次性测试密码，仅允许固定地址查询。Windows Release 与独立网络中的 Linux x64 WSL 均使用各自完整重建的官方归档通过。脚本依赖 Paramiko，Linux 依赖解包至临时目录。真实远端部署仍待验。
+- Firewall 签名执行包在提交版本目录、复用暂存版本及回退之前核对执行接口与构造签名。Windows Release 使用保留主入口但缺少合同接口的签名测试包验证三个边界均拒绝，现有版本保持生效。兼容 Firewall 仍通过联合安装、重启和授权回归，Proxy 专项同轮通过。
