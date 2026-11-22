@@ -674,3 +674,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - 当前分支重新发布 Linux x64 Databases 观察模块，生成短期一次性 P-256 签名的 9.0.0 测试候选。OpenSSL 独立验证目录签名，并核对归档摘要、ZIP 完整性及入口程序集字节。原版 Linux Databases .roapp 的测试副本只修改最低模块版本为 9.0.0，逐条核对其余内容不变。两份归档暂存于本地，尚未接纳来源或运行真实 Helper 联合安装。
 - 当前 Databases 9.0.0 签名候选通过 Linux 发行 Core 的一次性服务目录验收。非特权用户不能接纳来源，管理员接纳后可由服务用户只读核验归档。离线安装返回 installed=true/effective=false，回执 ID 与持久化 AwaitingRestart 记录一致，期望启用集合逐字节不变。此夹具用于离线验收，桌面发起在线安装及真实 Helper 仍待复验。
 - 当前 Linux x64 自包含 ModuleHost 和 Helper 发布通过。一次性 WSL 服务目录用正式 `modules host-probe` 探测已离线安装的 Databases 9.0.0 归档，独立进程加载入口、报告健康并正常退出，安装目录索引和包操作回执逐字节不变。该命令是进程级诊断，实际监督启动和通过真实 Helper 的查询仍待复验。
+- 一次性 Ubuntu 容器用发行 Core 和真实 Linux Helper 核对已停用 Databases 时的启动。移除执行程序集后，Helper 未运行时 Core 拒绝启动。启动 root Helper 后，非特权 Core 通过正式 Unix socket 发出 PostgreSQL 与 MySQL 查询，Helper 日志确认两项请求完成，Core `/healthz` 返回 200。此轮核对停用保护，尚未执行独立模块在线联合部署。
