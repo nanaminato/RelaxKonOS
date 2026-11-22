@@ -1,5 +1,4 @@
 using System.Windows.Input;
-using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.App.ComponentCenter;
@@ -10,7 +9,7 @@ public interface IComponentDesktopPackage
     ICommand ReviewDesktopCatalogPackageCommand { get; }
 }
 
-public interface IComponentOfficialDownloads
+public interface IComponentOfficialDownloads : IComponentInstallationProgress
 {
     ICommand RefreshOfficialReleasesCommand { get; }
     bool CanRefreshOfficial { get; }
@@ -32,9 +31,6 @@ public interface IComponentOfficialDownloads
     ICommand OpenOfficialDownloadCommand { get; }
     ICommand InstallOfficialCommand { get; }
     bool CanInstallOfficial { get; }
-    InstallationTaskViewModel? PackageInstallation { get; }
-    ICommand ReviewServiceStopActionCommand { get; }
-    bool CanReviewServiceStop { get; }
 }
 
 public interface IComponentDownloadMethodChoice

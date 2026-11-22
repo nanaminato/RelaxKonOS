@@ -21,7 +21,7 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
 public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage,
-    IComponentOfficialDownloads, IComponentPackageCandidate
+    IComponentOfficialDownloads, IComponentPackageCandidate, IComponentGitInstallation
 {
     string IComponentPackageCandidate.PackageMethodTitle => PackageMethodTitle.Resolve();
     string IComponentPackageCandidate.PackageMethodHint => PackageMethodHint.Resolve();
@@ -46,7 +46,6 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable, I
     string IComponentPackageCandidate.PackageRecoveryText => PackageRecoveryText.Resolve();
     ICommand IComponentPackageCandidate.StopPackageRecoveryCommand => StopPackageRecoveryCommand;
     ICommand IComponentPackageCandidate.ClosePackageRecoveryCommand => ClosePackageRecoveryCommand;
-    ICommand IComponentPackageCandidate.ReviewServiceStopActionCommand => ReviewServiceStopActionCommand;
     string IComponentPackageCandidate.ExternalPackageChangeText => ExternalPackageChangeText.Resolve();
     string IComponentPackageCandidate.PackageFreezeNotice => PackageFreezeNotice.Resolve();
 
@@ -68,7 +67,6 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable, I
     ICommand IComponentOfficialDownloads.SelectPackageFileCommand => SelectPackageFileCommand;
     ICommand IComponentOfficialDownloads.OpenOfficialDownloadCommand => OpenOfficialDownloadCommand;
     ICommand IComponentOfficialDownloads.InstallOfficialCommand => InstallOfficialCommand;
-    ICommand IComponentOfficialDownloads.ReviewServiceStopActionCommand => ReviewServiceStopActionCommand;
 
     IReadOnlyList<IComponentSourceChip> IComponentIdentity.SelectedHostSources => SelectedHostSources;
     IReadOnlyList<IComponentSourceChip> IComponentIdentity.SelectedOtherSources => SelectedOtherSources;
@@ -422,7 +420,36 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable, I
     public RelaxKonOS.App.WebServers.WebServerManagerViewModel? NginxSelection { get; set; }
     public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection is not null;
 
-    public RelaxKonOS.App.Git.GitClientViewModel? GitEngine { get; set; }
+    private GitEngineStatus? _gitEngineStatus;
+
+    public GitClientViewModel? GitEngine
+    {
+        get => _gitEngineStatus?.Model;
+        set
+        {
+            if (ReferenceEquals(GitEngine, value)) return;
+            _gitEngineStatus = value is null ? null : new GitEngineStatus(value);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowGitInstallation));
+        }
+    }
+
+    IComponentGitEngineStatus? IComponentGitInstallation.GitEngine => _gitEngineStatus;
+    ICommand IComponentInstallationProgress.ReviewServiceStopActionCommand => ReviewServiceStopActionCommand;
+
+    private sealed class GitEngineStatus(GitClientViewModel model) : IComponentGitEngineStatus
+    {
+        public GitClientViewModel Model { get; } = model;
+        public string EngineVersion => Model.EngineVersion;
+        public string EnginePath => Model.EnginePath;
+        public ICommand RefreshEngineStatusCommand => Model.RefreshEngineStatusCommand;
+
+        public event PropertyChangedEventHandler? PropertyChanged
+        {
+            add => Model.PropertyChanged += value;
+            remove => Model.PropertyChanged -= value;
+        }
+    }
     public bool ShowGitInstallation => SelectedDefinition?.ComponentId == "git" && HostPlatform == "windows" && GitEngine is not null;
     public LocalizedStatus GitStatusText => LocalizedStatus.Key(GitEngine?.IsGitAvailable == true
         ? "component_center.domain.available" : GitEngine?.IsGitInstallRequired == true

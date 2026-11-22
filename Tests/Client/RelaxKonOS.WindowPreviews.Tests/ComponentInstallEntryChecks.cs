@@ -1,3 +1,7 @@
+using Avalonia.Controls;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using RelaxKonOS.App.ComponentCenter;
 using RelaxKonOS.App.Git;
 using RelaxKonOS.Client.Localization;
 using System.Net;
@@ -76,6 +80,21 @@ internal static class ComponentInstallEntryChecks
             windowsGit.SelectedNode = windowsGit.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
             Check(!windowsGit.ShowPackageFreeze && windowsGit.ShowGitInstallation,
                 "A Windows host reports the existing Git program instead of the Linux package plan.");
+            var workspace = new ComponentCenterWorkspace(windowsGit);
+            var window = new Window { Width = 1060, Height = 800, Content = workspace };
+            try
+            {
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                var panel = workspace.GetVisualDescendants().OfType<ComponentGitInstallationView>().Single();
+                windowsGit.GitEngine.EngineVersion = "git version fixture";
+                Dispatcher.UIThread.RunJobs();
+                Check(panel.IsEffectivelyVisible && panel.GetVisualDescendants().OfType<TextBlock>()
+                        .Any(text => text.Text == "git version fixture"),
+                    "The packaged Git panel reflects changes to the host engine status.");
+            }
+            finally { window.Close(); }
         }
         foreach (var width in new[] { 1060, 640 })
         {

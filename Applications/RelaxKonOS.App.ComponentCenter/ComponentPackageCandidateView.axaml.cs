@@ -1,6 +1,5 @@
 using System.Windows.Input;
 using Avalonia.Controls;
-using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.App.ComponentCenter;
@@ -10,7 +9,7 @@ public partial class ComponentPackageCandidateView : UserControl
     public ComponentPackageCandidateView() => InitializeComponent();
 }
 
-public interface IComponentPackageCandidate
+public interface IComponentPackageCandidate : IComponentInstallationProgress
 {
     string PackageMethodTitle { get; }
     string PackageMethodHint { get; }
@@ -56,9 +55,6 @@ public interface IComponentPackageCandidate
     string PackageRecoveryText { get; }
     ICommand StopPackageRecoveryCommand { get; }
     ICommand ClosePackageRecoveryCommand { get; }
-    InstallationTaskViewModel? PackageInstallation { get; }
-    ICommand ReviewServiceStopActionCommand { get; }
-    bool CanReviewServiceStop { get; }
     string ExternalPackageChangeText { get; }
     bool HasExternalPackageChange { get; }
     string PackageFreezeNotice { get; }

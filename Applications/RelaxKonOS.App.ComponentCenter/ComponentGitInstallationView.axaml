@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentGitInstallationView"
+ x:DataType="local:IComponentGitInstallation">
+ <Border Classes="panel-card">
+  <StackPanel Spacing="12">
+   <StackPanel Spacing="3">
+    <TextBlock Text="Git" Classes="section-title" />
+    <TextBlock Classes="section-hint" Text="{local:Loc component_center.git.hint}" />
+   </StackPanel>
+   <Grid ColumnDefinitions="Auto,*" ColumnSpacing="20" RowDefinitions="Auto,Auto" RowSpacing="4">
+    <TextBlock Classes="field-label" Text="{local:Loc component_center.native.version_label}" />
+    <TextBlock Grid.Column="1" Classes="field-value" Text="{Binding GitEngine.EngineVersion}" />
+    <TextBlock Grid.Row="1" Classes="field-label" Text="{local:Loc component_center.field.application}" />
+    <TextBlock Grid.Row="1" Grid.Column="1" Classes="field-value mono" FontSize="12" Text="{Binding GitEngine.EnginePath}" TextWrapping="Wrap" />
+   </Grid>
+   <WrapPanel>
+    <Button Classes="ghost-action" Content="{local:Loc common.refresh}" Command="{Binding GitEngine.RefreshEngineStatusCommand}" />
+   </WrapPanel>
+   <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
+   <StackPanel Spacing="10" IsVisible="{Binding PackageInstallation.HasMessage}">
+    <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" FontSize="12" />
+    <Button Classes="ghost-action" Content="{local:Loc webservers.service_stop.review}"
+            Command="{Binding ReviewServiceStopActionCommand}" IsVisible="{Binding CanReviewServiceStop}" HorizontalAlignment="Left" />
+    <Button Classes="ghost-action" Content="{local:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}"
+            IsVisible="{Binding PackageInstallation.IsActive}" HorizontalAlignment="Left" />
+    <Expander>
+     <Expander.Header><TextBlock Classes="section-title" FontSize="13" Text="{local:Loc common.operation_log}" /></Expander.Header>
+     <TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" FontSize="12" Classes="mono" />
+    </Expander>
+   </StackPanel>
+  </StackPanel>
+ </Border>
+</UserControl>
