@@ -1,6 +1,7 @@
+using RelaxKonOS.Client.Apps.Explorer.Converters;
+using RelaxKonOS.UI.FileBrowser;
 using System.ComponentModel;
 using RelaxKonOS.WindowManager;
-using RelaxKonOS.Client.Apps.Explorer.Controls;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -215,7 +216,9 @@ public partial class ExplorerMainView : UserControl
         _searchFlyout = (Flyout)CompactSearchButton.Flyout!;
         _searchFlyout.Opened += (_, _) => { CompactSearchBox.Focus(); CompactSearchBox.SelectAll(); };
         _entryContextMenu = EntriesGrid.ContextMenu;
-        _presentation = new FileBrowserPresentation(EntriesScrollViewer, EntriesGrid, () => ViewModel is { IsBusy: false });
+        _presentation = new FileBrowserPresentation(EntriesScrollViewer, EntriesGrid, () => ViewModel is { IsBusy: false },
+            entry => entry is FileSystemEntryDto { Type: FileSystemEntryType.Drive } drive
+                ? EntrySizeToStringConverter.FormatDriveCapacity(drive) : null);
         _presentation.Items.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
         _presentation.Items.PointerMoved += EntriesGrid_PointerMoved;
         _presentation.Items.PointerReleased += EntriesGrid_PointerReleased;

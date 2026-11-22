@@ -4,7 +4,6 @@
              xmlns:fileIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:c="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Converters"
-             xmlns:controls="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Views"
              xmlns:models="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Explorer.ViewModels"
@@ -26,7 +25,7 @@
     </UserControl.Resources>
 
     <UserControl.Styles>
-        <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserToolbarStyles.axaml" />
+        <StyleInclude Source="avares://RelaxKonOS.UI/FileBrowser/FileBrowserToolbarStyles.axaml" />
         <!-- Cloud accounts read as a navigation group, not as a second command bar: one row opens
              the workspace, one row per saved account opens that account's own last folder. -->
         <Style Selector="Button.cloud-root-entry">

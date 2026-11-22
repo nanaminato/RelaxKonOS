@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.FileBrowser;
 using RelaxKonOS.UI.Imaging;
 using Avalonia;
 using Avalonia.Controls;
@@ -9,7 +10,6 @@ using Avalonia.Platform;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.Explorer.Controls;
 using RelaxKonOS.Client.Apps.Explorer.Converters;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Protocol.Files;
@@ -46,7 +46,9 @@ internal static class FileBrowserPresentationChecks
         var host = new Grid { Background = Avalonia.Media.Brushes.Transparent };
         host.Children.Add(grid);
         var enabled = true;
-        var presentation = new FileBrowserPresentation(host, grid, () => enabled);
+        var presentation = new FileBrowserPresentation(host, grid, () => enabled,
+            entry => entry is FileSystemEntryDto { Type: FileSystemEntryType.Drive } drive
+                ? EntrySizeToStringConverter.FormatDriveCapacity(drive) : null);
         var window = new Window { Width = 600, Height = 400, Content = host };
         window.Show();
         Pump();

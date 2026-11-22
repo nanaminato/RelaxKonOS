@@ -37,7 +37,7 @@
 - **用途**：RemoteExplorer 内置文件管理器的 UI 结构与部分逻辑移植自 Jaya。
 - **移植位置**：[`Client/RelaxKonOS.Client/Apps/Explorer/`](./Client/RelaxKonOS.Client/Apps/Explorer/)
   - `ExplorerMainView.axaml`(.cs)：布局结构移植自 Jaya `Views/Windows/MainView.xaml`（DockPanel + Menu/Toolbar/Addressbar/Statusbar + Grid 导航树+Explorer 网格）。
-  - `Models/TreeNodeModel.cs`：导航树懒加载 + dummy child 模式移植自 Jaya `Models/TreeNodeModel.cs`。
+  - `Framework/RelaxKonOS.UI/FileBrowser/TreeNodeModel.cs`：导航树懒加载 + dummy child 模式移植自 Jaya `Models/TreeNodeModel.cs`。
   - `ViewModels/ExplorerViewModel.cs`：合并 Jaya `ExplorerViewModel` / `NavigationViewModel` / `AddressbarViewModel` / `ToolbarViewModel` / `StatusbarViewModel` 的数据流（导航树选中 → 列举目录 → 填充网格 + 地址栏 + 状态栏；历史栈前进/后退/向上）。
   - `Converters/EntryConverters.cs`：`EntrySizeToStringConverter.SizeSuffix` 逻辑移植自 Jaya `FileSystemObjectModel.SizeSuffix`。
   - Server 端 `RelaxKonOS.Server/Files/LocalFileService.cs` 的目录枚举逻辑移植自 Jaya `Jaya.Provider.FileSystem/Services/FileSystemService.cs`。

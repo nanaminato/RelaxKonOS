@@ -11,18 +11,16 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.Explorer.Converters;
-using RelaxKonOS.Client.Apps.Explorer.Models;
-using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.Explorer.Controls;
+namespace RelaxKonOS.UI.FileBrowser;
 
 /// <summary>Shared view layouts and background rubber-band selection for both file browsers.</summary>
-internal sealed class FileBrowserPresentation
+public sealed class FileBrowserPresentation
 {
     private readonly Grid _host;
     private readonly DataGrid _details;
     private readonly Func<bool> _enabled;
+    private readonly Func<object, string?>? _describeEntry;
     private readonly Canvas _overlay = new() { IsHitTestVisible = false, ClipToBounds = true };
     private readonly Border _box = new()
     {
@@ -47,11 +45,12 @@ internal sealed class FileBrowserPresentation
         HorizontalAlignment = HorizontalAlignment.Stretch,
     };
 
-    public FileBrowserPresentation(Grid host, DataGrid details, Func<bool> enabled)
+    public FileBrowserPresentation(Grid host, DataGrid details, Func<bool> enabled, Func<object, string?>? describeEntry = null)
     {
         _host = host;
         _details = details;
         _enabled = enabled;
+        _describeEntry = describeEntry;
         // Selection belongs to files. Hide the spreadsheet-style cell currency/focus visuals.
         details.Styles.Add(new Style(s => s.OfType<DataGridCell>().Class(":focus").Template().OfType<Grid>().Name("FocusVisual"))
         {
@@ -193,11 +192,11 @@ internal sealed class FileBrowserPresentation
                     if (child is TextBlock text) { text.MaxLines = 2; text.TextWrapping = TextWrapping.Wrap; text.TextAlignment = TextAlignment.Center; }
                 }
             }
-            if (entry is not FileSystemEntryDto { Type: FileSystemEntryType.Drive } drive) return content;
+            if (_describeEntry?.Invoke(entry) is not { } description) return content;
 
             var capacity = new TextBlock
             {
-                Text = EntrySizeToStringConverter.FormatDriveCapacity(drive),
+                Text = description,
                 FontSize = 11,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 TextAlignment = large ? TextAlignment.Center : TextAlignment.Left,

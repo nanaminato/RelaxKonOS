@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.FileBrowser;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Models;
@@ -60,7 +61,6 @@ public sealed class ExplorerEntryComparer(ExplorerSortField field, bool descendi
     }
 }
 
-public enum ExplorerViewMode { Details, List, SmallIcons, LargeIcons }
 
 public sealed record ExplorerViewPreferences(
     ExplorerSortField SortField = ExplorerSortField.Name,

@@ -4,7 +4,7 @@ using RelaxKonOS.UI.Imaging;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace RelaxKonOS.Client.Apps.Explorer.Models;
+namespace RelaxKonOS.UI.FileBrowser;
 
 /// <summary>导航树节点。移植自 Jaya <c>TreeNodeModel</c> 的懒加载模式：展开时填充子节点。
 /// 路径为 null 表示"Computer"根节点；驱动器节点的 Path 是盘符根；目录节点的 Path 是完整目录路径。</summary>

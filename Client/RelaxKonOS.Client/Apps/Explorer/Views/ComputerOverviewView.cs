@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
-using RelaxKonOS.Client.Apps.Explorer.Controls;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Files;

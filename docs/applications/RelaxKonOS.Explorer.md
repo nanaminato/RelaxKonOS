@@ -194,9 +194,6 @@ Client/RelaxKonOS.Client/Apps/Explorer/
 ├── ExplorerApp.cs                 RemoteApplicationBase，Activate 创建 VM+View+Window，注入对话框回调
 ├── IExplorerClient.cs             typed HttpClient 抽象
 ├── ExplorerClient.cs              实现：JWT from IAuthSession，绝对 URI，ProblemDetails → RelaxKonOSAuthException
-├── Models/
-│   ├── TreeNodeModel.cs           导航树节点（懒加载 + dummy child 模式，移植自 Jaya TreeNodeModel；加 IconKind 驱动 emoji）
-│   └── TreeNodeIconKind.cs        导航树节点图标种类枚举（Computer/Drive/Folder/Home/Desktop/Documents/Downloads/Pictures/Music/Videos/Network）
 ├── ViewModels/
 │   └── ExplorerViewModel.cs       主 VM：合并 Jaya Explorer/Navigation/Addressbar/Toolbar/Statusbar VM；多根树 + 选中同步
 ├── Views/
@@ -216,6 +213,8 @@ Client/RelaxKonOS.Client/Apps/Explorer/
 ```
 
 ### 5.2 ExplorerViewModel 设计
+
+导航树节点、文件列表布局和工具栏样式位于 `Framework/RelaxKonOS.UI/FileBrowser/`，由 Explorer 和 SSH 文件浏览器共用。节点图标类型位于 `Framework/RelaxKonOS.UI/Imaging/TreeNodeIconKind.cs`。
 
 合并 Jaya 的 5 个 VM（`ExplorerViewModel` / `NavigationViewModel` / `AddressbarViewModel` / `ToolbarViewModel` / `StatusbarViewModel`）为单一 `ExplorerViewModel`，适配 RelaxKonOS DI 约定（避免引入 Jaya 的 `ServiceLocator` / `EventAggregator` / `ViewModelLocator` 反射基础设施）。
 
