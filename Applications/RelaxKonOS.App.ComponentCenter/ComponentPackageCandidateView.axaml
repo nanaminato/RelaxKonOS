@@ -1,0 +1,103 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="using:RelaxKonOS.App.ComponentCenter"
+ xmlns:mr="clr-namespace:RelaxKonOS.Protocol.ManagedRuntimes;assembly=RelaxKonOS.Protocol"
+ x:Class="RelaxKonOS.App.ComponentCenter.ComponentPackageCandidateView"
+ x:DataType="local:IComponentPackageCandidate">
+ <Border Classes="panel-card">
+  <StackPanel Spacing="14">
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+    <StackPanel Spacing="3">
+     <TextBlock Classes="section-title" Text="{Binding PackageMethodTitle}" />
+     <TextBlock Classes="section-hint" Text="{Binding PackageMethodHint}" />
+    </StackPanel>
+    <Button Grid.Column="1" Classes="ghost-action" Content="{local:Loc component_center.package.resolve}"
+            Command="{Binding ResolvePackageCommand}" IsEnabled="{Binding CanResolvePackage}" VerticalAlignment="Center" />
+   </Grid>
+   <!-- One host, one method: state the platform's own install path instead of both. -->
+   <TextBlock Text="{Binding PlatformMethodText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+              Foreground="{DynamicResource AccentBrush}" />
+   <!-- A host that answered with a problem is not a form nobody has touched: name it here. -->
+   <TextBlock Text="{Binding PackageStateText}" IsVisible="{Binding HasPackageStateProblem}" TextWrapping="Wrap"
+              FontSize="12" Foreground="{DynamicResource WarningBrush}" />
+   <StackPanel IsVisible="{Binding IsSystemPackage}" Spacing="6">
+    <TextBlock Classes="field-label" Text="{local:Loc component_center.native.manager}" />
+    <!-- A single connected manager is stated, not offered: a one-item selector looks like a
+         choice nobody has. A host that really reports several keeps the selector. -->
+    <TextBlock Text="{Binding SelectedPackageManagerText}" FontSize="13" FontWeight="SemiBold"
+               IsVisible="{Binding !HasPackageManagerChoice}" />
+    <ComboBox ItemsSource="{Binding PackageManagers}" SelectedItem="{Binding SelectedPackageManager, Mode=TwoWay}"
+              HorizontalAlignment="Stretch" IsVisible="{Binding HasPackageManagerChoice}" IsEnabled="{Binding CanResolvePackage}" />
+    <TextBlock Classes="section-hint" Text="{local:Loc component_center.native.manager_hint}" />
+   </StackPanel>
+   <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsResolvingPackage}" />
+   <Button Classes="ghost-action" Content="{Binding PackageSourceActionText}" Command="{Binding RefreshPackageSourcesCommand}"
+           IsVisible="{Binding CanRefreshPackageSources}" HorizontalAlignment="Left" />
+   <StackPanel Spacing="6" IsVisible="{Binding HasPinnedArchiveCandidates}">
+    <TextBlock Classes="field-label" Text="{local:Loc component_center.native.version_label}" />
+    <ComboBox ItemsSource="{Binding PinnedArchiveCandidates}" SelectedItem="{Binding SelectedPinnedArchive}"
+              IsVisible="{Binding HasPinnedArchiveCandidates}" IsEnabled="{Binding CanResolvePackage}">
+     <ComboBox.ItemTemplate>
+      <DataTemplate x:DataType="mr:ComponentPinnedArchive"><TextBlock Text="{Binding Version}" /></DataTemplate>
+     </ComboBox.ItemTemplate>
+    </ComboBox>
+   </StackPanel>
+   <TextBlock Classes="section-hint" Text="{local:Loc component_center.native.install_only}" IsVisible="{Binding ShowInstallOnlyNote}"
+              FontSize="11" />
+   <StackPanel Spacing="4">
+    <TextBlock Text="{Binding PackageInstalledText}" FontSize="12" />
+    <TextBlock Text="{Binding PackageCandidateText}" FontSize="12" />
+   </StackPanel>
+   <StackPanel Spacing="8" IsVisible="{Binding HasPackageFreeze}">
+    <Expander>
+     <Expander.Header><TextBlock Classes="section-title" FontSize="13" Text="{local:Loc component_center.details}" /></Expander.Header>
+     <StackPanel Spacing="5">
+      <TextBlock Text="{Binding PackageRepositoryText}" FontSize="12" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding PackageAlsoInstallsText}" FontSize="12" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding PackageDigestText}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextTertiaryBrush}" />
+     </StackPanel>
+    </Expander>
+    <TextBlock Text="{Binding PackageVerdictText}" FontSize="12" TextWrapping="Wrap"
+               Foreground="{DynamicResource WarningBrush}" />
+   </StackPanel>
+   <Border Classes="rule" />
+   <WrapPanel ItemSpacing="8" LineSpacing="8">
+    <Button Classes="primary" Content="{local:Loc component_center.native.action.Install}" Command="{Binding InstallPackageCommand}"
+            IsEnabled="{Binding CanInstallPackage}" IsVisible="{Binding ShowPackageInstall}" />
+    <Button Classes="ghost-action" IsVisible="{Binding ShowPackageChangeActions}" Content="{local:Loc component_center.native.action.Update}"
+            Command="{Binding UpdatePackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+    <Button Classes="ghost-action" IsVisible="{Binding ShowRegisterPackage}" Content="{Binding RegisterPackageText}"
+            Command="{Binding RegisterPackageCommand}" IsEnabled="{Binding CanRegisterPackage}" />
+    <Button Classes="ghost-action" IsVisible="{Binding ShowPackageChangeActions}" Content="{local:Loc component_center.native.action.Uninstall}"
+            Command="{Binding UninstallPackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
+   </WrapPanel>
+   <Button Classes="ghost-action" IsVisible="{Binding CanRecoverPostgreSql}" Content="{local:Loc database.recover}" Command="{Binding RecoverPostgreSqlCommand}" />
+   <Border Classes="inset-block" IsVisible="{Binding CanRecoverPackage}">
+    <StackPanel Spacing="8">
+     <TextBlock Text="{Binding PackageRecoveryText}" TextWrapping="Wrap" FontSize="12" />
+     <WrapPanel ItemSpacing="8" LineSpacing="8">
+      <Button Classes="ghost-action" Content="{local:Loc component_center.package.recovery.Stop}" Command="{Binding StopPackageRecoveryCommand}" />
+      <Button Classes="ghost-action" Content="{local:Loc component_center.package.recovery.Close}" Command="{Binding ClosePackageRecoveryCommand}" />
+     </WrapPanel>
+    </StackPanel>
+   </Border>
+   <StackPanel Spacing="8" IsVisible="{Binding PackageInstallation.HasMessage}">
+    <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" FontSize="12" />
+    <Button Classes="ghost-action" Content="{local:Loc webservers.service_stop.review}"
+            Command="{Binding ReviewServiceStopActionCommand}" IsVisible="{Binding CanReviewServiceStop}" HorizontalAlignment="Left" />
+    <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
+    <Button Classes="ghost-action" Content="{local:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}"
+            IsVisible="{Binding PackageInstallation.IsActive}" HorizontalAlignment="Left" />
+    <Expander>
+     <Expander.Header><TextBlock Classes="section-title" FontSize="13" Text="{local:Loc common.operation_log}" /></Expander.Header>
+     <TextBlock Text="{Binding PackageInstallation.OperationLog}" TextWrapping="Wrap" FontSize="11" Classes="mono" />
+    </Expander>
+   </StackPanel>
+   <TextBlock Text="{Binding ExternalPackageChangeText}" IsVisible="{Binding HasExternalPackageChange}" TextWrapping="Wrap"
+              FontSize="12" Foreground="{DynamicResource WarningBrush}" />
+   <TextBlock Text="{Binding PackageFreezeNotice}" TextWrapping="Wrap" FontSize="11"
+              Foreground="{DynamicResource TextTertiaryBrush}" />
+  </StackPanel>
+ </Border>
+</UserControl>

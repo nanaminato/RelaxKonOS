@@ -20,8 +20,36 @@ public sealed record ComponentDraftItem(ComponentChangeDraft Draft)
 }
 
 /// <summary>Local drafts, frozen previews, and separately approved, durably tracked task execution.</summary>
-public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage, IComponentOfficialDownloads
+public partial class ComponentCenterViewModel : ObservableObject, IDisposable, IComponentCenterHeaderActions, IComponentCenterNavigation, IComponentCenterLayout, IComponentCenterEmptyState, IComponentHostObservation, IComponentIdentity, IComponentApplicationNotice, IComponentDesktopPackage,
+    IComponentOfficialDownloads, IComponentPackageCandidate
 {
+    string IComponentPackageCandidate.PackageMethodTitle => PackageMethodTitle.Resolve();
+    string IComponentPackageCandidate.PackageMethodHint => PackageMethodHint.Resolve();
+    ICommand IComponentPackageCandidate.ResolvePackageCommand => ResolvePackageCommand;
+    string IComponentPackageCandidate.PlatformMethodText => PlatformMethodText.Resolve();
+    string IComponentPackageCandidate.PackageStateText => PackageStateText.Resolve();
+    string IComponentPackageCandidate.SelectedPackageManagerText => SelectedPackageManagerText.Resolve();
+    string IComponentPackageCandidate.PackageSourceActionText => PackageSourceActionText.Resolve();
+    ICommand IComponentPackageCandidate.RefreshPackageSourcesCommand => RefreshPackageSourcesCommand;
+    string IComponentPackageCandidate.PackageInstalledText => PackageInstalledText.Resolve();
+    string IComponentPackageCandidate.PackageCandidateText => PackageCandidateText.Resolve();
+    string IComponentPackageCandidate.PackageRepositoryText => PackageRepositoryText.Resolve();
+    string IComponentPackageCandidate.PackageAlsoInstallsText => PackageAlsoInstallsText.Resolve();
+    string IComponentPackageCandidate.PackageDigestText => PackageDigestText.Resolve();
+    string IComponentPackageCandidate.PackageVerdictText => PackageVerdictText.Resolve();
+    ICommand IComponentPackageCandidate.InstallPackageCommand => InstallPackageCommand;
+    ICommand IComponentPackageCandidate.UpdatePackageCommand => UpdatePackageCommand;
+    string IComponentPackageCandidate.RegisterPackageText => RegisterPackageText.Resolve();
+    ICommand IComponentPackageCandidate.RegisterPackageCommand => RegisterPackageCommand;
+    ICommand IComponentPackageCandidate.UninstallPackageCommand => UninstallPackageCommand;
+    ICommand IComponentPackageCandidate.RecoverPostgreSqlCommand => RecoverPostgreSqlCommand;
+    string IComponentPackageCandidate.PackageRecoveryText => PackageRecoveryText.Resolve();
+    ICommand IComponentPackageCandidate.StopPackageRecoveryCommand => StopPackageRecoveryCommand;
+    ICommand IComponentPackageCandidate.ClosePackageRecoveryCommand => ClosePackageRecoveryCommand;
+    ICommand IComponentPackageCandidate.ReviewServiceStopActionCommand => ReviewServiceStopActionCommand;
+    string IComponentPackageCandidate.ExternalPackageChangeText => ExternalPackageChangeText.Resolve();
+    string IComponentPackageCandidate.PackageFreezeNotice => PackageFreezeNotice.Resolve();
+
     string IComponentDesktopPackage.DesktopCompatibilityText => DesktopCompatibilityText.Resolve();
     ICommand IComponentDesktopPackage.ReviewDesktopCatalogPackageCommand => ReviewDesktopCatalogPackageCommand;
     IReadOnlyList<IComponentDownloadMethodChoice> IComponentOfficialDownloads.DownloadMethods => DownloadMethods;

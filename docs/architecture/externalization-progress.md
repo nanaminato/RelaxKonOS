@@ -559,3 +559,4 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Component Center 详情区空状态和宿主观测视图迁入应用项目。宿主保留只读观测命令、状态和可见性判定。Windows Release 组件中心三语双主题及观测预览专项通过。
 - Component Center 组件标识、来源状态及应用接管提示迁入应用项目，宿主继续执行打开所属应用的操作。Windows Release 三语双主题专项通过，并验证接管按钮传递所选组件的所属应用 ID。
 - Component Center 桌面包审核入口与官网下载、文件导入和安装进度视图迁入应用项目，继续使用宿主提供的操作命令。Windows Release 三语双主题和组件下载专项通过。
+- Component Center 系统包和固定归档候选、来源刷新及恢复入口迁入应用项目。候选解析、执行命令和审批继续由宿主管理。Windows Release 三语双主题及候选解析夹具通过。
