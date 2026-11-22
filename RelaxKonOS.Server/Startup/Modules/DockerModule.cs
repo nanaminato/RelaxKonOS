@@ -37,6 +37,7 @@ internal class DockerModule : IServerModule, IServerModuleDeactivationGuard, ISe
         // started it, and this process. The ledger itself is Core-owned (the deactivation gate reads it
         // while this module is disabled); the coordinator below is its only writer and reconciles an
         // interrupted operation against the real Engine on startup instead of replaying it.
+        builder.Services.AddSingleton(Execution);
         builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationCoordinator>();
         builder.Services.AddHostedService(services => services.GetRequiredService<RelaxKonOS.Server.Docker.DockerStackOperationCoordinator>());
         // The configurator owns the platform difference internally (systemd drop-in on Linux, Docker
