@@ -130,15 +130,17 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             || entry.Plan.Id != expectedPlanId
             || entry.Plan.OrderedReleases.IsDefaultOrEmpty
             || entry.Plan.PreparedSteps.IsDefault
-            || entry.Checkpoint.CompletedSteps < 0 || entry.Checkpoint.CompletedSteps > entry.Plan.OrderedReleases.Length
-            || entry.Checkpoint.Verified && entry.Checkpoint.CompletedSteps != entry.Plan.OrderedReleases.Length
-            || entry.Checkpoint.RequiresReview && entry.Checkpoint.Verified
+            || !IsValidCheckpoint(entry.Checkpoint, entry.Plan.OrderedReleases.Length)
             || entry.Plan.OrderedReleases.Any(release => release is null || release.Capabilities is null || release.Requires.IsDefault))
             throw new InvalidDataException("Invalid deployment checkpoint.");
         if (!string.Equals(entry.Identity, ComputeIdentity(entry.Plan), StringComparison.Ordinal))
             throw new InvalidDataException("Deployment checkpoint does not match its plan identity.");
         return entry;
     }
+
+    private static bool IsValidCheckpoint(DeploymentCheckpoint checkpoint, int totalSteps) =>
+        checkpoint.CompletedSteps >= 0 && checkpoint.CompletedSteps <= totalSteps
+        && (!checkpoint.Verified || checkpoint.CompletedSteps == totalSteps && !checkpoint.RequiresReview);
 
     private sealed record Entry(string Identity, DeploymentPlan Plan, DeploymentCheckpoint Checkpoint);
 
@@ -149,6 +151,12 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
 
         public async Task SaveAsync(DeploymentCheckpoint value, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsValidCheckpoint(value, plan.OrderedReleases.Length)
+                || Checkpoint is { } current && (value.CompletedSteps < current.CompletedSteps
+                    || (current.RequiresReview || current.Verified) && value != current))
+                throw new InvalidDataException("Invalid deployment checkpoint transition.");
+
             var staging = path + ".tmp";
             try
             {

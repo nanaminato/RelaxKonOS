@@ -245,6 +245,19 @@ try
 }
 catch (OperationCanceledException) when (alreadyCancelled.IsCancellationRequested) { }
 Check(!Directory.Exists(cancelledDirectory));
+await using (var lease = await reopenedJournal.OpenAsync(retryVerification, CancellationToken.None))
+{
+    var verified = lease.Checkpoint!;
+    try
+    {
+        await lease.SaveAsync(new(verified.CompletedSteps - 1, false), CancellationToken.None);
+        throw new Exception("Expected a completed checkpoint to reject a backward transition.");
+    }
+    catch (InvalidDataException) { }
+    Check(lease.Checkpoint == verified);
+}
+await using (var lease = await reopenedJournal.OpenAsync(retryVerification, CancellationToken.None))
+    Check(lease.Checkpoint is { Verified: true });
 Console.WriteLine("Deployment resolution and checkpoint checks passed.");
 
 sealed class Backend : IDeploymentBackend
