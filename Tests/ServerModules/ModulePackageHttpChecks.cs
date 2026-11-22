@@ -11,8 +11,10 @@ using Microsoft.Extensions.Options;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Firewall;
+using RelaxKonOS.Server.Git;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Tailscale;
 
@@ -73,6 +75,7 @@ internal static class ModulePackageHttpChecks
             }, now);
             ModulePackageBuildResult[] tailscale = [];
             ModulePackageBuildResult[] firewall = [];
+            ModulePackageBuildResult[] git = [];
             if (!isolated)
             {
                 var tailscalePublish = Path.Combine(AppContext.BaseDirectory, "Modules", "Tailscale");
@@ -104,17 +107,32 @@ internal static class ModulePackageHttpChecks
                 firewall = [await ModulePackageBuilder.BuildAsync(firewallOptions, now),
                     await ModulePackageBuilder.BuildAsync(firewallOptions with
                     { Version = "2.0.0", ReleaseId = "firewall-2.0.0-" + rid }, now)];
+                var gitOptions = tailscaleOptions with
+                {
+                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "Git"),
+                    OutputDirectory = Path.Combine(root, "git-package"),
+                    ModuleId = ServerModules.GitId,
+                    ReleaseId = "git-1.0.0-" + rid,
+                    EntryAssembly = CollectibleGitExecution.AssemblyFile,
+                    EntryType = CollectibleGitExecution.EntryType,
+                    Capabilities = [ServerCapabilities.Git],
+                    CapabilityContractVersions = new Dictionary<string, string> { [ServerCapabilities.Git] = GitApiRoutes.CapabilityContractVersion },
+                    Ui = new("Git", "", "", null, "UNLICENSED"),
+                };
+                git = [await ModulePackageBuilder.BuildAsync(gitOptions, now),
+                    await ModulePackageBuilder.BuildAsync(gitOptions with
+                    { Version = "2.0.0", ReleaseId = "git-2.0.0-" + rid }, now)];
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
                     now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
-                        .. tailscale.Select(Release), .. firewall.Select(Release)], [], []), "builder-key", keyPath)).Envelope;
+                        .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", dependent is null ? ["fixture-http"]
-                    : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale", ServerModules.FirewallId],
+                    : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale", ServerModules.FirewallId, ServerModules.GitId],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
             {
@@ -190,7 +208,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4 + tailscale.Length + firewall.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 4 + tailscale.Length + firewall.Length + git.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -381,6 +399,7 @@ internal static class ModulePackageHttpChecks
             {
                 await VerifyExecutionPackageVersionsAsync<InstalledTailscaleModule>(client, root, tailscale, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledFirewallModule>(client, root, firewall, check);
+                await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
             }
             await app.StopAsync();
             management.Dispose();

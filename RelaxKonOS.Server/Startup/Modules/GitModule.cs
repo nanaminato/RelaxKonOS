@@ -26,15 +26,15 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// replaces the Host's unavailable default with a gate that can wake Git when it is dormant.
 /// </para>
 /// </summary>
-internal sealed class GitModule : IServerModule, IServerModuleResidency, IServerModuleDeactivationGuard
+internal class GitModule : IServerModule, IServerModuleResidency, IServerModuleDeactivationGuard
 {
     public string Id => ServerModules.GitId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Git];
     public IReadOnlyDictionary<string, string> CapabilityContractVersions { get; } =
         ImmutableDictionary<string, string>.Empty.Add(ServerCapabilities.Git, GitApiRoutes.CapabilityContractVersion);
-    public IReadOnlyList<string> Requires => [];
+    public virtual IReadOnlyList<string> Requires => [];
 
-    public IServerModuleRuntimeFactory RuntimeFactory { get; } = new GitModuleRuntimeFactory();
+    public virtual IServerModuleRuntimeFactory RuntimeFactory { get; } = new GitModuleRuntimeFactory();
     public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
     {
@@ -48,7 +48,7 @@ internal sealed class GitModule : IServerModule, IServerModuleResidency, IServer
         return ValueTask.FromResult(work);
     }
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         // Deferred Host ports: build-only usage and residency metadata never open repository storage.
         builder.Services.AddSingleton<IGitRepositoryStorage>(services => ActivatorUtilities.CreateInstance<HostGitRepositoryStorage>(services));
@@ -66,7 +66,7 @@ internal sealed class GitModule : IServerModule, IServerModuleResidency, IServer
         builder.Services.AddScoped<GitTextEditor>();
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         endpoints.MapGitEndpoints();
         endpoints.MapGitBuildEndpoints();

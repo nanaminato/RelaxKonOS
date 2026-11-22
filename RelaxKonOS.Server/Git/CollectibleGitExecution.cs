@@ -6,24 +6,32 @@ namespace RelaxKonOS.Server.Git;
 /// <summary>Host wrapper holds code only for the active generation; no implementation Type is cached.</summary>
 internal sealed class CollectibleGitExecution : IAsyncDisposable
 {
+    internal const string AssemblyFile = "RelaxKonOS.ServerModule.Git.dll";
+    internal const string EntryType = "RelaxKonOS.Server.Git.GitExecutionModule";
     private AssemblyLoadContext? _context;
     private IGitExecutionModule? _module;
     internal WeakReference CodeReference { get; }
     internal IGitExecutionModule Module => _module ?? throw new ObjectDisposedException(nameof(CollectibleGitExecution));
 
-    internal CollectibleGitExecution(GitExecutionContext services)
+    internal static string ResolveBundledPath()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "Git");
-        var entry = Path.Combine(directory, "RelaxKonOS.ServerModule.Git.dll");
+        var entry = Path.Combine(directory, AssemblyFile);
         if (!File.Exists(entry) || (File.GetAttributes(entry) & FileAttributes.ReparsePoint) != 0
             || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("Bundled Git execution assembly is missing or linked.");
+        return entry;
+    }
+
+    internal CollectibleGitExecution(string entry, GitExecutionContext services)
+    {
         var context = new ExecutionLoadContext();
         CodeReference = new WeakReference(context);
         try
         {
-            var assembly = context.LoadFromAssemblyPath(entry);
-            var type = assembly.GetType("RelaxKonOS.Server.Git.GitExecutionModule", throwOnError: true)!;
+            using var stream = File.OpenRead(entry);
+            var assembly = context.LoadFromStream(stream);
+            var type = assembly.GetType(EntryType, throwOnError: true)!;
             _module = (IGitExecutionModule)Activator.CreateInstance(type, services)!;
             _context = context;
         }

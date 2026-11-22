@@ -10,7 +10,7 @@ namespace RelaxKonOS.Server.Git;
 /// CLI, build and repository implementations share one collectible execution assembly.
 /// Configuration and repository data on disk are untouched by a release.
 /// </summary>
-internal sealed class GitModuleRuntimeFactory : IServerModuleRuntimeFactory
+internal sealed class GitModuleRuntimeFactory(Func<string>? resolveEntry = null) : IServerModuleRuntimeFactory
 {
     public string ModuleId => ServerModules.GitId;
 
@@ -24,7 +24,8 @@ internal sealed class GitModuleRuntimeFactory : IServerModuleRuntimeFactory
         _code.RemoveAll(reference => !reference.IsAlive);
         // Natural GC may lag a release. Bound pending generations without forcing a process-wide GC.
         if (_code.Count >= 4) throw new InvalidOperationException("Git execution code collection is pending; host recovery may be required.");
-        var runtime = new GitModuleRuntime(services, context);
+        var entry = resolveEntry is null ? CollectibleGitExecution.ResolveBundledPath() : resolveEntry();
+        var runtime = new GitModuleRuntime(services, context, entry);
         LastCodeReference = runtime.CodeReference;
         _code.Add(runtime.CodeReference);
         return ValueTask.FromResult<IServerModuleRuntime>(runtime);
@@ -37,10 +38,10 @@ internal sealed class GitModuleRuntime : IServerModuleRuntime
     private readonly CollectibleGitExecution _execution;
     internal WeakReference CodeReference => _execution.CodeReference;
 
-    internal GitModuleRuntime(IServiceProvider root, ServerModuleContext context)
+    internal GitModuleRuntime(IServiceProvider root, ServerModuleContext context, string entry)
     {
         var work = new ModuleWorkLeaseSource(root.GetRequiredService<ModuleResidencyCoordinator>(), this);
-        _execution = new CollectibleGitExecution(new(context.ContentRootPath, root.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(),
+        _execution = new CollectibleGitExecution(entry, new(context.ContentRootPath, root.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(),
             context.Configuration.GetSection("GitBuilds").Get<GitBuildOptions>() ?? new(), work, root.GetRequiredService<ILoggerFactory>(),
             new Lazy<IGitRepositoryStorage>(() => root.GetRequiredService<IGitRepositoryStorage>()),
             new Lazy<IGitRepositoryHost>(() => root.GetRequiredService<IGitRepositoryHost>())));

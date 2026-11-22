@@ -65,7 +65,8 @@ internal static class InstalledModuleInstaller
         if (ServerModules.Create(new ConfigurationBuilder().Build()).KnownModuleIds.Contains(candidate.Manifest.ModuleId)
             && !ServerModules.IsOfficialDatabaseModuleHost(candidate.Manifest)
             && !InstalledTailscaleModule.MatchesManifest(candidate.Manifest)
-            && !InstalledFirewallModule.MatchesManifest(candidate.Manifest))
+            && !InstalledFirewallModule.MatchesManifest(candidate.Manifest)
+            && !InstalledGitModule.MatchesManifest(candidate.Manifest))
             throw new ModulePackageException("module-package-module-id-conflict");
         if (checkInstalledDependencies) ValidateDependencies(contentRoot, configuration, candidate.Manifest);
         return new(candidate.Manifest, release.ManifestSha256, candidate.ArchiveSha256, candidate.ArchiveBytes,

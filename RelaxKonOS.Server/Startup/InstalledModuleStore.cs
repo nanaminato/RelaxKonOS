@@ -260,6 +260,7 @@ internal static class InstalledModuleCatalog
         {
             { ModuleId: Modules.TailscaleModule.ModuleId, Runtime: "in-process" } => new InstalledTailscaleModule(record, contentRoot),
             { ModuleId: ServerModules.FirewallId, Runtime: "in-process" } => new InstalledFirewallModule(record, contentRoot),
+            { ModuleId: ServerModules.GitId, Runtime: "in-process" } => new InstalledGitModule(record, contentRoot),
             { Runtime: "module-host" } => new InstalledIsolatedModule(record, contentRoot),
             _ => new InstalledServerModule(record, contentRoot),
         }).ToArray();
