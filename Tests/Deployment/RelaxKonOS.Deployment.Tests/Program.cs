@@ -19,6 +19,18 @@ Check(resolved.Succeeded && resolved.OrderedReleases.Length == 4
     && resolved.OrderedReleases[0].Package == Key("shared") && resolved.OrderedReleases[1].Version == "1.0.0");
 Check(DeploymentResolver.Resolve(root, [Release("a", "1.0.0", new DeploymentRequirement(root.Package)),
     Release("b", "1.0.0")], []).Problem == "deployment-dependency-cycle");
+var cyclicOrMissing = DeploymentResolver.Resolve(root,
+    [Release("a", "2.0.0", new DeploymentRequirement(root.Package)),
+        Release("a", "1.0.0", new DeploymentRequirement(Key("missing"))), Release("b", "1.0.0")], []);
+Check(cyclicOrMissing is { Problem: "deployment-dependency-cycle" } && cyclicOrMissing.ProblemPackage == root.Package);
+var deepChain = Enumerable.Range(0, 130)
+    .Select(index => Release($"chain-{index}", "1.0.0", new DeploymentRequirement(Key($"chain-{index + 1}"))));
+var deepCandidate = Release("a", "2.0.0", new DeploymentRequirement(Key("chain-0")));
+var limited = DeploymentResolver.Resolve(root, [deepCandidate, Release("b", "1.0.0"), .. deepChain], []);
+Check(limited is { Problem: "deployment-resolution-limit" } && limited.ProblemPackage == Key("chain-127"));
+Check(DeploymentResolver.Resolve(root,
+    [deepCandidate, Release("a", "1.0.0"), Release("b", "1.0.0"), .. deepChain], [])
+    .OrderedReleases.Any(release => release.Package == Key("a") && release.Version == "1.0.0"));
 var optional = new DeploymentRequirement(Key("optional"));
 var withOptional = candidates.Append(Release("optional", "1.0.0") with { Satisfied = true });
 var selected = DeploymentResolver.Resolve(root, withOptional, [optional]);

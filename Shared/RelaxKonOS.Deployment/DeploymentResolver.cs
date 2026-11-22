@@ -48,15 +48,22 @@ public static class DeploymentResolver
         var pinnedRoot = root with { Requires = requirements };
         selected[root.Package] = pinnedRoot;
         var remaining = MaximumSearchSteps;
-        var problem = "deployment-dependency-conflict";
+        var problem = Failure.Conflict;
         DeploymentPackageKey? problemPackage = null;
         ImmutableArray<DeploymentRelease> order = [];
+
+        void RecordFailure(Failure failure, DeploymentPackageKey? package)
+        {
+            if (failure < problem) return;
+            problem = failure;
+            problemPackage = package;
+        }
 
         bool Search(ImmutableArray<DeploymentRequirement> pending, int index, int depth)
         {
             if (remaining-- <= 0 || depth > MaximumDepth)
             {
-                problem = "deployment-resolution-limit";
+                RecordFailure(Failure.Limit, index < pending.Length ? pending[index].Package : null);
                 return false;
             }
 
@@ -64,7 +71,7 @@ public static class DeploymentResolver
             {
                 if (!Matches(existing, pending[index]))
                 {
-                    problemPackage = pending[index].Package;
+                    RecordFailure(Failure.Conflict, pending[index].Package);
                     return false;
                 }
                 index++;
@@ -81,7 +88,7 @@ public static class DeploymentResolver
                     if (complete.Contains(release.Package)) return true;
                     if (!visiting.Add(release.Package))
                     {
-                        problemPackage = release.Package;
+                        RecordFailure(Failure.Cycle, release.Package);
                         return false;
                     }
                     foreach (var dependency in release.Requires)
@@ -92,18 +99,14 @@ public static class DeploymentResolver
                     return true;
                 }
 
-                if (!Visit(pinnedRoot))
-                {
-                    problem = "deployment-dependency-cycle";
-                    return false;
-                }
+                if (!Visit(pinnedRoot)) return false;
 
                 order = ordered.ToImmutable();
                 return true;
             }
 
             var requirement = pending[index];
-            problemPackage = requirement.Package;
+            RecordFailure(Failure.Conflict, requirement.Package);
             foreach (var entry in releases[requirement.Package].Where(entry => Matches(entry.Release, requirement))
                 .OrderByDescending(entry => entry.Release.Satisfied)
                 .ThenByDescending(entry => entry.Release.ActivationOnly)
@@ -118,8 +121,16 @@ public static class DeploymentResolver
             return false;
         }
 
-        return Search(requirements, 0, 0) ? new(order, null) : new([], problem, problemPackage);
+        if (Search(requirements, 0, 0)) return new(order, null);
+        return new([], problem switch
+        {
+            Failure.Limit => "deployment-resolution-limit",
+            Failure.Cycle => "deployment-dependency-cycle",
+            _ => "deployment-dependency-conflict",
+        }, problemPackage);
     }
+
+    private enum Failure { Conflict, Cycle, Limit }
 
     private static bool Matches(DeploymentRelease release, DeploymentRequirement requirement)
     {
