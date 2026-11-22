@@ -53,12 +53,12 @@ internal static class OfficialRoappChecks
         var isProxyServer = applicationId == "relaxkonos.proxy-server";
         var isDatabase = applicationId == "relaxkonos.database";
         var isTailscale = applicationId == "relaxkonos.tailscale";
-        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale;
+        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale || isDatabase;
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
         var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
         var isTunnels = applicationId == "relaxkonos.tunnels";
-        var interactive = requiresModule || isDatabase || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels;
+        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -186,6 +186,13 @@ internal static class OfficialRoappChecks
                         [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.firewall" }, Capability: "server.firewall" }],
                     "Firewall review exposes its server module and scoped grants.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Firewall without joint deployment");
+            }
+            if (isDatabase)
+            {
+                Check(candidate.Manifest.Dependencies?.Required is
+                    [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.database" }, Capability: ServerCapabilities.Database }],
+                    "Databases review exposes its server module and capability.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Databases without joint deployment");
             }
             if (isApplicationDeployments)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerApplicationDeploymentsRead,

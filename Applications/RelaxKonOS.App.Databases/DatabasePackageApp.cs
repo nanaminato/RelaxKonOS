@@ -9,7 +9,7 @@ namespace RelaxKonOS.App.Databases;
 
 public sealed class DatabasePackageApp : IExternalRemoteApplication
 {
-    public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.database"), "Database engines", "0.2.0", "▤", "Database engine management",
+    public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.database"), "Database engines", "0.3.0", "▤", "Database engine management",
         [AppPermissions.ServerComponentsRead, AppPermissions.ServerDatabasesRead, AppPermissions.ServerDatabasesManage, AppPermissions.ServerCertificatesRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Database]),
         IconPath: "avares://RelaxKonOS.App.Databases/Assets/database.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
