@@ -42,17 +42,25 @@ internal static class JointDeploymentAcceptance
     public static void Run(string archive, IReadOnlyList<string> bundledModuleArchives) =>
         RunWithDispatcher(() => RunAsync(Path.GetFullPath(archive), bundledModuleArchives.Select(Path.GetFullPath).ToArray()));
 
-    public static void RunSignedGit(string archive) => RunWithDispatcher(() => RunSignedGitAsync(Path.GetFullPath(archive)));
+    public static void RunSignedGit(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        ServerModules.GitId, ServerCapabilities.Git, "Git", CollectibleGitExecution.AssemblyFile, CollectibleGitExecution.EntryType,
+        new Dictionary<string, string> { [ServerCapabilities.Git] = GitApiRoutes.CapabilityContractVersion }, VerifySignedGitAsync));
 
-    private static async Task RunSignedGitAsync(string archive)
+    public static void RunSignedTunnels(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        "relaxkonos.tunnels", ServerCapabilities.Tunnels, "Tunnels", RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.AssemblyFile,
+        RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.EntryType, null, VerifySignedTunnelsAsync));
+
+    private static async Task RunSignedExecutionAsync(string archive, string moduleId, string capability,
+        string directory, string entryAssembly, string entryType, IReadOnlyDictionary<string, string>? contractVersions,
+        Func<TestHost, string, Task> verifyBusiness)
     {
         var parent = Path.Combine(AppContext.BaseDirectory, "test-data");
-        var root = Directory.CreateDirectory(Path.Combine(parent, "signed-git-joint-" + Guid.NewGuid().ToString("N"))).FullName;
+        var root = Directory.CreateDirectory(Path.Combine(parent, "signed-execution-joint-" + Guid.NewGuid().ToString("N"))).FullName;
         TestHost? host = null;
         try
         {
             var official = Directory.CreateDirectory(Path.Combine(root, "OfficialApps")).FullName;
-            var appArchive = Path.Combine(official, "relaxkonos.git.roapp");
+            var appArchive = Path.Combine(official, Path.GetFileName(archive));
             const string version = "99.0.0";
             await RewriteDesktopArchiveAsync(archive, appArchive, manifest =>
                 manifest["dependencies"]!["required"]![0]!["minimumVersion"] = version);
@@ -62,13 +70,14 @@ internal static class JointDeploymentAcceptance
             await File.WriteAllTextAsync(key, signer.ExportPkcs8PrivateKeyPem());
             var now = DateTimeOffset.UtcNow;
             var rid = ModulePackagePlatform.CurrentRid;
-            var package = await ModulePackageBuilder.BuildAsync(new(Path.GetDirectoryName(CollectibleGitExecution.ResolveBundledPath())!,
-                Path.Combine(root, "module"), ServerModules.GitId, version, "joint-git-" + rid, "fixture", "official", rid,
-                CollectibleGitExecution.AssemblyFile, CollectibleGitExecution.EntryType, "joint-git", new string('a', 40), "official", 1,
-                "https://modules.example/", key, "fixture-key", 3600, Capabilities: [ServerCapabilities.Git],
-                CapabilityContractVersions: new Dictionary<string, string> { [ServerCapabilities.Git] = GitApiRoutes.CapabilityContractVersion }), now);
+            var executionDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", directory);
+            var package = await ModulePackageBuilder.BuildAsync(new(executionDirectory,
+                Path.Combine(root, "module"), moduleId, version, "joint-execution-" + rid, "fixture", "official", rid,
+                entryAssembly, entryType, "joint-execution", new string('a', 40), "official", 1,
+                "https://modules.example/", key, "fixture-key", 3600, Capabilities: [capability],
+                CapabilityContractVersions: contractVersions), now);
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", "official", "https://modules.example/",
-                [ServerModules.GitId], new Dictionary<string, string> { ["fixture-key"] = package.PublicKeySpkiBase64 }, 3600);
+                [moduleId], new Dictionary<string, string> { ["fixture-key"] = package.PublicKeySpkiBase64 }, 3600);
             var config = new ConfigurationBuilder().AddJsonStream(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(new
             {
                 ModuleManagement = new { Authority = "managed" },
@@ -79,7 +88,7 @@ internal static class JointDeploymentAcceptance
             using (var catalogs = new ModulePackageCatalogStore(serverRoot, serviceId))
                 catalogs.Accept(await File.ReadAllBytesAsync(package.CatalogPath), policy,
                     new(serviceId, rid, ModulePackageHostConfiguration.HostApiVersion, false), ModulePackageCatalogStore.InitialRevision,
-                    ModuleTestAuthentication.Admin, "joint-git", now);
+                    ModuleTestAuthentication.Admin, "joint-execution", now);
 
             host = await TestHost.StartAsync(serverRoot, config);
             var auth = DispatchProxy.Create<IAuthSession, SessionProxy>();
@@ -92,48 +101,27 @@ internal static class JointDeploymentAcceptance
             var packages = new DeveloperPackageManager(apps, null!, windows, DispatchProxy.Create<IAppPermissionManager, PermissionProxy>(),
                 new Diagnostics(), new VirtualSystemDrive(Path.Combine(root, "desktop")), official, moduleHttp: factory, moduleSession: auth);
             await packages.LoadInstalledAsync();
-            using var trust = new ComponentCatalogSourceStore(Path.Combine(root, "sources"), "joint-git");
+            using var trust = new ComponentCatalogSourceStore(Path.Combine(root, "sources"), "joint-execution");
             var installer = new AppPackageInstallerService(packages, null!, trust);
             var joint = new JointAppDeploymentService(factory, auth, installer, packages, apps, new(Path.Combine(root, "journal")));
             var candidate = await installer.InspectLocalAsync(appArchive);
             var review = await joint.PrepareAsync(candidate, [], default);
-            Require(review.Plan.PreparedSteps.Length == 1, "the Git desktop package selects the independent signed server release");
+            Require(review.Plan.PreparedSteps.Length == 1, $"the {moduleId} desktop package selects the independent signed server release");
             await ExpectRestartAsync(joint, review);
-            Require(!apps.IsRegistered(new AppId(candidate.Manifest.Id)), "the desktop waits for the signed Git package to become effective");
+            Require(!apps.IsRegistered(new AppId(candidate.Manifest.Id)), $"the desktop waits for the signed {moduleId} package to become effective");
             await host.DisposeAsync();
             host = null;
             host = await TestHost.StartAsync(serverRoot, config);
             session.Url = host.Url;
-            var resumed = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Git joint plan was not recoverable.");
+            var resumed = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException($"{moduleId} joint plan was not recoverable.");
             var installed = await joint.ExecuteAsync(resumed, default);
             Require(apps.IsRegistered(new AppId(installed.Id)) && InstalledModuleStore.Read(serverRoot).Single() is { Version: version }
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
-                "after restart the desktop registers Git against the signed execution package without resubmitting installation");
-            using var businessClient = new HttpClient { BaseAddress = new Uri(host.Url) };
-            businessClient.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
-            var engine = await businessClient.GetFromJsonAsync<GitEngineStatusDto>(GitApiRoutes.EngineStatus, RelaxKonOSJsonOptions.Default);
-            Require(engine is { IsAvailable: true, Version.Length: > 0 },
-                "the Git endpoint invokes the real local Git CLI through the installed signed execution package");
-            var worktree = Directory.CreateDirectory(Path.Combine(root, "checkout")).FullName;
-            using var initialized = await businessClient.PostAsync(GitApiRoutes.Init + "?path=" + Uri.EscapeDataString(worktree), null);
-            initialized.EnsureSuccessStatusCode();
-            Require((await initialized.Content.ReadFromJsonAsync<GitOperationResult>(RelaxKonOSJsonOptions.Default))?.Success == true,
-                "the installed Git package initializes a real temporary worktree through HTTP");
-            using var registration = await businessClient.PostAsJsonAsync(GitApiRoutes.Repositories,
-                new GitRepositoryRegistration("Signed Git", worktree), RelaxKonOSJsonOptions.Default);
-            registration.EnsureSuccessStatusCode();
-            var repository = (await registration.Content.ReadFromJsonAsync<GitRepositoryDto>(RelaxKonOSJsonOptions.Default))!;
-            await File.WriteAllTextAsync(Path.Combine(worktree, "joint.txt"), "signed Git deployment");
-            using var staged = await businessClient.PostAsJsonAsync(GitApiRoutes.Stage.Replace("{id}", repository.Id),
-                new GitStageRequest(["joint.txt"]), RelaxKonOSJsonOptions.Default);
-            staged.EnsureSuccessStatusCode();
-            var worktreeStatus = await businessClient.GetFromJsonAsync<GitStatusDto>(GitApiRoutes.Status.Replace("{id}", repository.Id),
-                RelaxKonOSJsonOptions.Default);
-            Require((await staged.Content.ReadFromJsonAsync<GitOperationResult>(RelaxKonOSJsonOptions.Default))?.Success == true
-                && worktreeStatus?.Staged is [{ Path: "joint.txt" }], "the joint-installed Git package stages and reads the real Git index");
+                $"after restart the desktop registers {moduleId} against the signed execution package without resubmitting installation");
+            await verifyBusiness(host, root);
             Require(await packages.UninstallAsync(installed.Id) && !apps.IsRegistered(new AppId(installed.Id))
                 && InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == package.ArchiveSha256,
-                "uninstalling the desktop Git package releases the app without removing the server module");
+                $"uninstalling the desktop {moduleId} package releases the app without removing the server module");
         }
         finally
         {
@@ -146,6 +134,43 @@ internal static class JointDeploymentAcceptance
                 { Console.WriteLine($"Fixture cleanup deferred until process exit: {root}"); }
             }
         }
+    }
+
+    private static async Task VerifySignedGitAsync(TestHost host, string root)
+    {
+        using var businessClient = new HttpClient { BaseAddress = new Uri(host.Url) };
+        businessClient.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+        var engine = await businessClient.GetFromJsonAsync<GitEngineStatusDto>(GitApiRoutes.EngineStatus, RelaxKonOSJsonOptions.Default);
+        Require(engine is { IsAvailable: true, Version.Length: > 0 },
+            "the Git endpoint invokes the real local Git CLI through the installed signed execution package");
+        var worktree = Directory.CreateDirectory(Path.Combine(root, "checkout")).FullName;
+        using var initialized = await businessClient.PostAsync(GitApiRoutes.Init + "?path=" + Uri.EscapeDataString(worktree), null);
+        initialized.EnsureSuccessStatusCode();
+        Require((await initialized.Content.ReadFromJsonAsync<GitOperationResult>(RelaxKonOSJsonOptions.Default))?.Success == true,
+            "the installed Git package initializes a real temporary worktree through HTTP");
+        using var registration = await businessClient.PostAsJsonAsync(GitApiRoutes.Repositories,
+            new GitRepositoryRegistration("Signed Git", worktree), RelaxKonOSJsonOptions.Default);
+        registration.EnsureSuccessStatusCode();
+        var repository = (await registration.Content.ReadFromJsonAsync<GitRepositoryDto>(RelaxKonOSJsonOptions.Default))!;
+        await File.WriteAllTextAsync(Path.Combine(worktree, "joint.txt"), "signed Git deployment");
+        using var staged = await businessClient.PostAsJsonAsync(GitApiRoutes.Stage.Replace("{id}", repository.Id),
+            new GitStageRequest(["joint.txt"]), RelaxKonOSJsonOptions.Default);
+        staged.EnsureSuccessStatusCode();
+        var worktreeStatus = await businessClient.GetFromJsonAsync<GitStatusDto>(GitApiRoutes.Status.Replace("{id}", repository.Id),
+            RelaxKonOSJsonOptions.Default);
+        Require((await staged.Content.ReadFromJsonAsync<GitOperationResult>(RelaxKonOSJsonOptions.Default))?.Success == true
+            && worktreeStatus?.Staged is [{ Path: "joint.txt" }], "the joint-installed Git package stages and reads the real Git index");
+    }
+
+    private static Task VerifySignedTunnelsAsync(TestHost host, string _)
+    {
+        var execution = host.Services.GetRequiredService<RelaxKonOS.ServerModule.Tunnels.ITunnelExecution>();
+        var request = new RelaxKonOS.Protocol.Tunnels.UpsertTunnelDefinitionRequest(Guid.Empty, "app",
+            RelaxKonOS.Protocol.Tunnels.TunnelProtocol.Http, "127.0.0.1", 8080, null, null, true, false, false);
+        Require(execution.ValidateDefinition(request) == "tunnel.domain_required"
+            && execution.ValidateDefinition(request with { Domain = "app.example.test" }) is null,
+            "the restarted host validates tunnel definitions through the joint-installed signed execution package");
+        return Task.CompletedTask;
     }
 
     public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
@@ -1087,6 +1112,7 @@ internal static class JointDeploymentAcceptance
     private sealed class TestHost(WebApplication app, ModuleManagementStore store) : IAsyncDisposable
     {
         public string Url => app.Urls.Single();
+        public IServiceProvider Services => app.Services;
 
         public static async Task<TestHost> StartAsync(string root, IConfiguration config)
         {

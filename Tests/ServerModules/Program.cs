@@ -173,6 +173,12 @@ if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundled
     return;
 }
 
+if (args is ["--signed-tunnels-joint-acceptance", var signedTunnelsApp])
+{
+    JointDeploymentAcceptance.RunSignedTunnels(signedTunnelsApp);
+    return;
+}
+
 if (args is ["--signed-git-joint-acceptance", var signedGitApp])
 {
     JointDeploymentAcceptance.RunSignedGit(signedGitApp);
