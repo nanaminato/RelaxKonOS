@@ -381,3 +381,4 @@
 - 含 ICU 的一次性 Ubuntu 容器使用未经修改的发行运行时配置通过 Databases 隔离验收。正式 Linux 安装脚本配置固定 sudo 启动器后，非 root Server 测试账户可以启动包，专用模块账户持有数据目录，root 持有包快照，四条查询、健康和退出均通过。查询使用受控回环代理，Core 监督下的联合安装和真实 Helper 查询待验。
 - 一次性 Ubuntu 容器中，发行 Core 接纳签名目录并离线安装 Databases。验收夹具为精确归档预置代码信任后，非 root Core 使用正式 sudo 启动器监督模块，记录 running，Core /healthz 返回 200 并正常退出。安装回执由 AwaitingRestart 转为 Succeeded。真实在线联合安装及观察者经 Helper 查询待验。
 - 一次性 Ubuntu 容器运行发行 Core、隔离 Databases ModuleHost 及真实 Linux Helper。使用临时 PAM 账户登录两台客户端，刷新首台设备令牌并核对 observer 角色，四条数据库查询均从公开 HTTP 入口返回 200 和 JSON。安装信任仍由夹具为精确归档预置，在线联合安装及真实数据库实例业务验收待补。
+- 一次性 Ubuntu 容器移除预置代码信任。真实 PAM 控制端上传已离线安装的 Databases 归档、创建并应用冻结计划，验证持久信任绑定归档摘要且首次确认前无运行进程。Core 重启后监督器启动模块，同一在线操作回执为 Succeeded，观察者四条查询经真实 Helper 均返回 200。桌面协调器跨设备安装及在已部署数据库实例上的业务验收仍待完成。
