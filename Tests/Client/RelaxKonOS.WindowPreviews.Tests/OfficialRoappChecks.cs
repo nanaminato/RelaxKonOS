@@ -531,7 +531,16 @@ internal static class OfficialRoappChecks
                         await Task.Delay(50);
                     Check(sample.GetValue(model) is RelaxKonOS.Protocol.SystemMonitor.PerformanceRealtimeSnapshotDto { Memory.TotalBytes: > 0 },
                         "The installed Task Manager displays native host memory data through the SDK.");
-                    Console.WriteLine("The installed Task Manager received a native performance snapshot over loopback HTTP.");
+                    var switchToProcesses = (System.Windows.Input.ICommand)model.GetType().GetProperty("SwitchToProcessesCommand")!.GetValue(model)!;
+                    model.GetType().GetProperty("ProcessFilter")!.SetValue(model, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    switchToProcesses.Execute(null);
+                    var rows = (System.Collections.IEnumerable)model.GetType().GetProperty("FilteredProcesses")!.GetValue(model)!;
+                    bool HasDesktopProcess() => rows.Cast<object>().Any(row => row.GetType().GetProperty("Process")!.GetValue(row)
+                        is RelaxKonOS.Protocol.SystemMonitor.ProcessInfoDto process && process.Id == Environment.ProcessId);
+                    for (var attempt = 0; attempt < 200 && !HasDesktopProcess(); attempt++)
+                        await Task.Delay(50);
+                    Check(HasDesktopProcess(), "The installed Task Manager lists the running desktop test process through the ordinary process query.");
+                    Console.WriteLine("The installed Task Manager received native performance and process data over loopback HTTP.");
                 }
                 var workspaceType = applicationId switch
                 {
@@ -955,6 +964,7 @@ internal static class OfficialRoappChecks
             {
                 ((EventAlertsAuthFixture)(object)auth).ServiceId = performanceEndpoint.AbsoluteUri;
                 appPermissions.Granted.Add(AppPermissions.ServerMetricsRead);
+                appPermissions.Granted.Add(AppPermissions.ServerProcessesManage);
             }
             appPermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
             appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
