@@ -37,7 +37,8 @@ internal class ApplicationDeploymentsModule : IServerModule, IServerModuleDeacti
         {
             var deployments = services.GetRequiredService<ApplicationDeploymentOperationStore>().Read()
                 .Where(entry => ApplicationDeploymentOperationStore.BlocksMutation(entry.Operation))
-                .Select(entry => new ServerModuleOrphanedWork(Id, $"Deployment operation {entry.Operation.OperationId} has unresolved work."));
+                .Select(entry => new ServerModuleOrphanedWork(Id, $"Deployment operation {entry.Operation.OperationId} has unresolved work.",
+                    RecoveryRequired: !ApplicationDeploymentOperationStore.Active(entry.Operation)));
             var backups = services.GetRequiredService<BackupRecoveryManifestStore>().Read()
                 .Where(entry => entry.Manifest.State is BackupRecoveryOperationState.Queued or BackupRecoveryOperationState.Running)
                 .Select(entry => new ServerModuleOrphanedWork(Id, $"Backup operation {entry.Manifest.BackupId} has unresolved work."));
@@ -45,7 +46,7 @@ internal class ApplicationDeploymentsModule : IServerModule, IServerModuleDeacti
         }
         catch (Exception exception) when (exception is ApplicationDeploymentException or BackupRecoveryException)
         {
-            return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>([new(Id, "The deployment or backup ledger cannot be read.")]);
+            return ValueTask.FromResult<IReadOnlyList<ServerModuleOrphanedWork>>([new(Id, "The deployment or backup ledger cannot be read.", RecoveryRequired: true)]);
         }
     }
 }

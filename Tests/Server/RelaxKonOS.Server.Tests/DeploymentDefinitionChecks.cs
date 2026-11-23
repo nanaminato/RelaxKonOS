@@ -10,6 +10,8 @@ using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Startup.Modules;
+using RelaxKonOS.Server.BackupRecovery;
 
 internal static class DeploymentDefinitionChecks
 {
@@ -45,7 +47,8 @@ internal static class DeploymentDefinitionChecks
         Check(await ApplicationArchiveExecution.Bundled.PrepareAsync(payload, buildContext, 10, 3, 4, default)
             == ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge, "The execution assembly must preserve the archive size problem code.");
 
-        var disabledBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        var guardRoot = Directory.CreateDirectory(Path.Combine(root, "module-guard")).FullName;
+        var disabledBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = guardRoot });
         var disabled = ServerModules.CreateManaged(new HashSet<string>());
         var context = ServerModuleContext.Create(disabledBuilder.Configuration, disabledBuilder.Environment, "memory");
         disabledBuilder.Services.AddApplicationDeploymentState();
@@ -58,6 +61,39 @@ internal static class DeploymentDefinitionChecks
                 && disabledHost.Services.GetService<ApplicationDeploymentCoordinator>() is null
                 && !((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)disabledHost).DataSources.Any(),
                 "A disabled deployment module must expose no coordinator, routes, Hub or capability.");
+            IServerModuleDeactivationGuard guard = new ApplicationDeploymentsModule();
+            var services = disabledHost.Services;
+            Check((await guard.InspectDisabledStartupAsync(services, context, default)).Count == 0,
+                "Empty ledgers must allow the module to remain disabled.");
+            var guardOperations = services.GetRequiredService<ApplicationDeploymentOperationStore>();
+            var backups = services.GetRequiredService<BackupRecoveryManifestStore>();
+            var id = Guid.NewGuid();
+            var operation = guardOperations.Create(id, "guard-fixture", DeploymentOperationKind.Deploy, "fixture", "deploy",
+                ApplicationDeploymentValidation.Reference("deploy"), ApplicationDeploymentService.Resources(id), out _).Operation;
+            var backup = backups.Create(id, null, "fixture", ApplicationDeploymentValidation.Reference("backup"), out _).Manifest;
+            var pending = await guard.InspectOrphanedWorkAsync(services, context, default);
+            Check(pending.Count == 2 && pending.All(item => !item.RecoveryRequired)
+                && pending.Any(item => item.Description.Contains(operation.OperationId.ToString(), StringComparison.Ordinal))
+                && pending.Any(item => item.Description.Contains(backup.BackupId.ToString(), StringComparison.Ordinal)),
+                "Queued deployment and backup receipts must both block module deactivation.");
+            guardOperations.Update(operation.OperationId, previous => previous with
+            {
+                State = DeploymentOperationState.Failed, Stage = DeploymentStage.Failed, Cancellable = false,
+                CompletedAt = DateTimeOffset.UtcNow, RecoveryProblemCode = ApplicationManagedComposeDispatch.OutcomeUnknown,
+            }, "failed");
+            backups.MarkInterruptedAtStartup();
+            Check((await guard.InspectDisabledStartupAsync(services, context, default)).Single() is { RecoveryRequired: true },
+                "An unknown deployment outcome must remain visible as recovery required after work stops.");
+        }
+        var corrupt = Path.Combine(guardRoot, new BackupRecoveryOptions().RootDirectory, "manifests.json");
+        await File.WriteAllTextAsync(corrupt, "invalid ledger");
+        await using (var services = new ServiceCollection().AddSingleton<IHostEnvironment>(new TestHostEnvironment(guardRoot))
+            .AddSingleton(new ApplicationDeploymentOptions()).AddSingleton<ApplicationDeploymentOperationStore>()
+            .AddSingleton(new BackupRecoveryOptions()).AddSingleton<BackupRecoveryManifestStore>().BuildServiceProvider())
+        {
+            var guard = new ApplicationDeploymentsModule();
+            Check((await guard.InspectOrphanedWorkAsync(services, context, default)).Single() is { RecoveryRequired: true },
+                "An unreadable persisted ledger must fail closed and surface recovery required.");
         }
 
         var environment = new TestHostEnvironment(root);

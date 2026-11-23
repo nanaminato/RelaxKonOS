@@ -964,3 +964,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 使用重打包归档通过 `--signed-application-deployments-joint-acceptance`。验收副本仅提高模块最低版本以触发签名安装。真实桌面协调器在模块生效前保留计划，隔离服务端重启后按原回执完成应用登记。已安装执行程序集实际准备 ZIP 上下文，桌面卸载释放依赖登记并保留模块。生产目录未发布。
 - Windows Release 使用未修改的重打包 Application Deployments 归档通过 `--joint-deployment-acceptance`。已停用的随附模块生成仅启用计划，无包下载或安装回执，重启生效后登记客户端。有效模块直接复用，安装未增加模块操作，卸载清除依赖登记并保留模块。此轮验收管理与协调路径，未运行 Docker 工作负载。
 - Linux x64 从 `1ca0e73f1` 发布自包含验收运行器，在 WSL 完成签名模块与随附模块两套联合验收。签名安装使用仅提高模块最低版本的桌面副本，重启后按原计划登记，并由已安装执行程序集准备 ZIP 上下文。随附模块使用未修改的重打包归档，验证停用后仅启用、就绪时直接复用，以及卸载释放依赖登记。两套测试均正常退出，本轮未发起 Docker 构建。
+- Application Deployments 的停用检查将部署结果未知与台账不可读标记为需要恢复。Windows Release `--deployment-definition-only` 验证空台账可停用、排队部署与备份均阻止停用、未知部署结果在禁用启动检查中仍需恢复，以及重新打开损坏备份台账时拒绝停用。
