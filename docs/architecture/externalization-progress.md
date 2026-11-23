@@ -24,7 +24,7 @@
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
 | browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包已验，原生 WebView 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期及 Linux Standard 原生首次预装已验 |
-| registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Windows 与 Linux x64 发行包生命周期及已安装窗口读取当前用户的服务端工作区值已验 |
+| registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Windows 与 Linux x64 发行包生命周期及已安装窗口读取服务端从 SQLite 恢复的工作区值已验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 与 Linux x64 包生命周期及已安装官方窗口经隔离服务端读取告警已验，桌面 SDK 授权边界已验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | Windows 和 Linux 签名双包、真实 Engine 临时项目部署和删除已验 |
@@ -936,3 +936,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows 和 Linux x64 的 Task Manager 官方包专项进入进程页并按桌面测试进程 PID 筛选，验证普通进程查询返回的数据可显示在实际窗口的进程树中。两端使用观察者测试身份和应用进程权限，未请求宿主提升或终止进程。
 - Windows Release Registry 官方包接入隔离 Registry 服务。服务端通过生产 HTTP 写入工作区时间格式后，已安装窗口使用生产 SDK 和只读应用权限浏览当前用户的 `Workspace\Desktop`，显示保存的 `12h`。此轮使用内存仓储与本地身份夹具。可用 Server.Tests 的 `--registry-access-only <桌面验收运行器> <relaxkonos.registry.roapp>` 复现。
 - Linux x64 从 `bd27365c8` 自包含发布，在 WSL 独立网络使用 Linux 官方 Registry 归档通过同一端到端读取及包生命周期回归。服务端 Registry 修订冲突、跨用户提升和自定义值重命名专项同轮通过。
+- Windows 与 Linux x64 的 Registry 官方包联调改用生产 SQLite 写回仓储。服务端经 HTTP 保存配置、停机写回，再用新宿主和新仓储实例打开同一数据库。已安装窗口经 SDK 读取 `12h`，通过包生命周期回归。用户和工作区身份仍使用本地测试夹具。

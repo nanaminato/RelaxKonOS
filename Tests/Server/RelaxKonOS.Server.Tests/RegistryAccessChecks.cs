@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.AppSettings;
@@ -19,10 +21,18 @@ using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Storage;
+using RelaxKonOS.Server.Storage.Sqlite;
 
 internal static class RegistryAccessChecks
 {
     public static async Task RunAsync(string? desktopRunner = null, string? archive = null)
+    {
+        var root = Directory.CreateTempSubdirectory("relaxkonos-registry-http-");
+        try { await RunAsync(root.FullName, desktopRunner, archive); }
+        finally { root.Delete(recursive: true); }
+    }
+
+    private static async Task RunAsync(string root, string? desktopRunner, string? archive)
     {
         var owner = Guid.NewGuid(); var other = Guid.NewGuid(); var third = Guid.NewGuid();
         var device = Guid.NewGuid();
@@ -32,20 +42,23 @@ internal static class RegistryAccessChecks
         var ownWorkspace = workspaces.Add(new Workspace { Id = Guid.NewGuid(), UserId = owner });
         var otherWorkspace = workspaces.Add(new Workspace { Id = Guid.NewGuid(), UserId = other });
         workspaces.Add(new Workspace { Id = Guid.NewGuid(), UserId = third });
-        var registry = new InMemoryRegistryRepository();
+        PooledDbContextFactory<RelaxKonOSDbContext>? factory = null;
+        if (desktopRunner is not null && archive is not null)
+        {
+            TestAssert.Assert(Path.GetFileName(archive) == "relaxkonos.registry.roapp", "Supply the official Registry archive.");
+            var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>()
+                .UseSqlite($"Data Source={Path.Combine(root, "registry.db")};Pooling=False").Options;
+            factory = new PooledDbContextFactory<RelaxKonOSDbContext>(options);
+            await using var db = await factory.CreateDbContextAsync();
+            await db.Database.EnsureCreatedAsync();
+        }
+        IRegistryRepository registry = factory is null ? new InMemoryRegistryRepository() : new CachedSqliteRegistryRepository(factory);
         var privileges = new TestHostAccountPrivilegeService();
         var store = new HostElevationSessionStore(privileges, new UploadSessionChecks.SystemMode(), new HostElevationSessionState());
         ClaimsPrincipal Principal() => new(new ClaimsIdentity([new Claim("sub", owner.ToString("D")),
             new Claim("jti", "registry-test"), new Claim("amr", "system"), new Claim("device_id", device.ToString("D")), new Claim("workspace_id", ownWorkspace.Id.ToString("D"))], "test"));
-        var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
-        builder.Services.AddSingleton(new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(Path.GetTempPath(), "runtime-registry-" + Guid.NewGuid().ToString("N"), "settings.json")));
-        builder.Services.AddAuthorization();
-        builder.Services.AddSingleton<IUserRepository>(users); builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
-        builder.Services.AddSingleton<IRegistryRepository>(registry); builder.Services.AddSingleton<IHostElevationSessionStore>(store);
-        builder.Services.AddSingleton<IAppSettingsRepository, InMemoryAppSettingsRepository>();
-        builder.Services.ConfigureHttpJsonOptions(options => { foreach (var converter in RelaxKonOSJsonOptions.Default.Converters) options.SerializerOptions.Converters.Add(converter); });
-        await using var app = builder.Build(); app.Use((http, next) => { http.User = Principal(); return next(http); });
-        app.UseAuthorization(); app.MapRegistryEndpoints(); app.MapAppSettingsEndpoints(); await app.StartAsync();
+        await using var app = CreateHost(registry);
+        await app.StartAsync();
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
         string Values(string path, Guid? target = null) => RegistryApiRoutes.ForUser(RegistryApiRoutes.Values, target ?? owner) + "?scope=workspace&path=" + Uri.EscapeDataString(path);
         async Task<RegistryEntryDto[]> Read(string path, Guid? target = null) => (await http.GetFromJsonAsync<RegistryEntryDto[]>(Values(path, target), RelaxKonOSJsonOptions.Default))!;
@@ -140,14 +153,38 @@ internal static class RegistryAccessChecks
         var scrollback = (await Read(cursor.Path)).Single(field => field.Name == "scrollbackLines");
         using (var saved = await Write(scrollback.Path, scrollback.Name, JsonSerializer.SerializeToElement(0), scrollback.Revision, type: RegistryValueType.Number)) Check(saved.IsSuccessStatusCode, "Zero scrollback is a valid preference.");
         using (var invalid = await Write(scrollback.Path, scrollback.Name, JsonSerializer.SerializeToElement(1.5), scrollback.Revision, type: RegistryValueType.Number)) Check(invalid.StatusCode == HttpStatusCode.BadRequest, "Scrollback must be an integer.");
-        if (desktopRunner is not null && archive is not null)
-        {
-            Check(Path.GetFileName(archive) == "relaxkonos.registry.roapp", "Supply the official Registry archive.");
-            privileges.Level = HostAccountPrivilege.StandardUser;
-            await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, archive, "RK_TEST_REGISTRY_PORT", http.BaseAddress!.Port,
-                new("RK_TEST_REGISTRY_USER", owner.ToString("D")));
-        }
         await app.StopAsync();
+        if (factory is not null && desktopRunner is not null && archive is not null)
+        {
+            privileges.Level = HostAccountPrivilege.StandardUser;
+            await using var restarted = CreateHost(new CachedSqliteRegistryRepository(factory));
+            await restarted.StartAsync();
+            await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, archive, "RK_TEST_REGISTRY_PORT", new Uri(restarted.Urls.Single()).Port,
+                new("RK_TEST_REGISTRY_USER", owner.ToString("D")));
+            await restarted.StopAsync();
+        }
         Console.WriteLine("PASS: registry fields, nested options, canonical Explorer settings, cross-user elevation, administrator authorization, audit, revision conflicts and custom-value rename.");
+
+        WebApplication CreateHost(IRegistryRepository repository)
+        {
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+            builder.Logging.ClearProviders();
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            builder.Services.AddSingleton(new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(root, "settings.json")));
+            builder.Services.AddAuthorization();
+            builder.Services.AddSingleton<IUserRepository>(users);
+            builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
+            builder.Services.AddSingleton(repository);
+            if (repository is CachedSqliteRegistryRepository cache) builder.Services.AddHostedService(_ => cache);
+            builder.Services.AddSingleton<IHostElevationSessionStore>(store);
+            builder.Services.AddSingleton<IAppSettingsRepository, InMemoryAppSettingsRepository>();
+            builder.Services.ConfigureHttpJsonOptions(options => { foreach (var converter in RelaxKonOSJsonOptions.Default.Converters) options.SerializerOptions.Converters.Add(converter); });
+            var host = builder.Build();
+            host.Use((request, next) => { request.User = Principal(); return next(request); });
+            host.UseAuthorization();
+            host.MapRegistryEndpoints();
+            host.MapAppSettingsEndpoints();
+            return host;
+        }
     }
 }
