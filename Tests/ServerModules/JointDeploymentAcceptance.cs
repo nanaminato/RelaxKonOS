@@ -827,6 +827,18 @@ internal static class JointDeploymentAcceptance
             Require(apps.IsRegistered(new AppId(installed.Id)) && InstalledModuleStore.Read(serverRoot).Single() is { Version: version }
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                 $"after restart the desktop registers {moduleId} against the signed execution package without resubmitting installation");
+            if (dependencies is { Count: > 0 })
+            {
+                var client = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                factory.HideStoreModule = moduleId;
+                var snapshot = await new ModuleDeploymentCatalog(client).ReadAsync(default);
+                factory.HideStoreModule = null;
+                var effective = snapshot.Releases.Single(release => release.Package.Id == moduleId && release.Satisfied);
+                Require(snapshot.Store.Values.All(item => item.ModuleId != moduleId)
+                    && effective.Requires.Select(requirement => new ModulePackageDependency(requirement.Package.Id,
+                    requirement.MinimumVersion!, requirement.MaximumVersionExclusive!)).SequenceEqual(dependencies),
+                    "reusing an installed signed module absent from the store preserves its manifest dependency ranges");
+            }
             if (incompatible is not null)
             {
                 var active = InstalledModuleStore.Read(serverRoot).Single();
@@ -2465,6 +2477,7 @@ internal static class JointDeploymentAcceptance
         public bool DropDependencyReply { set => handler.DropDependencyReply = value; }
         public bool ExpirePackageApply { set => handler.ExpirePackageApply = value; }
         public bool DropPackageApplyReply { set => handler.DropPackageApplyReply = value; }
+        public string? HideStoreModule { set => handler.HideStoreModule = value; }
         public bool BlockDependencyRelease { set => handler.BlockDependencyRelease = value; }
         public HttpClient CreateClient(string name)
         {
@@ -2485,6 +2498,7 @@ internal static class JointDeploymentAcceptance
         public bool DropDependencyReply { get; set; }
         public bool ExpirePackageApply { get; set; }
         public bool DropPackageApplyReply { get; set; }
+        public string? HideStoreModule { get; set; }
         public bool BlockDependencyRelease { get; set; }
         public bool SubstituteReceiptRelease { get; set; }
         public bool SubstituteHealthVersion { get; set; }
@@ -2510,6 +2524,17 @@ internal static class JointDeploymentAcceptance
             if (before is not null) await before();
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (HideStoreModule is { } hiddenModule && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleStoreSearch)
+            {
+                using var response = await base.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var page = (await response.Content.ReadFromJsonAsync<ServerModuleStorePageDto>(RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(page with { Items = page.Items.Where(item => item.ModuleId != hiddenModule).ToArray() },
+                        options: RelaxKonOSJsonOptions.Default),
+                };
+            }
             if (request.Method == HttpMethod.Post
                 && path is not null && path.StartsWith(ServerModuleManagementRoutes.PackagePlans + "/", StringComparison.Ordinal)
                 && path.EndsWith("/apply", StringComparison.Ordinal))

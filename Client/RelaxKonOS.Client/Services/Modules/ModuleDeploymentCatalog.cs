@@ -83,8 +83,8 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             {
                 identity = module.ArtifactDigest ?? $"bundled/{module.Id}/{module.EffectiveVersion}";
             }
-            var dependencies = store.TryGetValue(identity, out var signedRelease)
-                ? signedRelease.Dependencies.Select(ToRequirement)
+            var dependencies = module.Packaging == "independent"
+                ? package!.Dependencies.Select(ToRequirement)
                 : module.Requires.Select(id => new DeploymentRequirement(Key(id)));
             releases.Add(new(Key(module.Id), effectiveVersion, identity, true, [..dependencies],
                 ObservedCapabilities(module)));
@@ -128,7 +128,8 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         var packages = installed.OrderBy(package => package.ModuleId, StringComparer.Ordinal).Select(package => new
         {
             package.ModuleId, package.Version, package.SourceId, package.ReleaseId,
-            package.ArtifactSha256, package.Active, package.Quarantined
+            package.ArtifactSha256, package.ManifestSha256, package.Active, package.Quarantined,
+            Dependencies = package.Dependencies.OrderBy(dependency => dependency.ModuleId, StringComparer.Ordinal),
         });
         return new(modules[0].ServiceId!, Digest(new { Modules = state, Packages = packages }), CatalogRevision(sources));
     }

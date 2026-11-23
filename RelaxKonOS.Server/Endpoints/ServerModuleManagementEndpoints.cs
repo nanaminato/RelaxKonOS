@@ -173,7 +173,7 @@ internal static class ServerModuleManagementEndpoints
         {
             var current = InstalledModuleStore.Read(context.ContentRootPath);
             return Task.FromResult<IResult>(Results.Ok(new ServerInstalledModulePageDto(
-                current.Select(module => InstalledDto(module, module)).ToArray())));
+                current.Select(module => InstalledDto(context.ContentRootPath, module, module)).ToArray())));
         })).RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.PackageVersions, (string moduleId, ServerModuleContext context) => Respond(() =>
         {
@@ -181,7 +181,7 @@ internal static class ServerModuleManagementEndpoints
             var current = InstalledModuleStore.Read(context.ContentRootPath).SingleOrDefault(module => module.ModuleId == moduleId);
             return Task.FromResult<IResult>(Results.Ok(new ServerInstalledModulePageDto(
                 InstalledModuleStore.ReadVersions(context.ContentRootPath, moduleId)
-                    .Select(module => InstalledDto(module, current)).ToArray())));
+                    .Select(module => InstalledDto(context.ContentRootPath, module, current)).ToArray())));
         })).RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.PackageOperations, (ServerModuleContext context) => Respond(() =>
             Task.FromResult<IResult>(Results.Ok(new ServerPackageOperationPageDto(
@@ -261,7 +261,7 @@ internal static class ServerModuleManagementEndpoints
             var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record,
                 previous?.Version, DateTimeOffset.UtcNow);
             try { File.Delete(path); } catch (IOException) { }
-            return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
+            return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(context.ContentRootPath, record, record)));
         })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackagePlans, async (ServerModulePackageInstallRequest request,
             HttpContext http, ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
@@ -340,7 +340,7 @@ internal static class ServerModuleManagementEndpoints
                     .SingleOrDefault(module => module.Version == plan.Version && module.ArtifactSha256 == plan.ArtifactSha256);
                 var current = InstalledModuleStore.Read(context.ContentRootPath).SingleOrDefault(module => module.ModuleId == plan.ModuleId);
                 return target is null ? Problem("module-package-plan-target-missing", 409)
-                    : Results.Ok(new ServerModulePackageInstallResultDto(applied, InstalledDto(target, current)));
+                    : Results.Ok(new ServerModulePackageInstallResultDto(applied, InstalledDto(context.ContentRootPath, target, current)));
             }
             EnsurePackageMutationAllowed(http.RequestServices.GetRequiredService<ModuleManagementStore>(), plan.ModuleId);
             var path = Path.Combine(context.ContentRootPath, "data", "module-management", "staging", "uploads",
@@ -407,7 +407,7 @@ internal static class ServerModuleManagementEndpoints
                     problem, management?.ProcessGeneration, DateTimeOffset.UtcNow);
                 try { File.Delete(path); } catch (IOException) { }
                 var current = InstalledModuleStore.Read(context.ContentRootPath).SingleOrDefault(module => module.ModuleId == staged.ModuleId);
-                return Results.Ok(new ServerModulePackageInstallResultDto(update.OperationId, InstalledDto(staged, current)));
+                return Results.Ok(new ServerModulePackageInstallResultDto(update.OperationId, InstalledDto(context.ContentRootPath, staged, current)));
             }
             var record = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
                 context.Configuration, context.Environment, plan.SourceId, path, plan.ReleaseId, now, cancellationToken);
@@ -420,7 +420,7 @@ internal static class ServerModuleManagementEndpoints
                     null, http.RequestServices.GetService<ModuleManagementStore>()?.ProcessGeneration, DateTimeOffset.UtcNow);
             ModulePackagePlanStore.MarkApplied(context.ContentRootPath, plan.PlanId, operation.OperationId, now);
             try { File.Delete(path); } catch (IOException) { }
-            return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
+            return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(context.ContentRootPath, record, record)));
         })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackageRollback, async (ServerModulePackageRollbackRequest request,
             ServerModuleContext context, HttpContext http, CancellationToken cancellationToken) => await Respond(async () =>
@@ -436,7 +436,7 @@ internal static class ServerModuleManagementEndpoints
                 request.Version, cancellationToken);
             var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "rollback", record,
                 current.Version, DateTimeOffset.UtcNow);
-            return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
+            return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(context.ContentRootPath, record, record)));
         })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         return app;
     }
@@ -467,10 +467,12 @@ internal static class ServerModuleManagementEndpoints
         new(capability.Kind, capability.Platforms, ModuleCapabilityPolicy.Describe(capability),
             ModuleCapabilityPolicy.IsExecutable(capability.Kind));
 
-    private static ServerInstalledModuleDto InstalledDto(InstalledModuleRecord module, InstalledModuleRecord? current) =>
+    private static ServerInstalledModuleDto InstalledDto(string contentRoot, InstalledModuleRecord module, InstalledModuleRecord? current) =>
         new(module.ModuleId, module.Version, module.ReleaseId, module.SourceId, module.PublisherId, module.ArtifactSha256,
             module.ManifestSha256, module.PackagePath, module.EntryAssembly, module.EntryType, module.Capabilities,
-            module.Requires, module.InstalledAt,
+            module.Requires, module.Quarantined || module.Requires.Length == 0 ? [] : InstalledModuleStore.ReadVerifiedManifest(contentRoot, module)
+                .Dependencies.Select(dependency => new ServerModuleReleaseDependencyDto(dependency.ModuleId,
+                    dependency.MinimumVersion, dependency.MaximumVersionExclusive)).ToArray(), module.InstalledAt,
             current is not null && current.ModuleId == module.ModuleId && current.Version == module.Version
                 && current.ArtifactSha256 == module.ArtifactSha256,
             module.Quarantined);

@@ -390,7 +390,13 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
     private static bool ValidInstalled(ServerInstalledModuleDto? module) => module is not null
         && ValidIds([module.ModuleId]) && module.Version is { Length: > 0 and <= 32 }
         && module.ReleaseId is { Length: > 0 and <= 128 } && ValidDigest(module.ArtifactSha256)
-        && ValidDigest(module.ManifestSha256) && module.InstalledAt != default;
+        && ValidDigest(module.ManifestSha256) && module.InstalledAt != default
+        && ValidIds(module.Requires) && module.Dependencies is { Count: <= 128 }
+        && module.Dependencies.All(dependency => dependency is not null && ValidIds([dependency.ModuleId])
+            && Version.TryParse(dependency.MinimumVersion, out var minimum)
+            && Version.TryParse(dependency.MaximumVersionExclusive, out var maximum) && minimum < maximum)
+        && (module.Quarantined ? module.Dependencies.Count == 0 : module.Requires.Order(StringComparer.Ordinal)
+            .SequenceEqual(module.Dependencies.Select(dependency => dependency.ModuleId).Order(StringComparer.Ordinal), StringComparer.Ordinal));
 
     private static void ValidatePackagePlan(ServerModulePackagePlanDto plan)
     {
