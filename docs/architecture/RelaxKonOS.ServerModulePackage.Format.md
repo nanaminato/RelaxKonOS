@@ -125,7 +125,7 @@ RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <�
 
 入口程序集文件名为 `RelaxKonOS.ServerModule.<目录>.dll`。Git 的 `capabilityContractVersions` 必须声明当前 `GitApiRoutes.CapabilityContractVersion`。Web Server 的依赖声明必须包含 `relaxkonos.certificates` 的受支持版本区间。Certificates 的发布目录须包含 `Certify.ACME.Anvil.dll`、`BouncyCastle.Cryptography.dll` 和 `Newtonsoft.Json.dll`。这些执行包的版本切换在 Core 重启时生效。
 
-Proxy 包解包并验证文件摘要后，宿主检查总览、连接快照、订阅解析、排队订阅、Mihomo 发布和 Squid 回执入口的接口和公开构造签名。检查在提交版本目录前完成，无需创建执行器实例。重用暂存版本或回退至历史版本时重新检查契约。执行契约不兼容时返回 `module-package-execution-contract`，保留当前选中的版本。
+Proxy 包解包并验证文件摘要后，宿主检查总览、连接快照、订阅解析、排队订阅、Mihomo 发布和 Squid 回执入口的接口和公开构造签名。检查在提交版本目录前完成，无需创建执行器实例。重用或激活暂存版本、回退至历史版本时重新验证文件摘要与执行契约。执行契约不兼容时返回 `module-package-execution-contract`，保留当前选中的版本。
 
 Firewall 包在相同的安装、暂存复用和回退边界校验 `IFirewallExecutionModule` 接口及接收 `FirewallExecutionContext` 的公开构造函数。
 Tailscale 包在这些边界校验 `ITailscaleExecution` 接口及公开无参构造函数。

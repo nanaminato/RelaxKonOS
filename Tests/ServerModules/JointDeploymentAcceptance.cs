@@ -841,6 +841,16 @@ internal static class JointDeploymentAcceptance
                 var priorRoot = Path.Combine(serverRoot, "data", "module-management", prior.PackagePath);
                 ZipFile.ExtractToDirectory(incompatible.ArchivePath, priorRoot);
                 InstalledModuleStore.WriteInstallMetadata(priorRoot, prior);
+                try
+                {
+                    InstalledModuleInstaller.Activate(serverRoot, prior);
+                    throw new InvalidOperationException($"Activation accepted the incompatible {moduleId} execution package.");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                {
+                    Require(InstalledModuleStore.Read(serverRoot).Single().ArtifactSha256 == active.ArtifactSha256,
+                        $"direct activation rejects an incompatible {moduleId} execution contract");
+                }
                 await using (var retryArchive = File.OpenRead(incompatible.ArchivePath))
                 {
                     try

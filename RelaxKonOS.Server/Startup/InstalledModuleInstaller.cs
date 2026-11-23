@@ -212,7 +212,7 @@ internal static class InstalledModuleInstaller
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             Directory.Move(staging, destination);
             staging = string.Empty;
-            if (activate) Activate(contentRoot, record);
+            if (activate) CommitSelection(contentRoot, record);
             return record;
         }
         finally
@@ -222,6 +222,13 @@ internal static class InstalledModuleInstaller
     }
 
     internal static void Activate(string contentRoot, InstalledModuleRecord record)
+    {
+        var manifest = InstalledModuleStore.VerifyPackage(contentRoot, record);
+        VerifyExecutionContract(InstalledModuleStore.ResolvePackageRoot(contentRoot, record.PackagePath), manifest);
+        CommitSelection(contentRoot, record);
+    }
+
+    private static void CommitSelection(string contentRoot, InstalledModuleRecord record)
     {
         var modules = InstalledModuleStore.Read(contentRoot).Where(module => module.ModuleId != record.ModuleId).ToList();
         ValidateDependentVersions(contentRoot, record.ModuleId, record.Version, modules);

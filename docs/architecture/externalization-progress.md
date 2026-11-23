@@ -898,3 +898,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Certificates 与 Git 的签名执行契约加入安装、暂存复用和回退检查。Windows Release 及无外网 Linux x64 容器均拒绝主入口仍在但缺少所需执行接口的测试包，活动版本不变。兼容 Certificates 调用了生产 ACME 观察执行器，兼容 Git 通过生产 HTTP 初始化真实 Git 工作树并读写索引。Linux 完整模块套件同轮通过 1,510 项检查。
 - Linux x64 在新契约检查下，使用完整重建的 Certificates 官方桌面归档和隔离 Pebble 复验实际签发。坏包先在安装、暂存复用和回退边界被拒。兼容包仅产生一个订单及一次 finalize。生产 API 拒绝缺少授权的签发，重放及 Core 重启后返回同一回执和证书，持久链验证到测试 CA。
 - 加入八个进程内签名替换模块的执行契约预检后，Windows Release 完整模块套件通过 1,498 项。Linux x64 的 Tailscale 专项使用完整重建官方归档，验证三条不兼容版本拒绝、兼容包重启续跑、匿名读取和缺少提升授权的写入拒绝。Linux 此轮使用测试 Helper 传输。
+- 暂存版本单独激活时重新验证磁盘上的包内容和适用的进程内执行契约，再切换安装台账。Windows Release 的签名 Proxy 专项确认直接激活不兼容历史包被拒，活动摘要不变。完整模块套件同轮通过。
