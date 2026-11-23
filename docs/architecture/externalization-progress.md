@@ -909,3 +909,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 复用运行中的独立模块时，联合部署从已安装包接口获取经清单摘要核对的传递版本范围。Windows 签名 Web Server 双包验收在商店响应省略其发行项时，仍从已安装清单获得对 Certificates 的最低版本和排除式最高版本。
 - Windows Release 的 Welcome 与 Databases 联合部署专项通过。完整模块套件首次在云上传冲突断言失败，单独重跑通过全部 1,498 项检查。
 - 桌面启动守卫使用模块运行清单提供的签名依赖范围。Windows 签名 Web Server 专项先核对服务端从实际运行版本清单返回的 Certificates 约束，再在测试响应中收紧范围，确认守卫拒绝启动，即使 Certificates 仍在运行。
+- 重新启用已安装的独立模块时，联合部署核对可信目录与安装记录中的归档和清单摘要，从已校验的本机清单读取依赖范围。Windows 签名 Web Server 专项在卸载桌面包后停用模块，重启后使用原包和 Certificates 依赖生成仅启用计划，再重启完成桌面注册。整个流程只记录最初的一次模块包操作。

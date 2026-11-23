@@ -55,11 +55,12 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                     && package.ArtifactSha256 == module.ArtifactDigest && package.Version == module.InstalledVersion)
                     store.TryGetValue(Identity(package.SourceId, package.ReleaseId, package.ArtifactSha256), out signed);
 
-                if (module.Packaging == "bundled" || signed?.ModuleId == module.Id && signed.Version == activationVersion)
+                if (module.Packaging == "bundled" || signed?.ModuleId == module.Id && signed.Version == activationVersion
+                    && signed.ManifestSha256 == package!.ManifestSha256)
                 {
                     var requirements = signed is null
                         ? module.Requires.Select(id => new DeploymentRequirement(Key(id)))
-                        : signed.Dependencies.Select(ToRequirement);
+                        : package!.Dependencies.Select(ToRequirement);
                     releases.Add(new(Key(module.Id), activationVersion, module.ArtifactDigest!, false,
                         [.. requirements], ObservedCapabilities(module))
                     {

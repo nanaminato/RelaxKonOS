@@ -967,6 +967,33 @@ internal static class JointDeploymentAcceptance
                 $"uninstalling the desktop {moduleId} package releases the app without removing the server module");
             if (verifySharedProxy)
                 Require(!await IsDesktopDependencyProtectedAsync(), "removing the final Proxy dependent clears the server-side desktop blocker");
+            if (dependencies is { Count: > 0 })
+            {
+                var management = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                var inventory = await management.ReadAsync();
+                var desired = inventory.Where(module => module.DesiredEnabled && module.Id != moduleId)
+                    .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+                var disable = await management.PreviewAsync(new(serviceId, ServerModuleAction.Disable, [moduleId],
+                    desired, inventory[0].DesiredRevision!, "disable-signed-for-reactivation"));
+                Require(disable.BlockedBy.Count == 0 && (await management.ApplyAsync(disable.PlanId)).State == ServerModuleOperationState.AwaitingRestart,
+                    "the signed module can be disabled after the desktop dependency is released");
+                await host.DisposeAsync();
+                host = await TestHost.StartAsync(serverRoot, config);
+                session.Url = host.Url;
+                var reactivation = await joint.PrepareAsync(await installer.InspectLocalAsync(candidate.LocalPath), [], default);
+                var activate = reactivation.Plan.OrderedReleases.Single(item => item.Package.Id == moduleId);
+                Require(reactivation.Plan.PreparedSteps.IsEmpty && activate.ActivationOnly
+                    && activate.Requires.Select(requirement => new ModulePackageDependency(requirement.Package.Id,
+                        requirement.MinimumVersion!, requirement.MaximumVersionExclusive!)).SequenceEqual(dependencies),
+                    "reactivating the disabled signed module preserves installed dependency ranges without downloading an archive");
+                await ExpectRestartAsync(joint, reactivation);
+                await host.DisposeAsync();
+                host = await TestHost.StartAsync(serverRoot, config);
+                session.Url = host.Url;
+                await joint.ExecuteAsync(reactivation, default);
+                Require(apps.IsRegistered(new AppId(installed.Id)) && ModulePackageOperationStore.Read(serverRoot).Count == 1,
+                    "the signed module reactivation resumes after restart without another package operation");
+            }
 
             async Task<bool> IsDesktopDependencyProtectedAsync()
             {
