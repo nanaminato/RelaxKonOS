@@ -20,7 +20,7 @@
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
 | server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 安装、修复、包窗口、管理对话框、向导和卸载通过，真实 SSH 待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
-| taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Windows 与 Linux x64 发行包生命周期已验，Windows 已安装窗口读取原生性能快照已验，Linux 服务端原生采样专项已验 |
+| taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Windows 与 Linux x64 发行包生命周期及已安装窗口读取原生性能快照已验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
 | browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包已验，原生 WebView 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期及 Linux Standard 原生首次预装已验 |
@@ -932,3 +932,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 在 WSL 独立网络命名空间使用自包含服务端与桌面验收程序，以及 Linux 官方告警归档，完成同一窗口读取和包生命周期验收。`--event-alerts-only` 的桌面运行器参数也可传入自包含可执行文件。
 - Linux x64 在 WSL 独立网络中通过 Task Manager 官方 `.roapp` 安装、能力缺失时拒绝启动、更新、失败安装、重启和卸载验收。独立执行服务端性能专项，实际 Linux 采样源读取了 CPU、内存及文件系统数据，HTTP 响应租约和进程图标预算回归也通过。两项为独立测试，未连接桌面窗口与服务端。
 - Windows Release Task Manager 官方包通过窗口端到端验收。已安装窗口经生产 SDK 和环回 HTTP 从实际 Windows 性能采样源获取快照，窗口模型收到非零物理内存总量。测试使用观察者认证夹具和性能只读授权，可用 Server.Tests 的 `--task-manager-package-http <桌面验收运行器> <relaxkonos.taskmanager.roapp>` 复现。
+- Linux x64 从 `0c641e749` 自包含发布，在 WSL 独立网络使用 Linux 官方 Task Manager 归档通过同一窗口验收。窗口收到生产 Linux 采样源经原 HTTP 路由返回的物理内存快照，并通过包生命周期回归。此轮使用观察者测试身份和性能只读授权。
