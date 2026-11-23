@@ -206,11 +206,11 @@ internal static class OfficialRoappChecks
         var isDatabase = applicationId == "relaxkonos.database";
         var isTailscale = applicationId == "relaxkonos.tailscale";
         var isTunnels = applicationId == "relaxkonos.tunnels";
-        var requiresModule = isTunnels || isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale || isDatabase;
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
         var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
-        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments;
+        var requiresModule = isTunnels || isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale || isDatabase || isApplicationDeployments;
+        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -390,11 +390,15 @@ internal static class OfficialRoappChecks
                 await RejectAsync(() => installer.InstallAsync(candidate), "Databases without joint deployment");
             }
             if (isApplicationDeployments)
+            {
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerApplicationDeploymentsRead,
                     AppPermissions.ServerApplicationDeploymentsManage, AppPermissions.ServerFilesRead]
                     && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.application-deployments"]
-                    && candidate.Manifest.Dependencies?.Required is null or [],
-                    "Application Deployments review exposes the deployment and file grants and required server capability.");
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.application-deployments" }, Capability: ServerCapabilities.ApplicationDeployments }],
+                    "Application Deployments review exposes the deployment and file grants and required server module.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Application Deployments without joint deployment");
+            }
             if (isProxyManager)
             {
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage,

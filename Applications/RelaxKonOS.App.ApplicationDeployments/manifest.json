@@ -14,5 +14,13 @@
     "server.application-deployments.manage",
     "server.files.read"
   ],
-  "serverRequirements": { "capabilities": ["server.application-deployments"] }
+  "serverRequirements": { "capabilities": ["server.application-deployments"] },
+  "dependencies": {
+    "required": [
+      {
+        "package": { "kind": 1, "id": "relaxkonos.application-deployments" },
+        "capability": "server.application-deployments"
+      }
+    ]
+  }
 }
