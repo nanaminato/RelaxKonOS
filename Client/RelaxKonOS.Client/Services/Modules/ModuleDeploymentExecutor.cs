@@ -65,6 +65,11 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                 try
                 {
                     var result = await client.ApplyPackagePlanAsync(serverPlan.PlanId, cancellationToken);
+                    if (result.Record.ModuleId != serverPlan.ModuleId || result.Record.Version != serverPlan.Version
+                        || result.Record.SourceId != serverPlan.SourceId || result.Record.ReleaseId != serverPlan.ReleaseId
+                        || result.Record.ArtifactSha256 != serverPlan.ArtifactSha256 || result.Record.ManifestSha256 != step.ManifestSha256
+                        || result.Record.PublisherId != step.PublisherId)
+                        throw new InvalidOperationException("deployment-module-receipt-unavailable");
                     operationId = result.OperationId;
                 }
                 catch (InvalidOperationException error) when (error.Message == "module-package-plan-expired")
@@ -179,8 +184,10 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         if (module.Packaging == "independent")
         {
             var packages = await client.InstalledPackagesAsync(cancellationToken);
+            var prepared = plan.PreparedSteps.SingleOrDefault(step => step.Package == release.Package);
             if (!packages.Items.Any(package => package.ModuleId == module.Id && package.Active && !package.Quarantined
                 && package.Version == module.EffectiveVersion && package.ArtifactSha256 == identity
+                && (prepared is null || package.ManifestSha256 == prepared.ManifestSha256 && package.PublisherId == prepared.PublisherId)
                 && (release.ActivationOnly
                     || $"{package.SourceId}/{package.ReleaseId}/{package.ArtifactSha256}" == release.ArtifactIdentity)))
                 throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");

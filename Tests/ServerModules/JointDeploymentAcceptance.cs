@@ -1802,6 +1802,17 @@ internal static class JointDeploymentAcceptance
             }
             catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
             finally { factory.SubstituteInstalledDigest = false; }
+            factory.SubstituteInstalledManifest = true;
+            try
+            {
+                await executor.VerifyAsync(review.Plan, moduleRelease, default);
+                throw new InvalidOperationException("Expected the installed manifest digest to match the reviewed step.");
+            }
+            catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective")
+            {
+                Console.WriteLine("PASS: installed manifest drift is rejected even when the archive digest is unchanged");
+            }
+            finally { factory.SubstituteInstalledManifest = false; }
             factory.SubstituteBlockedHealth = true;
             try
             {
@@ -2559,6 +2570,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteFailedPackage { get => handler.SubstituteFailedPackage; set => handler.SubstituteFailedPackage = value; }
         public string? SubstituteServerIdentity { set => handler.SubstituteServerIdentity = value; }
         public bool SubstituteInstalledDigest { get => handler.SubstituteInstalledDigest; set => handler.SubstituteInstalledDigest = value; }
+        public bool SubstituteInstalledManifest { set => handler.SubstituteInstalledManifest = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public bool SubstituteCapabilities { get => handler.SubstituteCapabilities; set => handler.SubstituteCapabilities = value; }
         public string ObservedCapabilityVersion { set => handler.ObservedCapabilityVersion = value; }
@@ -2620,6 +2632,7 @@ internal static class JointDeploymentAcceptance
         public bool SubstituteFailedPackage { get; set; }
         public string? SubstituteServerIdentity { get; set; }
         public bool SubstituteInstalledDigest { get; set; }
+        public bool SubstituteInstalledManifest { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
@@ -2700,7 +2713,8 @@ internal static class JointDeploymentAcceptance
                     throw new HttpRequestException("fixture-dependency-reply-lost");
                 }
             }
-            if (SubstituteInstalledDigest && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.InstalledPackages)
+            if ((SubstituteInstalledDigest || SubstituteInstalledManifest) && request.Method == HttpMethod.Get
+                && path == ServerModuleManagementRoutes.InstalledPackages)
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
@@ -2711,7 +2725,11 @@ internal static class JointDeploymentAcceptance
                     Content = JsonContent.Create(page with
                     {
                         Items = page.Items.Select(item => item.ModuleId == ModuleId
-                            ? item with { ArtifactSha256 = new string('0', 64) } : item).ToArray(),
+                            ? item with
+                            {
+                                ArtifactSha256 = SubstituteInstalledDigest ? new string('0', 64) : item.ArtifactSha256,
+                                ManifestSha256 = SubstituteInstalledManifest ? new string('0', 64) : item.ManifestSha256,
+                            } : item).ToArray(),
                     }, options: RelaxKonOSJsonOptions.Default),
                 };
             }
