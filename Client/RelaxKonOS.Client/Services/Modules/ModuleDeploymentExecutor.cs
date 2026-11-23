@@ -51,7 +51,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                     || permission.Executable != step.Permissions[index].Executable
                     || !permission.Platforms.SequenceEqual(step.Permissions[index].Platforms, StringComparer.Ordinal)
                     || !permission.Resources.SequenceEqual(step.Permissions[index].Resources, StringComparer.Ordinal)).Any())
-                throw new InvalidOperationException("deployment-module-plan-changed");
+                throw new DeploymentPlanReviewRequiredException("deployment-module-plan-changed");
 
             cancellationToken.ThrowIfCancellationRequested();
             var operationId = serverPlan.AppliedOperationId;
@@ -118,7 +118,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         if (preview.BlockedBy.Count > 0)
             throw new InvalidOperationException(preview.BlockedBy[0].ProblemCode);
         if (preview.Removed.Count != 0 || preview.Added.Count != 1 || preview.Added[0] != module.Id)
-            throw new InvalidOperationException("deployment-module-plan-changed");
+            throw new DeploymentPlanReviewRequiredException("deployment-module-plan-changed");
 
         cancellationToken.ThrowIfCancellationRequested();
         var operation = await client.ApplyAsync(preview.PlanId, cancellationToken);

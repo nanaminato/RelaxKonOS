@@ -1005,6 +1005,17 @@ internal static class JointDeploymentAcceptance
                     && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
                     "a catalog change during signed reactivation persists the review requirement without enabling the module");
                 reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
+                factory.AlterEnablePreview = true;
+                try
+                {
+                    await joint.ExecuteAsync(reactivation, default);
+                    throw new InvalidOperationException("Expected a changed enable preview to require review.");
+                }
+                catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-plan-changed") { }
+                Require(await joint.FindPendingAsync(reactivationCandidate, default) is null
+                    && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
+                    "an enable preview that would remove another module requires review and is not applied");
+                reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
                 await ExpectRestartAsync(joint, reactivation);
                 await host.DisposeAsync();
                 host = await TestHost.StartAsync(serverRoot, config);
@@ -2536,6 +2547,7 @@ internal static class JointDeploymentAcceptance
         }
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
         public void ChangeSecondCatalogRevision() => handler.CatalogReadsUntilChange = 2;
+        public bool AlterEnablePreview { set => handler.AlterEnablePreview = value; }
         public bool DropDependencyReply { set => handler.DropDependencyReply = value; }
         public bool ExpirePackageApply { set => handler.ExpirePackageApply = value; }
         public bool DropPackageApplyReply { set => handler.DropPackageApplyReply = value; }
@@ -2559,6 +2571,7 @@ internal static class JointDeploymentAcceptance
         public TaskCompletionSource? EnableEntered { get; set; }
         public bool DropEnableResponse { get; set; }
         public int CatalogReadsUntilChange { get; set; }
+        public bool AlterEnablePreview { get; set; }
         public bool DropDependencyReply { get; set; }
         public bool ExpirePackageApply { get; set; }
         public bool DropPackageApplyReply { get; set; }
@@ -2722,6 +2735,17 @@ internal static class JointDeploymentAcceptance
                 var plan = await request.Content!.ReadFromJsonAsync<ServerModulePlanRequest>(
                     RelaxKonOSJsonOptions.Default, cancellationToken);
                 if (plan?.Action == ServerModuleAction.Enable) EnablePreviewKeys.Add(plan.IdempotencyKey);
+                if (AlterEnablePreview && plan?.Action == ServerModuleAction.Enable)
+                {
+                    AlterEnablePreview = false;
+                    using var response = await base.SendAsync(request, cancellationToken);
+                    response.EnsureSuccessStatusCode();
+                    var preview = (await response.Content.ReadFromJsonAsync<ServerModulePlanDto>(RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = JsonContent.Create(preview with { Removed = [ServerModules.CertificatesId] }, options: RelaxKonOSJsonOptions.Default),
+                    };
+                }
             }
             if (request.Method == HttpMethod.Post
                 && path?.StartsWith(ServerModuleManagementRoutes.Plans + "/", StringComparison.Ordinal) == true
