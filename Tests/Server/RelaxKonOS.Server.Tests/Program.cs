@@ -565,6 +565,13 @@ if (args.Contains("--process-termination-only"))
     await ProcessTerminationChecks.RunAsync();
     return;
 }
+if (args is ["--task-manager-package-http", var taskManagerDesktop, var taskManagerArchive])
+{
+    var taskManagerRoot = Directory.CreateTempSubdirectory("relaxkonos-task-manager-");
+    try { await PerformanceHttpResidencyChecks.RunDesktopAsync(taskManagerRoot.FullName, taskManagerDesktop, taskManagerArchive); }
+    finally { taskManagerRoot.Delete(recursive: true); }
+    return;
+}
 if (args.Contains("--performance-only"))
 {
     await ProcessPrivilegedIconBudgetChecks.RunAsync();

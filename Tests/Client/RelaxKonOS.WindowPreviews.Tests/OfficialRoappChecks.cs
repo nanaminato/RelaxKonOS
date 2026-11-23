@@ -165,7 +165,9 @@ internal static class OfficialRoappChecks
         using var http = new HttpClient();
         var alertPort = isEventAlerts ? Environment.GetEnvironmentVariable("RK_TEST_EVENT_ALERTS_PORT") : null;
         Uri? alertEndpoint = alertPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(alertPort)}/");
-        if (alertEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "observer");
+        var performancePort = isTaskManager ? Environment.GetEnvironmentVariable("RK_TEST_PERFORMANCE_PORT") : null;
+        Uri? performanceEndpoint = performancePort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(performancePort)}/");
+        if (alertEndpoint is not null || performanceEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "observer");
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
         var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
@@ -521,6 +523,16 @@ internal static class OfficialRoappChecks
                 for (var attempt = 0; attempt < 50 && windows.Windows.Count == 0; attempt++)
                     await Task.Delay(20);
                 var workspace = windows.Windows.Single();
+                if (performanceEndpoint is not null)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    var sample = model.GetType().GetProperty("Snapshot")!;
+                    for (var attempt = 0; attempt < 200 && sample.GetValue(model) is null; attempt++)
+                        await Task.Delay(50);
+                    Check(sample.GetValue(model) is RelaxKonOS.Protocol.SystemMonitor.PerformanceRealtimeSnapshotDto { Memory.TotalBytes: > 0 },
+                        "The installed Task Manager displays native host memory data through the SDK.");
+                    Console.WriteLine("The installed Task Manager received a native performance snapshot over loopback HTTP.");
+                }
                 var workspaceType = applicationId switch
                 {
                     "relaxkonos.registry" => "RelaxKonOS.App.Registry.RegistryView",
@@ -939,6 +951,11 @@ internal static class OfficialRoappChecks
                 ((EventAlertsAuthFixture)(object)auth).ServiceId = alertEndpoint.AbsoluteUri;
                 appPermissions.Granted.Add(AppPermissions.ServerEventAlertsRead);
             }
+            if (performanceEndpoint is not null)
+            {
+                ((EventAlertsAuthFixture)(object)auth).ServiceId = performanceEndpoint.AbsoluteUri;
+                appPermissions.Granted.Add(AppPermissions.ServerMetricsRead);
+            }
             appPermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
             appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
             var certificates = isCertificates || isDatabase ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
@@ -969,7 +986,7 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerTailscaleRead);
             var tailscale = isTailscale ? DispatchProxy.Create<IServerTailscale, TailscaleScopeTransport>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerDatabasesRead);
-            var scopedPermissions = alertEndpoint is not null || isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
+            var scopedPermissions = alertEndpoint is not null || performanceEndpoint is not null || isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
                 || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager || isTailscale;
             var postgres = isDatabase ? new OfficialPostgreSqlFixture() : null;
             var ssh = new SshDesktopSession(null!, settings);
@@ -989,7 +1006,8 @@ internal static class OfficialRoappChecks
             }
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
-                windows, null!, new ExplorerClient(http, auth, memory), ssh,
+                windows, performanceEndpoint is null ? null! : new RelaxKonOS.Client.Apps.TaskManager.TaskManagerClient(http, auth),
+                new ExplorerClient(http, auth, memory), ssh,
                 new SshExplorerClient(ssh), DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(),
                 null!, null!, apps, memory, null!, alertEndpoint is null ? null! : new RemoteEventAlertClient(http, auth), null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,

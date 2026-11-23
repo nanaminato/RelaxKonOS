@@ -47,20 +47,25 @@ internal static class EventAlertChecks
         if (desktopRunner is not null && archive is not null)
         {
             TestAssert.Assert(Path.GetFileName(archive) == "relaxkonos.event-alerts.roapp", "Supply the official Event & Alert Center archive.");
-            var runnerPath = Path.GetFullPath(desktopRunner);
-            var frameworkDependent = Path.GetExtension(runnerPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
-            var start = new System.Diagnostics.ProcessStartInfo(frameworkDependent ? "dotnet" : runnerPath) { UseShellExecute = false };
-            if (frameworkDependent) start.ArgumentList.Add(runnerPath);
-            start.ArgumentList.Add("--official-roapp-only");
-            start.ArgumentList.Add(Path.GetFullPath(archive));
-            start.Environment["RK_TEST_EVENT_ALERTS_PORT"] = client.BaseAddress.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            using var desktop = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start the desktop package fixture.");
-            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-            try { await desktop.WaitForExitAsync(timeout.Token); }
-            finally { if (!desktop.HasExited) desktop.Kill(entireProcessTree: true); }
-            TestAssert.Assert(desktop.ExitCode == 0, "The installed alert package failed its loopback HTTP acceptance.");
+            await RunDesktopPackageAsync(desktopRunner, archive, "RK_TEST_EVENT_ALERTS_PORT", client.BaseAddress.Port);
         }
         await app.StopAsync();
+    }
+
+    internal static async Task RunDesktopPackageAsync(string desktopRunner, string archive, string portVariable, int port)
+    {
+        var runnerPath = Path.GetFullPath(desktopRunner);
+        var frameworkDependent = Path.GetExtension(runnerPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+        var start = new System.Diagnostics.ProcessStartInfo(frameworkDependent ? "dotnet" : runnerPath) { UseShellExecute = false };
+        if (frameworkDependent) start.ArgumentList.Add(runnerPath);
+        start.ArgumentList.Add("--official-roapp-only");
+        start.ArgumentList.Add(Path.GetFullPath(archive));
+        start.Environment[portVariable] = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        using var desktop = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start the desktop package fixture.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        try { await desktop.WaitForExitAsync(timeout.Token); }
+        finally { if (!desktop.HasExited) desktop.Kill(entireProcessTree: true); }
+        TestAssert.Assert(desktop.ExitCode == 0, "The installed desktop package failed its loopback HTTP acceptance.");
     }
 
     internal static async Task VerifyAppendProjectionAndRecoveryAsync(string root)

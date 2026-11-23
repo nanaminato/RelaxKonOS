@@ -1,6 +1,9 @@
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Metadata;
@@ -18,6 +21,30 @@ using RelaxKonOS.Server.SystemPerformance;
 
 internal static class PerformanceHttpResidencyChecks
 {
+    internal static async Task RunDesktopAsync(string root, string desktop, string archive)
+    {
+        TestAssert.Assert(Path.GetFileName(archive) == "relaxkonos.taskmanager.roapp", "Supply the official Task Manager archive.");
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { ContentRootPath = root, Args = [] });
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, ProgressTestAuthentication>("test", _ => { });
+        builder.Services.AddAuthorization();
+        builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+        builder.Services.AddSignalR();
+        var mode = new ProgressTestMode();
+        builder.Services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(mode);
+        builder.Services.AddSingleton<IPrivilegedOperationTransport, DisabledPrivilegedOperationTransport>();
+        builder.Services.AddSingleton<IHostElevationSessionStore>(new HostElevationSessionStore(
+            new TestHostAccountPrivilegeService(), mode, new HostElevationSessionState()));
+        var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.SystemPerformanceId });
+        var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+        modules.ConfigureServices(builder, context);
+        await using var app = builder.Build();
+        modules.MapEndpoints(app, context);
+        await app.StartAsync();
+        await EventAlertChecks.RunDesktopPackageAsync(desktop, archive, "RK_TEST_PERFORMANCE_PORT", new Uri(app.Urls.Single()).Port);
+        await app.StopAsync();
+    }
+
     internal static async Task RunAsync()
     {
         var count = 0;
