@@ -9,7 +9,8 @@ public sealed record DeploymentPermission(string Kind, ImmutableArray<string> Pl
     ImmutableArray<string> Resources, bool Executable);
 
 public sealed record PreparedDeploymentStep(DeploymentPackageKey Package, Guid InstallerPlanId,
-    DateTimeOffset ExpiresAt, ImmutableArray<DeploymentPermission> Permissions);
+    DateTimeOffset ExpiresAt, ImmutableArray<DeploymentPermission> Permissions,
+    string PublisherId, string ManifestSha256, string Runtime);
 
 public sealed record DeploymentComponentRelease(string SourceId, string ComponentId, string PublisherId, string ReleaseIdentity);
 public sealed record DeploymentServerArchive(Guid AccountId, string ConnectionIdentity, string Path);

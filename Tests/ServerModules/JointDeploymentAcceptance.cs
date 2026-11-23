@@ -1560,6 +1560,18 @@ internal static class JointDeploymentAcceptance
             Require(await joint.FindPendingAsync(candidate, default) is null
                     && ModulePackageOperationStore.Read(serverRoot).Count == 0,
                 "a missing staged archive requires a new review before any package operation starts");
+            var changedManifest = await joint.PrepareAsync(candidate, [], default);
+            factory.SubstitutePlanManifest = changedManifest.Plan.PreparedSteps.Single().InstallerPlanId;
+            try
+            {
+                await joint.ExecuteAsync(changedManifest, default);
+                throw new InvalidOperationException("Expected a change to the reviewed package manifest to require review.");
+            }
+            catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-plan-changed") { }
+            finally { factory.SubstitutePlanManifest = null; }
+            Require(await joint.FindPendingAsync(candidate, default) is null
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 0,
+                "changing only the package plan's manifest digest requires review before apply");
             var review = await joint.PrepareAsync(candidate, [optional], default);
             var settings = new ShellSettings(null!);
             var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
@@ -2560,6 +2572,7 @@ internal static class JointDeploymentAcceptance
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
         public void ChangeSecondCatalogRevision() => handler.CatalogReadsUntilChange = 2;
         public bool AlterEnablePreview { set => handler.AlterEnablePreview = value; }
+        public Guid? SubstitutePlanManifest { set => handler.SubstitutePlanManifest = value; }
         public void SubstituteActivationDigestAfterSnapshot(string? moduleId)
         {
             handler.ActivationDigestModule = moduleId;
@@ -2589,6 +2602,7 @@ internal static class JointDeploymentAcceptance
         public bool DropEnableResponse { get; set; }
         public int CatalogReadsUntilChange { get; set; }
         public bool AlterEnablePreview { get; set; }
+        public Guid? SubstitutePlanManifest { get; set; }
         public string? ActivationDigestModule { get; set; }
         public int ActivationInventoryReads { get; set; }
         public bool DropDependencyReply { get; set; }
@@ -2621,6 +2635,17 @@ internal static class JointDeploymentAcceptance
             if (before is not null) await before();
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (SubstitutePlanManifest is { } planId && request.Method == HttpMethod.Get
+                && path == ServerModuleManagementRoutes.PackagePlan.Replace("{planId:guid}", planId.ToString()))
+            {
+                using var response = await base.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var plan = (await response.Content.ReadFromJsonAsync<ServerModulePackagePlanDto>(RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(plan with { ManifestSha256 = new string('0', 64) }, options: RelaxKonOSJsonOptions.Default),
+                };
+            }
             if (CatalogReadsUntilChange > 0 && request.Method == HttpMethod.Get
                 && path == ServerModuleManagementRoutes.ModuleStoreSources && --CatalogReadsUntilChange == 0)
             {

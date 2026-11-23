@@ -23,7 +23,8 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             var installer = await client.PreparePackageAsync(snapshot.Store[release.ArtifactIdentity], cancellationToken);
             prepared.Add(new(release.Package, installer.PlanId, installer.ExpiresAt,
                 [.. installer.Privileges.Select(permission => new DeploymentPermission(permission.Kind,
-                    [.. permission.Platforms], [.. permission.Resources], permission.Executable))]));
+                    [.. permission.Platforms], [.. permission.Resources], permission.Executable))],
+                installer.PublisherId, installer.ManifestSha256, installer.Runtime));
             if (installer.ExpiresAt < expires) expires = installer.ExpiresAt;
         }
 
@@ -45,6 +46,8 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             var serverPlan = await client.ReadPackagePlanAsync(step.InstallerPlanId, cancellationToken);
             if (serverPlan.ModuleId != release.Package.Id || serverPlan.Version != release.Version
                 || $"{serverPlan.SourceId}/{serverPlan.ReleaseId}/{serverPlan.ArtifactSha256}" != release.ArtifactIdentity
+                || serverPlan.PublisherId != step.PublisherId || serverPlan.ManifestSha256 != step.ManifestSha256
+                || serverPlan.Runtime != step.Runtime
                 || serverPlan.ExpiresAt != step.ExpiresAt || serverPlan.Privileges.Count != step.Permissions.Length
                 || serverPlan.Privileges.Where((permission, index) =>
                     permission.Kind != step.Permissions[index].Kind

@@ -70,7 +70,7 @@ var plan = await coordinator.PlanAsync(backend.Target, root, candidates, []);
 plan = plan with
 {
     PreparedSteps = [new(Key("shared"), Guid.NewGuid(), plan.ExpiresAt,
-        [new("package", ["linux"], ["shared"], true)])],
+        [new("package", ["linux"], ["shared"], true)], "publisher", new string('a', 64), "module-host")],
     ClientBinding = new(Guid.NewGuid(), "connection", null),
 };
 async Task Reject(DeploymentPlan candidate, string message)
