@@ -16,6 +16,20 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken);
     private delegate Task<string?> WriteDockerfile(string destination, ApplicationSourceKind kind, string baseImage, int port,
         string entry, bool selfContained, CancellationToken cancellationToken);
+    private delegate Task<(string? EntryPoint, string? Problem)> PrepareDotNet(string destination, string? requestedImage,
+        string? runtimeVersion, bool selfContained, ApplicationWorkloadKind workloadKind, int port, string selfContainedImage,
+        string webImage, string workerImage, CancellationToken cancellationToken);
+
+    internal async Task<string> PrepareDotNetAsync(string destination, string? requestedImage, string? runtimeVersion,
+        bool selfContained, ApplicationWorkloadKind workloadKind, int port, string selfContainedImage, string webImage,
+        string workerImage, CancellationToken cancellationToken)
+    {
+        var result = await ExecuteAsync<PrepareDotNet, (string? EntryPoint, string? Problem)>("PrepareDotNetAsync",
+            execute => execute(destination, requestedImage, runtimeVersion, selfContained, workloadKind, port,
+                selfContainedImage, webImage, workerImage, cancellationToken), cancellationToken);
+        if (result.Problem is { } problem) throw new ApplicationDeploymentException(problem, 400);
+        return result.EntryPoint ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed);
+    }
 
     internal Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
@@ -62,6 +76,7 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
             var type = Load(context, path);
             _ = Bind<PrepareArchive>(type, "PrepareAsync");
             _ = Bind<WriteDockerfile>(type, "WriteDockerfileAsync");
+            _ = Bind<PrepareDotNet>(type, "PrepareDotNetAsync");
         }
         finally { context.Unload(); }
     }

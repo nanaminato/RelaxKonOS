@@ -570,6 +570,16 @@ internal static class ModulePackageHttpChecks
                     check(dockerfile.Contains("RUN pip install --requirement /app/requirements.txt", StringComparison.Ordinal)
                         && dockerfile.Contains("ENTRYPOINT [\"python\",\"-m\",\"demo\"]", StringComparison.Ordinal),
                         "rolled-back Application Deployments package prepares a locked Python payload");
+                    await File.WriteAllTextAsync(Path.Combine(destination, "Demo.dll"), "fixture");
+                    await File.WriteAllTextAsync(Path.Combine(destination, "Demo.runtimeconfig.json"),
+                        """{"runtimeOptions":{"tfm":"net10.0","frameworks":[{"name":"Microsoft.AspNetCore.App"}]}}""");
+                    var entryPoint = await executor.PrepareDotNetAsync(destination, null, "10.0", false,
+                        RelaxKonOS.Protocol.ApplicationDeployments.ApplicationWorkloadKind.Web, 8080,
+                        "mcr.microsoft.com/dotnet/runtime-deps:9.0", "mcr.microsoft.com/dotnet/aspnet:9.0",
+                        "mcr.microsoft.com/dotnet/runtime:9.0", default);
+                    dockerfile = await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile"));
+                    check(entryPoint == "dotnet Demo.dll" && dockerfile.StartsWith("FROM mcr.microsoft.com/dotnet/aspnet:10.0", StringComparison.Ordinal),
+                        "rolled-back Application Deployments package selects the .NET publish entry and matching base image");
                 }
                 await VerifyExecutionPackageVersionsAsync<InstalledCertificateModule>(client, root, certificates, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);

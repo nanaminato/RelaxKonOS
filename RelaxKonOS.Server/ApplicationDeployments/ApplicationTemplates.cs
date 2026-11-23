@@ -1,4 +1,3 @@
-using System.Text.Json;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
 namespace RelaxKonOS.Server.ApplicationDeployments;
@@ -49,17 +48,6 @@ internal static class ApplicationTemplateCatalog
         if (!ApplicationDeploymentValidation.IsValidImageReference(imageReference)
             || !ApplicationDeploymentValidation.IsPinnedImageReference(imageReference))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageReferenceInvalid, 400);
-    }
-
-    /// <summary>
-    /// A publish archive may wrap its content in one top-level directory. That single directory is
-    /// the publish root; anything else keeps the extraction root.
-    /// </summary>
-    internal static string PublishRoot(string contextDirectory)
-    {
-        var directories = Directory.GetDirectories(contextDirectory);
-        var files = Directory.GetFiles(contextDirectory);
-        return directories.Length == 1 && files.Length == 0 ? directories[0] : contextDirectory;
     }
 }
 
@@ -222,108 +210,11 @@ internal sealed class DotNetPublishTemplate : ApplicationTemplateBase
     public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
         DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken)
     {
-        var root = ApplicationTemplateCatalog.PublishRoot(contextDirectory);
-        var runtimeConfigurations = Directory.GetFiles(root, "*.runtimeconfig.json", SearchOption.TopDirectoryOnly);
-        if (runtimeConfigurations.Length != 1)
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-
-        var assemblyName = Path.GetFileName(runtimeConfigurations[0])[..^".runtimeconfig.json".Length];
-        if (assemblyName.Length == 0) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-
-        var runtimeConfig = await ReadJsonAsync(runtimeConfigurations[0], cancellationToken)
-            ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-        if (!runtimeConfig.TryGetProperty("runtimeOptions", out var runtimeOptions) || runtimeOptions.ValueKind != JsonValueKind.Object)
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-
-        // 1. Target framework must be one the selected base image can serve.
-        var targetFramework = ReadString(runtimeOptions, "tfm");
-        var imageVersion = BaseImageVersion(targetFramework)
-            ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
-        if (!string.IsNullOrWhiteSpace(plan.RuntimeVersion) && !string.Equals(plan.RuntimeVersion, imageVersion, StringComparison.Ordinal))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
-
-        // 2. Framework-dependent and self-contained publishes use different base images.
-        var includedFrameworks = runtimeOptions.TryGetProperty("includedFrameworks", out var included) && included.ValueKind == JsonValueKind.Array;
-        if (plan.SelfContained != includedFrameworks)
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
-
-        // 3. The Web/Worker role must match the actual publish, and it selects the base image.
-        var isWeb = runtimeOptions.TryGetProperty("frameworks", out var frameworks) && frameworks.ValueKind == JsonValueKind.Array
-            && frameworks.EnumerateArray().Any(framework => ReadString(framework, "name") == "Microsoft.AspNetCore.App");
-        if (isWeb != (definition.WorkloadKind == ApplicationWorkloadKind.Web))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
-
-        // 4. A RID-specific publish must target a Linux runtime the engine can execute.
-        var target = await ReadRuntimeTargetAsync(root, cancellationToken);
-        if (target is not null && !target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImagePlatformMismatch, 400);
-
-        var baseImage = ResolveBaseImage(plan, options, imageVersion, isWeb, plan.SelfContained);
-        if (plan.SelfContained && !File.Exists(Path.Combine(root, assemblyName)))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-        if (!plan.SelfContained && !File.Exists(Path.Combine(root, assemblyName + ".dll")))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-
-        await execution.WriteDockerfileAsync(contextDirectory, ApplicationSourceKind.DotNetPublish, baseImage, definition.ContainerPort, assemblyName, plan.SelfContained, cancellationToken);
-        return (plan.SelfContained ? $"./{assemblyName}" : $"dotnet {assemblyName}.dll", plan.Arguments);
+        var entry = await execution.PrepareDotNetAsync(contextDirectory, plan.BaseImage, plan.RuntimeVersion, plan.SelfContained,
+            definition.WorkloadKind, definition.ContainerPort, options.DotNetSelfContainedBaseImage,
+            options.DotNetWebBaseImage, options.DotNetWorkerBaseImage, cancellationToken);
+        return (entry, plan.Arguments);
     }
-
-    private static string ResolveBaseImage(DeploymentPlan plan, ApplicationDeploymentOptions options, string imageVersion, bool isWeb, bool selfContained)
-    {
-        if (plan.BaseImage is { Length: > 0 } requested) return requested;
-        var template = selfContained
-            ? options.DotNetSelfContainedBaseImage
-            : isWeb ? options.DotNetWebBaseImage : options.DotNetWorkerBaseImage;
-        return ReplaceVersionSuffix(template, imageVersion);
-    }
-
-    /// <summary>Rewrites the framework-version suffix of a configured base image such as <c>.../aspnet:10.0</c>.</summary>
-    private static string ReplaceVersionSuffix(string template, string imageVersion)
-    {
-        var separator = template.LastIndexOf(':');
-        if (separator < 0) return template;
-        var tag = template[(separator + 1)..];
-        var dash = tag.IndexOf('-');
-        return dash < 0 ? $"{template[..(separator + 1)]}{imageVersion}" : $"{template[..(separator + 1)]}{imageVersion}{tag[dash..]}";
-    }
-
-    private static string? BaseImageVersion(string? targetFramework)
-    {
-        if (targetFramework is null || !targetFramework.StartsWith("net", StringComparison.Ordinal)) return null;
-        var version = targetFramework["net".Length..];
-        var segments = version.Split('.');
-        if (segments.Length < 1 || !int.TryParse(segments[0], out var major) || major < 5) return null;
-        return segments.Length >= 2 ? $"{major}.{segments[1]}" : $"{major}.0";
-    }
-
-    private static async Task<JsonElement?> ReadJsonAsync(string path, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await using var stream = File.OpenRead(path);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-            return document.RootElement.Clone();
-        }
-        catch (JsonException) { return null; }
-        catch (IOException) { return null; }
-    }
-
-    private static async Task<string?> ReadRuntimeTargetAsync(string root, CancellationToken cancellationToken)
-    {
-        var dependencyFiles = Directory.GetFiles(root, "*.deps.json", SearchOption.TopDirectoryOnly);
-        if (dependencyFiles.Length != 1) return null;
-        var document = await ReadJsonAsync(dependencyFiles[0], cancellationToken);
-        if (document is not { } element || !element.TryGetProperty("runtimeTarget", out var runtimeTarget)) return null;
-        var name = ReadString(runtimeTarget, "name");
-        if (string.IsNullOrWhiteSpace(name)) return null;
-        var separator = name.IndexOf('/');
-        return separator < 0 ? null : name[(separator + 1)..];
-    }
-
-    private static string? ReadString(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
 }
 
 /// <summary>

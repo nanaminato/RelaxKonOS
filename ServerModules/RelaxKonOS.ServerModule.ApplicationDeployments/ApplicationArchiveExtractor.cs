@@ -11,6 +11,12 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// </summary>
 public static class ApplicationArchiveExtractor
 {
+    public static Task<(string? EntryPoint, string? Problem)> PrepareDotNetAsync(string destination, string? requestedImage,
+        string? runtimeVersion, bool selfContained, ApplicationWorkloadKind workloadKind, int port, string selfContainedImage,
+        string webImage, string workerImage, CancellationToken cancellationToken)
+        => ApplicationPayload.PrepareDotNetAsync(destination, requestedImage, runtimeVersion, selfContained, workloadKind,
+            port, selfContainedImage, webImage, workerImage, cancellationToken);
+
     public static async Task<string?> WriteDockerfileAsync(string destination, ApplicationSourceKind kind, string baseImage, int port,
         string entry, bool selfContained, CancellationToken cancellationToken)
     {
