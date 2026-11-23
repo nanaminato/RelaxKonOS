@@ -163,6 +163,9 @@ internal static class OfficialRoappChecks
         var compatibility = new Compatibility();
         using var services = new ServiceCollection().AddSingleton<IApplicationCompatibilityEvaluator>(compatibility).BuildServiceProvider();
         using var http = new HttpClient();
+        var alertPort = isEventAlerts ? Environment.GetEnvironmentVariable("RK_TEST_EVENT_ALERTS_PORT") : null;
+        Uri? alertEndpoint = alertPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(alertPort)}/");
+        if (alertEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "observer");
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
         var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
@@ -498,6 +501,19 @@ internal static class OfficialRoappChecks
                 databaseAuth.DatabaseAvailable = true;
             }
             compatibility.TaskManagerServerAvailable = true;
+            if (alertEndpoint is not null)
+            {
+                windows.Attach(new Canvas { Width = 1100, Height = 800 });
+                Check(await packages.LaunchAsync(applicationId), "The installed Event & Alert Center opens from its archive.");
+                var alertWindow = windows.Windows.Single();
+                var alertList = ((DockPanel)alertWindow.View.Content!).Children.OfType<ListBox>().Single();
+                for (var attempt = 0; attempt < 100 && alertList.ItemsSource is null; attempt++)
+                    await Task.Delay(50);
+                Check(alertList.ItemsSource?.Cast<string>().SingleOrDefault()?.Contains("deployment.build_failed", StringComparison.Ordinal) == true,
+                    "The installed window displays the server's durable alert through the read capability.");
+                windows.ForceClose(alertWindow);
+                Console.WriteLine("The installed Event & Alert Center displayed a durable alert over loopback HTTP.");
+            }
             if (interactive || isTaskManager || isRegistry || isBrowser || isTerminal || isSshFiles)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
@@ -918,6 +934,11 @@ internal static class OfficialRoappChecks
             }
             var memory = new UsageMemoryStore(Path.Combine(root, "usage-memory.json"));
             var appPermissions = new CertificateCapabilityChecks.Permission(applicationId);
+            if (alertEndpoint is not null)
+            {
+                ((EventAlertsAuthFixture)(object)auth).ServiceId = alertEndpoint.AbsoluteUri;
+                appPermissions.Granted.Add(AppPermissions.ServerEventAlertsRead);
+            }
             appPermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
             appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
             var certificates = isCertificates || isDatabase ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
@@ -948,7 +969,7 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerTailscaleRead);
             var tailscale = isTailscale ? DispatchProxy.Create<IServerTailscale, TailscaleScopeTransport>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerDatabasesRead);
-            var scopedPermissions = isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
+            var scopedPermissions = alertEndpoint is not null || isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
                 || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager || isTailscale;
             var postgres = isDatabase ? new OfficialPostgreSqlFixture() : null;
             var ssh = new SshDesktopSession(null!, settings);
@@ -970,7 +991,7 @@ internal static class OfficialRoappChecks
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), ssh,
                 new SshExplorerClient(ssh), DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(),
-                null!, null!, apps, memory, null!, null!, null!, null!,
+                null!, null!, apps, memory, null!, alertEndpoint is null ? null! : new RemoteEventAlertClient(http, auth), null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
                 fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels, createSquidClient: squid is null ? null : () => squid,
                 createProxyServerClient: proxyServer is null ? null : () => proxyServer,

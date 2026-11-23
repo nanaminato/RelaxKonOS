@@ -686,7 +686,10 @@ if (args.Contains("--event-alerts-only"))
     try
     {
         await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(eventRoot);
-        await EventAlertChecks.VerifyReadEndpointsAsync(eventRoot);
+        if (args is ["--event-alerts-only", var desktopRunner, var alertArchive])
+            await EventAlertChecks.VerifyReadEndpointsAsync(eventRoot, desktopRunner, alertArchive);
+        else
+            await EventAlertChecks.VerifyReadEndpointsAsync(eventRoot);
     }
     finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(eventRoot, recursive: true); }
     Console.WriteLine("Event projection, recovery, and authenticated alert HTTP read checks passed.");

@@ -12,7 +12,7 @@ using RelaxKonOS.Server.Startup;
 
 internal static class EventAlertChecks
 {
-    internal static async Task VerifyReadEndpointsAsync(string root)
+    internal static async Task VerifyReadEndpointsAsync(string root, string? desktopRunner = null, string? archive = null)
     {
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { ContentRootPath = root, Args = [] });
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -44,6 +44,20 @@ internal static class EventAlertChecks
         using var denied = await client.PostAsJsonAsync(EventAlertApiRoutes.Alerts + "/" + alerts!.Items[0].AlertId + "/acknowledgement",
             new { note = "test" });
         TestAssert.Assert(denied.StatusCode == HttpStatusCode.Forbidden, "An observer could acknowledge an alert.");
+        if (desktopRunner is not null && archive is not null)
+        {
+            TestAssert.Assert(Path.GetFileName(archive) == "relaxkonos.event-alerts.roapp", "Supply the official Event & Alert Center archive.");
+            var start = new System.Diagnostics.ProcessStartInfo("dotnet") { UseShellExecute = false };
+            start.ArgumentList.Add(Path.GetFullPath(desktopRunner));
+            start.ArgumentList.Add("--official-roapp-only");
+            start.ArgumentList.Add(Path.GetFullPath(archive));
+            start.Environment["RK_TEST_EVENT_ALERTS_PORT"] = client.BaseAddress.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            using var desktop = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start the desktop package fixture.");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+            try { await desktop.WaitForExitAsync(timeout.Token); }
+            finally { if (!desktop.HasExited) desktop.Kill(entireProcessTree: true); }
+            TestAssert.Assert(desktop.ExitCode == 0, "The installed alert package failed its loopback HTTP acceptance.");
+        }
         await app.StopAsync();
     }
 
