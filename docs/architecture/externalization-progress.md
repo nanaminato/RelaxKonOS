@@ -965,3 +965,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 使用未修改的重打包 Application Deployments 归档通过 `--joint-deployment-acceptance`。已停用的随附模块生成仅启用计划，无包下载或安装回执，重启生效后登记客户端。有效模块直接复用，安装未增加模块操作，卸载清除依赖登记并保留模块。此轮验收管理与协调路径，未运行 Docker 工作负载。
 - Linux x64 从 `1ca0e73f1` 发布自包含验收运行器，在 WSL 完成签名模块与随附模块两套联合验收。签名安装使用仅提高模块最低版本的桌面副本，重启后按原计划登记，并由已安装执行程序集准备 ZIP 上下文。随附模块使用未修改的重打包归档，验证停用后仅启用、就绪时直接复用，以及卸载释放依赖登记。两套测试均正常退出，本轮未发起 Docker 构建。
 - Application Deployments 的停用检查将部署结果未知与台账不可读标记为需要恢复。Windows Release `--deployment-definition-only` 验证空台账可停用、排队部署与备份均阻止停用、未知部署结果在禁用启动检查中仍需恢复，以及重新打开损坏备份台账时拒绝停用。
+- 使用生产 `New-RelaxKonOSRelease.ps1` 生成 Windows x64 和 Linux x64 服务端 ZIP。两份归档均只在 `payload/<platform>/server/Modules/ApplicationDeployments/` 包含执行 DLL，ZIP 内字节与发行清单摘要一致，Core `.deps.json` 不含执行程序集依赖。两个解包目录均通过 `verify-release-inventory.py`。归档保存在本地验收目录，未发布到生产来源。
