@@ -4,6 +4,11 @@ if (args is ["--deployment-runtime-live", var busyBoxImageId])
     await DeploymentRuntimeLiveChecks.RunAsync(busyBoxImageId);
     return;
 }
+if (args is ["--deployment-runtime-live", var desktopImageId, var deploymentRunner, var deploymentPackage])
+{
+    await DeploymentRuntimeLiveChecks.RunAsync(desktopImageId, deploymentRunner, deploymentPackage);
+    return;
+}
 if (args is ["--postgresql-only"]) { await PostgreSqlChecks.RunAsync(); await PostgreSqlBackupAutomationChecks.RunAsync(); return; }
 if (args is ["--firewall-boundary-only"])
 {

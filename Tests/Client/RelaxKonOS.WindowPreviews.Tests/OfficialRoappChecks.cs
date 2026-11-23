@@ -23,6 +23,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Protocol.Browser;
+using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Developer;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -32,6 +33,46 @@ using WindowManager = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class OfficialRoappChecks
 {
+    private static async Task SubmitInstalledDeploymentAsync(WindowManager windows, object model)
+    {
+        var modelType = model.GetType();
+        var deploy = (System.Windows.Input.ICommand)modelType.GetProperty("DeployRevisionCommand")!.GetValue(model)!;
+        var rows = (System.Collections.IEnumerable)modelType.GetProperty("Applications")!.GetValue(model)!;
+        object? row = null;
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            row = rows.Cast<object>().SingleOrDefault();
+            if (row is not null && modelType.GetProperty("CanActOnSelection")!.GetValue(model) is true) break;
+            await Task.Delay(50);
+        }
+        var marker = (string?)row?.GetType().GetProperty("Name")!.GetValue(row);
+        Check(marker is not null && System.Text.RegularExpressions.Regex.IsMatch(marker, @"\Ahttp-fixture-[0-9a-f]{12}\z")
+            && modelType.GetProperty("CanActOnSelection")!.GetValue(model) is true, "The installed window did not load the isolated deployment definition.");
+        deploy.Execute(null);
+        Control? dialog = null;
+        for (var attempt = 0; attempt < 100 && dialog is null; attempt++)
+        {
+            dialog = windows.Windows.Select(window => window.View.Content).OfType<Control>().SingleOrDefault(
+                view => view.GetType().FullName == "RelaxKonOS.App.ApplicationDeployments.Views.DeploymentWizardView");
+            if (dialog is null) await Task.Delay(50);
+        }
+        Check(dialog?.DataContext is not null, "The installed workspace did not open its deployment wizard.");
+        var wizard = dialog!.DataContext!;
+        var wizardType = wizard.GetType();
+        wizardType.GetProperty("ImageReference")!.SetValue(wizard, "busybox:1.37");
+        wizardType.GetProperty("ArgumentsText")!.SetValue(wizard, $"sh\n-ec\nmkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site");
+        ((System.Windows.Input.ICommand)wizardType.GetProperty("SubmitCommand")!.GetValue(wizard)!).Execute(null);
+        for (var attempt = 0; attempt < 300 && wizardType.GetProperty("IsBusy")!.GetValue(wizard) is true; attempt++)
+            await Task.Delay(100);
+        var operation = wizardType.GetProperty("Operation")!.GetValue(wizard) as DeploymentOperationDto;
+        Check(wizardType.GetProperty("IsFinished")!.GetValue(wizard) is true && operation?.State == DeploymentOperationState.Succeeded,
+            $"The installed wizard did not receive a success receipt. State: {operation?.State}, error: {wizardType.GetProperty("ErrorText")!.GetValue(wizard)}");
+        ((System.Windows.Input.ICommand)wizardType.GetProperty("CloseCommand")!.GetValue(wizard)!).Execute(null);
+        for (var attempt = 0; attempt < 100 && windows.Windows.Count > 1; attempt++) await Task.Delay(50);
+        Check(windows.Windows.Count == 1, "The installed deployment wizard did not close after completion.");
+        Console.WriteLine("The installed Application Deployments wizard displayed a completed deployment receipt.");
+    }
+
     private static async Task<IReadOnlyList<DeploymentRequirement>?> DeselectOptionalInDialogAsync(
         IReadOnlyList<DeploymentRequirement> requirements)
     {
@@ -171,8 +212,9 @@ internal static class OfficialRoappChecks
         Uri? registryEndpoint = registryPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(registryPort)}/");
         var deploymentsPort = isApplicationDeployments ? Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_PORT") : null;
         Uri? deploymentsEndpoint = deploymentsPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(deploymentsPort)}/");
+        var submitDeployment = deploymentsEndpoint is not null && Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_SUBMIT") == "1";
         if (alertEndpoint is not null || performanceEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "observer");
-        if (deploymentsEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+        if (deploymentsEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", submitDeployment ? "controller" : "reader");
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
         var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
@@ -711,9 +753,11 @@ internal static class OfficialRoappChecks
                 {
                     var model = ((Control)workspace.View.Content!).DataContext!;
                     Check(model.GetType().FullName == "RelaxKonOS.App.ApplicationDeployments.ApplicationDeploymentsViewModel"
-                        && model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
-                        "The installed deployment workspace honors a read-only grant.");
-                    if (deploymentsEndpoint is not null)
+                        && Equals(model.GetType().GetProperty("CanManage")?.GetValue(model), submitDeployment),
+                        "The installed deployment workspace honors its deployment grant.");
+                    if (submitDeployment)
+                        await SubmitInstalledDeploymentAsync(windows, model);
+                    else if (deploymentsEndpoint is not null)
                     {
                         var rows = (System.Collections.IEnumerable)model.GetType().GetProperty("Applications")!.GetValue(model)!;
                         bool HasSavedDefinition() => rows.Cast<object>().Any(row => row.GetType().GetProperty("Name")!.GetValue(row) is "renamed");
@@ -1023,6 +1067,7 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.DesktopPortForwardingManage);
             var forwarding = isPortForwarding ? DispatchProxy.Create<IPortForwardingService, PendingForwardService>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerApplicationDeploymentsRead);
+            if (submitDeployment) appPermissions.Granted.Add(AppPermissions.ServerApplicationDeploymentsManage);
             IServerApplicationDeployments? deployments = null;
             if (deploymentsEndpoint is not null)
             {

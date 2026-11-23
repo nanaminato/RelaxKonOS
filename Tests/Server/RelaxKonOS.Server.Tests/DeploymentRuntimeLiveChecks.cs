@@ -12,7 +12,7 @@ using RelaxKonOS.Server.Files;
 
 internal static class DeploymentRuntimeLiveChecks
 {
-    public static async Task RunAsync(string imageId)
+    public static async Task RunAsync(string imageId, string? desktopRunner = null, string? package = null)
     {
         if (!Regex.IsMatch(imageId, @"\Asha256:[0-9a-f]{64}\z"))
             throw new ArgumentException("Expected the immutable ID of a locally cached BusyBox image.", nameof(imageId));
@@ -69,11 +69,12 @@ internal static class DeploymentRuntimeLiveChecks
                 $"The fixture container {name} remains in Docker.");
         }
         Console.WriteLine("Live Application Deployments runtime create, HTTP readiness, stop and cleanup passed.");
-        await VerifyHttpDeploymentAsync(engine, imageId, http, port, ct);
+        using var deploymentDeadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await VerifyHttpDeploymentAsync(engine, imageId, http, port, desktopRunner, package, deploymentDeadline.Token);
     }
 
     private static async Task VerifyHttpDeploymentAsync(IDockerEngineService engine, string imageId, HttpClient workload,
-        int port, CancellationToken ct)
+        int port, string? desktopRunner, string? package, CancellationToken ct)
     {
         const string imageReference = "busybox:1.37";
         Require((await engine.InspectImageAsync(imageReference, ct))?.Id == imageId,
@@ -127,11 +128,24 @@ internal static class DeploymentRuntimeLiveChecks
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             using var http = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(address) };
             http.DefaultRequestHeaders.Add("X-Test-Role", "controller");
-            var marker = Guid.NewGuid().ToString("N");
-            var definition = new CreateApplicationRequest("http-fixture-" + marker[..12], ApplicationSourceKind.Image, HealthCheckPath: "/ready", HostPort: port);
+            var marker = "http-fixture-" + Guid.NewGuid().ToString("N")[..12];
+            var definition = new CreateApplicationRequest(marker, ApplicationSourceKind.Image, HealthCheckPath: "/ready", HostPort: port);
             using var created = await SendAsync(http, ApplicationDeploymentApiRoutes.Applications, definition, "create", ct);
             var application = (await created.Content.ReadFromJsonAsync<ApplicationDto>(RelaxKonOSJsonOptions.Default, ct))!;
             applicationId = application.Id;
+            if (desktopRunner is not null && package is not null)
+            {
+                await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, package, "RK_TEST_DEPLOYMENTS_PORT", new Uri(address).Port,
+                    new("RK_TEST_DEPLOYMENTS_SUBMIT", "1"));
+                var deployed = await http.GetFromJsonAsync<ApplicationDeploymentSnapshotDto>(ApplicationDeploymentApiRoutes.Application(application.Id), RelaxKonOSJsonOptions.Default, ct);
+                Require(deployed is not null && deployed.Application.CurrentRevisionId is { } activeId
+                    && deployed.Revisions.Single().Id == activeId && deployed.Operations.Single() is
+                    { State: DeploymentOperationState.Succeeded, Kind: DeploymentOperationKind.Deploy }, "The window did not activate exactly one revision through a completed deployment.");
+                Require((await workload.GetStringAsync($"http://127.0.0.1:{port}/ready", ct)).Trim() == marker,
+                    "The window-deployed workload did not serve the expected marker.");
+                Console.WriteLine("Installed Application Deployments window activated a real Docker workload.");
+                return;
+            }
             var request = new DeployApplicationRequest(new(ImageReference: imageReference,
                 Arguments: ["sh", "-ec", $"mkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site"]),
                 application.UpdatedAt, Confirmed: true);
