@@ -20,7 +20,7 @@
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
 | server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 安装、修复、包窗口、管理对话框、向导和卸载通过，真实 SSH 待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
-| taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
+| taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Windows 与 Linux x64 发行包生命周期已验，Linux 服务端原生采样专项已验，已安装窗口与服务端联调待验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
 | browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包已验，原生 WebView 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期及 Linux Standard 原生首次预装已验 |
@@ -930,3 +930,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 告警专项使用隔离 SQLite、生产发布器和 HTTP 路由。匿名读取摘要返回 401，观察者可通过桌面使用的摘要和列表接口读取同一条告警，确认写入返回 403。测试使用角色认证夹具及生产授权策略。桌面 SDK 授权撤销和连接切换另行通过。
 - Windows Release 使用实际 Event & Alert Center 官方 `.roapp` 安装并打开无头桌面窗口。窗口经桌面 SDK、环回 HTTP 及生产告警路由显示 SQLite 中持久化的告警。可用 Server.Tests 的 `--event-alerts-only <WindowPreviews.Tests.dll> <relaxkonos.event-alerts.roapp>` 复现。测试使用观察者认证夹具。
 - Linux x64 在 WSL 独立网络命名空间使用自包含服务端与桌面验收程序，以及 Linux 官方告警归档，完成同一窗口读取和包生命周期验收。`--event-alerts-only` 的桌面运行器参数也可传入自包含可执行文件。
+- Linux x64 在 WSL 独立网络中通过 Task Manager 官方 `.roapp` 安装、能力缺失时拒绝启动、更新、失败安装、重启和卸载验收。独立执行服务端性能专项，实际 Linux 采样源读取了 CPU、内存及文件系统数据，HTTP 响应租约和进程图标预算回归也通过。两项为独立测试，未连接桌面窗口与服务端。
