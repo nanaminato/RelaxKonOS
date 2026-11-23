@@ -162,6 +162,14 @@ internal static class RegistryAccessChecks
             await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, archive, "RK_TEST_REGISTRY_PORT", new Uri(restarted.Urls.Single()).Port,
                 new("RK_TEST_REGISTRY_USER", owner.ToString("D")));
             await restarted.StopAsync();
+            await using var verified = CreateHost(new CachedSqliteRegistryRepository(factory));
+            await verified.StartAsync();
+            using var afterDesktop = new HttpClient { BaseAddress = new Uri(verified.Urls.Single()) };
+            var persisted = await afterDesktop.GetFromJsonAsync<RegistryEntryDto[]>(Values(time.Path), RelaxKonOSJsonOptions.Default);
+            Check(persisted?.Single(entry => entry.Name == "timeFormat").DesiredValue.GetString() == "24h",
+                "The packaged Registry's reset did not survive reopening SQLite.");
+            await verified.StopAsync();
+            Console.WriteLine("PASS: the packaged Registry's default-value write survived reopening SQLite.");
         }
         Console.WriteLine("PASS: registry fields, nested options, canonical Explorer settings, cross-user elevation, administrator authorization, audit, revision conflicts and custom-value rename.");
 

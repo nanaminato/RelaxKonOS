@@ -534,11 +534,16 @@ internal static class OfficialRoappChecks
                     model.GetType().GetProperty("NavigationPathInput")!.SetValue(model, @"HKEY_CURRENT_USER\Workspace\Desktop");
                     ((System.Windows.Input.ICommand)model.GetType().GetProperty("NavigateCommand")!.GetValue(model)!).Execute(null);
                     var entries = (System.Collections.IEnumerable)model.GetType().GetProperty("Entries")!.GetValue(model)!;
-                    bool HasSavedTimeFormat() => entries.Cast<object>().Any(row => row.GetType().GetProperty("Source")!.GetValue(row)
-                        is RelaxKonOS.Protocol.Registry.RegistryEntryDto { Name: "timeFormat" } entry && entry.DesiredValue.GetString() == "12h");
-                    for (var attempt = 0; attempt < 100 && !HasSavedTimeFormat(); attempt++) await Task.Delay(50);
-                    Check(HasSavedTimeFormat(), "The installed Registry displays the saved workspace time format through the SDK.");
-                    Console.WriteLine("The installed Registry displayed the current user's saved workspace value over loopback HTTP.");
+                    object? FindTimeFormat(string value) => entries.Cast<object>().SingleOrDefault(row => row.GetType().GetProperty("Source")!.GetValue(row)
+                        is RelaxKonOS.Protocol.Registry.RegistryEntryDto { Name: "timeFormat" } entry && entry.DesiredValue.GetString() == value);
+                    for (var attempt = 0; attempt < 100 && FindTimeFormat("12h") is null; attempt++) await Task.Delay(50);
+                    var savedTimeFormat = FindTimeFormat("12h");
+                    Check(savedTimeFormat is not null, "The installed Registry displays the saved workspace time format through the SDK.");
+                    model.GetType().GetProperty("SelectedEntry")!.SetValue(model, savedTimeFormat);
+                    ((System.Windows.Input.ICommand)model.GetType().GetProperty("ResetSelectedCommand")!.GetValue(model)!).Execute(null);
+                    for (var attempt = 0; attempt < 100 && FindTimeFormat("24h") is null; attempt++) await Task.Delay(50);
+                    Check(FindTimeFormat("24h") is not null, "The installed Registry restores the default through the versioned write API.");
+                    Console.WriteLine("The installed Registry read the saved time format and restored its default over loopback HTTP.");
                 }
                 if (performanceEndpoint is not null)
                 {
@@ -989,6 +994,7 @@ internal static class OfficialRoappChecks
                 registryAuth.ServiceId = registryEndpoint.AbsoluteUri;
                 registryAuth.UserId = Guid.Parse(Environment.GetEnvironmentVariable("RK_TEST_REGISTRY_USER")!);
                 appPermissions.Granted.Add(AppPermissions.ServerRegistryRead);
+                appPermissions.Granted.Add(AppPermissions.ServerRegistryWrite);
             }
             appPermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
             appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
