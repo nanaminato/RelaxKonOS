@@ -925,3 +925,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 安装器明确区分重新审阅、等待模块生效和重试查询原回执。Windows 签名 Web Server 专项检查三个分支使用各自的提示，三语资源守卫同时通过。
 - Windows Release 的三档预装回归在隔离发行副本中移除 Notepad 归档。Developer 首轮仍安装其余 13 项，未给缺失应用写成功记录。恢复归档后按原配置重跑，只补装 Notepad 并写入成功记录。配置切换及手动卸载决定同时通过回归。
 - Linux x64 使用同一预装回归和 Linux 官方归档，在 WSL 独立网络命名空间通过缺包补装、三档配置切换及手动卸载保留检查。恢复 Notepad 时其余 13 个应用保留原安装目录。Minimal 的 13 个基础应用均通过本地归档独立安装及同版本修复。
+- 本机配置集记录无法解析时，普通启动保留损坏记录。显式指定 `--installation-profile` 可写入新的配置集，并可用 `--exclude-bundled-app` 重设排除项。Windows 回归验证修复后保留当前安装和用户手动卸载的决定。损坏记录中的历史排除项无法恢复。

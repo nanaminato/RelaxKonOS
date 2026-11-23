@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RelaxKonOS.Client.Services.Developer;
+using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Core.VirtualSystemDrive;
 using RelaxKonOS.ManagedRuntimes;
 using Drive = RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 
@@ -44,11 +46,22 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
         {
             var profiles = await ReadProfilesAsync(cancellationToken);
             if (profiles is null) return;
-            var saved = await ReadSelectionAsync(cancellationToken);
             var options = arguments?.ToArray() ?? [];
+            var explicitProfile = options.Any(option => option.StartsWith(ProfileFlag, StringComparison.Ordinal));
+            ProfileSelection? saved;
+            try
+            {
+                saved = await ReadSelectionAsync(cancellationToken);
+                if (saved is not null && saved is not { Profile.Length: > 0, Excluded: not null })
+                    throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.JsonInvalid);
+            }
+            catch (VirtualSystemDriveException error) when (explicitProfile && error.ProblemCode == VirtualSystemDriveProblemCode.JsonInvalid)
+            {
+                packages.RecordActivationDiagnostic("Invalid installation profile will be replaced by the explicit selection.");
+                saved = null;
+            }
             var selection = saved is null && chooseProfile is not null
-                && !options.Any(option => option.StartsWith(ProfileFlag, StringComparison.Ordinal)
-                    || option.StartsWith(ExcludeFlag, StringComparison.Ordinal))
+                && !explicitProfile && !options.Any(option => option.StartsWith(ExcludeFlag, StringComparison.Ordinal))
                 ? await chooseProfile(profiles, await ReadBundledArchivesAsync(profiles, cancellationToken))
                 : SelectProfile(profiles, saved, options);
             if (!profiles.Profiles.TryGetValue(selection.Profile, out var selectedEntries) || selection.Excluded is null)

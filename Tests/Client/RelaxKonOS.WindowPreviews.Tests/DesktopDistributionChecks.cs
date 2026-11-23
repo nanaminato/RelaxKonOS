@@ -226,6 +226,18 @@ internal static class DesktopDistributionChecks
                             || restoredChoices.Any(entry => entry.AppId == "relaxkonos.squid"))
                             throw new InvalidOperationException("Returning to Developer erased its saved application exclusions.");
                         Console.WriteLine("Profile switching preserved installed packages and the user's removal.");
+                        var selectionPath = drive.ResolveRootChild("System/installation-profile.json");
+                        await File.WriteAllTextAsync(selectionPath, "{", cancellationToken);
+                        await provisioner.RunAsync([], cancellationToken);
+                        if (await File.ReadAllTextAsync(selectionPath, cancellationToken) != "{")
+                            throw new InvalidOperationException("Startup overwrote a corrupt selection without an explicit profile.");
+                        await provisioner.RunAsync(["--installation-profile=developer", "--exclude-bundled-app=relaxkonos.squid"], cancellationToken);
+                        var recoveredChoices = await provisioner.ReadInteractiveChoicesAsync(cancellationToken);
+                        if (recoveredChoices.All(entry => entry.AppId != proxy.Id) || recoveredChoices.Any(entry => entry.AppId == "relaxkonos.squid")
+                            || packages.FindInstalled(removed) is not null || packages.Installed.Count != actual.Count - 1
+                            || actual.Any(pair => pair.Key != removed && packages.FindInstalled(pair.Key) != pair.Value))
+                            throw new InvalidOperationException("Explicit profile selection did not restore settings while preserving installed and removed apps.");
+                        Console.WriteLine("Explicit profile selection recovered corrupt settings and preserved the user's removal.");
                     }
                 }
                 finally

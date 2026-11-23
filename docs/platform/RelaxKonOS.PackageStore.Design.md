@@ -16,6 +16,8 @@
 
 桌面发行版在 `OfficialApps/installation-profiles.json` 中使用 schemaVersion 2 声明应用 ID、最低版本和安装策略。默认使用 Standard。首次启动可传入 `--installation-profile=minimal` 跳过预装，也可以重复传入 `--exclude-bundled-app=relaxkonos.welcome` 排除指定应用。对于 `installPolicy: "offline"`，客户端通过统一部署协调器执行本地计划，并保存部署回执和配置集的首次处理记录。对于 `installPolicy: "interactive"`，用户可在应用安装器的官方商店中选择对应随包制品，审阅并确认部署计划。声明服务端要求或必需依赖的制品均须交互部署。重启后保留卸载决定。Minimal 仍可通过应用安装器安装随包制品。Developer 包含 Standard 的应用，并额外离线预装 Code Editor 等工具。Developer 中标记为 interactive 的应用须经用户确认后安装。
 
+本机配置集记录无法解析时，可在启动时用 `--installation-profile=minimal|standard|developer` 重新选择，并重新指定需要排除的应用。配置集记录会按新选择重建，独立保存的应用安装记录和卸载决定仍有效。
+
 桌面发行版可用 `-p:OfficialDesktopCatalogUri=https://<发行站点>/desktop/stable/catalog.json` 生成 `OfficialApps/catalog-source.json`。配置由发行版提供。目录和制品必须使用同一预配置的 HTTPS 地址范围，客户端拒绝重定向。`relaxkonos.*` 仍需匹配应用 ID 许可集合，目录或 manifest 的声明不能授予内置身份。下载按长度、SHA-256、ID 和版本校验，安装前重新检查来源和同一份暂存文件。桌面发行不要求新增签名密钥。
 
 用现有 DevCli 的 `pack` 生成各个 `.roapp`，再运行 `official-catalog --output <静态目录> <包1.roapp> <包2.roapp>`。工具从 manifest 读取名称和版本，发布 `catalog.json` 与 `<appId>/<version>.roapp`，已有版本的制品字节保持固定。向工具提供希望出现在本次目录的所有版本。将制品先部署至固定 HTTPS 目录，再发布目录文件。
