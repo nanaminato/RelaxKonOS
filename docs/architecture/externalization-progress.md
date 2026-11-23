@@ -902,3 +902,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows x64 Release 在隔离 Core 上使用只含模块及其依赖的签名 CloudStorage 和 CloudS3 包，通过生产 HTTP 包操作复验在线激活。CloudS3 从 1.0.0 升级到 1.1.0，回执成功。1.2.0 健康检查失败后返回回滚回执，1.1.0 恢复健康并继续服务原连接，Core 与 CloudStorage 的运行代次保持不变。此轮使用本地 S3 测试配置。
 - Linux x64 在 WSL 独立网络命名空间通过同一 CloudS3 签名包在线验收，包括升级和回滚回执、原连接继续可用、Core 与 CloudStorage 保持运行，以及卸载后保留加密连接。Core 私有代理显式使用主机的内容根目录。验收从 Windows 挂载目录启动，模块和临时服务数据位于 Linux 原生文件系统，避免私有代理随进程工作目录读取和监视挂载卷。
 - 内容根目录变更后，Windows x64 重新发布的验收运行器通过 CloudS3 签名包专项，Linux x64 无外网容器通过完整模块套件的 1,510 项检查。
+- 联合计划继续执行并验证用户勾选的可选模块。服务端保护记录从应用归档的 `dependencies.required` 出发，沿已解析的依赖图纳入传递必需项。仅因用户勾选而进入计划的模块可以单独停用或卸载。

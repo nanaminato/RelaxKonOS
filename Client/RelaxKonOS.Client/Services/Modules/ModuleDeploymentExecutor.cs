@@ -116,20 +116,19 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
     }
 
-    internal static string[] RequiredDesktopModules(DeploymentPlan plan)
+    internal static string[] RequiredDesktopModules(DeploymentPlan plan, IReadOnlyList<DeploymentRequirement> rootRequirements)
     {
         var releases = plan.OrderedReleases.ToDictionary(release => release.Package);
         var required = new HashSet<DeploymentPackageKey>();
-        var root = plan.OrderedReleases[^1];
-        CollectRequired(root);
+        CollectRequired(rootRequirements);
         return required.Where(package => package.Kind == DeploymentPackageKind.ServerModule)
             .Select(package => package.Id).Order(StringComparer.Ordinal).ToArray();
 
-        void CollectRequired(DeploymentRelease release)
+        void CollectRequired(IEnumerable<DeploymentRequirement> requirements)
         {
-            foreach (var requirement in release.Requires)
+            foreach (var requirement in requirements)
                 if (required.Add(requirement.Package))
-                    CollectRequired(releases[requirement.Package]);
+                    CollectRequired(releases[requirement.Package].Requires);
         }
     }
 

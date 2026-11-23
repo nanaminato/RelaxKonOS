@@ -1435,10 +1435,11 @@ internal static class JointDeploymentAcceptance
             var withOptional = await joint.PrepareAsync(candidate, [optional], default);
             Require(withOptional.Plan.OrderedReleases.Any(release => release.Package == optional.Package && release.Satisfied),
                 "selecting the declared optional module keeps it in the plan");
-            var review = await joint.PrepareAsync(candidate, [], default);
-            Require(review.Plan.PreparedSteps.Length == 1 && review.Plan.OrderedReleases[0].Package.Id == ModuleId
-                && review.Plan.OrderedReleases.All(release => release.Package != optional.Package),
+            var withoutOptional = await joint.PrepareAsync(candidate, [], default);
+            Require(withoutOptional.Plan.PreparedSteps.Length == 1 && withoutOptional.Plan.OrderedReleases[0].Package.Id == ModuleId
+                && withoutOptional.Plan.OrderedReleases.All(release => release.Package != optional.Package),
                 "deselecting the optional module preserves the missing required signed module");
+            var review = withOptional;
             var settings = new ShellSettings(null!);
             var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
             using (var uiServices = new ServiceCollection().AddSingleton(localization).BuildServiceProvider())
@@ -1689,6 +1690,13 @@ internal static class JointDeploymentAcceptance
                 && await ready.GetStringAsync("/fixture-core") == "ready"
                 && await joint.FindPendingAsync(candidate, default) is null,
                 "the resumed deployment verifies the running module, Core and desktop application registration");
+            using (var state = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(serverRoot, "data", "module-management", "state.json"))))
+            {
+                var desktopClaim = state.RootElement.GetProperty("desktopDependencies").EnumerateArray()
+                    .Single(claim => claim.GetProperty("installationId").GetGuid() == review.Plan.Id);
+                Require(desktopClaim.GetProperty("requiredModules").EnumerateArray().Select(module => module.GetString())
+                    .SequenceEqual([ModuleId]), "the server protects the required module without protecting the selected optional module");
+            }
             using (var readinessServices = new ServiceCollection().AddSingleton(packages).AddSingleton(applications)
                 .AddSingleton<IHttpClientFactory>(factory).BuildServiceProvider())
             using (var readiness = new ApplicationAvailabilityService(auth, readinessServices, null!))
