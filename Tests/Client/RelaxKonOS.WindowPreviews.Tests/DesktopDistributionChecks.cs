@@ -68,8 +68,17 @@ internal static class DesktopDistributionChecks
                 var scanner = new ApplicationCatalogScanner(drive, new BuiltInDescriptorSeeder(drive, builtIns), builtIns,
                     services, diagnostics);
                 await scanner.ScanAndRegisterBuiltInsAsync(applications, cancellationToken);
+                const string interruptedApp = "relaxkonos.notepad";
+                var profileSource = source;
+                if (profile == "developer")
+                {
+                    profileSource = Directory.CreateDirectory(Path.Combine(destination, "OfficialApps")).FullName;
+                    foreach (var artifact in Directory.EnumerateFiles(source))
+                        if (Path.GetFileName(artifact) != interruptedApp + ".roapp")
+                            File.Copy(artifact, Path.Combine(profileSource, Path.GetFileName(artifact)));
+                }
                 var packages = new DeveloperPackageManager(applications, null!, windows, permissions,
-                    diagnostics, drive, source);
+                    diagnostics, drive, profileSource);
                 var installer = new AppPackageInstallerService(packages, null!, catalog);
                 var coordinator = new JointAppDeploymentService(null!, null!, installer, packages, applications,
                     new FileDeploymentJournal(Path.Combine(destination, "journal")));
@@ -127,6 +136,21 @@ internal static class DesktopDistributionChecks
                         await provisioner.RunAsync(profile == "developer"
                             ? ["--installation-profile=developer", "--exclude-bundled-app=relaxkonos.squid"]
                             : [$"--installation-profile={profile}"], cancellationToken);
+                        if (profile == "developer")
+                        {
+                            var receipt = drive.ResolveRootChild($"System/bundled-apps/{interruptedApp}.json");
+                            var otherApps = packages.Installed.ToArray();
+                            if (File.Exists(receipt) || packages.FindInstalled(interruptedApp) is not null
+                                || otherApps.Length != expected.Count - 1)
+                                throw new InvalidOperationException("A missing archive prevented provisioning unrelated apps or was recorded as installed.");
+                            var archive = interruptedApp + ".roapp";
+                            File.Copy(Path.Combine(source, archive), Path.Combine(profileSource, archive));
+                            await provisioner.RunAsync([], cancellationToken);
+                            if (!File.Exists(receipt) || packages.FindInstalled(interruptedApp) is null
+                                || otherApps.Any(app => packages.FindInstalled(app.Id) != app))
+                                throw new InvalidOperationException("Provisioning did not recover the restored archive without replacing unaffected apps.");
+                            Console.WriteLine("The Developer profile recovered a restored offline archive without reprovisioning other apps.");
+                        }
                     }
                     var actual = packages.Installed.ToDictionary(app => app.Id, StringComparer.Ordinal);
                     var missing = expected.Keys.Except(actual.Keys);

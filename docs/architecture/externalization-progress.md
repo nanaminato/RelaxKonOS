@@ -923,3 +923,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows 签名 Web Server 专项让真实服务端先受理安装，再在返回桌面之前替换响应中的发布者。客户端拒绝该响应并保留原计划。重试通过原持久回执完成重启续跑，服务端始终只有一条包操作。
 - 联合部署核对启用回执中的完整期望模块集合。Windows 签名 Web Server 专项在服务端受理启用后替换响应中的集合，客户端拒绝该响应并保留检查点。重试从持久状态识别已受理的启用，仅请求一次实际提交，重启后完成应用注册。
 - 安装器明确区分重新审阅、等待模块生效和重试查询原回执。Windows 签名 Web Server 专项检查三个分支使用各自的提示，三语资源守卫同时通过。
+- Windows Release 的三档预装回归在隔离发行副本中移除 Notepad 归档。Developer 首轮仍安装其余 13 项，未给缺失应用写成功记录。恢复归档后按原配置重跑，只补装 Notepad 并写入成功记录。配置切换及手动卸载决定同时通过回归。
