@@ -966,3 +966,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 从 `1ca0e73f1` 发布自包含验收运行器，在 WSL 完成签名模块与随附模块两套联合验收。签名安装使用仅提高模块最低版本的桌面副本，重启后按原计划登记，并由已安装执行程序集准备 ZIP 上下文。随附模块使用未修改的重打包归档，验证停用后仅启用、就绪时直接复用，以及卸载释放依赖登记。两套测试均正常退出，本轮未发起 Docker 构建。
 - Application Deployments 的停用检查将部署结果未知与台账不可读标记为需要恢复。Windows Release `--deployment-definition-only` 验证空台账可停用、排队部署与备份均阻止停用、未知部署结果在禁用启动检查中仍需恢复，以及重新打开损坏备份台账时拒绝停用。
 - 使用生产 `New-RelaxKonOSRelease.ps1` 生成 Windows x64 和 Linux x64 服务端 ZIP。两份归档均只在 `payload/<platform>/server/Modules/ApplicationDeployments/` 包含执行 DLL，ZIP 内字节与发行清单摘要一致，Core `.deps.json` 不含执行程序集依赖。两个解包目录均通过 `verify-release-inventory.py`。归档保存在本地验收目录，未发布到生产来源。
+- 使用上述 Windows x64 与 Linux x64 发行包中的完整 Server 二进制，在独立 SQLite 目录、环回端口和 Development 环境启动。两端启用与停用模块时 `/healthz` 均返回 200。应用列表路由启用时对匿名请求返回 401，停用后返回 404。另一次 Windows 内存存储试跑因 Proxy 缺少 `IProxyProfileRepository` 未启动，本轮发行二进制验证使用默认 SQLite 存储。
