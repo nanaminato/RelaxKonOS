@@ -76,10 +76,20 @@ internal static class DeploymentRuntimeLiveChecks
     private static async Task VerifyHttpDeploymentAsync(IDockerEngineService engine, string imageId, HttpClient workload,
         int port, string? desktopRunner, string? package, CancellationToken ct)
     {
-        const string imageReference = "busybox:1.37";
-        Require((await engine.InspectImageAsync(imageReference, ct))?.Id == imageId,
-            $"The local {imageReference} tag must identify the supplied image.");
+        const string cachedReference = "busybox:1.37";
+        Require((await engine.InspectImageAsync(cachedReference, ct))?.Id == imageId,
+            $"The local {cachedReference} tag must identify the supplied image.");
         var pullFromRegistry = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_PULL_IMAGE") == "1";
+        var coldImage = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_COLD_IMAGE");
+        var imageReference = coldImage ?? cachedReference;
+        HashSet<string>? priorImageIds = null;
+        if (coldImage is not null)
+        {
+            Require(pullFromRegistry && Regex.IsMatch(coldImage, @"\Abusybox:[0-9]+\.[0-9]+\.[0-9]+\z"),
+                "Cold-image acceptance requires a pinned BusyBox patch version and registry pull mode.");
+            Require(await engine.InspectImageAsync(coldImage, ct) is null, $"Image {coldImage} is already available locally.");
+            priorImageIds = (await engine.ListImagesAsync(ct)).Select(image => image.Id).ToHashSet(StringComparer.Ordinal);
+        }
         var deploymentEngine = engine;
         if (!pullFromRegistry)
         {
@@ -141,13 +151,14 @@ internal static class DeploymentRuntimeLiveChecks
             if (desktopRunner is not null && package is not null)
             {
                 await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, package, "RK_TEST_DEPLOYMENTS_PORT", new Uri(address).Port,
-                    new("RK_TEST_DEPLOYMENTS_SUBMIT", "1"));
+                    new("RK_TEST_DEPLOYMENTS_SUBMIT", imageReference));
                 var deployed = await http.GetFromJsonAsync<ApplicationDeploymentSnapshotDto>(ApplicationDeploymentApiRoutes.Application(application.Id), RelaxKonOSJsonOptions.Default, ct);
                 Require(deployed is not null && deployed.Application.CurrentRevisionId is { } activeId
                     && deployed.Revisions.Single().Id == activeId && deployed.Operations.Single() is
                     { State: DeploymentOperationState.Succeeded, Kind: DeploymentOperationKind.Deploy }, "The window did not activate exactly one revision through a completed deployment.");
                 Require((await workload.GetStringAsync($"http://127.0.0.1:{port}/ready", ct)).Trim() == marker,
                     "The window-deployed workload did not serve the expected marker.");
+                await VerifyPulledIdentityAsync(deployed!.Revisions.Single().ImageId);
                 Console.WriteLine($"Installed Application Deployments window activated a real Docker workload (registry pull: {pullFromRegistry}).");
                 return;
             }
@@ -174,8 +185,10 @@ internal static class DeploymentRuntimeLiveChecks
                 && snapshot.Revisions.Count == 1 && snapshot.Revisions[0].Id == activeRevisionId
                 && snapshot.Operations.Contains(receipt), "The application did not expose the active revision and completed deployment receipt.");
             Require((await workload.GetStringAsync($"http://127.0.0.1:{port}/ready", ct)).Trim() == marker, "The activated workload did not serve the expected marker.");
+            await VerifyPulledIdentityAsync(snapshot!.Revisions.Single().ImageId);
             Console.WriteLine($"Live deployment HTTP submission, terminal receipt, replay and activated workload passed (registry pull: {pullFromRegistry}).");
         }
+
         finally
         {
             try
@@ -195,6 +208,15 @@ internal static class DeploymentRuntimeLiveChecks
                     && directory.Name.StartsWith("rk-deployment-http-", StringComparison.Ordinal), "Unexpected HTTP fixture directory.");
                 directory.Delete(recursive: true);
             }
+        }
+
+        async Task VerifyPulledIdentityAsync(string? revisionImageId)
+        {
+            if (priorImageIds is null) return;
+            var pulled = await engine.InspectImageAsync(imageReference, ct);
+            Require(pulled is not null && pulled.Id == revisionImageId && !priorImageIds.Contains(pulled.Id),
+                "The activated revision did not bind an image newly present in the local Docker image inventory.");
+            Console.WriteLine($"Registry pulled a new local image for {imageReference} and the revision bound its ID.");
         }
     }
 

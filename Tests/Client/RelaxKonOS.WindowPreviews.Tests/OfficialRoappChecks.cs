@@ -33,7 +33,7 @@ using WindowManager = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class OfficialRoappChecks
 {
-    private static async Task SubmitInstalledDeploymentAsync(WindowManager windows, object model)
+    private static async Task SubmitInstalledDeploymentAsync(WindowManager windows, object model, string imageReference)
     {
         var modelType = model.GetType();
         var deploy = (System.Windows.Input.ICommand)modelType.GetProperty("DeployRevisionCommand")!.GetValue(model)!;
@@ -59,7 +59,7 @@ internal static class OfficialRoappChecks
         Check(dialog?.DataContext is not null, "The installed workspace did not open its deployment wizard.");
         var wizard = dialog!.DataContext!;
         var wizardType = wizard.GetType();
-        wizardType.GetProperty("ImageReference")!.SetValue(wizard, "busybox:1.37");
+        wizardType.GetProperty("ImageReference")!.SetValue(wizard, imageReference);
         wizardType.GetProperty("ArgumentsText")!.SetValue(wizard, $"sh\n-ec\nmkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site");
         ((System.Windows.Input.ICommand)wizardType.GetProperty("SubmitCommand")!.GetValue(wizard)!).Execute(null);
         for (var attempt = 0; attempt < 300 && wizardType.GetProperty("IsBusy")!.GetValue(wizard) is true; attempt++)
@@ -212,7 +212,8 @@ internal static class OfficialRoappChecks
         Uri? registryEndpoint = registryPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(registryPort)}/");
         var deploymentsPort = isApplicationDeployments ? Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_PORT") : null;
         Uri? deploymentsEndpoint = deploymentsPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(deploymentsPort)}/");
-        var submitDeployment = deploymentsEndpoint is not null && Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_SUBMIT") == "1";
+        var deploymentImage = deploymentsEndpoint is not null ? Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_SUBMIT") : null;
+        var submitDeployment = deploymentImage is not null;
         if (alertEndpoint is not null || performanceEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "observer");
         if (deploymentsEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", submitDeployment ? "controller" : "reader");
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
@@ -756,7 +757,7 @@ internal static class OfficialRoappChecks
                         && Equals(model.GetType().GetProperty("CanManage")?.GetValue(model), submitDeployment),
                         "The installed deployment workspace honors its deployment grant.");
                     if (submitDeployment)
-                        await SubmitInstalledDeploymentAsync(windows, model);
+                        await SubmitInstalledDeploymentAsync(windows, model, deploymentImage!);
                     else if (deploymentsEndpoint is not null)
                     {
                         var rows = (System.Collections.IEnumerable)model.GetType().GetProperty("Applications")!.GetValue(model)!;
