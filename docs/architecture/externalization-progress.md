@@ -948,3 +948,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 在真实拉取模式增加 `RK_TEST_DEPLOYMENTS_COLD_IMAGE=busybox:1.36.1` 并通过官方包窗口验收。提交前 Docker 无法检查该标签，现有镜像清单也没有随后出现的镜像 ID。向导提交后，生产服务从仓库拉取，激活修订绑定该新镜像 ID，工作负载响应及测试容器清理通过。保留下载的镜像缓存，复跑首次拉取可指定另一个未缓存的 BusyBox 补丁版本。
 - Application Deployments 的服务、后台协调器、日志广播和就绪探针注册集中到业务域，由 Core 与隔离验收宿主共用。Windows Release 官方包通过真实仓库拉取、成功回执、工作负载响应、正常停机和测试容器清理。该服务端业务仍随 Core 发布，独立 `.rkmodule` 尚未实现。
 - Application Deployments 进入随附服务端模块目录，默认启用，可通过 `Modules:ApplicationDeployments:Enabled` 停用。模块统一拥有部署与备份路由、日志 Hub 和后台协调器，并检查未完成操作及不可读台账。Core 保留网站发布所需的共享定义读取和台账检查。Windows Release 验证禁用时移除协调器、路由和能力，并在启用模块的验收宿主使用官方桌面包完成真实 Docker 部署。独立签名包仍待实现。
+- 部署构建上下文的 ZIP 解包迁入 `RelaxKonOS.ServerModule.ApplicationDeployments` 执行程序集。Core 继续授权并打开暂存对象、传递限额和记录操作回执。Windows Release 验证正常归档提取、超出限额的错误码及部署定义 HTTP 回归。程序集当前由 Core 直接引用并随发行交付，签名包加载仍待接入。

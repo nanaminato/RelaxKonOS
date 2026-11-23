@@ -259,7 +259,11 @@ internal sealed class ApplicationDeploymentService(
             TryDeleteDirectory(contextDirectory);
             Directory.CreateDirectory(contextDirectory);
             using (var archive = staging.Open(plan.ArchiveReferenceId!, actor))
-                await ApplicationArchiveSafety.ExtractAsync(archive.Stream, contextDirectory, options, cancellationToken);
+            {
+                if (await ApplicationArchiveExtractor.ExtractAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
+                    options.MaximumExpandedBytes, options.MaximumPathDepth, cancellationToken) is { } archiveProblem)
+                    throw new ApplicationDeploymentException(archiveProblem, 400);
+            }
             // An archive may wrap its payload in one top-level directory. The Docker engine receives
             // this directory as the build context, so the wrapper is removed before the template
             // stages its files: otherwise the payload sits one level below every context-relative

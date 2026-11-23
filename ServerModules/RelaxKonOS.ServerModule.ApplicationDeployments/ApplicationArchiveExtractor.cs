@@ -8,17 +8,16 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// are materialized: no links, no absolute paths, no parent traversal, and both the declared and the
 /// observed expanded size are enforced so an archive cannot lie its way past the limit.
 /// </summary>
-internal static class ApplicationArchiveSafety
+public static class ApplicationArchiveExtractor
 {
-    internal sealed record ExtractionReport(int EntryCount, long ExpandedBytes);
-
-    public static async Task<ExtractionReport> ExtractAsync(Stream archive, string destination, ApplicationDeploymentOptions options, CancellationToken cancellationToken)
+    public static async Task<string?> ExtractAsync(Stream archive, string destination, int maximumEntries, long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(destination);
         var root = Path.GetFullPath(destination);
         using var zip = OpenArchive(archive);
-        if (zip.Entries.Count > options.MaximumArchiveEntries)
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveTooManyEntries, 400);
+        if (zip is null) return ApplicationDeploymentProblemCodes.ArchiveUnavailable;
+        if (zip.Entries.Count > maximumEntries)
+            return ApplicationDeploymentProblemCodes.ArchiveTooManyEntries;
 
         long declared = 0;
         long observed = 0;
@@ -26,16 +25,16 @@ internal static class ApplicationArchiveSafety
         foreach (var entry in zip.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var relative = Normalize(entry.FullName, options);
+            var relative = Normalize(entry.FullName, maximumPathDepth);
             if (relative is null)
-                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry, 400);
+                return ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry;
             if (relative.Length == 0) continue;
             if (IsLink(entry))
-                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry, 400);
+                return ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry;
 
             var target = Path.GetFullPath(Path.Combine(root, relative));
             if (!PathSafety.IsWithin(root, target))
-                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry, 400);
+                return ApplicationDeploymentProblemCodes.ArchiveUnsafeEntry;
 
             if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
             {
@@ -44,8 +43,8 @@ internal static class ApplicationArchiveSafety
             }
 
             declared += entry.Length;
-            if (declared > options.MaximumExpandedBytes)
-                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge, 400);
+            if (declared > maximumExpandedBytes)
+                return ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge;
 
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             await using var source = entry.Open();
@@ -54,30 +53,30 @@ internal static class ApplicationArchiveSafety
             while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
             {
                 observed += read;
-                if (observed > options.MaximumExpandedBytes)
-                    throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge, 400);
+                if (observed > maximumExpandedBytes)
+                    return ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge;
                 await destinationStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             }
         }
 
-        return new(zip.Entries.Count, observed);
+        return null;
     }
 
-    private static ZipArchive OpenArchive(Stream archive)
+    private static ZipArchive? OpenArchive(Stream archive)
     {
         try { return new ZipArchive(archive, ZipArchiveMode.Read, leaveOpen: true); }
-        catch (InvalidDataException) { throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400); }
+        catch (InvalidDataException) { return null; }
     }
 
     /// <summary>Returns a canonical relative path, or null when the entry name is unusable or unsafe.</summary>
-    private static string? Normalize(string name, ApplicationDeploymentOptions options)
+    private static string? Normalize(string name, int maximumPathDepth)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Any(char.IsControl)) return null;
         var normalized = name.Replace('\\', '/').TrimEnd('/');
         if (normalized.Length == 0) return string.Empty;
         if (normalized.StartsWith('/') || normalized.Length >= 2 && normalized[1] == ':') return null;
         var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length > options.MaximumPathDepth) return null;
+        if (segments.Length > maximumPathDepth) return null;
         if (segments.Any(segment => segment is "." or "..")) return null;
         return string.Join('/', segments);
     }
