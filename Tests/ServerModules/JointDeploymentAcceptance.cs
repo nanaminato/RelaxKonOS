@@ -2077,11 +2077,13 @@ internal static class JointDeploymentAcceptance
 
             var activationArchives = bundledModuleArchives.Where(path =>
                 Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId
-                    or ServerModules.DatabaseId or ServerModules.DockerId or "relaxkonos.webservers" or "relaxkonos.tunnels" or "relaxkonos.tailscale")
+                    or ServerModules.DatabaseId or ServerModules.DockerId or ServerModules.ApplicationDeploymentsId
+                    or "relaxkonos.webservers" or "relaxkonos.tunnels" or "relaxkonos.tailscale")
                 .ToDictionary(path => Path.GetFileNameWithoutExtension(path) == "relaxkonos.webservers"
                     ? ServerModules.WebServerId : Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal);
             var activationDependencies = new[] { ServerModules.FirewallId, ModuleId }
-                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId, ServerModules.DockerId, ServerModules.WebServerId, "relaxkonos.tunnels", "relaxkonos.tailscale" }
+                .Concat(new[] { ServerModules.GitId, ServerModules.DatabaseId, ServerModules.DockerId, ServerModules.ApplicationDeploymentsId,
+                        ServerModules.WebServerId, "relaxkonos.tunnels", "relaxkonos.tailscale" }
                     .Where(activationArchives.ContainsKey));
             foreach (var dependencyId in activationDependencies)
             {
@@ -2166,6 +2168,7 @@ internal static class JointDeploymentAcceptance
                     "relaxkonos.firewall" => [ServerModules.FirewallId],
                     "relaxkonos.database" => [ServerModules.DatabaseId],
                     "relaxkonos.docker" => [ServerModules.DockerId],
+                    ServerModules.ApplicationDeploymentsId => [ServerModules.ApplicationDeploymentsId],
                     "relaxkonos.tunnels" => ["relaxkonos.tunnels"],
                     "relaxkonos.tailscale" => ["relaxkonos.tailscale"],
                     "relaxkonos.proxy" or "relaxkonos.proxy-server" or "relaxkonos.squid" => [ServerModules.ProxyId],
@@ -2457,6 +2460,10 @@ internal static class JointDeploymentAcceptance
                 ContentRootPath = root, EnvironmentName = Environments.Development, Args = [],
             });
             builder.Logging.ClearProviders();
+            RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRegistration.AddApplicationDeploymentState(builder.Services);
+            builder.Services.AddBackupRecoveryState();
+            builder.Services.AddSingleton(DispatchProxy.Create<IDockerEngineService, GitRepositoryAssemblyChecks.RejectTransport>());
+            builder.Services.AddSingleton(DispatchProxy.Create<IOutboundProxyHttpClientFactory, GitRepositoryAssemblyChecks.RejectTransport>());
             builder.Configuration.AddConfiguration(config);
             var installed = InstalledModuleCatalog.Load(root);
             var store = new ModuleManagementStore(builder.Configuration, root, installed);
