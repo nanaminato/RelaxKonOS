@@ -15,25 +15,28 @@ using RelaxKonOS.Server.Privileged;
 
 internal static class FileServicesLiveChecks
 {
+    private sealed record PipeConfiguration(string? PipeName, string? SharedSecret);
+
     internal static Task RunAsync(string helper, string desktopRunner, string package) =>
         RunAsync(new OneShotHelper(Path.GetFullPath(helper)), desktopRunner, package);
 
     internal static Task RunPipeAsync(string configPath, string desktopRunner, string package)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("This check uses Windows SMB.");
-        PrivilegedHelperOptions? options;
+        PipeConfiguration? configuration;
         try
         {
-            options = JsonSerializer.Deserialize<PrivilegedHelperOptions>(File.ReadAllText(configPath),
+            configuration = JsonSerializer.Deserialize<PipeConfiguration>(File.ReadAllText(configPath),
                 new JsonSerializerOptions(JsonSerializerDefaults.Web));
         }
         catch (JsonException)
         {
             throw new InvalidOperationException("The Helper pipe configuration is not valid JSON.");
         }
-        if (options is null || string.IsNullOrWhiteSpace(options.PipeName)
-            || string.IsNullOrWhiteSpace(options.SharedSecret))
+        if (configuration is null || string.IsNullOrWhiteSpace(configuration.PipeName)
+            || string.IsNullOrWhiteSpace(configuration.SharedSecret))
             throw new InvalidOperationException("The Helper pipe configuration must specify a pipe and shared secret.");
+        var options = new PrivilegedHelperOptions { PipeName = configuration.PipeName, SharedSecret = configuration.SharedSecret };
         return RunAsync(new WindowsNamedPipePrivilegedOperationTransport(options,
             NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance), desktopRunner, package);
     }

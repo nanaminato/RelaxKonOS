@@ -82,6 +82,8 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 
 ## 实施与恢复
 
+- File Services 设备验收新增 `--file-services-live-pipe <现有 Helper 配置路径> <桌面验收 DLL> <File Services .roapp>`。由已获管道授权的 Windows 身份执行，使用持久 Helper 的生产命名管道，验收宿主仍只允许 SMB 状态和配置读取。配置内容不进入输出。Windows Release 通过原单次只读回归并验证缺少明确管道配置时拒绝启动。当前无授权命名管道会话，真实管道运行和共享传输待验。
+
 - Windows x64 当前服务端 Release 复跑官方 File Services 包。桌面通过生产 HTTP 路由读取状态、能力、共享及连接信息，单次只读 Helper 使用本机 SMB 查询。包来源、完整性、更新、失败保留、重启和卸载通过。当前 Windows 执行身份未提升，持久 Helper 命名管道和实际共享传输仍待授权宿主。
 
 - Linux x64 空宿主隔离验收通过 Databases 更新失败自动回退。已运行 9.1.0 时，通过生产上传和冻结计划应用临时签名 9.2.0，测试入口主动报告不健康。回执为 Failed / `module-host-update-rolled-back`，候选未成为活动版本。恢复的 9.1.0 用新进程实际提供 PostgreSQL 查询，后台时段查询抵达真实 Helper。Core PID 不变，切换期间八次 Core 和 Git API 探测全部通过。
