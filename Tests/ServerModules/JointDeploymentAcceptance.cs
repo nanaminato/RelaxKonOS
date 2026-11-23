@@ -818,6 +818,12 @@ internal static class JointDeploymentAcceptance
                     "the signed Web Server plan reuses its effective Certificates dependency");
             await ExpectRestartAsync(joint, review);
             Require(!apps.IsRegistered(new AppId(candidate.Manifest.Id)), $"the desktop waits for the signed {moduleId} package to become effective");
+            var pendingClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+            var pendingModule = (await pendingClient.ReadAsync()).Single(module => module.Id == moduleId);
+            Require(pendingModule is { Packaging: "independent", RestartRequired: true }
+                && pendingModule.InstalledVersion == version && pendingModule.EffectiveVersion != version
+                && pendingModule.ArtifactDigest == package.ArchiveSha256,
+                "inventory distinguishes the committed signed archive from the execution code still running before restart");
             await host.DisposeAsync();
             host = null;
             host = await TestHost.StartAsync(serverRoot, config);

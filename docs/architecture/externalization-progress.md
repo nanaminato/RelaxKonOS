@@ -910,3 +910,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的 Welcome 与 Databases 联合部署专项通过。完整模块套件首次在云上传冲突断言失败，单独重跑通过全部 1,498 项检查。
 - 桌面启动守卫使用模块运行清单提供的签名依赖范围。Windows 签名 Web Server 专项先核对服务端从实际运行版本清单返回的 Certificates 约束，再在测试响应中收紧范围，确认守卫拒绝启动，即使 Certificates 仍在运行。
 - 重新启用已安装的独立模块时，联合部署核对可信目录与安装记录中的归档和清单摘要，从已校验的本机清单读取依赖范围。Windows 签名 Web Server 专项在卸载桌面包后停用模块，重启后使用原包和 Certificates 依赖生成仅启用计划，再重启完成桌面注册。整个流程只记录最初的一次模块包操作。
+- Tunnels 签名替换包提交后，模块清单立即报告新归档摘要和待重启状态，并保留当前生效版本。Windows 签名 Tunnels 和 Web Server 双包验收均核对重启前的安装和生效状态，重启后续跑桌面安装。Tunnels 专项还验证卸载桌面应用后可停用模块，再启用时原配置仍可读取。
