@@ -34,6 +34,10 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime startupDesktop)
         {
             startupDesktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            // Recovery runs before DI and disk-backed preferences. Install an in-memory
+            // default palette so its controls render before the normal appearance service exists.
+            using var startupAppearance = new Services.Theming.AppearanceService(this,
+                new Services.Theming.SystemStyleRegistry());
             var preparation = await Views.StartupDataDirectoryWindow.PrepareAsync();
             if (!preparation.Ready)
             {
