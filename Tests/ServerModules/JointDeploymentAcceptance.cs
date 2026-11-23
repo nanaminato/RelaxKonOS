@@ -1439,6 +1439,16 @@ internal static class JointDeploymentAcceptance
             Require(withoutOptional.Plan.PreparedSteps.Length == 1 && withoutOptional.Plan.OrderedReleases[0].Package.Id == ModuleId
                 && withoutOptional.Plan.OrderedReleases.All(release => release.Package != optional.Package),
                 "deselecting the optional module preserves the missing required signed module");
+            factory.ExpirePackageApply = true;
+            try
+            {
+                await joint.ExecuteAsync(withoutOptional, default);
+                throw new InvalidOperationException("Expected expiry between package plan read and apply.");
+            }
+            catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-plan-expired") { }
+            Require(await joint.FindPendingAsync(candidate, default) is null
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 0,
+                "authoritative expiry at apply requires a new review without starting a package operation");
             var review = withOptional;
             var settings = new ShellSettings(null!);
             var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
@@ -1476,6 +1486,16 @@ internal static class JointDeploymentAcceptance
                 && ModulePackageOperationStore.Read(serverRoot).Count == 0
                 && await new FileDeploymentJournal(journalPath).FindStartedPlanAsync(review.Plan.Id) is null,
                 "a different server identity at the same address rejects the old plan before creating a checkpoint or applying it");
+            factory.DropPackageApplyReply = true;
+            try
+            {
+                await joint.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected the accepted package apply response to be lost.");
+            }
+            catch (HttpRequestException error) when (error.Message == "fixture-package-apply-response-lost") { }
+            Require((await joint.FindPendingAsync(candidate, default))?.Plan.Id == review.Plan.Id
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 1,
+                "losing an accepted package apply response keeps the original plan and its single durable operation");
             await ExpectRestartAsync(joint, review);
             Require(!applications.IsRegistered(new AppId(AppIdText)) && InstalledModuleStore.Read(serverRoot).Single().ModuleId == ModuleId,
                 "the first execution installs the signed module and leaves the desktop package pending");
@@ -2428,6 +2448,8 @@ internal static class JointDeploymentAcceptance
         }
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
         public bool DropDependencyReply { set => handler.DropDependencyReply = value; }
+        public bool ExpirePackageApply { set => handler.ExpirePackageApply = value; }
+        public bool DropPackageApplyReply { set => handler.DropPackageApplyReply = value; }
         public bool BlockDependencyRelease { set => handler.BlockDependencyRelease = value; }
         public HttpClient CreateClient(string name)
         {
@@ -2446,6 +2468,8 @@ internal static class JointDeploymentAcceptance
         public TaskCompletionSource? EnableEntered { get; set; }
         public bool DropEnableResponse { get; set; }
         public bool DropDependencyReply { get; set; }
+        public bool ExpirePackageApply { get; set; }
+        public bool DropPackageApplyReply { get; set; }
         public bool BlockDependencyRelease { get; set; }
         public bool SubstituteReceiptRelease { get; set; }
         public bool SubstituteHealthVersion { get; set; }
@@ -2471,6 +2495,26 @@ internal static class JointDeploymentAcceptance
             if (before is not null) await before();
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (request.Method == HttpMethod.Post
+                && path is not null && path.StartsWith(ServerModuleManagementRoutes.PackagePlans + "/", StringComparison.Ordinal)
+                && path.EndsWith("/apply", StringComparison.Ordinal))
+            {
+                if (ExpirePackageApply)
+                {
+                    ExpirePackageApply = false;
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.Conflict)
+                    {
+                        Content = JsonContent.Create(new { problemCode = "module-package-plan-expired" }),
+                    };
+                }
+                if (DropPackageApplyReply)
+                {
+                    DropPackageApplyReply = false;
+                    using var response = await base.SendAsync(request, cancellationToken);
+                    response.EnsureSuccessStatusCode();
+                    throw new HttpRequestException("fixture-package-apply-response-lost");
+                }
+            }
             if (path?.StartsWith(ServerModuleManagementRoutes.DesktopDependencies + "/", StringComparison.Ordinal) == true)
             {
                 if (request.Method == HttpMethod.Delete && BlockDependencyRelease)
