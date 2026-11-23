@@ -4,19 +4,32 @@ import argparse
 import hashlib
 import json
 import re
+import struct
 import xml.etree.ElementTree as ET
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 def version(value):
-    if not isinstance(value, str) or not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", value):
+    if not isinstance(value, str) or len(value) > 128 or not re.fullmatch(
+            r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value):
         raise ValueError(f"Invalid three-part version {value!r}")
     return tuple(map(int, value.split(".")))
 
 
 def read_json(path):
     return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def read_profiles(path):
+    require(not path.is_symlink() and path.stat().st_size <= 8192,
+            f"Installation profile file must be at most 8192 bytes and cannot be a symbolic link: {path}.")
+    def unique_properties(pairs):
+        properties = dict(pairs)
+        require(len(properties) == len(pairs), f"Duplicate JSON properties in installation profiles: {path}.")
+        return properties
+
+    return json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=unique_properties)
 
 
 def require(condition, problem):
@@ -27,19 +40,65 @@ def require(condition, problem):
 def verify_official_server_dependencies(manifests, official_source):
     authorized = set(official_source["AuthorizedModuleIds"])
     for app_id, manifest in manifests.items():
-        for requirement in (manifest.get("dependencies") or {}).get("required", []):
-            package = requirement["package"]
-            if package["kind"] == 1:  # DeploymentPackageKind.ServerModule
-                module_id = package["id"]
-                require(module_id in authorized,
-                        f"{app_id} requires {module_id}, which the official module source does not authorize.")
+        dependencies = manifest.get("dependencies") or {}
+        for kind in ("required", "optional"):
+            for requirement in dependencies.get(kind, []):
+                package = requirement["package"]
+                if package["kind"] == 1:  # DeploymentPackageKind.ServerModule
+                    module_id = package["id"]
+                    require(module_id in authorized,
+                            f"{app_id} declares {kind} module {module_id}, which the official module source does not authorize.")
 
 
-def verify_published(publish_dir, manifests, profile_document):
+def verify_windows_apphost(path, rid):
+    pe_machines = {"win-x64": 0x8664, "win-arm64": 0xAA64, "win-x86": 0x014C}
+    require(rid in pe_machines, f"Unsupported Windows desktop RID {rid}.")
+    require(path.is_file(), f"Windows desktop apphost is missing under {path.parent}.")
+    with path.open("rb") as apphost:
+        header = apphost.read(64)
+        require(len(header) == 64 and header.startswith(b"MZ"), f"{path.name} has an invalid DOS header.")
+        apphost.seek(struct.unpack_from("<I", header, 60)[0])
+        pe = apphost.read(6)
+        require(len(pe) == 6 and pe.startswith(b"PE\0\0"), f"{path.name} has an invalid PE header.")
+        machine = struct.unpack_from("<H", pe, 4)[0]
+    require(machine == pe_machines[rid], f"{path.name} PE machine 0x{machine:04X} does not match {rid}.")
+
+
+def verify_linux_apphost(path, rid):
+    elf_machines = {"linux-x64": 62, "linux-arm64": 183}
+    require(rid in elf_machines, f"Unsupported Linux desktop RID {rid}.")
+    require(path.is_file(), f"Linux desktop apphost is missing under {path.parent}.")
+    with path.open("rb") as apphost:
+        header = apphost.read(64)
+    require(len(header) == 64 and header.startswith(b"\x7fELF\x02\x01\x01"),
+            f"{path.name} has an invalid 64-bit little-endian ELF header.")
+    machine = struct.unpack_from("<H", header, 18)[0]
+    require(machine == elf_machines[rid], f"{path.name} ELF machine {machine} does not match {rid}.")
+
+
+def verify_published(publish_dir, manifests, profile_document, expected_rid):
     host_dependencies = publish_dir / "RelaxKonOS.deps.json"
     require(host_dependencies.is_file(), f"Desktop host dependency manifest is missing under {publish_dir}.")
     dependency_document = read_json(host_dependencies)
     runtime_target = dependency_document["runtimeTarget"]["name"]
+    _, _, rid = runtime_target.partition("/")
+    require(expected_rid is None or rid == expected_rid,
+            f"Published runtime target {runtime_target} does not match {expected_rid}.")
+    if rid.startswith("win-"):
+        verify_windows_apphost(publish_dir / "RelaxKonOS.exe", rid)
+    elif rid.startswith("linux-"):
+        verify_linux_apphost(publish_dir / "RelaxKonOS", rid)
+    client_platform = {"win": "windows", "linux": "linux"}.get(rid.split("-", 1)[0])
+    if client_platform is not None:
+        for profile, applications in profile_document["profiles"].items():
+            for application in applications:
+                if application["installPolicy"] != "offline":
+                    continue
+                app_id = application["appId"]
+                platforms = {platform.strip().lower() for platform in manifests[app_id].get("clientPlatforms") or []
+                             if platform and platform.strip()}
+                require(not platforms or client_platform in platforms,
+                        f"{profile} cannot preinstall {app_id} on {client_platform}.")
     graph = {
         name.split("/", 1)[0]: set(entry.get("dependencies", {}))
         for name, entry in dependency_document["targets"][runtime_target].items()
@@ -67,6 +126,9 @@ def verify_published(publish_dir, manifests, profile_document):
         dependency.split("/", 1)[0]
         for dependency in dependency_document["libraries"]
     }
+    require("Avalonia.Controls.WebView" not in host_libraries
+            and not (publish_dir / "Avalonia.Controls.WebView.dll").exists(),
+            "The desktop host contains the Browser package's WebView implementation.")
     for app_id, manifest in manifests.items():
         assembly_name = Path(manifest["entryAssembly"]).stem
         require(assembly_name not in host_libraries,
@@ -76,7 +138,7 @@ def verify_published(publish_dir, manifests, profile_document):
 
     packages = publish_dir / "OfficialApps"
     require(packages.is_dir(), f"OfficialApps is missing under {publish_dir}.")
-    require(read_json(packages / "installation-profiles.json") == profile_document,
+    require(read_profiles(packages / "installation-profiles.json") == profile_document,
             "Published installation profiles differ from the source configuration.")
     names = {f"{app_id}.roapp" for app_id in manifests}
     require({path.name for path in packages.glob("*.roapp")} == names,
@@ -90,19 +152,54 @@ def verify_published(publish_dir, manifests, profile_document):
             digest = hashlib.file_digest(archive_file, "sha256").hexdigest()
         require(digest == expected, f"Published checksum mismatch for {app_id}.")
         with zipfile.ZipFile(archive_path) as archive:
+            archive_entries = archive.infolist()
+            # The desktop installer checks these limits before reading the manifest.
+            require(len(archive_entries) <= 4096
+                    and sum(entry.file_size for entry in archive_entries) <= 512 * 1024 * 1024,
+                    f"The published {app_id} archive exceeds the desktop installer's size limits.")
+            files = [entry.filename for entry in archive_entries if not entry.is_dir()]
+            if client_platform == "windows":
+                files = [name.casefold() for name in files]
+            require(len(files) == len(set(files)), f"The published {app_id} archive contains duplicate file paths.")
             packaged = json.loads(archive.read("manifest.json"))
             require(packaged == manifest, f"Published manifest differs from the source for {app_id}.")
-            require(packaged["entryAssembly"] in archive.namelist(), f"Published entry assembly is absent for {app_id}.")
-    print(f"Verified {len(manifests)} published archive digests, manifests and entry assemblies.")
+            assembly = packaged["entryAssembly"]
+            entries = {entry.filename for entry in archive_entries if not entry.is_dir() and entry.file_size > 0}
+            require(assembly in entries, f"Published entry assembly is missing or empty for {app_id}.")
+            dependency_file = Path(assembly).with_suffix(".deps.json").as_posix()
+            require(dependency_file in entries, f"Published dependency manifest is missing or empty for {app_id}.")
+            dependencies = json.loads(archive.read(dependency_file))
+            target = dependencies["targets"][dependencies["runtimeTarget"]["name"]]
+            directory = PurePosixPath(assembly).parent
+            runtime_files = {
+                (directory / PurePosixPath(asset).name).as_posix()
+                for library in target.values()
+                for asset in library.get("runtime", {})
+                if PurePosixPath(asset).name != "_._"
+            }
+            require(runtime_files <= entries,
+                    f"Published runtime assemblies are missing or empty for {app_id}: {sorted(runtime_files - entries)}.")
+            icon = packaged.get("iconPath")
+            require(not icon or icon in entries, f"Published icon is missing or empty for {app_id}.")
+            if app_id == "relaxkonos.browser":
+                webview = assembly.rsplit("/", 1)[0] + "/Avalonia.Controls.WebView.dll"
+                require(webview in entries, "The Browser archive is missing its WebView implementation.")
+    print(f"Verified {len(manifests)} published archives, including digests, manifests, entry assemblies, dependency manifests and declared icons.")
 
 
 def verify_profiles(document, manifests):
+    require(isinstance(document, dict) and document.keys() == {"schemaVersion", "defaultProfile", "profiles"}
+            and type(document["schemaVersion"]) is int and document["schemaVersion"] == 2
+            and document["defaultProfile"] == "standard", "Invalid desktop installation profile document.")
     profiles = document["profiles"]
-    require(document["schemaVersion"] == 2 and document["defaultProfile"] == "standard"
+    require(isinstance(profiles, dict) and 3 <= len(profiles) <= 16
             and {"minimal", "standard", "developer"} <= profiles.keys(), "Invalid desktop installation profile document.")
     for profile, entries in profiles.items():
+        require(isinstance(entries, list) and len(entries) <= 128, f"{profile} has an invalid application list.")
         seen = set()
         for entry in entries:
+            require(isinstance(entry, dict) and entry.keys() == {"appId", "installPolicy", "minimumVersion"},
+                    f"{profile} contains an invalid application entry.")
             app_id = entry["appId"]
             policy = entry["installPolicy"]
             require(app_id in manifests and app_id not in seen, f"{profile} contains an unknown or repeated package {app_id}.")
@@ -116,8 +213,11 @@ def verify_profiles(document, manifests):
     require(not any(entry["installPolicy"] == "offline" for entry in profiles["minimal"]),
             "Minimal must leave application installation to the recovery entry.")
     developer = {entry["appId"]: entry for entry in profiles["developer"]}
+    require(developer.keys() == manifests.keys(),
+            f"Developer must list every official application. Missing: {sorted(manifests.keys() - developer.keys())}.")
     for entry in profiles["standard"]:
         app_id = entry["appId"]
+        require(entry["installPolicy"] == "offline", f"Standard must install {app_id} offline.")
         inherited = developer.get(app_id)
         require(inherited is not None and inherited["installPolicy"] == entry["installPolicy"]
                 and version(inherited["minimumVersion"]) >= version(entry["minimumVersion"]),
@@ -125,7 +225,7 @@ def verify_profiles(document, manifests):
     return profiles
 
 
-def main(publish_dir):
+def main(publish_dir, expected_rid):
     repo = Path(__file__).resolve().parents[2]
     desktop = repo / "Client/RelaxKonOS.Client.Desktop"
     project = ET.parse(desktop / "RelaxKonOS.Client.Desktop.csproj")
@@ -146,15 +246,22 @@ def main(publish_dir):
 
     server_settings = read_json(repo / "RelaxKonOS.Server/appsettings.json")
     verify_official_server_dependencies(manifests, server_settings["ModulePackages"]["Sources"]["official-modules"])
-    document = read_json(desktop / "installation-profiles.json")
+    document = read_profiles(desktop / "installation-profiles.json")
     profiles = verify_profiles(document, manifests)
-    summary = ", ".join(f"{profile}={len(entries)}" for profile, entries in profiles.items())
+    summary = ", ".join(
+        f"{profile}={sum(entry['installPolicy'] == 'offline' for entry in entries)} offline/{len(entries)} listed"
+        for profile, entries in profiles.items()
+    )
     print(f"Verified {len(manifests)} official desktop manifests and installation profiles ({summary}).")
     if publish_dir is not None:
-        verify_published(publish_dir, manifests, document)
+        verify_published(publish_dir, manifests, document, expected_rid)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--publish-dir", type=Path, help="Verify the actual OfficialApps output of dotnet publish.")
-    main(parser.parse_args().publish_dir)
+    parser.add_argument("--rid", help="Require this runtime identifier in the published host dependency manifest.")
+    args = parser.parse_args()
+    if args.rid and args.publish_dir is None:
+        parser.error("--rid requires --publish-dir")
+    main(args.publish_dir, args.rid)

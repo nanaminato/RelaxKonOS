@@ -133,6 +133,16 @@ public static class ModulePackageVerifier
             && !verified.NextHistory.RevokedDigests.Contains(release.ArchiveSha256, StringComparer.Ordinal), "release-revoked");
         Require(m.Rid == context.Rid, "rid-mismatch");
         Require(SupportsHostApi(m, context.HostApiVersion), "host-api-incompatible");
+        await VerifyArchiveContentAsync(archive, release, cancellationToken);
+        return new(m, release.ArchiveSha256, archive.Length, policy.SourceId, verified.Catalog.Sequence,
+            ModulePackageJson.Read<SignedModulePackageCatalog>(envelope, 6 * 1024 * 1024).KeyId, true);
+    }
+
+    /// <summary>Checks archive bytes against a release from an already verified catalog.</summary>
+    public static async Task VerifyArchiveContentAsync(Stream archive, ModulePackageRelease release,
+        CancellationToken cancellationToken = default)
+    {
+        var m = release.Manifest;
         Require(archive.CanRead && archive.CanSeek && archive.Length == release.ArchiveBytes, "archive-size");
         archive.Position = 0;
         var digest = Convert.ToHexStringLower(await SHA256.HashDataAsync(archive, cancellationToken));
@@ -173,8 +183,6 @@ public static class ModulePackageVerifier
             Require(names.Contains("manifest.json") && expected.Keys.All(names.Contains), "archive-file-set");
         }
         catch (InvalidDataException) { throw new ModulePackageException("module-package-archive-invalid"); }
-        return new(m, digest, archive.Length, policy.SourceId, verified.Catalog.Sequence,
-            ModulePackageJson.Read<SignedModulePackageCatalog>(envelope, 6 * 1024 * 1024).KeyId, true);
     }
 
     private static async Task<byte[]> ReadEntryAsync(ZipArchiveEntry entry, long limit, CancellationToken cancellationToken)

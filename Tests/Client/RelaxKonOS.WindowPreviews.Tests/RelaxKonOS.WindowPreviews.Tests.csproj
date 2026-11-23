@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationManifest>../../../Client/RelaxKonOS.Client.Desktop/app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Settings/RelaxKonOS.App.Settings.csproj" />

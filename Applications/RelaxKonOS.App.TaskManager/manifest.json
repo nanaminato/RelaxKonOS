@@ -16,6 +16,14 @@
   "serverRequirements": {
     "capabilities": ["server.metrics", "server.processes"]
   },
+  "dependencies": {
+    "optional": [
+      {
+        "package": { "kind": 1, "id": "relaxkonos.system-performance" },
+        "capability": "server.metrics"
+      }
+    ]
+  },
   "localizedMetadata": {
     "zh-CN": {
       "displayName": "任务管理器",

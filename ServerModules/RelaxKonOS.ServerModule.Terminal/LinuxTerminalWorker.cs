@@ -11,7 +11,7 @@ internal static class LinuxTerminalWorker
 {
     internal sealed record LocalRequest(UserExecutionRequest Request, IReadOnlyList<string>? Arguments);
 
-    internal static async Task<int> RunLocalAsync()
+    internal static async Task<int> RunLocalAsync(Func<string, string, string, Dictionary<string, string>> createEnvironment)
     {
         if (!OperatingSystem.IsLinux() || geteuid() == 0) return 77;
         var input = Console.OpenStandardInput();
@@ -29,11 +29,12 @@ internal static class LinuxTerminalWorker
             || request.Correlation is not { } correlation || !correlation.IsValid()) return 77;
         var shell = string.IsNullOrWhiteSpace(request.TerminalShell) || request.TerminalShell == "bash" ? "/bin/bash" : request.TerminalShell;
         if (!Path.IsPathFullyQualified(shell) || !File.Exists(shell)) return 64;
-        return await RunAsync(request, shell, request.Identity.HomeDirectory, request.Identity.CanonicalAccount, local.Arguments);
+        return await RunAsync(request, shell, request.Identity.HomeDirectory, request.Identity.CanonicalAccount, createEnvironment, local.Arguments);
     }
 
     internal static async Task<int> RunAsync(UserExecutionRequest request, string shell,
-        string home, string accountName, IReadOnlyList<string>? arguments = null)
+        string home, string accountName, Func<string, string, string, Dictionary<string, string>> createEnvironment,
+        IReadOnlyList<string>? arguments = null)
     {
         if (!OperatingSystem.IsLinux() || geteuid() == 0
             || request.Identity.StableIdentity != geteuid().ToString(System.Globalization.CultureInfo.InvariantCulture))
@@ -70,7 +71,7 @@ internal static class LinuxTerminalWorker
         try
         {
             var environment = (request.TerminalEnvironment ?? new([], RelaxKonOS.Protocol.Settings.EnvironmentPathMode.Append))
-                .Apply(TerminalUserEnvironment.Linux(home, accountName, shell), windows: false);
+                .Apply(createEnvironment(home, accountName, shell), windows: false);
             pty.Start(shell, request.TerminalColumns!.Value, request.TerminalRows!.Value, request.Path!, environment, arguments);
             try
             {

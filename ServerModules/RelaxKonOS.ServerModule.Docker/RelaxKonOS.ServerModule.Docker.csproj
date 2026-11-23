@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.Docker.Contracts/RelaxKonOS.ServerModule.Docker.Contracts.csproj" /></ItemGroup>
   <Target Name="ValidateDockerComposeExecutionBoundary" BeforeTargets="PrepareForBuild">
     <PropertyGroup><DockerComposeContractProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Shared/RelaxKonOS.ServerModule.Docker.Contracts/RelaxKonOS.ServerModule.Docker.Contracts.csproj'))</DockerComposeContractProjectPath></PropertyGroup>

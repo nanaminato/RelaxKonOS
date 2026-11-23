@@ -117,8 +117,8 @@ public sealed class PortForwardingService : IPortForwardingService
             DeleteAskPassHelper(launch.AskPassHelperPath);
             throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.forward_register_failed"));
         }
-        process.EnableRaisingEvents = true;
         process.Exited += (_, _) => OnProcessExited(id, process);
+        process.EnableRaisingEvents = true;
         RaiseChanged();
         return info;
     }

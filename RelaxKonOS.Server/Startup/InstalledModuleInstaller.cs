@@ -71,6 +71,7 @@ internal static class InstalledModuleInstaller
             policy, context, verified.NextHistory, releaseId, now, cancellationToken);
         if (ServerModules.ConflictsWithBundledModule(candidate.Manifest))
             throw new ModulePackageException(ServerModules.PackageModuleIdConflict);
+        VerifyRequiredRuntimeFiles(candidate.Manifest);
         if (checkInstalledDependencies) ValidateDependencies(contentRoot, configuration, candidate.Manifest);
         return new(candidate.Manifest, release.ManifestSha256, candidate.ArchiveSha256, candidate.ArchiveBytes,
             sourceId, releaseId);
@@ -214,7 +215,7 @@ internal static class InstalledModuleInstaller
                 manifest.Runtime, now, CapabilityContractVersions: manifest.CapabilityContractVersions);
             InstalledModuleStore.WriteInstallMetadata(staging, record);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            Directory.Move(staging, destination);
+            await PublishStagedDirectoryAsync(staging, destination, cancellationToken);
             staging = string.Empty;
             if (activate) CommitSelection(contentRoot, record);
             return record;
@@ -222,6 +223,27 @@ internal static class InstalledModuleInstaller
         finally
         {
             if (!string.IsNullOrWhiteSpace(staging) && Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    private static async Task PublishStagedDirectoryAsync(string staging, string destination, CancellationToken ct)
+    {
+        // Windows can briefly deny renaming a freshly extracted directory while another handle is open.
+        // Retry the atomic rename only while the original candidate is still staged.
+        for (var retry = 0; ; retry++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                Directory.Move(staging, destination);
+                return;
+            }
+            catch (IOException error) when (OperatingSystem.IsWindows() && retry < 5
+                && (error.HResult & 0xffff) is 5 or 32 or 33
+                && Directory.Exists(staging) && !Path.Exists(destination))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(25 << retry), ct);
+            }
         }
     }
 
@@ -265,7 +287,29 @@ internal static class InstalledModuleInstaller
         if (!ModulePackageVerifier.SupportsHostApi(manifest, ModulePackageHostConfiguration.HostApiVersion))
             throw new ModulePackageException("module-package-host-api-incompatible");
 
-        var entry = Path.Combine(packageRoot, manifest.EntryAssembly);
+        VerifyExecutionEntry(Path.Combine(packageRoot, manifest.EntryAssembly), manifest);
+    }
+
+    internal static void VerifyRequiredRuntimeFiles(ModulePackageManifest manifest)
+    {
+        if (!HasRequiredRuntimeFiles(manifest))
+            throw new ModulePackageException(MissingDatabaseRuntimeFiles);
+    }
+
+    internal const string MissingDatabaseRuntimeFiles = "module-package-database-runtime-files-missing";
+
+    internal static bool HasRequiredRuntimeFiles(ModulePackageManifest manifest)
+    {
+        if (!ServerModules.IsOfficialDatabaseModuleHost(manifest)) return true;
+        var directory = manifest.EntryAssembly[..(manifest.EntryAssembly.LastIndexOf('/') + 1)];
+        var dependencies = Path.ChangeExtension(manifest.EntryAssembly, ".deps.json");
+        return manifest.Files.Any(file => file.Path == dependencies && file.Length > 0)
+            && manifest.Files.Any(file => file.Path == directory + "RelaxKonOS.Protocol.dll" && file.Length > 0);
+    }
+
+    internal static void VerifyExecutionEntry(string entry, ModulePackageManifest manifest)
+    {
+        VerifyRequiredRuntimeFiles(manifest);
         try
         {
             if (InstalledProxyModule.MatchesManifest(manifest)) InstalledProxyModule.VerifyStagedExecution(entry);
@@ -277,6 +321,10 @@ internal static class InstalledModuleInstaller
             else if (InstalledWebServerModule.MatchesManifest(manifest)) WebServerExecutionCode.ValidateEntryPoints(entry);
             else if (InstalledCertificateModule.MatchesManifest(manifest)) AcmeExecution.ValidateEntryPoint(entry);
             else if (InstalledGitModule.MatchesManifest(manifest)) CollectibleGitExecution.VerifyStagedExecution(entry);
+            else if (InstalledSystemPerformanceModule.MatchesManifest(manifest))
+                SystemPerformance.BundledPerformanceSource.Verify(entry, manifest.Rid.StartsWith("win-", StringComparison.Ordinal));
+            else if (InstalledTerminalModule.MatchesManifest(manifest))
+                Terminal.BundledTerminalPtyFactory.Verify(entry);
         }
         catch (Exception error) when (error is InvalidDataException or TypeLoadException or FileLoadException or BadImageFormatException)
         { throw new ModulePackageException("module-package-execution-contract"); }

@@ -37,7 +37,13 @@ internal static class ModuleManagementChecks
                     .Append(new ServerModuleDto(module, false, [], [], [], [])).ToArray();
                 var request = new ServerModulePlanRequest(store.ServiceId, ServerModuleAction.Enable, [module],
                     [.. store.DesiredIds, module], store.Revision, "enable-external-layout");
+                var missing = facts.Select(fact => fact.Id == module ? fact with { Packaging = "independent" } : fact).ToArray();
+                var blocked = store.Preview("actor", request with { IdempotencyKey = "enable-before-install" }, missing);
+                check(blocked.BlockedBy.Any(blocker => blocker.ProblemCode == "module-package-install-required")
+                    && !store.Admissions(awaitingExternalPackage: true).Single(action => action.Action == ServerModuleAction.Enable).Allowed,
+                    "an external module cannot be enabled before its execution package is installed");
                 var plan = store.Preview("actor", request, facts);
+                Error(() => store.Apply("actor", plan.PlanId, missing), "module-package-install-required");
                 store.Apply("actor", plan.PlanId, facts);
             }
             using (var restarted = new ModuleManagementStore(external, externalRoot))

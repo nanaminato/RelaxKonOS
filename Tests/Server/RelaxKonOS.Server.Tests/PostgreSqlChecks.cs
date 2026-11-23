@@ -89,9 +89,9 @@ internal static class PostgreSqlChecks
                     ProtectedValue = protection.CreateProtector("RelaxKonOS.Database.Credentials.v1").Protect(secretRequest.Password)
                 }));
             Check(credentials.Read(oldReference, secretRequest.InstanceId, "actor") == secretRequest.Password,
-                "execution assembly opens credential files written in the previous format with the same host keys");
-            Check(typeof(RelaxKonOS.ServerModule.Database.DatabaseCredentialStore).Assembly.GetName().Name == "RelaxKonOS.ServerModule.Database",
-                "encrypted credential storage runs in the database execution assembly");
+                "the host opens existing credential files with the same protection keys");
+            Check(typeof(DatabaseCredentialStore).Assembly == typeof(PostgreSqlCredentialStore).Assembly,
+                "encrypted credential storage belongs to the host that owns its keys");
             Check(credentials.Stage(secretRequest, "actor").Reference == secretRequest.Reference, "credential staging returns only an opaque reference");
             Check(credentials.Stage(secretRequest, "actor").Reference == secretRequest.Reference, "credential staging is immutable and idempotent");
             Check(new PostgreSqlCredentialStore(environment, protection).Read(secretRequest.Reference, secretRequest.InstanceId, "actor") == secretRequest.Password,

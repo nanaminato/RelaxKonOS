@@ -714,7 +714,7 @@ public sealed partial class DeveloperPackageManager
         _ = ParseInstancePolicy(manifest.InstancePolicy);
     }
 
-    private static void ValidateDependencies(IReadOnlyList<DeploymentRequirement>? requirements, bool optional)
+    internal static void ValidateDependencies(IReadOnlyList<DeploymentRequirement>? requirements, bool optional)
     {
         if (requirements is null) return;
         var keys = new HashSet<DeploymentPackageKey>();
@@ -923,7 +923,8 @@ public sealed partial class DeveloperPackageManager
         protected override Assembly? Load(AssemblyName assemblyName)
         {
             if (assemblyName.Name is not { } name || SharedAssemblies.Contains(name)
-                || name == "Avalonia" || name.StartsWith("Avalonia.", StringComparison.Ordinal))
+                || name == "Avalonia" || (name.StartsWith("Avalonia.", StringComparison.Ordinal)
+                    && name != "Avalonia.Controls.WebView"))
                 return null;
             var path = _resolver.ResolveAssemblyToPath(assemblyName);
             if (path is null && !name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))

@@ -30,10 +30,17 @@ public interface IModuleHostContext
     ICloudFileProviders CloudProviders { get; }
 }
 
-/// <summary>Read-only database observation available to the trusted database module during a user request.</summary>
+/// <summary>Database operations available to the trusted database module.</summary>
 public interface IModuleHostDatabaseContext : IModuleHostContext
 {
     IModuleDatabaseObservation DatabaseObservation { get; }
+    IModuleDatabaseBackupSchedule DatabaseBackupSchedule { get; }
+}
+
+public interface IModuleDatabaseBackupSchedule
+{
+    ValueTask<RelaxKonOS.ModuleHost.Protocol.PostgreSqlBackupSlot?> ReadDueSlotAsync(CancellationToken cancellationToken);
+    ValueTask SubmitAsync(RelaxKonOS.ModuleHost.Protocol.PostgreSqlBackupSlot slot, CancellationToken cancellationToken);
 }
 
 public interface IModuleDatabaseObservation

@@ -7,6 +7,19 @@
 - “服务端归属”描述应用当前消费的 API。只有已存在的独立模块标为包候选，其他归属须按实际提供者和主机契约确认。宿主运行时由组件中心管理。
 - 验收列指本轮完整验收。既有模块测试和历史设备证据见 [模块边界进度](RelaxKonOS.ServerModuleBoundaries.Progress.md)。
 
+## 当前验收缺口
+
+| 目标 | 已核实 | 待取得的证据 |
+| --- | --- | --- |
+| 最小 Shell、应用包、安装配置集 | 空白系统盘只登记 App Installer，29 个官方归档；三档预装、Minimal 恢复和用户卸载保留通过 | 物理 Windows ARM64 的原生桌面、预装和 WebView2；物理 Linux ARM64 的桌面启动与预装 |
+| 服务端模块外置、回滚与联合部署 | 四 RID 构建并临时签名 46 份制品，Linux 两种架构验证独立模块共同启用；实际归档的联合部署与原回执恢复已分项验证 | 物理 ARM64 上的运行版本、健康和业务请求；当前授权目标上的最小升级路径与旧版本恢复 |
+| 应用商店与来源 | 隔离 HTTPS 和签名目录夹具覆盖来源审查、安装及恢复；本地发布产物通过发行校验 | 如以正式来源验收，需取得授权发布目标及相应签名、发布和下载证据 |
+| 真实远端工作流 | Windows、Linux 回环 SSH/SFTP 联调，Windows x64 原生 WebView2；真实业务覆盖见下方逐项记录 | 授权远端的 SSH 部署、工作区与桌面业务，以及矩阵中明确待验的宿主服务路径 |
+
+当前工作区未提供远端连接记录。已有模拟环境及回环验收的范围以各自运行记录为准。
+
+最近复核使用当前校验器检查 Windows x64、Windows ARM64、Linux x64 和 Linux ARM64 四份实际桌面发行，均通过 29 个官方包、目标架构及三档配置检查。Windows x64 的官方 Browser 包同时通过 WebView2 回环导航及包生命周期复验。
+
 ## 桌面应用矩阵
 
 内置行的目录以 `Client/RelaxKonOS.Client/Apps/` 为起点。独立行的项目位于 `Applications/`。应用 ID 均具有 `relaxkonos.` 前缀。
@@ -17,32 +30,32 @@
 | welcome | RelaxKonOS.App.Welcome | 是 / 是 | 否 | 使用 SDK 激活记事本或安装器 | 基础 | Windows 已验 |
 | settings | Settings | 是 / 是 | 否 | 工作区设置与宿主设置 | 基础 | Windows 隔离安装、同版本修复、包窗口及深链接已验 |
 | explorer | Explorer | 是 / 是 | 否 | 文件 API；调用存储提供者的聚合入口 | 基础 | Windows 隔离发行安装、修复、未登录深链接通过 |
-| terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方包已验，服务端恢复待验 |
-| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 安装、修复、包窗口、管理对话框、向导和卸载通过，真实 SSH 待验 |
+| terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方桌面包已验，Linux 联合部署、已安装窗口恢复与 Ghostty 原生终端加载已验，实体桌面待验 |
+| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 包生命周期及真实环回 SSH 主机地址查询通过，远端 SSH 部署待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Windows 与 Linux x64 发行包生命周期及已安装窗口读取原生性能快照、普通进程列表已验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
-| browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包已验，原生 WebView 待验 |
+| browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包和 WebView2 回环导航已验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期及 Linux Standard 原生首次预装已验 |
 | registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Windows 与 Linux x64 发行包生命周期及已安装窗口读写工作区值、SQLite 重启恢复已验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 与 Linux x64 包生命周期及已安装官方窗口经隔离服务端读取告警已验，桌面 SDK 授权边界已验 |
-| codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
+| codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期和回环 SFTP 文件读写已验，远端工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | Windows 和 Linux 签名双包、真实 Engine 临时项目部署和删除已验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows 和 Linux x64 官方包生命周期已验，已安装只读窗口经生产 HTTP 路由和 IPC 显示独立 Agent 版本 |
-| firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows 和 Linux 签名双包、生产路由授权拒绝及 Windows 真实 Helper 状态读取已验 |
+| firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows 和 Linux 签名双包、Windows 真实状态读取，以及 Linux UFW 经生产 Helper 的授权增删已验 |
 | proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows、Linux 签名双包已验，Linux 真实 Mihomo 总览、直连重载和补偿已验 |
-| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows 包生命周期、Linux 签名 Proxy 复用和两平台 sing-box 1.14.3 原生配置检查已验，真实服务发布和流量转发待验 |
-| squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows 包生命周期、Linux 签名回执和原生 Squid 单独运行已验，生产 Helper 发布与重载待验 |
+| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows 包生命周期、Linux 签名 Proxy 复用、两平台原生配置和 Linux 凭据到期环回流量已验；签名双包经系统 Helper 发布待验 |
+| squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows 包生命周期及 Linux 精简发行的生产 Helper 发布、真实 Squid 启动与重载已验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 官方包生命周期及只读窗口经生产 HTTP 路由读取真实 SMB 状态已验，生产 Helper 命名管道和共享传输待验 |
-| port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
+| port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 官方包生命周期及 Linux 实际 OpenSSH 环回转发、移除已验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows、Linux 签名双包已验，Linux 隔离 Pebble 真实签发及重启恢复已验 |
-| webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 签名双包及 Certificates 复用已验，Linux 真实 Nginx 直连重载、拒绝坏配置及修正后重载已验 |
+| webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 签名双包及 Certificates 复用已验，Linux 真实 Nginx 直连重载及生产 Helper 重载已验，覆盖坏配置拒绝和修正后重载 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows 与 Linux x64 官方包生命周期、定义读取、窗口提交部署、真实 Docker 工作负载和成功回执已验。Windows 另已验证首次拉取并绑定新镜像 ID |
 | database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
-| tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows 和 Linux 随附及签名双包已验，Windows 真实 Helper IPC 控制读取已验 |
-| ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 已验，远端桌面待验 |
+| tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows 和 Linux 随附及签名双包已验，Windows Helper IPC 控制读取与 Linux 未登录守护进程状态已验 |
+| ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 读写、复制移动和主机指纹校验已验，远端桌面待验 |
 
 基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前官方目录包含 29 个桌面 .roapp，桌面宿主保留内置应用安装器。Standard 离线安装 Browser、Component Center、Event & Alert Center、Explorer、Image Viewer、Notepad、Registry、Server Center、Settings、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 可通过内置应用安装器从发行归档安装和修复基础应用。Developer 额外离线预装 Code Editor，另有 15 个交互式安装项。
 
@@ -65,8 +78,216 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Runtime 继续由 ApplicationManager 负责应用注册、激活和窗口策略。启动依赖观察应接入现有 IApplicationLaunchGuard。参见 [应用激活](RelaxKonOS.ApplicationActivation.md)。
 - 官方桌面商店沿用 `OfficialDesktopPackages`、`AppPackageInstallerService` 和 `DeveloperPackageManager` 的来源、哈希、安装与注册边界。Direct Deploy 继续复用软件包管理器。参见 [包商店](../platform/RelaxKonOS.PackageStore.Design.md) 和 [开发 CLI](../../Tools/RelaxKonOS.DevCli/README.md)。
 - 模块侧复用可信目录、包计划、应用操作回执及 ModuleHost 健康查询。主机准入和宿主级授权由服务端判定。参见 [组件中心](../platform/RelaxKonOS.ComponentCenter.Design.md) 和 [模块包格式](RelaxKonOS.ServerModulePackage.Format.md)。
+- Windows ConPTY、Linux Terminal worker、进程树清理和 PTY 生命周期接口已移入 `RelaxKonOS.ServerModule.Terminal`。Core 与 Helper 随各自发行物携带同一程序集，并提供各自的用户环境构造。Hub 授权和会话驻留由 Core 处理。Windows Release 通过终端协议、管理员授权回收、输入输出、调整尺寸、退出、启动失败清理和 17 项真实进程树检查。Linux x64 自包含 Core 在 WSL 通过实际 PTY 输入输出、控制帧取消及父进程异常退出后清理。自包含 Helper 在隔离 Linux 容器以 sudo 链路和普通用户身份通过全部 17 项真实进程树检查，验证显式关闭、退出码、驻留释放及无关进程存活。签名包及会话恢复验收见「实施与恢复」。
 
 ## 实施与恢复
+
+- Windows x64 当前服务端 Release 复跑官方 File Services 包。桌面通过生产 HTTP 路由读取状态、能力、共享及连接信息，单次只读 Helper 使用本机 SMB 查询。包来源、完整性、更新、失败保留、重启和卸载通过。当前 Windows 执行身份未提升，持久 Helper 命名管道和实际共享传输仍待授权宿主。
+
+- Linux x64 空宿主隔离验收通过 Databases 更新失败自动回退。已运行 9.1.0 时，通过生产上传和冻结计划应用临时签名 9.2.0，测试入口主动报告不健康。回执为 Failed / `module-host-update-rolled-back`，候选未成为活动版本。恢复的 9.1.0 用新进程实际提供 PostgreSQL 查询，后台时段查询抵达真实 Helper。Core PID 不变，切换期间八次 Core 和 Git API 探测全部通过。
+
+- Linux x64 无外网容器复验 Databases 在线升级至 9.1.0，再通过上传原签名归档及冻结计划切回 9.0.0。回退计划回执成功，恢复版本健康并实际提供 PostgreSQL 查询，后台时段查询抵达真实 Helper。Core PID 保持，切回期间采样的五次 Core 健康和 Git 仓库 API 探测全部成功。此次使用本机空宿主，物理设备验收仍待完成。
+
+- Linux x64 无外网容器通过签名 Databases 在线双版本验收。同一临时目录签署 9.0.0 与 9.1.0，实际 Core 首次启用 9.0.0 后，经生产上传、冻结计划和 apply 替换至 9.1.0。在线回执成功，新版本健康，旧 ModuleHost PID 消失，Core PID 不变，PostgreSQL 公开查询仍成功，新代次后台查询到达真实 Helper。首次试跑的测试台账由 root 离线创建，上传因权限返回 503。将一次性台账交给服务账户后复验通过。本轮为空宿主升级，未触发备份或在线回退。
+
+- Windows Release 模块包专项在真实 ModuleHost 进程替换后验证旧代次令牌失效、新代次令牌可获取身份。夹具先验证异常候选回退，再验证健康候选替换。该测试覆盖 Databases 私有备份通道共用的代次认证，Databases 官方签名双版本在线部署仍待验。
+
+- Windows Release Databases 端点专项增加模块停止回归。用受控传输阻塞后台备份提交，验证 `StopAsync` 取消在途请求、等待工作循环退出，重复调用仍成功。该测试覆盖模块入口停止，签名包在线替换时的实际代次切换仍待验。
+
+- Linux ARM64 ABI 2.6.0 临时签名 Databases 包通过本机无外网 ARM64 模拟容器验收。实际精简发行的 Core 验签并离线安装，重启后原回执成功，ModuleHost 以独立 Unix 身份运行。四条 PAM 观察查询和后台备份时段查询均经过实际 Helper。为模拟环境延长启动和 HTTP 观察时限。宿主为空，未执行备份，物理 ARM64 启动仍待验。
+
+- Databases 模块发行元数据补列 Linux ARM64。正式 PowerShell 打包生成 ABI 2.6.0 ARM64 精简 Server ZIP 和独立签名输入，清单与 ZIP 摘要通过。归档中的 Core、Helper 和 ModuleHost 均为 AArch64 ELF。独立包通过临时签名验证，归档入口逐字节匹配发布程序集。本轮验证制品，物理 ARM64 启动仍待验；PostgreSQL 原生备份的已验证范围是 Linux x64。
+
+- Databases Windows Release 端点回归现在验证隔离入口保留 PGDG 迁移失败的 HTTP 503、问题响应类型及具体问题码。候选变化及现有版本准入规则已同步至 [PostgreSQL 主版本迁移说明](../applications/RelaxKonOS.DatabaseManager.PostgreSql.DB07B.md)。
+
+- 已定位 PostgreSQL 实例上的公开查询 503。Ubuntu Noble x64 的签名模块复验从 PAM 观察者读取 PostgreSQL 状态、维护计划和 MySQL 状态，三条均返回 200 并与直接 Helper 查询一致。迁移计划保留 Helper 的 `database.migration_version_unsupported`，容器内实际 PGDG 候选为 `18.7-1.pgdg24.04+5`，现有迁移规则固定 `18.7-1.pgdg24.04+2` 并要求它为候选。原安装回执和后台备份时段查询复验仍通过，容器已清理。
+
+- Ubuntu Noble x64 一次性 systemd 容器使用当前执行器完成 PostgreSQL 16 原生基线 32 项检查。安装 ABI 2.6.0 临时签名 Databases 包并重启，由夹具通过真实 Helper 配置到期计划。独立 ModuleHost 经生产私有通道提交，Core 只记录一条成功备份回执，其操作 ID 与 Helper 计划一致。自动备份通过恢复校验，原运行状态保持且无挂起操作。该容器首次复跑的公开查询得到 503，备份复跑聚焦后台路径，空宿主公开查询证据见下一条。验收后已清理容器。
+
+- Linux x64 ABI 2.6.0 Databases 临时签名包通过无外网容器验收。实际精简 Core 接受目录、验签和离线安装，重启后以独立 Unix 身份监督模块，原回执成功。PAM 观察者的四条公开查询及模块代次认证的后台备份查询均到达实际 Helper。容器夹具在原始回执核对后设置期望启用状态。空宿主无到期备份，提交与最终备份回执仍待验。
+
+- ABI 2.6.0 的 Databases 精简 Linux x64 Server 发行已由正式 PowerShell 打包入口构建至 `.codex-scratch/database-abi26-release`。发行清单与 ZIP 摘要核对通过，独立 DatabaseObservation 程序集仅出现在另行发布的签名输入中。本轮交叉构建，签名包运行和真实备份受理仍待验证。
+
+- 签名 Databases ModuleHost 入口现在启动并停止备份调度循环。Core 只在随附模式登记本地调度器，签名模式保留私有 broker、时段复核和台账。签名包的 ABI 下限升至 2.6.0。Windows Release 端点专项验证模块提交观察到的时段及 Core 调度器退出签名模式，签名包 HTTP 专项验证旧 ABI 构建被拒绝。受信代次经实际 broker 受理备份仍待端到端验收。
+
+- ModuleHost SDK 已提供 Databases 备份时段客户端。客户端只向回环代理发送固定 GET 和 POST，使用模块代次令牌，后台调用不借用用户请求令牌。Windows Release 端点专项以受控传输核对时段解析、原样提交和无到期时段。Core 调度循环仍在运行，尚未切换到签名模块。
+
+- Core 私有 Databases 代理加入备份时段 GET 和 POST。仅当前受信任 Databases ModuleHost 代次可调用，POST 提交实例、计划和到期时刻，由 Core 复核并受理。Windows Release 端点专项核对私有路由与未认证拒绝，四条公开观察路由保持原样。ModuleHost 客户端、后台循环切换及认证成功路径尚待联调。
+
+- PostgreSQL 备份调度读取接口现在只返回到期时段的实例 ID、计划 ID 和到期时间。Core 统一用同一判断筛选查询和受理，完整 Helper 状态留在宿主。Windows Release PostgreSQL 专项的 20 项备份自动化检查通过。随附与签名部署仍共用 Core 的后台调度循环。
+
+- PostgreSQL 备份调度提交实例 ID、计划 ID 和到期时刻。Core 从 Helper 重新读取启用状态、挂起操作和当前时段，匹配后才生成固定请求和幂等键。Windows Release PostgreSQL 专项通过 20 项备份自动化检查，包括拒绝过时计划和原台账重放。本轮建立宿主受理边界，签名 ModuleHost 调度尚未接入。
+
+- PostgreSQL 备份调度的宿主接口改为接收实例和计划时段。Core 宿主生成固定的备份任务请求与幂等键，再通过现有台账提交。Windows Release PostgreSQL 专项通过，包括 19 项备份自动化检查，覆盖未到期、停用、有挂起操作、同一时段重放和 Core 台账重开。后台调度仍在 Core，独立监督尚待接入。
+
+- 当前 Windows Release 独立部署协调器套件通过。重新核对可选依赖取消、循环与契约不满足、计划过期、实例切换、检查点损坏和重开、并发续跑及重新审阅。该套件以受控后端验证协调与持久化，远端部署仍需设备验收。
+
+- 已从当前源码发布自包含 Windows ARM64 Browser 验收程序至 `.codex-scratch/browser-native-device-win-arm64`。PE 标头为 ARM64，输出包含本地 .NET 运行时。待验 Windows ARM64 桌面发行通过 29 个官方归档及配置集校验。两份制品均可用于实机，尚未在物理 ARM64 上执行。
+
+- Browser 原生验收程序现在核对 Windows 系统与测试进程架构一致，并在输出中记录两者。Windows x64 Release 重新构建后，实际官方 Browser 归档通过原生导航和安装、更新、重启、卸载回归，输出为 Windows X64 / 进程 X64。Windows ARM64 实机应使用 ARM64 运行器；架构不匹配的路径待实机执行。
+
+- 使用现有 Windows x64 Release 验收程序与独立 Browser 发行归档复验。在 Windows 宿主的交互会话中，WebView2 请求回环首页并执行脚本跳转至 `/complete`，两次请求均返回 200。来源、完整性、更新、失败安装保留、重启和卸载通过。同一命令在受限沙箱内未完成导航，实机应在交互会话使用临时 WebView2 数据目录运行。
+
+- Windows x64 实际发行在独立应用数据沙箱中，以 Standard、Developer 和首次选择窗口三种方式完成图形启动并正常退出。首次选择窗口可关闭并进入登录。该沙箱的调用进程看不到子进程写入的配置档案，因此脚本在沙箱中拒绝 `-DisposableUserProfile` 并提示使用默认模式。实际预装记录检查仍需要独立 Windows 帐户。
+
+- Windows 桌面启动脚本可在实机的全新一次性 Windows 帐户使用 `-DisposableUserProfile`。分别在独立帐户传入 `-Profile minimal|standard|developer`，关闭登录窗口后，脚本核对保存的配置集和实际安装记录。另可使用 `-FirstRun` 核对首次选择窗口关闭后进入 Minimal。脚本拒绝已有 RelaxKonOS 数据的帐户，验收数据保留供复核。PowerShell 语法和启动前拒绝路径已验，实机图形流程待验。
+
+- 桌面配置集发行校验按首次启动解析器的 ASCII 数字及 128 字符上限检查版本号，要求 JSON 架构版本为整数，并拒绝同一对象内的重复属性。四份现有 Windows 和 Linux x64、ARM64 发行各通过 29 个归档校验。非 ASCII 数字、超长版本号、小数架构版本及重复配置键均被拒绝。
+
+- 桌面发行校验现在检查安装器的 4096 条目及 512 MiB 解包上限，并拒绝重复文件路径。Windows 目标按不区分大小写比较路径。Windows 和 Linux 的 x64、ARM64 四份现有发行各通过 29 个归档校验。向 Welcome 归档副本追加重复清单或超限条目并重算摘要后，发行校验均按预期拒绝。
+
+- 当前 Windows Release 服务端模块全量回归退出码为 0，共 1553 条通过记录。覆盖签名包构建、安装和事务恢复，ModuleHost 生命周期、隔离模式及已预装模块的管理 HTTP 流程。该回归使用本机测试宿主，远端模块升级和设备业务验收仍见「当前验收缺口」。
+
+- 当前 Windows Release Server Center 客户端全量套件通过，共 254 条通过记录，包含此前中止的本机 TLS 探测，以及安装传输、取消和回滚确认。Linux Secret Service 检查按平台跳过。该套件使用部署夹具，远端部署待设备验收。
+
+- 当前 Windows Release 模块恢复专项通过，覆盖原回执、只读诊断、恢复宿主路由限制、旧计划复核及正常重启前不宣告成功。Linux ARM64 最初使用的验收副本缺少 Core 的依赖清单，导致原生入口进入 SDK 分派。更换为完整 ARM64 精简发行目录后，在断网的 AArch64 模拟容器使用未改动的恢复入口复验通过，共 39 项，含原生维护子进程的只读诊断。
+- 模块恢复验收在启动显式指定的 Core 前检查发行目录中的依赖和运行配置清单。Windows 完整目录仍通过 39 项，分别缺少任一清单的测试副本会直接报告缺失文件。
+- PowerShell 与 Bash 发行脚本在各组件发布后检查非空的入口、托管程序集、依赖清单及运行配置。PowerShell 从当前源码成功生成 Linux ARM64 Server ZIP，发布目录通过逐文件清单复核。Bash 脚本通过语法检查。
+- 用隔离的发布命令夹具验证两个打包入口的失败分支。PowerShell 拒绝缺失 Core 依赖清单，Bash 拒绝空的 Core 运行配置，两者均在写出 ZIP 与旁路文件之前停止。
+- 生产 Bash 打包在 WSL 使用当前源码生成 Linux ARM64 全量外置 Server ZIP。最终归档通过摘要及解包清单检查，Core、ModuleHost、Guardian 与 Helper 的启动文件保留执行位，依赖及运行配置文件存在且非空。另产出 12 个签名输入目录。本轮未启动 Bash 归档中的进程。
+- 从 Bash 最终 ZIP 在断网非特权 AArch64 容器执行原生解包，逐文件清单复验后直接启动归档内的 Core，模块恢复专项 39 项全部通过。未替换归档内的可执行文件或运行时清单。
+- Bash 同版本生成 Linux ARM64 客户端 ZIP，打包时通过 29 个官方应用及模块契约检查。最终 ZIP 在断网非特权 AArch64 容器原生解包，逐文件清单通过。使用归档内客户端启动 X11 窗口，Standard 实际预装 13 个包并正常退出。
+- Bash Server 发行的 12 组 Linux ARM64 签名输入通过当前 Core CLI 聚合目录验收。临时密钥生成一个包含全部模块、RID 和摘要的签名目录。移除 Databases 归档或以相同长度改动内容均被拒绝，恢复原归档后成功签名。目录和密钥仅用于本地验收。
+- 解开同一 Bash ARM64 Server ZIP，归档内 Core 通过只读 verify-package 逐个核验聚合目录中的 12 个归档。各结果均表明未提交目录信任、未安装，验证前后的模块管理文件摘要一致。验收使用隔离容器内的测试服务身份和公开来源策略。
+- 同一聚合目录在 Bash 发行的 ARM64 Core 上接纳成功，重复提交同一幂等键返回原目录回执。首次按目录顺序安装时，Web Server 因 Certificates 尚未安装而被拒绝。从空白状态按依赖顺序复跑后，12 个归档的安装摘要均匹配，12 条独立安装回执均待重启，模块仍保持停用。本轮未启动模块业务。
+- 最终 Bash ARM64 Server ZIP 在独立断网 systemd 模拟容器从空状态通过聚合目录安装和两次重启。首次重启后 12 个模块均保持停用，启用后再次重启，逐项比对原操作 ID 并确认原 12 条回执成功。认证清单报告运行版本，Databases ModuleHost 健康、性能快照及 Terminal 协商通过。修正验收脚本的变量覆盖后完整复验通过，容器已退出。
+- 同一 Bash 客户端 ZIP 的 Minimal、Developer 与首次启动 X11 验收通过。三个独立用户数据目录分别确认零预装、14 个预装，以及关闭首次配置选择后零预装进入登录。三个进程均正常退出。
+- Linux ARM64 无头验收使用最终 Bash 客户端 ZIP 的 Settings 和 Explorer 归档，通过已安装 Settings 的生产工作区深链接、Explorer 未登录提示和认证目录路由。Shell 专项同时确认缺少 Terminal 或 Task Manager 时打开 App Installer，SSH 桌面在仅显示就绪应用时保留恢复入口。登录和目录访问使用测试夹具。
+- 使用 Bash 最终客户端 ZIP 中未改写的 Git 官方归档复跑 ARM64 签名双包验收。隔离 Core 重启后沿用原操作登记应用，已安装签名模块经 HTTP 调用 Git CLI 初始化临时工作树、暂存并读取索引。桌面卸载保留模块。服务端使用验收宿主和临时签名包。
+- 当前源码重新生成 Linux ARM64 全量外置 Server ZIP。最终归档摘要与解包逐文件清单通过，核对 12 个独立签名输入目录均有程序集，外置执行程序集不再出现在归档的 Core 模块目录。这批输入尚未签名或部署。
+- 从该 ZIP 解包的 ARM64 Core CLI 在断网、非特权 AArch64 模拟容器中使用临时测试密钥为全部 12 组输入生成签名模块包，逐个检查成品归档条目可读。测试密钥与包随容器临时目录清理，未安装此批模块或发布到正式来源。
+- 同一新 ARM64 发行在断网容器重新签名，经发行版 CLI 接受 12 份测试目录并离线导入全部 12 个包。逐项核对了归档摘要、安装清单和停用状态。无 systemd 的容器中，生产 Helper 无法核实 Mihomo 属主，Core 按设计拒绝启动；此轮离线持久化通过，未验证重启接管或健康服务。
+- 同批发行在断网的 ARM64 systemd 模拟容器通过完整安装与接管。生产 Helper 核实空宿主归属，12 个包离线安装后首次重启仍停用。ModuleHost 入口放在受保护的 /opt 路径，启用后再次重启，12 条原回执均为 Succeeded，认证清单确认签名版本生效。Databases ModuleHost 健康、性能快照与 Terminal 协商通过。容器验收后退出，物理设备仍待验。
+- 使用同批 ARM64 发行复跑完整签名安装及重启接管，并通过真实 PAM 登录调用 Application Deployments、Web Server、Git 和 Tunnels 的只读列表 API。四个接口均返回可解析的列表，同一轮十二条原回执均成功。此轮未创建业务资源。
+- 从上述新生成的 Linux ARM64 Server 发行目录启动实际 Core 维护入口，在断网、非特权 AArch64 模拟容器通过当前验收程序的全部 39 项恢复检查，包括发行文件预检、只读子进程诊断及恢复回执持久化。
+- 同一 ARM64 Server 发行在隔离容器从两份临时副本启动 Core。Application Deployments 启用时未认证路由返回 401，停用且移除执行程序集的副本返回 404。两次 Core 健康端点均返回 200，未改动的 Web Server 路由均返回 401。此轮验证路由注册与退出，不涉及认证后业务调用。
+- 同一 ARM64 发行的反向验收中，移除临时副本的 Application Deployments 执行程序集但保留启用状态。Core 在模块管理状态初始化时以非零状态退出，明确报告该模块需要签名执行包。
+
+- 官方桌面包的打包契约检查复用桌面部署解析器，验证声明的最低与排他最高模块版本。Windows ARM64 发行的 29 个实际归档均通过。分别在 Git 归档测试副本声明无法满足的最低版本和最高版本，检查均拒绝。
+- 打包契约检查从空白临时内容根读取随附模块清单。Linux ARM64 的 29 个发行归档在 Windows 构建机通过；Git 测试副本声明可满足的版本范围，在当前目录含损坏模块库存的情况下仍通过。
+- 打包契约检查与桌面安装共用依赖声明验证，包括可选依赖类型、重复模块、能力与契约版本绑定和版本区间格式。Linux ARM64 的 29 个归档通过，Git 测试副本保留契约版本但删除能力名称后被拒绝。
+- 在断网的 AArch64 模拟容器中运行当前源码交叉发布的自包含模块验收程序，Linux ARM64 发行的 29 个官方归档通过随附模块契约检查。Databases 专项同环境通过禁用时不加载执行程序集、端点策略、停用及私有观察准入。此轮未部署物理设备或连接真实数据库。
+- Linux ARM64 模拟容器的签名模块包专项通过，覆盖真实隔离模块进程热替换、不健康候选退出后恢复旧版本、健康报告及撤销后的连接撤回。模块 HTTP 专项中，Databases 缺件包的商店阻止、依赖解析、下载拒绝、显式及自动预览拒绝均通过。该次 HTTP 套件随后在 Docker Compose 预览阶段失败，未判为全套通过。
+- 补齐 ARM64 容器的 Docker Compose CLI，并将 HTTP 验收夹具的 Compose 数据目录明确设在该次测试的临时内容根后，完整模块 HTTP 套件通过。回滚后的签名 Docker 执行包调用真实 Compose CLI 解析预览。容器断网、以非特权用户运行，未连接 Docker Engine。
+- Linux ARM64 同一隔离环境连续通过模块包事务和模块生命周期专项，共 248 条通过记录。覆盖制品身份与依赖闭包冻结、执行时漂移拒绝、模块停用及移除、待重启核验和响应丢失后的原回执恢复。此轮使用测试包和隔离传输，未替换远端设备的运行模块。
+- Linux ARM64 使用实际 Git 与 Certificates 官方桌面归档通过两个签名双包专项。重启后沿用原操作完成登记，拒绝不兼容安装及回退，桌面卸载保留服务端模块。Git 补齐本地 CLI 后经 HTTP 初始化临时工作树，暂存并读取真实索引。Certificates 通过生产 ACME 观察执行器验证无效目录的不可用结果。此轮在断网模拟环境使用临时签名和测试鉴权。
+- Linux ARM64 的 Web Server 与 Docker 官方归档通过签名双包验收。Web Server 复用已生效的 Certificates，并通过测试重载端口验证已安装执行包。Docker 联合验收使用独立 Compose 数据目录，已安装执行包通过真实 Compose CLI 解析预览。两项均在 Core 重启后续跑并保留服务端模块；未连接 Docker Engine 或真实 Nginx 服务。
+- Linux ARM64 的 Application Deployments 官方归档通过签名双包验收。Core 重启前清单区分已提交归档与旧执行代码，重启后沿用原操作登记桌面应用。签名执行包实际解包带顶层目录的归档，生成 Python 构建上下文、入口和 Dockerfile。卸载桌面应用保留服务端模块。断网模拟容器中未构建或运行 Docker 工作负载。
+- Linux ARM64 的 Tailscale 和 Tunnels 官方归档通过签名双包验收。Tailscale 通过生产 HTTP 路由和 Helper 适配器的测试传输核对只读授权。Tunnels 验证认证和账户隔离，只有有效定义写入 SQLite。桌面依赖阻止停用，卸载后可停用且 Core 保持可用，重新启用恢复原档案。断网模拟环境未启动真实 Tailscale 或 FRP 服务。
+- Linux ARM64 的 Firewall 和 Proxy Manager 官方归档通过签名双包验收。Firewall 经生产路由和 Helper 适配器的测试传输查询状态，并拒绝匿名读取和未经提权的修改。Proxy 验证已安装签名包的宿主观察、订阅解析和 Squid 回执核验。此轮使用断网模拟环境，未改写宿主规则或启动代理服务。
+- Linux ARM64 通过跨应用联合部署回归。Firewall、Git、Databases 的随附模块启用后跨重启登记，Certificates 复用已生效模块。三个 Proxy 应用共用一个服务端模块，逐个卸载保留其余应用的依赖。纯桌面依赖离线满足时不调用模块 API，不兼容更新在依赖者卸载后才获准。使用官方发行归档和隔离 Core 测试宿主。
+
+- Windows MSIX 与便携 ZIP 共用官方桌面包的服务端契约检查。当前源码的 Windows ARM64 验收 MSIX 在归档前验证 29 个应用包、安装配置，以及声明的服务端模块、能力和显式契约版本。本轮生成未签名的本地验收包。
+- Windows SDK SignTool 使用一次性自签代码签名证书签署 ARM64 MSIX 的本地副本。核验归档 CMS 签名及签名者指纹，确认仍包含 29 个官方应用。临时私钥已清理；正式时间戳、受信证书链和物理设备安装未验。
+- 对签名后的 ARM64 MSIX 按 AppxBlockMap.xml 逐项复核，469 个载荷文件共 7,776 个 SHA-256 数据块与归档内容一致，29 个官方应用均在块映射中，ZIP 条目读取检查通过。
+- Windows SDK MakeAppx 成功解包本地签名的 ARM64 MSIX。解包目录的 ARM64 标识和入口、全部 29 个应用归档、三档配置与随附模块契约均通过复核。此轮未安装证书或应用。
+
+- 当前 Windows Release 复跑 `--firewall-live-package`。隔离 Core 在两次安装及回滚后依次选中 1.0.0、2.0.0、1.0.0，每次按需加载签名执行包，并经独立 Helper 测试进程的认证命名管道读取 Windows Defender Firewall 状态和规则列表。列表为空，此轮仅执行只读验收。
+
+- Windows Release 在当前源码复验 sing-box 1.14.3 原生配置与回环 TLS 监听、生产 HTTP 回执重放、异步清理及进程退出后的原回执恢复。原生监听与 HTTP 回执由不同夹具验证，签名双包经系统 Helper 发布仍待验。
+- Linux x64 在隔离 WSL 网络命名空间复跑已构建的 Proxy Manager 官方归档与签名模块验收程序。重启后复用原安装操作并登记应用，不兼容版本无法通过安装或回退取代活动版本。已安装签名模块通过宿主观察、订阅解析和 Squid 原回执验证，桌面卸载保留模块。此轮使用测试宿主观察及传输，未运行系统 Helper 的 sing-box 发布。
+
+- Windows Release 三档发行回归使用生产目录扫描器确认，预装开始前唯一登记的内置应用是 App Installer。使用实际官方归档复验 Minimal 离线安装与修复、Standard 排除项、Developer 缺失归档恢复，以及切换配置时保留用户主动卸载。
+- 发行验证现在要求 Developer 列出全部官方应用，并要求 Standard 中的应用使用离线安装。Windows ARM64 和 Linux ARM64 发行目录复验通过，分别报告 Minimal 0、Standard 13、Developer 14 项离线预装及 Developer 29 项总数。移除 Developer 中的 Docker 或将 Standard 的 Welcome 改为交互安装均被拒绝。
+- 桌面发行验证同步检查启动侧的配置集文件大小、配置数、应用条目数与字段约束。Windows ARM64 和 Linux ARM64 发行目录通过；超出大小上限、超过 16 个配置或含未知应用字段的副本均被拒绝。
+- 打包契约检查复用桌面运行时对 Terminal 和 Task Manager 随包离线安装的服务端启动例外规则。Linux ARM64 的 29 个实际归档通过，给 Terminal 样本增加额外服务端能力后，打包检查拒绝将其离线预装。
+- 发行验证检查各离线预装应用声明的客户端平台与目标 RID 一致。Windows ARM64 和 Linux ARM64 发行通过；在 Linux 发行测试数据中把 Welcome 限制为 Windows 后，校验拒绝 Standard 的预装安排。
+- 官方桌面归档校验要求入口程序集、依赖清单和已声明的图标文件存在且非空。Windows ARM64 与 Linux ARM64 的 29 个官方归档均通过。分别清空 Browser 的三种文件并重算归档摘要，校验仍逐项拒绝。
+- 官方桌面发行校验读取每个应用的活动依赖目标，核对声明的托管运行时程序集随包发布且非空。Windows 和 Linux 的 x64、ARM64 发行目录各通过 29 个归档。移除 Browser 的托管依赖并重算摘要后，校验指出缺失文件并拒绝发行。
+- Linux ARM64 自包含窗口验收程序在断网、非特权的模拟容器中通过 `--roapp-catalog-only`。本地目录覆盖计划、审核、安装和更新，签名目录夹具覆盖来源审核、联合部署恢复、安装和禁用来源。此轮使用测试归档与目录传输夹具。
+- Linux ARM64 另用发行目录中的 Notepad 官方归档通过回环 HTTPS 商店验收，覆盖浏览、下载、审核、安装、更新、失败回退、随包来源和卸载。HTTPS 与证书由隔离测试服务提供，未发布到正式商店。
+- Windows Release 的回环 HTTPS 商店验收新增安装器界面断言。同长度但摘要错误的 Notepad 更新在下载后显示本地化失败提示，不进入审核且保留现有版本。恢复正确下载后，更新及完整商店回归通过。
+- Linux ARM64 重新构建验收程序并复跑回环 HTTPS 商店。首次安装使用未改写的 Notepad 发行归档，审核前逐字节核对暂存文件。损坏下载提示及保留已安装版本同轮通过，后续测试版本仍由夹具构造。
+- Windows Release 回环 HTTPS 商店新增取消在途下载的回归。确认请求到达服务器后取消，安装器显示本地化取消提示，不打开审核并保留已安装版本。随后重试同一更新及完整商店专项通过。
+- Linux ARM64 对最终 Bash 客户端 ZIP 的 Notepad 原始归档通过同一 HTTPS 商店回归，并新增服务端请求取消信号的断言。取消后服务端观察到请求中止，随后重试更新成功。
+- Linux ARM64 自包含窗口验收程序在断网、非特权的模拟容器中通过官方 Code Editor 和 SSH Files 的回环 SFTP 验收。Code Editor 打开并保存文档，服务端核对写入字节。SSH Files 通过文件操作、远程复制和移动、嵌套目录往返、覆盖保护与错误主机密钥拒绝。两包生命周期同轮通过。脚本可直接接受自包含验收程序。
+- Linux ARM64 官方 Server Center 包通过回环 SSH 主机地址查询验收。生产连接解析器校验临时 ECDSA 主机公钥，经 SSH 执行固定的地址查询，窗口显示过滤及去重后的 IPv4 和 IPv6。验收脚本支持自包含程序和可配置进程超时。此轮使用断网模拟容器和固定的服务端响应。
+- Linux ARM64 自包含联合部署测试在断网、非特权模拟容器通过依赖解析与持久检查点回归，覆盖重新打开日志、拒绝错误的服务器绑定和要求重新审核。组件中心专项同环境通过本地目录与签名目录恢复流程，以及三语两主题布局。此轮使用测试目录与部署夹具。
+- Linux ARM64 断网模拟容器使用实际发行归档通过配置集恢复专项。Minimal 零预装，并逐一离线安装和同版本修复全部 13 个基础应用。Standard 排除 Welcome 后安装 12 个，Developer 在缺失归档恢复后完成 14 个预装。配置切换和损坏设置恢复均保留用户主动卸载，Terminal 和 Task Manager 在服务端能力恢复前阻止激活。
+- 使用当前源码重建 Linux ARM64 验收程序后复跑同一发行目录。生产目录扫描器在三个全新系统盘上均只登记 App Installer，随后才进行配置集预装。全部安装和恢复断言通过。
+
+- Windows Release 使用实际官方包复验 Server Center 环回 SSH 主机地址查询，以及 SSH Files 的 SFTP 读写、远端复制移动、嵌套目录往返、覆盖保护和错误主机密钥拒绝。两项均通过，应用矩阵补记已验范围。远端 SSH 部署仍待验。
+
+- 上传后自动匹配安装预览与显式预览使用同一 Databases 缺件错误。Windows HTTP 回归验证匹配签名目录、通过制品核验但缺依赖的归档返回 409，且不写入安装计划。
+
+- Databases 安装预览在冻结计划前拒绝缺运行文件的签名发布，返回 HTTP 409 和明确错误代码。Windows 模块 HTTP 专项用实际签名的缺件归档验证此路径，完整版本仍可预览并安装。
+
+- Windows HTTP 回归将真实模块商店的可下载候选送入桌面依赖解析器，验证计划选中完整 Databases 旧版的准确摘要。若应用最低版本只能由缺运行文件的新版满足，解析报依赖冲突。
+
+- Windows 模块 HTTP 回归使用生产桌面模块目录适配器读取实时商店。签名有效但缺运行文件的 Databases 新版未进入联合部署候选，完整旧版仍可选。
+
+- Windows Release 模块 HTTP 回归纳入签名有效但缺运行文件的 Databases 发布。商店给出缺文件阻止原因，下载拒绝；同目录完整版本仍可见并继续安装。
+
+- Databases 观察包的运行文件契约覆盖模块商店和发布详情的可用性检查，缺项时下载入口提前拒绝。只读验包也在返回候选之前校验该契约。Windows Release 模块 HTTP 专项通过，覆盖完整观察归档的商店显示及待重启安装。
+
+- Databases 安装运行文件核验接入后，用当前 Linux x64 Core 重新生成 12 模块精简 ZIP。在隔离 systemd 容器从空状态验收，完整观察包通过生产签名和离线安装，停用状态跨重启保留，启用后独立 ModuleHost 正常运行。12 条原安装回执成功，使用认证清单核对签名版本。此轮验证安装与接管，未重新运行受管数据库业务。
+
+- Databases 安装、暂存复用、激活和回退使用与签名 CLI 同一运行文件契约。Windows Release 模块 HTTP 专项使用完整观察归档，验证安装回执保持待重启，并对缺少 Protocol 文件声明验证提交前拒绝。
+
+- Databases 运行文件检查由两条生产签名命令共用。聚合目录在未撤销发布项缺少依赖声明时拒绝写出。当前 CLI 复验四种 RID 的 46 个实际归档，分别移除两项声明均失败，恢复后签名通过。
+
+- 生产 `pack-package` 在签名前检查 Databases 观察包的依赖清单和 Protocol 程序集。使用实际 Linux ARM64 签名输入验证，分别移除任一文件都会阻止生成归档和签名目录，恢复完整输入后签名成功。
+
+- Databases 精简发行现在校验观察模块的依赖清单、目标 RID 和声明的托管运行文件。缺少依赖时在移除随附执行程序集或改写默认禁用配置前失败。发行清单专项 12 项通过，实际 Linux ARM64 Databases 精简 ZIP 构建通过。
+
+- 使用 WSL 原生 Linux SDK 和 Bash 打包入口，从当前工作树生成 Linux x64 全 12 模块精简 ZIP。归档摘要、清单及签名输入通过检查。实际 ZIP 在隔离 systemd 容器中完成签名、离线安装、停用重启及共同启用，12 条原回执均成功。PAM 清单、生效版本、Databases ModuleHost、性能快照和 Terminal 协商均通过。
+
+- 调整组件中心恢复查询后重新发布 Linux x64 验收客户端，对真实精简 Core 复跑 Terminal 签名安装、两次重启、同一回执续跑及原生 PTY 恢复。生产对话框完成各阶段确认，桌面卸载保留服务端模块。
+
+- Windows 目录恢复回归验证两种持久状态：已开始的计划越过初始确认期限后仍可重开、继续并完成本地安装；检查点明确要求重新审阅的计划只能显示提示，不能通过续跑查找。该区别保留服务端回执对账所需的跨重启恢复。
+
+- 组件中心重开签名目录归档时，读取已匹配计划的检查点，区分可续跑与须重新审阅。界面查询仅返回是否需要重新审阅，执行查找仅返回可续跑的计划。Windows Release 目录恢复回归和独立协调器检查均通过。
+
+- 组件中心重新打开待续跑的可信目录归档时，安装窗口在确认前显示恢复提示。Windows Release 回归验证刷新后的签名目录与新暂存路径仍命中原计划，同一归档在确认前不安装。计划在执行时重新核对。
+
+- 受信目录回归覆盖组件中心重新选包。初次暂存文件删除且签名目录刷新后，重新选择同一版本会写入新的临时路径。协调器按来源、发布身份和归档摘要找回原计划，审阅前未安装应用。Windows Release 目录恢复回归通过。
+
+- Windows Release 受信目录回归现通过组件中心的可见目录树选择条目，再执行生产审阅命令。命令从可信来源暂存所选版本，保持应用未安装。后续回归验证目录刷新后重新取得同一制品、恢复原计划、安装和禁用来源。此目录选择验收使用签名夹具归档，与 Linux 官方 Terminal 的真实服务端双包验收分别运行。
+
+- Linux x64 用官方 Terminal 归档驱动组件中心的生产安装对话框，默认选择签名模块，签名模块经 HTTPS 下载。界面确认安装和启用，两轮均提示重启并保持应用未登记。第二次重启后在同一部署日志续跑，确认原回执成功才登记应用。真实 PTY、Ghostty 原生终端恢复及卸载保留模块通过。测试直接提供官方归档候选，未操作组件中心目录列表。
+
+- Windows 使用未修改的官方 Terminal 归档实测组件中心的生产安装模态框。子对话框默认选中真实 Terminal 模块，取消勾选后只审阅桌面包。关闭计划确认时不安装，批准时写入安装回执。此回归覆盖本机安装和嵌套窗口交互，双包部署与重启续跑另有 Linux 验收。
+
+- 组件中心从受信目录打开桌面包安装窗口时，现接入生产联合部署协调器。可选依赖、计划确认和错误提示沿用应用安装器视图，在组件中心的安装窗口内打开子对话框。Windows Release 构建、本地与远端目录安装恢复回归，以及组件中心三语双主题布局均通过。同一安装对话框的真实双包部署见 Linux 验收。
+
+- Windows Release 安装器使用未修改的 Terminal 和 Task Manager 官方归档验证可选服务端包。未登录时取消默认勾选的模块后，安装预览仅含桌面包。拒绝预览时无安装，批准后经生产协调器安装并写入本机回执。两份归档的更新、失败保留、重启和卸载回归同轮通过。
+
+- 发行清单专项增至 12 项。新增回归验证同长度旧入口、预发布 Application Deployments 的多余 DLL 及 Terminal 签名输出残留都会在精简操作改动前被拒绝。清理残留后复用原输入运行成功。实际 Linux x64 精简 ZIP 同时生成 Terminal、Application Deployments 和 Databases 三份签名输入。
+
+- PowerShell 与 Bash 的精简发行预检和实际外置阶段共用目标 RID 检查。Windows ARM64 外置 Databases 和 Linux Bash 重复模块均在创建输出之前被拒绝。发行清单专项通过全部 11 项，覆盖已准备数据库签名输入时 Windows 仍不能改动发布目录，以及 Linux ARM64 配置成功。
+
+- PowerShell 与 Bash 共用的精简发行预检拒绝空执行文件和含旧文件的签名输出。Application Deployments 的预发布签名入口须与从 Server 移出的程序集字节一致。验收注入同长度的过期入口及无关 DLL，均在移除程序集或改写禁用配置之前被拒绝。实际 Windows x64 双模块精简 ZIP 构建通过。
+
+- 从 Windows x64、Windows ARM64、Linux x64、Linux ARM64 精简发行的实际签名输入，用 x64 生产 CLI 和一次性测试密钥生成 46 个模块归档，并用发行自带授权名单签成一个聚合目录。核对每个模块与 RID 的组合。移除 Linux 数据库归档或修改其内容但保持长度时，CLI 拒绝写出目录。恢复原归档后签名成功。本地验收未向正式目录发布。
+
+- AnyCPU 调整后重新生成 Linux x64 精简 Server ZIP，12 组签名输入的托管入口均为架构中立格式。生产 Core 在隔离 systemd 容器复跑全部签名包的离线安装、停用状态重启及共同启用，12 条原安装回执成功。认证性能快照和 Terminal 协商通过，Databases 独立 ModuleHost 运行。
+
+- Windows ARM64 精简 Server ZIP 同时生成 11 组签名输入。实际归档通过摘要、逐文件清单、默认禁用集合及签名输入核对，Core、Helper 和 ModuleHost 均为 ARM64 PE。修正托管执行程序集的 AnyCPU 编译后重新发布，x64 生产 CLI 对 11 组真实输入完成 ARM64 制品和目录签名，拒绝 11 组损坏入口。Linux ARM64 Databases 观察程序集亦通过 AnyCPU 构建。Windows ARM64 运行待原生环境验收。
+
+- Linux ARM64 精简 Server ZIP 通过摘要、逐文件清单、12 组签名输入和三个 AArch64 ELF 入口验证。在隔离 ARM64 模拟 systemd 容器内，实际发行 Core CLI 构建测试签名包，12 个模块离线安装后仍保持停用。部署启用并重启后，12 条安装回执成功，PAM 认证清单报告全部签名版本生效，Databases 的独立 ModuleHost 运行，性能快照和 Terminal 协商通过。验收脚本将认证与健康轮询分开，以适应模拟环境的请求延迟。实体 ARM64 设备待验。
+
+- Windows x64 精简 Server ZIP 同时外置 11 个受支持模块，摘要、逐文件清单及独立签名输入核验通过。真实 Core 在归档解包后以全部 11 个模块禁用的状态启动，Terminal 协商和性能快照等业务路由返回 404。显式启用缺包的 Firewall、Terminal 或 System Performance 均拒绝启动，原状态逐字节不变。归档内的生产 Core CLI 为 11 组输入生成测试签名包并通过只读验签，11 份损坏入口均拒绝生成归档或签名目录。当前 Windows 用户无本地管理员令牌，离线安装和重启接管仍待验收。
+
+- 同一 Linux x64 精简 Server ZIP 产出全部 12 组独立签名输入。归档摘要与逐文件清单通过检查。无网络 systemd 容器使用生产 Core 和 Helper，初次启动时认证清单确认 12 个模块均未生效。安装各自的临时测试签名包后，停用状态重启仍未生效。部署启用并重启后，12 条原安装回执均为 `Succeeded`，认证清单报告全部生效版本，Databases 独立 ModuleHost 运行。认证性能快照及 Terminal 协商通过。该批验收验证共同启用，业务写入及各模块的桌面联合安装沿用分别记录的验收。
+
+- Windows x64 与 Linux x64 发布目录均通过 Browser WebView 归属校验。WebView 必须存在于 Browser 归档的入口目录，桌面宿主不得包含该实现。移除 WebView 并重算摘要后的归档仍被发行校验拒绝。新发布 Linux x64 宿主复用 29 个官方包，在隔离 WSL X11 中打开三档配置的可见窗口并正常退出。首次启动显示配置选择，关闭选择窗口后以零预装进入登录。
+
+- 桌面宿主移除已无调用的 Avalonia XAML Behaviors 依赖。Windows x64 新宿主复用 29 个官方归档，通过发布依赖校验和三档配置集回归，包括 Minimal 安装修复 Terminal、Standard 的能力守卫及 Developer 的缺失归档恢复。发行校验同时检查必需与可选服务端模块的官方来源授权，两类声明都通过授权和拒绝用例。
+
+- Browser 的 `Avalonia.Controls.WebView` 从桌面宿主移出，由 Browser 包加载上下文解析。Windows Release 使用实际官方 Browser 归档通过安装、启动、包内 WebView 加载、更新、失败保留、重启和卸载。重新发布的 Windows x64 宿主与现有 29 个官方归档共同通过发行校验，宿主依赖清单和发布根目录均无 WebView。该测试覆盖程序集加载，实体桌面的网页导航仍待验证。
+- Windows 原生导航验收通过。验收程序使用与桌面宿主相同的 Windows manifest，运行 `python Tests/Client/verify-browser-native.py <Windows Release 测试 EXE> <官方 Browser .roapp>`。已安装的 Browser 通过 WebView2 请求回环 HTTP 页面并执行脚本跳转，服务端收到两次请求，应用标签记录跳转后的地址并结束加载。同一次运行通过包生命周期复验。
+- 当前源码交叉发布 Windows ARM64 自包含桌面，并构建同 RID 的窗口验收程序。两份 EXE 的 PE 机器标识均为 ARM64，验收程序确认嵌入了 Windows 兼容性 manifest。发行校验通过 29 个实际官方归档的摘要、清单和入口程序集，并验证安装配置集。物理 Windows ARM64 的桌面启动、配置集安装和 WebView2 导航仍待运行。
+- 发行验证器可核对调用方指定的 RID，并对 Windows 发布核对桌面 EXE 的 PE 机器标识。Linux Bash 打包传入目标 RID。Windows ARM64、Windows x64 与 Linux x64 发行目录均通过验证。用 x64 EXE 替换 ARM64 验证目录的入口，或将 ARM64 发布声明为 x64，均被拒绝。
+- Linux 发行验证也核对桌面入口的 ELF 机器标识。Linux x64 与新交叉发布的 Linux ARM64 自包含目录均通过校验，ARM64 目录中的 29 个官方归档及安装配置集通过验证。用 x64 ELF 替换 ARM64 入口会被拒绝。现有隔离 ARM64 模拟镜像没有 X11 与 Xvfb，ARM64 桌面启动和配置集安装仍待运行。
+- PowerShell 便携 ZIP 与 Windows MSIX 打包均在归档前执行桌面发行验证。使用生产脚本生成 Windows ARM64 客户端 ZIP 和未签名的验收 MSIX。两条路径均验证 29 个包，ZIP 额外通过服务端模块契约检查。最终 MSIX 清单声明 ARM64，归档含 29 个官方应用。未进行签名或设备安装。
+- 对两份最终 Windows ARM64 归档重新计算 SHA-256 并比对旁路文件。解包后分别复验入口架构、29 个官方归档及配置集，便携 ZIP 另通过逐文件发布清单校验。此轮校验覆盖实际归档内容。
+- 补齐图形依赖后，同一 Linux ARM64 自包含目录在断网、非特权的 Ubuntu 24.04 ARM64 模拟容器下通过 Xvfb 验收。Minimal、Standard 和 Developer 分别登记 0、13 和 14 个包，均打开 X11 窗口并正常退出。首次启动显示配置选择，关闭后以零预装进入登录。Standard 首次等待 40 秒超时，使用验收脚本的 `--startup-timeout 180` 参数复验通过。物理 ARM64 设备验收仍待完成。
+- 同一断网 ARM64 模拟环境使用原发行归档，无头验收 Welcome、Browser、Code Editor 和 Server Center 的来源、完整性、更新、失败保留、重启发现与卸载。Server Center 专项另验证了生产工作区、打开及取消向导和卸载关闭。归档审核测试根据清单的图标文件声明校验预览，支持仅声明字形的 Server Center 包。此轮未连接远端服务器。
+- Linux ARM64 无头验收扩展到同一发行目录的全部 29 个官方归档，逐包运行 ARM64 自包含验收程序的 `--official-roapp-only`，29 项通过、0 项失败。包生命周期覆盖来源、完整性、安装、更新、失败保留、重启发现和卸载。测试使用断网非特权容器和各专项自带的服务夹具。物理设备和真实远端业务验收仍待完成。
+
+- Terminal 的本地 PTY 工厂已接入官方签名执行包与 Core 重启加载。Windows 终端回归通过实际加载的工厂使用 ConPTY，模块包专项验证真实入口和拒绝无关程序集。隔离 Linux 容器以实际精简 Server ZIP 和临时测试签名目录完成离线安装。初始及安装后未启用时，Core 健康且 Terminal 协商返回 404。启用并重启后，认证模块清单报告独立安装和生效版本，认证 SignalR 协商成功，原安装回执转为 `Succeeded`。桌面 Terminal 归档将该模块声明为可选联合部署依赖，保留离线预装及启动前能力检查。桌面联合部署和会话恢复验收见下。
+- Windows x64 新发行归档通过 29 个官方桌面包的服务端契约校验和三档配置集验收。Minimal 预装 0 个并逐一安装及修复 13 个基础应用，Standard 排除 Welcome 后预装 12 个，Developer 预装 14 个。Terminal 在服务端能力恢复前阻止激活，配置切换仍保留卸载决定。
+- Linux x64 实际官方 Terminal 归档通过生产桌面协调器，从已接纳测试签名目录经 HTTPS 安装精简 Core 所需模块。安装和启用各重启一次，桌面恢复原始计划并在模块实际生效后登记应用，卸载保留模块。验收随后通过认证 SignalR 创建真实 Helper PTY，断开后重新发现并附加原会话，收到历史输出并关闭。随后以同一发行归档重跑，生产桌面恢复参与者通过已安装应用的 SDK 连接发现真实断线会话，在无头桌面画布为 Terminal 创建一个窗口，重复恢复未创建第二个窗口。SignalR 客户端另外核对原会话 ID、历史输出及关闭。进一步将已安装窗口的工作区挂载至 Avalonia 无头顶层窗口，显式选择 Ghostty Native，实际创建终端屏幕并附加原 PTY，卸载视图后确认原会话关闭。容器复用本机 WSL 的字体和 fontconfig 库。实体桌面显示仍待验。
 
 1. 代码基线和桌面登记盘点已记录。
 2. `Shared/RelaxKonOS.Deployment` 已加入解决方案。解析器支持传递依赖、共享依赖、区间、能力与契约版本、回溯和循环检查。协调器有目标服务器、状态与目录版本、计划有效期和持久检查点。通用编排和文件日志已接入桌面安装器。
@@ -81,7 +302,61 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 
 ### 原始验收清单索引
 
+精简 Server 发行支持独立外置 Docker 管理模块。PowerShell 生成的 Linux x64 ZIP 省去 Docker、Git 和 Application Deployments 三个随附执行程序集并分别保留签名输入。Docker 管理路由在 system 模式默认返回 404，离线安装签名 Docker 并启用重启后原回执成功且匿名请求返回 401。另在同一精简 ZIP 中只启用签名 Application Deployments，Docker 管理路由仍为 404，临时 PAM 账号通过 Core 的 Engine 传输构建、访问及删除真实 Java 工作负载。Bash 新列表通过语法与重复参数拒绝检查。
+
+Linux x64 精简 Core 使用原样官方 Docker `.roapp` 通过 `--live-docker-joint-deployment`。真实 PAM 会话经本地可信 HTTPS 安装独立签名 Docker，跨重启启用并登记桌面包，安装期间阻止服务端停用。桌面卸载后停用重启、在线移除及最终 Core 健康均通过，Docker 管理路由恢复 404。该验收使用无头桌面和隔离容器，未在本轮运行 Docker 管理工作负载。日志为 `.codex-scratch/external-docker-joint-live.log`。
+
+精简发行改用模块选择列表，支持分别或同时外置 Git 和 Application Deployments。Git 未安装时清单不再报告随附版本。PowerShell 构建的 Linux x64 双模块精简 ZIP 已解包并逐文件校验，两条业务路由默认返回 404。用独立 Git 发行输入生成测试签名包并离线安装后，真实 Core 重启，原回执转成功，Git 路由恢复认证并返回 401。Bash 新参数通过语法检查，原生完整重发与 Git 官方桌面联合安装仍待复验。
+
+- Linux x64 五模块精简 Server ZIP 增加 Certificates 和 WebServer。PowerShell 构建生成五组签名输入，Certificates 的三个 ACME 依赖一并移出 ZIP。实际归档通过逐文件清单检查，隔离容器以生产 Core 和 Helper 首次启动，五模块在托管状态默认停用。使用隔离测试密钥签名后，真实维护命令先安装 Certificates，再安装依赖它的 WebServer。停用状态重启仍不暴露两组 API，随后用部署权限启用并重启，两份操作回执成功，两组真实 API 均要求认证。精简 ZIP 下的桌面商店联合部署与业务请求仍待验收。
+- WSL 原生 Bash 从工作树生成相同五模块 Linux x64 精简发行，并在隔离 Linux 容器核对 ZIP SHA-256 和逐文件清单，重新签名、安装并启用 Certificates 与 WebServer。通过生产 Helper 的真实 PAM 登录读取模块清单，确认缺包时两者显示为独立模块且无版本、来源或摘要，安装后仍停用，启用重启后均报告签名版本，WebServer 返回实际签名清单的 Certificates 依赖。两份安装回执均成功。
+- 原生 Bash 精简 ZIP 使用未修改的 Linux 官方 Certificate Manager 和 Web Server Manager 归档验证桌面联合部署。两个模块分别通过本地 HTTPS 签名来源安装，重启后通过托管计划启用，下一次重启后才登记桌面应用。Web Server Manager 复用已运行的 Certificates 并安装 WebServer，通过 PAM 鉴权后两个生产业务列表均返回 JSON。桌面登记阻止停用，应用卸载后解除。签发和重载写操作仍待单独验收。
+- 五模块精简 Linux x64 ZIP 在全新托管 Core 上通过单计划双包验收。实际 Web Server Manager 官方归档同时审阅缺失的 Certificates 和 WebServer，按依赖顺序准备两份签名包，使用同一个桌面部署日志跨四次 Core 重启续跑，确认两者运行后才登记应用。PAM 登录后的 WebServer 列表返回业务 JSON，WebServer 清单报告实际 Certificates 依赖。服务端恰有两条成功的签名安装回执，每个模块一次。桌面卸载释放其依赖登记，WebServer 可停用并在线移除。
+- 同一五模块精简发行通过生产 Certificates 写入验收。签名双模块由官方 Web Server Manager 单计划安装。无外网 Linux 容器以隔离 Pebble CA 和环回 WebRoot HTTP-01 验证真实签发。生产 API 拒绝无授权的 PAM 登录用户，管理员申请精确签发授权后提交生产请求。成功回执和持久证书链均通过检查，OpenSSL 以测试 CA 根验证 localhost；Core 重启后重放返回同一操作及证书，Pebble 只记录一个订单。WebRoot 由测试 HTTP 服务提供，生产 Nginx 重载仍待验。
+- 五模块精简 Linux x64 ZIP 通过生产 WebServer 写入验收。隔离 systemd 容器运行 Ubuntu Nginx 1.24.0，测试服务单元执行真实配置测试和重载。独立签名 Certificates 与 WebServer 通过生产维护命令安装后，使用 PAM 登录，确认未授权重载返回 403，并经生产 API 与 Helper 纳管实例。通过包含无效指令的独立配置片段触发失败回执，现有 HTTP 响应继续服务。修正后通过签名 WebServer 执行器及生产 Helper 重载成功，HTTP 响应更新，Nginx 主进程 PID 不变。测试容器已清理。
+- 联合部署验收发现，WebServer 已卸载后，目录中保留的缺包条目仍阻止在线移除 Certificates。修正移除预览与清单操作提示，按实际存在的随附或独立执行包判断依赖阻止项。原有已安装包依赖仍受保护。修复后以 PowerShell 重建的精简 Linux ZIP 复跑完整流程，先在线移除 WebServer，再在线移除 Certificates。两者均恢复为缺包状态，随后 Core 健康重启且相关路由返回 404。
+- Proxy 加入可选精简发布。无 systemd 容器的早期试包触发 Mihomo 归属保护。在独立 systemd 的无外网 Linux x64 容器重验，生产 Helper 确认空宿主归属后，真实六模块 ZIP 的 Core 健康启动。实际官方 Proxy Manager 通过本地 HTTPS 安装独立签名包，跨两次 Core 重启启用并登记。已登记应用阻止停用，卸载应用后可停用、重启及在线移除包。最终 Core 健康重启，Proxy 返回缺包状态，管理路由恢复为 404，只有一条签名安装成功回执。此轮使用空宿主，已有 Mihomo 活动责任的迁移及精简发行上的原生代理业务仍待验。
+- 六模块精简 Linux x64 Server ZIP 通过生产 Squid 发布和运行态重载验收。无外网 systemd 容器使用 Ubuntu Squid 6.14、本机缓存库和测试服务单元，按正式安装器创建 Core 服务账户目录。生产 Helper 验证候选，独立签名 Proxy 执行发布及服务动作回执检查。首次发布后通过生产 API 启动 Squid，再次发布将监听从 43128 切到 43129，主进程 PID 保持，实际客户端收到环回目标 HTTP 403 与 ERR_ACCESS_DENIED。生产配置快照匹配最后发布，关联同一操作 ID，Helper 没有遗留待处理记录。测试容器随后清理。
+- 精简发行新增 Firewall、Tailscale、Tunnels。PowerShell 构建的实际九模块 Linux x64 ZIP 通过摘要与逐文件清单检查。隔离 systemd 容器中的生产 Core 和 Helper 确认首次托管启动时九项均停用。真实 PAM 清单将三个新增模块标为独立缺包，版本、来源、摘要均为空。生产维护命令验签并安装三包，重启后仍保持停用，再用部署配置启用并重启。三条签名安装回执成功，清单显示运行版本，相关路由要求认证。原生业务仍待单独验收。
+- 九模块精简 Linux x64 ZIP 通过 Firewall、Tailscale、Tunnels 官方桌面包的生产联合部署。隔离 systemd 容器通过本地 HTTPS 分发签名归档。三款应用分别在缺包时通过安装计划取得模块，跨两次 Core 重启启用并完成桌面登记；登记期间均阻止停用。各应用卸载后，三个签名模块依次停用、重启并在线移除。最终 Core 健康，PAM 清单确认三者回到缺包状态，服务端每个模块恰有一条成功安装回执。
+- WSL 原生 Bash 重建九模块 Linux x64 Server ZIP，核对 SHA-256、逐文件清单、九组签名输入及默认停用集合。
+- PowerShell 与 Bash 使用同一份精简模块名单和依赖校验。两入口拒绝未知 ID、重复模块和只选 Certificates 的组合，拒绝发生在创建输出前。PowerShell 用混合大小写参数重建实际九模块 Linux x64 ZIP，摘要、逐文件清单、签名输入及默认停用集合均通过。Bash 新入口通过语法与无效参数检查，并从当前工作树完成原生九模块 Linux x64 ZIP 全量构建。实际 ZIP 在隔离 systemd 容器通过 SHA-256、逐文件清单和九组签名输入检查，生产 Core 默认停用九模块。签名 Certificates 已安装时，启用缺失 WebServer 被拒且状态与回执保持不变。补装签名 WebServer 后，两者启用重启，清单报告运行版本，两条安装回执成功。
+- Windows x64 九模块精简 ZIP 通过归档摘要、逐文件清单、九组签名输入核对。实际 ZIP 解包后，生产 Core 在环回首次启动，九个缺包模块均停用。显式启用缺包 Firewall 时，启动拒绝且托管状态逐字节一致。用临时测试密钥为九组输入生成签名包，生产 Core 的只读验证命令全部通过，未写入安装或信任记录。本轮 Windows 精简发行未执行管理员限定的离线安装。
+- PowerShell 从同一工作树一次生成 `0.3.0-external-pair` Linux x64 客户端与九模块精简服务端 ZIP。实际解包后核对两份归档 SHA-256、逐文件清单、29 个官方桌面归档，以及移出服务端的九个执行程序集均有独立签名输入。Databases 观察 ModuleHost 另有签名输入。WSL 使用此次客户端 ZIP 验证 Minimal 首次预装 0 个并逐一恢复 13 个基础应用，Standard 取消 Welcome 后安装 12 个，Developer 离线安装 14 个。配置集切换及设置损坏恢复保留用户卸载，Terminal 和 Task Manager 的能力守卫通过。
+- 同批成对 ZIP 在无外网的 systemd 容器通过生产联合部署。首次启动时九个精简模块均停用，生产 Helper 确认可停用 Proxy。直接使用客户端 ZIP 中的官方 Web Server Manager 归档，在同一个桌面计划中通过环回 HTTPS 按依赖顺序安装签名 Certificates 与 WebServer，两者各有一条成功回执。跨 Core 重启验证运行版本后登记应用，PAM 鉴权的业务列表成功返回。桌面卸载释放停用限制，重启后可在线移除 WebServer，运行清单恢复为缺包状态。
+- PowerShell 交叉构建的 Linux ZIP 现写入 Unix 文件权限。使用实际 Linux x64 客户端发布目录核对桌面入口权限，并重建九模块精简 Server ZIP。在隔离 systemd 容器按归档条目权限解包，核对归档摘要、逐文件清单、入口的 0755 和普通文件的 0644。解包后的 Core 直接执行签名打包及安装命令，签名 Databases 观察包跨重启接管，生产 Helper 处理四条 PAM 鉴权查询。维护和迁移计划在空宿主按预期返回 503。
+- 发行清单回归调用实际 Linux ZIP 写入器，检查 Server、ModuleHost、用户 launcher 与部署脚本的 Unix 0755，以及普通 DLL 和清单的 0644。Windows 完整发行清单专项通过 10 项测试，独立 libarchive 也核对了实际精简 ZIP。
+- 在一次性 Ubuntu 24.04 容器使用系统软件源的 Info-ZIP 6.00 解包实际九模块精简 Server ZIP 和客户端权限验收 ZIP。两份发行清单通过，入口权限由解包自动恢复。无外网 systemd 容器中的 Core 可直接运行，签名 Databases 观察包离线安装、重启接管及真实 Helper 查询通过。Linux 发行清单专项运行 10 项，其中 1 项仅适用于 Windows，其余通过，包括原生 `unzip` 权限断言。
+- 官方离线签名 CLI 对九种独立执行包复用安装入口契约检查。Windows Release 使用实际精简发行的九组签名输入构建、签名并完成只读验签。九组不兼容副本均拒绝生成归档或签名目录，其中 WebServer 保留主入口，仅破坏 Nginx 重载执行入口，确认签名前返回 module-package-execution-contract。
+- 签名包专项新增 WebServer 回归，验证主入口仍存在时缺少重载执行器也拒绝生成签名产物，恢复实际程序集后可签名。Windows Release 与无外网 Linux x64 容器均通过。
+- Windows Release 完整模块回归通过，输出 1,533 条 PASS。将清单来源标识在协议和组件中心均声明为可空，缺包条目不再有虚构的默认来源。该变更后 Windows Release 模块生命周期及签名包 HTTP 专项通过。
+- Windows 签名包 HTTP 间歇 503 在重复运行第九轮复现。堆栈证实同卷暂存目录发布的 Directory.Move 返回 0x80070005，触发于已签名 Docker 包。新增 Windows 暂时访问拒绝和共享冲突的有界原子改名重试。候选仍须留在暂存区且目标不存在，重试耗尽仍失败。修复后连跑 12 轮签名包 HTTP 全部通过，其间未再捕获该错误。造成 Windows 短时拒绝的进程未识别。
+- 精简发行在 Core 启动选择时拒绝启用缺包模块。该检查位于持久化期望状态之前。确认没有开始执行包时清理本次启动标记，避免把随后安装的合法候选误隔离。实际九模块 Linux ZIP 在隔离 systemd 容器验证八个可单独启用的模块指定缺包时均报出模块 ID，原托管状态仍可启动。随后安装 Firewall、Tailscale 和 Tunnels，三个签名回执均成功并可启用。随后从同一九模块 ZIP 单验 WebServer。先安装签名 Certificates，显式启用两模块时 Core 准确拒绝缺失的 WebServer，期望状态和现有签名包回执逐字节保持，未留下启动标记。安装 WebServer 后，两模块均能启用，签名安装回执成功。
+- 九模块精简 Linux x64 发行通过真实 UFW 0.36.2 读写。生产 Core 与 Helper 在无外网 systemd 容器运行，签名 Firewall 模块读取启用状态和空规则表，并拒绝未提升授权的写入。修复创建规则时对不存在的旧规则编号解引用，Firewall 边界回归确认新规则只调用 Helper 一次。重建并重新签名后，生产 API 通过真实 PAM 提权新增单一测试规则，API 清单与原生 UFW 均观察到，随后通过 API 删除并确认无残留。容器已清理。
+- 九模块精简 Linux x64 发行通过真实 Tailscale 状态读验。校验官方 Tailscale 1.104.7 Linux x64 归档 SHA-256 后，仅在无外网容器以用户态网络和内存状态运行 tailscaled。独立签名 Tailscale 模块经生产 Helper 和 PAM 认证返回与原生 CLI 一致的版本及 NeedsLogin 状态，并确认普通会话的节点数据受限。停止守护进程后 API 返回 unavailable，重启后恢复观察。测试未登录 Tailnet，容器已清理。
+- 九模块精简 Linux x64 发行通过真实 Tunnels 数据面验收。独立签名 Tunnels 模块安装并启用后，真实 PAM 会话通过生产 API 保存外部 frp 0.71.0 的档案和 TCP 定义，启动实际 frpc。无外网容器中的 frps 和回显服务均仅绑定环回，随机负载双向逐字节一致。生产 API 停止会话后返回 disconnected，frps 释放该转发监听，测试容器已清理。此轮覆盖外部运行时路径。
+
+原生 Bash 使用 `application-deployments,git` 生成 Linux x64 精简 ZIP，归档摘要和逐文件清单通过。PowerShell 和 Bash 的实际精简 ZIP 均通过独立签名 Git 离线安装、重启及官方 Project Editor 复用验收。真实 PAM 登录后，桌面登记临时仓库，读取提交图和状态，只提交选中的文件并推送到临时本地裸仓库。原有暂存文件保持不变。桌面直接触发签名 Git 下载和启用的路径仍待验收。
+
+原生 Linux x64 精简 ZIP 现已通过桌面发起的 Git 联合安装。原样 Project Editor `.roapp` 在真实 PAM 会话下尝试提前启用被阻止，随后从本地可信 HTTPS 下载并安装签名 Git，跨重启提交受管启用计划、续跑并登记桌面应用。已安装客户端完成临时仓库读取、选择性提交和本地裸仓库推送，保留另一个文件的暂存状态，最后卸载桌面应用。日志为 `.codex-scratch/external-git-joint-live.log`。
+
+Git 联合验收扩展到桌面依赖保护、停用和在线移除。首次原生发行验收发现移除签名 Git 后驻留策略丢失，导致 Core 下次启动拒绝策略集合。修复后，移除签名替代包仍保留 Core 认识的 Git 驻留策略。Windows 移除专项及从更新后的 PowerShell Linux x64 精简 ZIP 执行的完整验收通过，最后一次重启健康，Git 路由为 404。日志为 `.codex-scratch/external-git-fixed-live.log`。
+
 精简发行通过 `ModuleManagement:DefaultDisabledModules` 初始化默认状态，可启动 `managed` 权限的 Core。Linux x64 从实际精简 ZIP 解包并核对清单后健康启动，部署路由为 404，初始持久状态未启用 Application Deployments。Windows 生命周期专项另验证通过管理计划启用后，重启仍保留启用决定。此次尚未在精简 Core 上复跑桌面商店安装。
+
+修复精简 Core 的模块清单将缺失的 Application Deployments DLL 误报为随附安装的问题。Linux x64 精简 ZIP、原样官方桌面 `.roapp` 和同轮测试签名包在隔离容器通过 `--live-application-deployments-joint-deployment`。桌面协调器从可信本地 HTTPS 下载并安装服务端包，首次重启后提交 managed 启用计划，再次重启并验证有效版本后才登记桌面应用，最后卸载成功。全过程使用真实 PAM 登录和生产联合部署接口，桌面由无头验收运行器驱动。
+
+精简 Core 在独立执行包缺失时禁止受管启用，预览和提交均检查安装状态，离线恢复只尝试启用可用模块。Windows 生命周期专项验证缺包阻止、包恢复后启用以及重启保留启用状态。组件中心提供中英日提示，三语资源校验通过。
+
+Linux x64 从更新后的精简 ZIP 复验缺包保护与联合安装。真实 PAM 登录后，模块清单报告未安装并禁用启用操作，生产启用计划返回 `module-package-install-required`。同一桌面流程随后通过本地可信 HTTPS 安装签名包、提交启用、重启续跑并登记原样官方 `.roapp`，最后卸载成功。日志为 `.codex-scratch/external-managed-enable-guard-live.log`。
+
+同一 Linux x64 联合验收扩展到停用生命周期。官方桌面包登记后，生产停用计划返回 `module-desktop-dependency-blocked`。桌面卸载释放依赖登记，停用计划可提交并返回待重启回执。精简 Core 再次启动后保持健康，部署路由返回 404。日志为 `.codex-scratch/external-managed-disable-live.log`。
+
+Linux x64 联合验收的 `remove` 阶段在确认停用生效后提交服务端在线移除计划。移除回执成功且无需重启，模块清单恢复为独立包未安装、不可提前启用的状态。随后再次启动精简 Core，健康检查仍为 200，部署路由仍为 404。日志为 `.codex-scratch/external-managed-remove-live.log`。
+
+沿用精简默认状态时，组件中心恢复和离线 `recover-enable-all` 只恢复有执行包的模块。Windows 恢复专项确认目录仍能列出缺包项而恢复计划会保留其停用状态。完整模块套件在后续 WebServer 签名更新收到 503，独立复跑签名 HTTP 专项通过。
+
+签名包 HTTP 回归的安装失败输出现在包含模块、版本与响应问题码。Windows 连续六次独立签名 HTTP 专项及一次完整模块套件均通过，完整套件计 1,532 项。此前的间歇性 503 未复现，未确认根因。
 
 Server 打包入口提供 Application Deployments 外置布局，独立签名输入保留在同级目录，Server ZIP 省去随附 DLL 并默认停用该模块。Windows x64 PowerShell 验证 ZIP 摘要、逐文件清单和配置。Linux x64 原生 Bash 产物在隔离容器中解包、校验并健康启动，未修改随包停用配置时部署路由为 404。用同轮签名输入离线安装、通过部署配置启用后重启，原回执成功且匿名请求返回 401。
 
@@ -100,6 +375,14 @@ Linux x64 实际发行的 Core 在隔离容器中删除随附的 Application Dep
 Linux x64 原生发行还在 WSL 私有挂载命名空间完成写入验收。移除随附执行程序集、离线安装独立签名候选并启用后，临时 PAM 账号经生产 HTTP 上传 Java ZIP、创建应用并提交部署。真实 Docker Engine 完成构建，成功回执及应用 HTTP 响应通过。生产 DELETE 请求返回成功回执并清理构建目录，测试镜像由验收脚本清理。初次运行修正了测试 Docker 配置目录权限和 Java 就绪路径。日志为 `.codex-scratch/app-release-core-docker.log`。
 
 聚合目录签名前也会检查已有归档的 ModuleHost ABI 下限。Windows Release 模块包专项验证聚合目录可正常签署并核对实际归档，含 `2.4.0` Databases 条目的候选在签名前被拒绝。正式目录尚未上传。
+
+聚合目录 CLI 要求提供归档暂存目录。生成签名目录文件前，逐一核验所有未撤销的归档，包括其他 RID。Windows Release 模块包专项通过缺包与同长度篡改拒绝测试。本地使用临时密钥，将 Windows x64 和 Linux x64 精简发行的各九个执行包及 Linux x64 Databases 观察包聚合为一份 19 条目的目录。移走 Linux 观察归档时拒绝写出目录，恢复原归档后签名通过。测试使用本地发行输入，未访问正式来源或上传发布。
+
+桌面联合部署与组件中心直接安装均在确认前说明待安装签名包的实际运行方式。进程内包使用服务端进程权限，独立 ModuleHost 包通过代理访问宿主资源。两处使用中文、英文和日文说明。Windows Release 官方 Welcome 包专项通过生产确认窗口复验，两个安装步骤的代理权限列表均为空时，仍各自展示运行权限说明。组件中心工作区专项通过本地及远程目录安装回归和三种语言、两种主题的布局检查。
+
+重新启用已安装的签名模块时，桌面联合计划冻结来源、发布 ID 与归档摘要。启用前核对选中的安装记录，重启续跑时另核对健康报告的运行版本和来源。仅记录归档摘要的旧签名模块启用计划需重新审阅。Windows Release 使用官方 Web Server Manager 归档验证签名安装、停用与重新启用，重启后续跑成功且无重复安装操作。
+
+Windows Release 与无外网 Linux x64 容器通过签名 Web Server Manager 回归。建立检查点后，只替换安装查询返回的发布 ID，保留来源和归档摘要，确认不会启用模块并要求重新审阅。恢复真实记录后，重新启用跨重启续跑且不重复安装。Linux x64 同轮通过 Welcome 和 Databases 官方归档的通用联合部署回归。
 
 Linux x64 两条服务端打包入口在输出 Server ZIP 前完成独立 Databases 模块发布。PowerShell 和 Bash 注入发布失败后均未生成 Server ZIP 或描述符。PowerShell 正向完整发行通过，使用同轮独立产物生成 ABI `2.5.0` 本地测试签名包，并核对了目录签名、归档摘要和入口程序集。
 
@@ -125,16 +408,62 @@ Databases 与 Cloud 独立模块的 ABI 下限由打包、目录和候选安装�
 | 17 | 升级与卸载 | 联合专项覆盖升级换绑、回滚及离线卸载补偿。Ubuntu 独立模块 0.1.0 到 0.2.0 的热更新保留 Core 和 Git 服务。Windows 与 Ubuntu 两端实际安装后的独立卸载及依赖释放另已验证。 |
 | 18 | 启动依赖检查 | 发行 Terminal 和 Task Manager 的能力缺失阻止激活，恢复后可启动。联合专项覆盖故障模块拒绝启动，Databases 使用真实 Core 验证模块就绪后进入独立组件权限检查。 |
 | 19 | DevCli 与 Direct Deploy | Windows Debug 桌面与 DevCli 通过登录界面直传、卸载、监听更新、失败保留和双配置隔离回归。真实 Docker 归档通过候选启动依赖专项。 |
-| 20 | 真实双包部署 | Ubuntu 发行 Core 从无独立包记录开始，经 HTTPS 下载签名 `.rkmodule`，重启后由桌面协调器登记 `.roapp`。桌面测试副本仅提高模块最低版本；四条观察者查询经真实 Helper 通过。 |
-| 21 | Windows 与 Linux 构建、可执行测试 | 当前 Windows Release 完整模块 1,498 项检查，Linux x64 自包含完整模块 1,510 项检查。Windows 完整重发及 Linux 桌面宿主构建均通过 29 个官方归档与宿主边界核对。 |
+| 20 | 真实双包部署 | Ubuntu 发行 Core 从无独立包记录开始，经 HTTPS 下载签名 `.rkmodule`，重启后由桌面协调器登记原样官方 `.roapp`。Databases、Terminal、Task Manager 等各自记录了真实联合部署和业务请求证据。 |
+| 21 | Windows 与 Linux 构建、可执行测试 | ABI 2.6.0 的当前 Windows Release 和 Linux x64 自包含完整模块套件分别记录 1553 和 1567 条 PASS。Linux 在无外网容器复用本地 Docker/Compose CLI 执行离线解析，未接入 Engine。Windows 完整重发及 Linux 桌面宿主构建均通过 29 个官方归档与宿主边界核对。 |
 | 22 | Android 回归 | 离线 Debug 及测试 APK 构建，1,906 项 JVM 测试和 11 项模拟器测试通过。设备测试覆盖应用目录与服务维护恢复，使用只读模拟器。 |
-| 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,388 个桌面宿主键和 39 套独立应用资源。 |
+| 23 | 三语资源 | [三语校验](../../Tools/verify-localization.py) 通过 4,391 个桌面宿主键和 39 套独立应用资源。 |
 
-原任务还要求持续迁移可拆分的业务功能。服务端矩阵中仍有随 Core 发行的模块，Databases 目前独立监督的是观察入口。其余未覆盖的业务环境和多台物理设备联调见应用矩阵及测试记录。
+原任务还要求持续迁移可拆分的业务功能。Databases 的签名 ModuleHost 包目前覆盖观察入口。随附的 `Modules/Database/RelaxKonOS.ServerModule.Database.dll` 仅登记随附 PostgreSQL 观察查询。凭据暂存、安装任务和备份调度由 Core 注册，两种部署共用该宿主边界。维护和迁移计划经 Core 的受限观察代理由 Helper 生成。端点回归使用隔离模块自己的服务注册，并验证它不会登记随附查询执行。Windows Release 当前数据库端点专项通过，验证停用时不加载随附程序集、路由策略和私有观察准入。该结果证明随附程序集边界，数据库执行路径的独立监督和物理设备联调仍待完成。
 
 ### 复跑 Databases 双包验收
 
+Linux ARM64 服务端发行现在与 x64 一样生成独立 Databases 观察模块签名输入。PowerShell 交叉构建和 WSL 原生 Bash 构建的两个九模块精简 ZIP 均通过 SHA-256 和逐文件清单校验，Core、Helper 和 ModuleHost 均确认为 AArch64 ELF。两份观察程序集均独立于 Server ZIP，分别用临时密钥生成 `linux-arm64` 签名包与目录并通过聚合签名前的归档校验。ARM64 设备上的启动和业务验收仍待完成。
+
+ARM64 Ubuntu 模拟运行发现独立 ModuleHost 打开包根目录时使用了 x64 的 `O_DIRECTORY` 数值，导致实际 `openat2` 返回 `EINVAL`。隔离启动器现按进程架构选择目录标志，保留原路径解析约束。用新发布的 x64 ModuleHost 单独替换验收副本中的执行程序集后，签名 Databases 离线安装、重启接管和四个经过真实 Helper 的 PAM 鉴权查询均通过。
+
+从修复后的 ARM64 九模块精简 ZIP 使用原生 unzip 解包，在无外网的模拟 Ubuntu 24.04 systemd 容器中运行真实 Core、Helper 和 ModuleHost。ARM64 Core 生成并接受临时签名包，离线安装回执在重启后由原操作转为成功，独立 Unix 账户的 ModuleHost 处理四个 PAM 观察者查询，均返回 HTTP 200，Helper 日志确认对应操作。夹具预置精确代码信任并延长了模拟环境的 HTTP 等待时间。此次没有受管数据库候选，ARM64 物理设备验收仍待完成。
+
+ModuleHost 常规专项新增原生包根目录检查，调用生产打开目录的路径并验证普通文件会被拒绝。Linux x64 与模拟 Linux ARM64 的自包含测试运行器均通过完整 `--module-host-checks`。
+
+Databases 桌面重新查询 PostgreSQL 维护或迁移计划时清除上一份候选及来源确认，按当前实例 ID 和修订接受新候选。Windows Release 数据库工作区复验查询失败和同修订不同实例时均不会沿用候选；已受理迁移继续使用原冻结计划和幂等键。此项覆盖桌面选择与恢复，未验证真实受管实例候选。
+
+DB-07C 的共享包限制延伸至计划入口。有附加 PostgreSQL 实例时，桌面禁用维护和迁移计划，Helper 在解析候选前拒绝两类计划。Windows Release 数据库工作区通过多实例禁用与单实例恢复检查，Helper 构建通过。一次性 Ubuntu 24.04 amd64 systemd 容器中，实际 Helper 使用 Ubuntu PostgreSQL 16.15 完成 32 项单实例基线与 17 项双实例检查，两类计划在两个实例运行时均返回 `database.maintenance_invalid`。本轮通过 Helper 原生命令验收，未经过签名 ModuleHost 的 HTTP 查询。
+
+在同一个 Ubuntu 24.04 amd64 systemd 容器复验签名模块 HTTP 路径。九模块精简 ZIP 解包校验后，仅在验收副本换入当前 Helper 和 ModuleHost 执行程序集。临时签名 Databases 离线安装后以独立 Unix 身份接管，原回执转为成功。PAM 观察者经真实 Helper 获取单实例 PostgreSQL 16.15 维护候选，实例 ID 和修订匹配当前状态。第二个实例启动并通过 17 项原生检查后，同一个观察者的维护与迁移计划均返回 HTTP 503，保留 `database.maintenance_invalid` 问题码。夹具预置精确代码信任，此轮未经过桌面安装向导。
+
+同一真实受管 PostgreSQL 流程改由桌面联合部署发起。以实际发行 Databases 归档的测试副本（只提高模块最低版本）从空白安装记录和代码信任启动，PAM 登录后通过本地 HTTPS 下载与安装签名观察包。重启前桌面等待，重启后续跑登记，原回执转为成功，代码信任摘要与归档一致。单实例候选与双实例 HTTP 503 同轮通过。此轮随后在第二桌面依赖登记阶段因验收脚本变量冲突中止，未执行本轮双桌面卸载检查。
+
+修正验收脚本变量冲突后，从空白状态完整复跑。第二份独立桌面状态复用正在运行的签名 Databases，服务端持久登记两份依赖且原安装回执保持唯一。第一端卸载仅释放其登记，第二端仍阻止停用。第二端卸载后，桌面依赖阻止解除，签名 ModuleHost 继续运行，原安装回执保持成功。此轮两份桌面状态和 PostgreSQL 均在同一 Ubuntu 容器，跨物理设备验收仍待完成。
+
+PostgreSQL 密文存储与持有保护密钥的 Core 合并到同一宿主边界，移除随附执行程序集的凭据工厂接口。原密文路径、保护用途、实例和操作者绑定保持一致。Windows Release PostgreSQL 与自动备份专项通过，覆盖既有密文读取、暂存、重新打开及删除。随附执行程序集仍承载备份调度及本地观察，独立 ModuleHost 的观察契约未变。
+
+备份调度现由拥有安装台账的 Core 宿主生命周期直接注册，随附执行程序集只提供本地观察。Linux 精简发行新增 `database` 选项，移除随附程序集并默认停用模块，保留独立签名输入。Windows Release PostgreSQL、自动备份及数据库端点专项通过。PowerShell 生成的 Linux x64 ZIP 通过摘要和逐文件清单检查，并在无外网 Ubuntu systemd 容器中从空白信任和安装记录启动。未修改的官方 Databases 桌面包通过本地 HTTPS 安装签名观察包，跨两次 Core 重启启用和登记，两个独立桌面状态随后逐一释放登记。真实 Helper 处理四条观察请求，原签名回执保持唯一。本轮精简发行未配置受管数据库实例。
+
+同一 Databases 精简 ZIP 使用原版桌面包从空白状态启动，在签名观察包启用后通过当前 Helper 初始化真实 Ubuntu PostgreSQL 16.15。PAM 观察者取得单实例维护候选，实例 ID 与修订一致；第二实例启动并通过 17 项原生检查后，维护与迁移计划均返回 503 和 `database.maintenance_invalid`。两个桌面状态复用并逐一释放，原回执保持唯一。WSL 原生 Bash 同轮构建了另一份精简 ZIP，摘要、逐文件清单、默认停用设置和独立签名输入均通过检查。桌面数据库专项另确认：宿主报告软件包身份变化时仍可核对并选择同版本修复候选，更新和迁移保持受限。
+
+PowerShell 生成同一份 Linux x64 十模块精简 ZIP，Databases 与另外九个可外置执行模块均默认停用，ZIP 不含这十份随附程序集，且每项保留签名输入。将该发行的十份输入和 Windows x64 九份输入汇入临时签名目录，19 份归档均通过写出前校验，移走 Linux Databases 归档时拒绝写出。在无外网 systemd 容器中，此十模块 ZIP 通过原版 Databases 桌面包的签名安装、跨重启启用、真实 Helper 查询及两个桌面状态逐一释放验收。其余九种签名包在本轮验证到签名目录，未在这一组合中逐个启用。
+
+同一份十模块精简 ZIP 在无外网 Ubuntu systemd 容器完成组合启用。从十模块默认停用、无安装记录状态开始，生产维护命令签名、接纳并离线安装十包。安装后重启仍停用，再通过部署配置同时启用。PAM 鉴权后的运行清单显示十个签名版本均生效，Databases 的 ModuleHost 健康检查通过，十条签名安装回执均成功。Databases 代码信任由夹具按精确摘要预置；本轮验证模块共存与启动，未重跑各自的业务写操作。
+
+PowerShell 与 Bash 共用的精简处理器现在先核对完整选择的随附程序集与预先发布的签名输入，完成签名输入暂存后才裁剪服务端文件。发行清单专项通过 11 项，覆盖 Git 在选择列表中先出现时，缺少 Databases 签名输入仍保留所有随附文件及原配置。重建实际十模块 Linux x64 ZIP，十组签名输入、ZIP 内容及默认停用集合均正确。
+
+WSL 原生 Bash 从当前工作树构建了 Linux x64 十模块精简 ZIP。在无外网 systemd 容器使用 Info-ZIP 解包，校验 SHA-256 与逐文件清单。十个模块首次启动默认停用，离线安装后首次重启仍停用。部署配置同时启用后，PAM 运行清单显示全部签名版本，十条安装回执成功，Databases ModuleHost 健康。Databases 精确代码信任由临时夹具预置。
+
+System Performance 的 Windows 与 Linux 原始计数器读取移入随附执行程序集，通过共享数据源契约供 Core 采样器使用。Core 按需加载平台实现，继续负责周期、差分、历史和推送。Windows Release 与 Linux x64 WSL 的性能专项均从该程序集读取实际物理内存，Linux 同时核对 CPU 和根文件系统采样。本轮尚未提供独立签名性能包。
+
+System Performance 已接入官方签名包和精简发行 `system-performance` 选项。默认官方来源策略修订 9 增加该模块。离线打包与安装共用目标 RID 的类型和构造契约校验；Windows Release 模块包专项通过 Windows 与 Linux 实际程序集和错误程序集检查。PowerShell 构建的 Linux x64 精简 ZIP 校验后首次启动，性能快照路由返回 404。签名独立包离线安装后仍停用，启用并重启后原回执成功，PAM 鉴权的快照返回真实物理内存。本轮未在 Windows 安装该签名包。
+
+PowerShell 生成的 Windows x64 System Performance 精简 ZIP 通过 SHA-256、逐文件清单及独立签名输入检查。实际 Core 在省去程序集的情况下健康启动，快照路由返回 404。强制启用缺包模块时启动拒绝，原托管状态逐字节相同。实际 Windows 发布输入用临时密钥生成签名包，生产 Core 只读验证通过，损坏的执行输入被拒绝且未产生签名归档。当前 Windows 账户无本地管理员权限，离线安装与重启启用仍待验证。
+
+官方 Task Manager 归档声明可选 System Performance 模块，保持指标与进程两项启动能力要求。Linux x64 客户端发行通过全部 29 个官方归档契约检查与三档离线预装回归。无外网 Ubuntu 容器使用该归档和实际性能精简 Server ZIP 从缺包状态开始，经本地 HTTPS 选择并安装签名模块，跨两次 Core 重启完成登记，原安装回执成功。认证快照读取了真实物理内存，桌面卸载后保留服务端模块。本轮使用无头桌面协调器。
+
+Databases 的 PostgreSQL 观察使用独立的只读备份台账契约。随附查询和私有 Broker 共用候选提取规则，签名 ModuleHost 使用同一结果投影规则。自动备份调度器只负责读取调度状态和提交到期工作，观察查询无需依赖调度器实例。私有 JSON 契约及宿主 ABI 维持 2.5。Windows Release PostgreSQL 和自动备份专项、数据库端点边界专项均通过。重新发布的 Linux x64 ZIP 通过逐文件清单和归档摘要校验。在无外网 Linux 镜像中用临时测试密钥签名观察包，生产启动器以独立 Unix 身份接管，待重启回执转为成功。PAM 观察者的四个公开查询均收到 200，生产 Helper 日志确认四次对应的操作；此次未取得受管 PostgreSQL 候选。
+
 独立 Databases 观察入口现在组装带备份操作的 PostgreSQL 公开状态。Core 提供 Helper 状态与限定的台账候选，私有 ABI 提升到 `2.5.0`。Windows Release 验证当前备份时段优先于历史操作，并拒绝声明 `2.4.0` 的签名包构建。Windows 签名 HTTP 专项复跑通过，首次运行遇到暂存目录清理访问错误。Linux x64 使用重新发布的 Core、Helper、ModuleHost 和签名观察入口，验证重启接管及四条真实查询。
+
+签名 Databases ModuleHost 启用后，Core 只注册该模式所需的数据库宿主服务，不再注册随附观察实现 IDatabaseQueries。随附数据库仍注册本地观察。Core 继续持有密文、安装与备份调度权威。Linux Release 签名包 HTTP 专项通过 149 条检查，其中使用实际安装记录验证服务注册；Windows PostgreSQL 与自动备份专项通过。Windows 签名 HTTP 一次在 WebServer 安装阶段返回 module-state-unavailable，Linux 同轮未复现。
+
+同一注册拆分在原生 Bash 九模块 Linux x64 ZIP 上复验。实际 Core 接纳并离线安装 ABI 2.5 签名观察包，重启后以独立 Unix 身份监督 ModuleHost，原安装回执由 AwaitingRestart 转为成功。PAM 观察者的 PostgreSQL 和 MySQL 状态查询返回 200，空宿主无已纳管 PostgreSQL，维护与迁移计划返回 503。四条请求均在真实 Helper 日志中对应到各自操作。本轮未配置实际数据库实例或获得维护候选。
 
 已安装归档也在执行前按当前 ABI 校验。ModuleHost 监督器在启动或在线替换前执行预检，离线回滚在写入选中版本前执行同一检查。Windows Release 模块包专项通过，验证不兼容候选被拒绝时，在线服务继续运行原版本，离线选中摘要保持不变。
 
@@ -366,7 +695,7 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Code Editor 的条件写入契约由应用 SDK 提供，宿主从同源 JSON 嵌入中英日文案。发行程序集已核对无直接 Code Editor 引用。Git 项目编辑器仍复用 Code Editor，Component Center 的 Git 状态依赖使其继续间接进入桌面发行。Windows Release 官方包生命周期、项目编辑器和生产 SDK 文件选择器专项已通过。
 - Code Editor 项目还提供文档、标签页状态、目录树、工作区文件契约和视图模型。Code Editor 与 Git 项目编辑器共用这些类型。应用项目只依赖 SDK、共享 UI 和协议类型。桌面宿主提供文案解析和文件适配，并把版本冲突转换为统一的编辑器异常。独立应用入口、视图和发行包仍待迁移。
 - Code Editor 主视图和设置视图已由应用程序集编译。文字从视图模型绑定，窗口标题栏移到宿主后仍可刷新文案。Git 项目编辑器引用应用程序集中的同一视图。
-- Code Editor 具备独立 SDK 入口、文件关联清单、权限声明与中英日文案，DevCli 在 Windows 生成了 `relaxkonos.codeeditor.roapp`。归档包含程序入口和图标。Windows 桌面回归使用该入口打开本地化 SDK 窗口并经测试文件 API 读取源文件。桌面发行版通过 Developer 配置安装该应用包。Windows Release 已验证实际包的来源、安装、文件关联、更新、失败保留版本、重启发现与卸载。SSH 文件能力沿用经主机密钥校验的 SFTP 会话，真实远端的工作区验收仍待完成。
+- Code Editor 具备独立 SDK 入口、文件关联清单、权限声明与中英日文案，DevCli 在 Windows 生成了 `relaxkonos.codeeditor.roapp`。归档包含程序入口和图标。Windows 桌面回归使用该入口打开本地化 SDK 窗口并经测试文件 API 读取源文件。桌面发行版通过 Developer 配置安装该应用包。Windows Release 已验证实际包的来源、安装、文件关联、更新、失败保留版本、重启发现与卸载。Windows Release 回归通过已安装的应用文件关联打开回环 SSH 服务上的文件，使用经主机密钥校验的 SFTP 会话读取、编辑并保存文档。验收脚本从 SFTP 服务端核对实际写入字节，同一脚本的 SSH Files 回归也通过。远端 SSH 工作区验收仍待完成。
 - WSL x86_64 上使用 Linux .NET 10.0.14 运行协调器及隔离双包验收。用实际 Welcome 归档与在 Linux 测试进程签名的 `.rkmodule` 验证模块安装、取消、响应丢失、重启恢复及随附和独立模块复用。测试进程使用桌面和服务器 Release 的可移植程序集。
 - 桌面宿主在 Windows 成功交叉发布到 `linux-x64`，此次交叉发布仅验证宿主产物。在 WSL 单独使用实际 Welcome 与 Browser 官方归档验证无头包生命周期，包括 Welcome 配置集升级、Browser 签入工作区和卸载。修复了包目录已移除时 Linux 卸载清理仍试图删除活动指针的问题。Windows Welcome 回归通过。
 - Android Debug 离线构建与 1,904 项 JVM 单元测试通过。只读模拟器使用生产应用宿主冷启动 Debug APK，并通过包来源选择与工作区导航的 10 项设备测试。
@@ -423,6 +752,9 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 端口转发三语资源已迁入应用程序集。工作区通过应用资源解析文案，现有桌面宿主从同一资源读取操作错误。Windows Release 构建、三语资源校验及环回提交回归通过。
 - 端口转发外置入口与包清单已实现。SDK 宿主服务仅向声明并获授本地转发权限的端口转发应用提供操作。Windows Release 构建、权限与环回回归以及 DevCLI 打包通过。官方分发切换和安装启动验收待完成。
 - 端口转发已切换为官方可选包，开发者配置采用交互安装。桌面宿主移除了内置入口和应用程序集引用，宿主与发行包共享操作错误的翻译源。Windows Release 官方包生命周期、本机环回、权限和三语校验通过，真实 SSH 联调待验。
+- 当前客户端 Release 的端口转发服务通过 WSL 独立网络命名空间复验。实际 Ubuntu OpenSSH 使用临时 known_hosts 固定测试端主机公钥，通过一次性密码认证，仅访问环回 HTTPS 测试服务。生产转发服务成功读取指纹匹配的 HTTP 204；移除后服务清单为空且环回监听已关闭。本次实测覆盖宿主服务，官方包界面已有独立生命周期验收。
+- 端口转发先订阅 SSH 退出事件再启用通知，修复启动提交阶段可能漏掉退出通知。当前 Release 在同一独立 WSL 环回环境通过显式断连用例，先取得 HTTP 204，再让测试 SSH 端关闭连接，确认客户端自动移除运行条目及本地监听。
+- Linux 真实 SSH 断开验收可用 `python3 Tests/Client/verify-port-forwarding-ssh.py <窗口预览测试 DLL>` 复跑。脚本使用 Paramiko、OpenSSH、OpenSSL 和 .NET，随机分配环回端口，临时固定主机公钥及 HTTPS 指纹，无需改动用户 SSH 信任。当前 Release 在隔离 WSL 中复跑通过。
 - 应用部署管理器的服务端契约与上传进度类型已迁入 SDK。Windows Release 客户端工作区、诊断、环回 HTTP 上传和 SignalR 回归均通过。应用授权适配器与外置入口尚待接入。
 - 应用部署外置上下文已接入读取和管理授权。创建、部署、上传、引用文件及取消等变更要求管理权限，HTTP 与实时日志绑定调用、应用和连接生命周期。Windows Release 构建、应用作用域与工作区回归、环回上传和日志回归通过。
 - 应用部署管理器的应用、修订和操作列表模型与状态显示规则已迁入独立项目。宿主继续提供翻译，服务端失败类型由 SDK 提供。Windows Release 构建和应用部署工作区回归通过。
@@ -675,6 +1007,7 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 桌面宿主移除对 Settings 实现项目的引用。Settings 包提供对话框与法律资源读取工厂，宿主只引用共享契约和语言资源。Windows Release 隔离发布确认根目录没有 Settings 实现 DLL；重建归档的包启动专项验证真实宿主窗口、两份离线法律文档及深链接。
 - 发行校验增加宿主依赖图与散装 DLL 检查，拒绝把 Settings 实现带入核心目录。Windows Release 新宿主与已验官方归档组成的发行目录通过全部 26 个归档核对及三档预装、Minimal 修复。带旧宿主依赖的目录被新检查拒绝。
 - 修正 ApplicationLayout 的安装审核页固定操作区测试，通过实际 InstallCommand 定位按钮，避免同页官方目录操作也带 primary 样式时出现多重匹配。Windows Release 全量越过安装器布局，随后在 BrowserChecks.VerifyAddressInput 的本地化状态断言失败，暂跳过该独立浏览器问题。
+- Browser 地址回归改为核对应用包自有的本地化文案。Windows Release 浏览器专项通过无效地址、地址与搜索规范化、分页、标签状态和 18 组语言、主题及宽度布局。Windows Release 全量应用布局随后通过 105 个页面布局。原生 WebView 导航仍待设备验收。
 - Windows Release 完整打包以退出码 0 结束。把该次新建的全部 26 个官方归档与最新版无 Settings 实现 DLL 的桌面宿主组合后，摘要、清单、入口和核心隔离校验通过。三档预装与 Minimal 归档修复通过，实际 Settings 包生产工作区启动、离线文档、深链接及重开均通过。
 - 开始拆分 Component Center。受管任务计划确认视图迁入独立应用项目，宿主提供本地化文字和步骤说明。Windows Release 组件中心专项通过本地/远程 .roapp 回归及三语双主题布局。内置入口、实际发布包及生产宿主操作验收待完成。
 - Component Center 服务端模块及包计划审核视图和共享样式迁入应用程序集。宿主持有冻结计划并执行应用或丢弃命令。Windows Release 模块专项验证原计划审核及打开时的实时语言切换。
@@ -798,7 +1131,7 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 完整模块套件通过。断言按当前边界核对 Core 保留 Proxy 共享读取和恢复服务，模块独占作用域内配置写入，覆盖启用及停用、SQLite 及内存组合。独立 HTTP 夹具按其测试范围选取模块，数据库端点和调度注册单独通过验收。一次复跑曾在 WebDAV 上传凭据拒绝断言处停止，最终整组通过。
 - Linux x64 自包含完整模块套件在一次性无外网 Ubuntu 容器通过 1,445 项检查，包括真实 Git 仓库、ModuleHost 启动与路由、Proxy 配置写入作用域和隧道存储能力。WSL 首次运行因环境缺少 Git 停止。容器复跑加入 Git，并在临时测试目录补入单独发布 Core 的 deps.json，以执行发行二进制恢复检查。
 - 一次性无外网 Ubuntu 容器运行发行 Core 和真实 PAM 登录。未改写的 Linux Project Editor 0.3.1 发行归档复用 Git 1.0 契约并登记桌面应用。实际 Git 仓库通过公开 API 登记、枚举并返回 main 分支和未跟踪文件，提交图 HEAD 的 SHA 与本机 Git 一致。该轮使用 Linux 用户模式和临时仓库，未执行远端推送或设备验收。
-- `--live-git-joint-deployment <loopback-url> <roapp> <desktop-state> <临时仓库在服务端的绝对路径>` 现验证真实桌面 Git 客户端写入。夹具仓库须只有一个提交、已暂存 staged.txt 与未跟踪 draft.txt，并配置测试 Git 作者。Ubuntu 中用原版 Project Editor 归档完成联合安装后，客户端只提交 draft.txt。提交图、父提交和暂存区断言通过，本机 Git 独立确认 HEAD 只含指定文件，staged.txt 仍在暂存区。
+- `--live-git-joint-deployment <loopback-url> <roapp> <desktop-state> <phase> <临时仓库在服务端的绝对路径>` 现验证真实桌面 Git 客户端写入。夹具仓库须只有一个提交、已暂存 staged.txt 与未跟踪 draft.txt，并配置测试 Git 作者。Ubuntu 中用原版 Project Editor 归档完成联合安装后，客户端只提交 draft.txt。提交图、父提交和暂存区断言通过，本机 Git 独立确认 HEAD 只含指定文件，staged.txt 仍在暂存区。
 - Project Editor 真机路径测试增加显式分支推送。临时工作仓库的 fixture-acceptance 远端必须指向工作仓库路径加 .git 的本地裸仓库。一次性无外网 Ubuntu 容器中，桌面 Git 客户端将 main 推到 fixture-verified，本机 Git 确认裸仓库仅有该目标分支且 SHA 与新 HEAD 相同，无关暂存文件保持原样。未连接外部托管 Git 服务。
 - Tailscale 拆分第一步将状态、控制、登录、Helper 端口、授权接口及域错误迁入仅依赖共享 Protocol 的 `RelaxKonOS.ServerModule.Tailscale.Contracts`。Core 路由与驻留工厂使用同一契约，协调器和台账实现仍在 Core。Windows Release Tailscale 专项通过，覆盖驻留、登录、回执、恢复和 HTTP 授权。
 - Tailscale 控制与登录协调器及两份 SQLite 台账移入 `RelaxKonOS.ServerModule.Tailscale`。Core 在请求驻留图中经共享契约加载随附执行程序集，保留原 Helper 授权、宿主身份来源、台账路径与回执格式。Windows Release Tailscale 专项和 28 项模块边界检查通过。Linux x64 自包含发布确认执行程序集仅位于 Modules/Tailscale，Core 发布依赖清单无执行项目引用。程序集使用默认加载上下文，签名独立分发尚未接入。

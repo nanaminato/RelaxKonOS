@@ -50,6 +50,9 @@ public static partial class PrivilegedOperationExecutor
             if(request.Operation==PrivilegedOperationKind.PostgreSqlBackupScheduleQuery)
                 return PgReply(new(true,ledger.Package is not null&&!ledger.PackageRemoved,ledger.Package is not null,ledger.Package?.Version,ledger.Revision,ledger.Instance,ledger.Port,false,false,
                     ledger.Pending?.Id,null,null,PendingMaintenance:ledger.Pending?.Request.Maintenance,BackupSchedule:ledger.BackupSchedule));
+            if (request.Operation is PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlMigrationPlan
+                && instances.Any(instance => !instance.DataDeleted))
+                throw new PgFailure("database.maintenance_invalid");
             if (request.Operation == PrivilegedOperationKind.PostgreSqlMigrationPlan && ledger.Package?.PackageName != PostgreSqlPlatform.Noble.Package)
                 throw new PgFailure("database.migration_version_unsupported");
             if (request.Operation == PrivilegedOperationKind.PostgreSqlMigrationPlan)

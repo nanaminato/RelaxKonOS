@@ -14,6 +14,14 @@
       "server.terminal"
     ]
   },
+  "dependencies": {
+    "optional": [
+      {
+        "package": { "kind": 1, "id": "relaxkonos.terminal" },
+        "capability": "server.terminal"
+      }
+    ]
+  },
   "localizedMetadata": {
     "zh-CN": {
       "displayName": "终端",

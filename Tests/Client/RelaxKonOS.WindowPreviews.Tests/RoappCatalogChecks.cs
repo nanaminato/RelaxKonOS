@@ -15,6 +15,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.ProxyServer;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -168,7 +169,7 @@ internal static class RoappCatalogChecks
             var plan = await provider.PlanAsync(source, id);
             using (var review = new AppInstallerViewModel(installer) { AllowPackageSelection = false })
             {
-                review.QueueCatalogPlan(plan);
+                await review.QueueCatalogPlanAsync(plan);
                 Check(packages.FindInstalled(id) is null && review.HasPackage && review.CurrentPackage!.ExpectedSha256 is not null,
                     "catalog planning opens review without installing or granting permissions");
                 await File.AppendAllTextAsync(plan.Package.LocalPath, "changed-after-review");
@@ -216,13 +217,26 @@ internal static class RoappCatalogChecks
             ComponentCatalog.UseSources(catalogSources);
             Check(ComponentCatalog.Find(id)?.IsDesktop == true && ComponentCatalog.RemoteSourceId(id) == "desktop-test-source"
                 && ComponentCatalog.LaunchGate(id) is null, "remote data adds a desktop component without rewriting built-in launch gates");
-            var remotePlan = await provider.PlanAsync(ComponentCatalog.SourceFor(id), id);
+            using var runtime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>());
+            using var center = new ComponentCenterViewModel(runtime, new(), "https://host.example/", Guid.NewGuid());
+            RoappComponentInstallPlan? selectedPlan = null;
+            center.ReviewDesktopPackageAsync = async componentId =>
+                selectedPlan = await provider.PlanAsync(ComponentCatalog.SourceFor(componentId), componentId);
+            center.SelectedNode = center.VisibleRoots.SelectMany(node => node.VisibleDescendantsAndSelf())
+                .Single(node => node.ComponentId == id);
+            Check(center.ShowDesktopPackage && center.ReviewDesktopCatalogPackageCommand.CanExecute(null),
+                "the signed catalog entry is selectable and installable from Component Center");
+            await center.ReviewDesktopCatalogPackageCommand.ExecuteAsync(null);
+            var remotePlan = selectedPlan ?? throw new InvalidOperationException("Component Center did not stage the selected release.");
+            Check(remotePlan.ComponentId == id && remotePlan.Package.Manifest.Id == id && packages.FindInstalled(id) is null,
+                "Component Center stages the selected desktop release for review without installing it");
             Check(remotePlan.Package.CatalogAuthorization is not null, "remote plan freezes durable source authorization");
             var deploymentPath = Path.Combine(root, "joint-deployment");
             var journal = new FileDeploymentJournal(deploymentPath);
             var deployment = new JointAppDeploymentService(null!, null!, installer, packages, applications, journal);
             var reviewed = await deployment.PrepareAsync(remotePlan.Package, [], CancellationToken.None);
-            await using (var lease = await journal.OpenAsync(reviewed.Plan, CancellationToken.None))
+            var expiredPlan = reviewed.Plan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) };
+            await using (var lease = await journal.OpenAsync(expiredPlan, CancellationToken.None))
                 await lease.SaveAsync(new DeploymentCheckpoint(0, false), CancellationToken.None);
             installer.Discard(remotePlan.Package);
             Check(!File.Exists(remotePlan.Package.LocalPath), "Recovery starts after the original staged archive is removed.");
@@ -233,6 +247,36 @@ internal static class RoappCatalogChecks
             var reopenedBytes = new AppPackageInstallerService(packages, null!, catalogSources);
             var reopened = new JointAppDeploymentService(null!, null!, reopenedBytes, packages, applications,
                 new FileDeploymentJournal(deploymentPath));
+            selectedPlan = null;
+            await center.ReviewDesktopCatalogPackageCommand.ExecuteAsync(null);
+            var restaged = selectedPlan?.Package
+                ?? throw new InvalidOperationException("Reopening Component Center did not stage the selected release.");
+            try
+            {
+                Check(restaged.LocalPath != remotePlan.Package.LocalPath && restaged.CatalogAuthorization?.CatalogSequence == 2,
+                    "opening the same catalog entry again obtains a new temporary file under the refreshed source");
+                var pending = await reopened.FindPendingAsync(restaged, CancellationToken.None);
+                Check(pending?.Plan.Id == reviewed.Plan.Id && packages.FindInstalled(id) is null,
+                    "the installer finds the original plan for the restaged catalog entry before making changes");
+                using var catalogReview = new AppInstallerViewModel(reopenedBytes) { JointDeployment = reopened };
+                await catalogReview.QueueCatalogPlanAsync(selectedPlan!);
+                Check(catalogReview.CurrentPackage is { IsRecoveredDeployment: true }
+                    && catalogReview.Status.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("app_installer.deployment.resume_pending")
+                    && packages.FindInstalled(id) is null,
+                    "the reopened Component Center installer identifies a started plan even after its initial confirmation window expires");
+                var invalidJournal = new FileDeploymentJournal(Path.Combine(root, "invalid-joint-deployment"));
+                var invalidDeployment = new JointAppDeploymentService(null!, null!, reopenedBytes, packages, applications, invalidJournal);
+                await using (var lease = await invalidJournal.OpenAsync(reviewed.Plan, CancellationToken.None))
+                    await lease.SaveAsync(new DeploymentCheckpoint(0, false) { RequiresReview = true }, CancellationToken.None);
+                Check(await invalidDeployment.FindPendingAsync(restaged, CancellationToken.None) is null,
+                    "the invalidated plan cannot be resumed for execution");
+                using var invalidReview = new AppInstallerViewModel(reopenedBytes) { JointDeployment = invalidDeployment };
+                await invalidReview.QueueCatalogPlanAsync(selectedPlan!);
+                Check(invalidReview.CurrentPackage is { RequiresDeploymentReview: true }
+                    && invalidReview.Status.Resolve() == RelaxKonOS.Client.Localization.LocalizedText.Get("app_installer.deployment.review_again"),
+                    "reopening the catalog entry explains that the previous plan needs a new review");
+            }
+            finally { reopenedBytes.Discard(restaged); }
             var recovered = (await reopened.RecoverArchivesAsync([], CancellationToken.None)).Single();
             try
             {

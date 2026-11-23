@@ -22,7 +22,7 @@ public sealed record ServerModuleDto(
     string? DesiredVersion = null,
     string? EffectiveVersion = null,
     string? ArtifactDigest = null,
-    string SourceId = "server-release",
+    string? SourceId = null,
     string TrustState = "host",
     string? ServiceId = null,
     string? ProcessGeneration = null,

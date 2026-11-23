@@ -12,6 +12,7 @@ internal sealed class CollectibleGitExecution : IAsyncDisposable
     private IGitExecutionModule? _module;
     internal WeakReference CodeReference { get; }
     internal IGitExecutionModule Module => _module ?? throw new ObjectDisposedException(nameof(CollectibleGitExecution));
+    internal static bool BundledAvailable => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "Git", AssemblyFile));
 
     internal static string ResolveBundledPath()
     {

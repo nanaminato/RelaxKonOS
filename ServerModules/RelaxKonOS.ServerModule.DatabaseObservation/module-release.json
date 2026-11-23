@@ -5,7 +5,7 @@
   "entryAssembly": "RelaxKonOS.ServerModule.DatabaseObservation.dll",
   "entryType": "RelaxKonOS.ServerModule.DatabaseObservation.DatabaseModuleHostEntry",
   "runtime": "module-host",
-  "rids": ["linux-x64"],
-  "hostApiMinimum": "2.5.0",
+  "rids": ["linux-x64", "linux-arm64"],
+  "hostApiMinimum": "2.6.0",
   "hostApiMaximumExclusive": "3.0.0"
 }

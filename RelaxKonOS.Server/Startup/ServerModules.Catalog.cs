@@ -8,6 +8,10 @@ internal sealed partial class ServerModules
     internal const string PackageModuleIdConflict = "module-package-module-id-conflict";
     private static readonly Lazy<HashSet<string>> BundledIds = new(() =>
         Catalog().Select(module => module.Id).ToHashSet(StringComparer.Ordinal));
+    private static readonly Lazy<HashSet<string>> BundledReleasableIds = new(() => Catalog()
+        .Where(module => module is IServerModuleResidency).Select(module => module.Id).ToHashSet(StringComparer.Ordinal));
+
+    internal static bool HasBundledResidencyPolicy(string moduleId) => BundledReleasableIds.Value.Contains(moduleId);
 
     internal static bool ConflictsWithBundledModule(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
         BundledIds.Value.Contains(manifest.ModuleId) && !IsOfficialDatabaseModuleHost(manifest)
@@ -15,7 +19,8 @@ internal sealed partial class ServerModules
         && !InstalledGitModule.MatchesManifest(manifest) && !InstalledDockerModule.MatchesManifest(manifest)
         && !InstalledApplicationDeploymentsModule.MatchesManifest(manifest)
         && !InstalledWebServerModule.MatchesManifest(manifest) && !InstalledCertificateModule.MatchesManifest(manifest)
-        && !InstalledProxyModule.MatchesManifest(manifest) && !InstalledTunnelsModule.MatchesManifest(manifest);
+        && !InstalledProxyModule.MatchesManifest(manifest) && !InstalledTunnelsModule.MatchesManifest(manifest)
+        && !InstalledSystemPerformanceModule.MatchesManifest(manifest) && !InstalledTerminalModule.MatchesManifest(manifest);
 
     internal static bool IsOfficialDatabaseModuleHost(RelaxKonOS.ModulePackaging.ModulePackageManifest manifest) =>
         manifest.ModuleId == DatabaseId && manifest.Runtime == "module-host" && manifest.Purpose == "official";
@@ -94,6 +99,8 @@ internal sealed partial class ServerModules
         ];
         if (installed is not { Count: > 0 }) return compiled;
         var packagedDatabase = installed.Any(module => module is InstalledIsolatedModule && module.Id == DatabaseId);
+        var packagedPerformance = installed.Any(module => module is InstalledSystemPerformanceModule);
+        var packagedTerminal = installed.Any(module => module is InstalledTerminalModule);
         var packagedTailscale = installed.Any(module => module is InstalledTailscaleModule);
         var packagedFirewall = installed.Any(module => module is InstalledFirewallModule);
         var packagedGit = installed.Any(module => module is InstalledGitModule);
@@ -105,6 +112,8 @@ internal sealed partial class ServerModules
         var packagedTunnels = installed.Any(module => module is InstalledTunnelsModule);
         return [.. compiled.Where(module => (!packagedTunnels || module.Id != Modules.TunnelsModule.ModuleId)
             && (!packagedDatabase || module.Id != DatabaseId)
+            && (!packagedPerformance || module.Id != SystemPerformanceId)
+            && (!packagedTerminal || module.Id != TerminalId)
             && (!packagedTailscale || module.Id != Modules.TailscaleModule.ModuleId)
             && (!packagedFirewall || module.Id != FirewallId)
             && (!packagedGit || module.Id != GitId) && (!packagedDocker || module.Id != DockerId)

@@ -6,8 +6,10 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('inventory', ROOT / 'deployment/verify-release-inventory.py')
@@ -76,6 +78,142 @@ class ReleaseInventoryChecks(unittest.TestCase):
         self.assertEqual(self.verify(skip=True), '0.2.0-test')
         self.manifest['runtime'] = 'linux-arm64'
         with self.assertRaises(ValueError): self.verify(skip=True)
+
+    def test_cross_host_linux_zip_preserves_entry_point_permissions(self):
+        bundle = self.root / 'bundle'
+        executables = {
+            'payload/linux/server/RelaxKonOS.Server',
+            'payload/linux/server/module-host/RelaxKonOS.ServerModuleHost',
+            'deployment/user/relaxkon',
+            'deployment/linux/install-relaxkonos-module-host.sh',
+        }
+        ordinary = {'payload/linux/server/RelaxKonOS.Server.dll', 'manifest.json'}
+        for relative in executables | ordinary:
+            target = bundle / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'fixture')
+        self.manifest['payload'] = {'linux': {
+            'server': 'payload/linux/server/RelaxKonOS.Server',
+            'launcher': 'deployment/user/relaxkon',
+        }}
+        (bundle / 'manifest.json').write_text(json.dumps(self.manifest), encoding='utf-8')
+        archive = self.root / 'bundle.zip'
+        subprocess.run([sys.executable, ROOT / 'deployment/packaging/zip-linux-release.py',
+                        bundle, archive], check=True)
+        with ZipFile(archive) as package:
+            self.assertEqual(set(package.namelist()), executables | ordinary)
+            for entry in package.infolist():
+                self.assertEqual(entry.create_system, 3, entry.filename)
+                expected = 0o100755 if entry.filename in executables else 0o100644
+                self.assertEqual(entry.external_attr >> 16, expected, entry.filename)
+        if sys.platform.startswith('linux') and (unzip := shutil.which('unzip')):
+            extracted = self.root / 'extracted'
+            subprocess.run([unzip, '-q', archive, '-d', extracted], check=True)
+            for relative in executables | ordinary:
+                expected = 0o755 if relative in executables else 0o644
+                self.assertEqual((extracted / relative).stat().st_mode & 0o777, expected, relative)
+
+    def test_externalization_preflights_prepublished_database_input_before_pruning(self):
+        server = self.root / 'server'
+        prefix = self.root / 'release'
+        configuration = server / 'appsettings.json'
+        for module in ('Git', 'Database'):
+            path = server / 'Modules' / module / f'RelaxKonOS.ServerModule.{module}.dll'
+            path.parent.mkdir(parents=True)
+            path.write_bytes(module.encode())
+        configuration.write_text('{}', encoding='utf-8')
+        arguments = [sys.executable, ROOT / 'deployment/packaging/externalize-server-modules.py',
+                     server, prefix, 'git,database', 'linux-arm64']
+        failure = subprocess.run(arguments, capture_output=True, text=True)
+        self.assertNotEqual(failure.returncode, 0)
+        self.assertIn('Missing or empty prepublished signing input', failure.stderr)
+        self.assertEqual(configuration.read_text(), '{}')
+        self.assertEqual(len(list((server / 'Modules').rglob('*.dll'))), 2)
+        self.assertFalse((self.root / 'release-git-module-publish').exists())
+
+        observer = self.root / 'release-database-module-publish' / 'RelaxKonOS.ServerModule.DatabaseObservation.dll'
+        observer.parent.mkdir()
+        observer.write_bytes(b'observation')
+        windows = subprocess.run([*arguments[:-1], 'win-arm64'], capture_output=True, text=True)
+        self.assertNotEqual(windows.returncode, 0)
+        self.assertIn('Externalizing Databases requires a Linux release', windows.stderr)
+        self.assertEqual(configuration.read_text(), '{}')
+        self.assertEqual(len(list((server / 'Modules').rglob('*.dll'))), 2)
+        self.assertFalse((self.root / 'release-git-module-publish').exists())
+        runtime = '.NETCoreApp,Version=v10.0/linux-arm64'
+        dependency = observer.parent / 'RelaxKonOS.Protocol.dll'
+        manifest = observer.with_suffix('.deps.json')
+        manifest.write_text(json.dumps({
+            'runtimeTarget': {'name': runtime},
+            'targets': {runtime: {'fixture/1.0.0': {'runtime': {observer.name: {}, dependency.name: {}}}}},
+        }), encoding='utf-8')
+        missing_dependency = subprocess.run(arguments, capture_output=True, text=True)
+        self.assertNotEqual(missing_dependency.returncode, 0)
+        self.assertIn('Missing or empty Databases signing dependency', missing_dependency.stderr)
+        self.assertEqual(configuration.read_text(), '{}')
+        self.assertFalse((self.root / 'release-git-module-publish').exists())
+        dependency.write_bytes(b'protocol')
+        subprocess.run(arguments, check=True, capture_output=True)
+        self.assertEqual(observer.read_bytes(), b'observation')
+        self.assertFalse(list((server / 'Modules').rglob('*.dll')))
+        self.assertEqual(json.loads(configuration.read_text())['ModuleManagement']['DefaultDisabledModules'],
+                         ['relaxkonos.git', 'relaxkonos.database'])
+
+    def test_externalization_rejects_stale_signing_inputs_before_pruning(self):
+        server = self.root / 'server'
+        terminal = server / 'Modules/Terminal/RelaxKonOS.ServerModule.Terminal.Execution.dll'
+        deployment = server / 'Modules/ApplicationDeployments/RelaxKonOS.ServerModule.ApplicationDeployments.dll'
+        terminal.parent.mkdir(parents=True)
+        deployment.parent.mkdir(parents=True)
+        terminal.write_bytes(b'terminal')
+        deployment.write_bytes(b'current')
+        configuration = server / 'appsettings.json'
+        configuration.write_text('{}', encoding='utf-8')
+        prefix = self.root / 'release'
+        terminal_stage = self.root / 'release-terminal-module-publish'
+        deployment_stage = self.root / 'release-application-deployments-module-publish'
+        deployment_stage.mkdir()
+        prepublished = deployment_stage / deployment.name
+        prepublished.write_bytes(b'expired')
+        arguments = [sys.executable, ROOT / 'deployment/packaging/externalize-server-modules.py',
+                     server, prefix, 'terminal,application-deployments', 'win-arm64']
+        failure = subprocess.run(arguments, capture_output=True, text=True)
+        self.assertNotEqual(failure.returncode, 0)
+        self.assertIn('Signing input differs', failure.stderr)
+        self.assertFalse(terminal_stage.exists())
+        self.assertEqual(configuration.read_text(), '{}')
+        self.assertEqual(deployment.read_bytes(), b'current')
+
+        prepublished.write_bytes(deployment.read_bytes())
+        extra = deployment_stage / 'old.dll'
+        extra.write_bytes(b'stale')
+        failure = subprocess.run(arguments, capture_output=True, text=True)
+        self.assertNotEqual(failure.returncode, 0)
+        self.assertIn('Unexpected files in prepublished signing input', failure.stderr)
+        self.assertFalse(terminal_stage.exists())
+        self.assertEqual(configuration.read_text(), '{}')
+        self.assertEqual(deployment.read_bytes(), b'current')
+        extra.unlink()
+
+        terminal_stage.mkdir()
+        leftover = terminal_stage / 'old.dll'
+        leftover.write_bytes(b'stale')
+        failure = subprocess.run(arguments, capture_output=True, text=True)
+        self.assertNotEqual(failure.returncode, 0)
+        self.assertIn('Signing output must be an empty directory', failure.stderr)
+        self.assertEqual(list(terminal_stage.iterdir()), [leftover])
+        self.assertEqual(configuration.read_text(), '{}')
+        self.assertEqual(terminal.read_bytes(), b'terminal')
+        self.assertEqual(deployment.read_bytes(), b'current')
+
+        leftover.unlink()
+        subprocess.run(arguments, check=True, capture_output=True)
+        self.assertFalse(terminal.exists())
+        self.assertFalse(deployment.exists())
+        self.assertEqual((terminal_stage / terminal.name).read_bytes(), b'terminal')
+        self.assertEqual(prepublished.read_bytes(), b'current')
+        self.assertEqual(json.loads(configuration.read_text())['ModuleManagement']['DefaultDisabledModules'],
+                         ['relaxkonos.terminal', 'relaxkonos.application-deployments'])
 
     def test_linux_packager_produces_the_same_json_inventory(self):
         for relative in ('payload/linux/guardian/RelaxKonOS.Guardian.Agent',

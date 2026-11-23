@@ -11,19 +11,12 @@
     <InternalsVisibleTo Include="RelaxKonOS.ServerModules.Tests" />
     <InternalsVisibleTo Include="RelaxKonOS.ModuleHost.Windows.Tests" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Tailscale.Contracts/RelaxKonOS.ServerModule.Tailscale.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Terminal/RelaxKonOS.ServerModule.Terminal.csproj" />
     <Compile Include="../RelaxKonOS.Server/Tailscale/TailscaleManager.cs;../RelaxKonOS.Server/Tailscale/TailscaleStatusCommand.cs" Link="Tailscale/%(Filename)%(Extension)" />
     <Compile Include="../RelaxKonOS.Server/Files/FileArchiveService*.cs;../RelaxKonOS.Server/Files/LocalArchiveFileSystem.cs;../RelaxKonOS.Server/Files/IArchiveReader.cs;../RelaxKonOS.Server/Files/SevenZipArchiveProvider.cs;../RelaxKonOS.Server/Files/ArchivePasswordException.cs" Link="Files/%(Filename)%(Extension)" />
     <None Include="../RelaxKonOS.Server/Assets/SevenZip/**/*" Link="Assets/SevenZip/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.metadb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geoip.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/geosite.dat;../RelaxKonOS.Server/Assets/Mihomo/GeoData/country.mmdb;../RelaxKonOS.Server/Assets/Mihomo/GeoData/GeoLite2-ASN.mmdb"
           Link="Assets/Mihomo/GeoData/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/WindowsProcessTreeJob.cs" Link="Terminal/WindowsProcessTreeJob.cs" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/WindowsTerminalProcessTree.cs" Link="Terminal/WindowsTerminalProcessTree.cs" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/LinuxTerminalProcessTree.cs" Link="Terminal/LinuxTerminalProcessTree.cs" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/LinuxTerminalControlInput.cs" Link="Terminal/LinuxTerminalControlInput.cs" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/LinuxTerminalWorker.cs" Link="Terminal/LinuxTerminalWorker.cs" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/ConPty.cs" Link="Terminal/ConPty.cs" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/ITerminalPtyLifetime.cs" Link="Terminal/ITerminalPtyLifetime.cs" />
-    <Compile Include="../RelaxKonOS.Server/Terminal/LinuxTerminalProcessExit.cs" Link="Terminal/LinuxTerminalProcessExit.cs" />
     <Compile Include="../RelaxKonOS.Server/Proxy/Mihomo/MihomoVersionWorker.cs" Link="Proxy/MihomoVersionWorker.cs" />
     <Compile Include="../RelaxKonOS.Server/Terminal/TerminalUserEnvironment.cs" Link="Terminal/TerminalUserEnvironment.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemMonitor/ProcessInstanceTermination.cs" Link="SystemMonitor/ProcessInstanceTermination.cs" />

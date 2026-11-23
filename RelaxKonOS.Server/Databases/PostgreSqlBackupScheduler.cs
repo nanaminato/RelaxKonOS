@@ -1,11 +1,10 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
 using RelaxKonOS.ServerModule.Database.Contracts;
 
-namespace RelaxKonOS.ServerModule.Database;
+namespace RelaxKonOS.Server.Databases;
 
 /// <summary>Only dispatches explicitly granted root-owned policies through the shared durable coordinator.
 /// No credentials, native paths, privileged timers or direct database commands are owned by this worker.</summary>
@@ -14,28 +13,13 @@ public sealed class PostgreSqlBackupScheduler(IPostgreSqlBackupScheduleHost host
 {
     private readonly TimeProvider _clock = time ?? TimeProvider.System;
 
-    public InstallationOperationDto? Observe(PostgreSqlState state)
-    {
-        if (state.BackupSchedule is not { } policy || state.InstanceId is not { } instance)
-            return null;
-        if (state.PendingMaintenance?.Action == PostgreSqlMaintenanceAction.ScheduledBackup && state.PendingOperationId is { } pending)
-            return host.ReadOperation(pending);
-
-        var request = PostgreSqlBackupSchedulePolicy.Request(instance, policy);
-        return host.FindScheduledOperation(request, PostgreSqlBackupSchedulePolicy.Key(policy))
-            ?? (policy.LastOperationId is { } id ? host.ReadOperation(id) : null);
-    }
-
     public async Task<InstallationOperationDto?> TickAsync(CancellationToken cancellationToken)
     {
-        var state = await host.ReadScheduleAsync(cancellationToken);
-        if (!state.Supported || state.PendingOperationId is not null || state.InstanceId is not { } instance
-            || state.BackupSchedule is not { Enabled: true } policy || policy.NextDueAt > _clock.GetUtcNow())
+        var slot = await host.ReadDueSlotAsync(cancellationToken);
+        if (slot is null)
             return null;
 
-        // Reuse the same slot identity even when acceptance succeeded but the response was lost.
-        var request = PostgreSqlBackupSchedulePolicy.Request(instance, policy);
-        return host.StartScheduledOperation(request, PostgreSqlBackupSchedulePolicy.Key(policy));
+        return await host.TryStartScheduledOperationAsync(slot.InstanceId, slot.ScheduleId, slot.DueAt, cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

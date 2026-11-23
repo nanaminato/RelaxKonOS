@@ -19,8 +19,10 @@ internal static class PortForwardRuntimeChecks
         PortForwardInfo? forward = null;
         try
         {
-            service.SaveSettings(new PortForwardingSettings(host, user, 22));
-            forward = await service.StartAsync(new("localhost", 5000, "https", 17500), password);
+            var sshPort = ReadPort("RK_FORWARD_TEST_SSH_PORT", 22);
+            var targetPort = ReadPort("RK_FORWARD_TEST_TARGET_PORT", 5000);
+            service.SaveSettings(new PortForwardingSettings(host, user, sshPort));
+            forward = await service.StartAsync(new("localhost", targetPort, "https", 17500), password);
             password = string.Empty;
             using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false,
                 ServerCertificateCustomValidationCallback = (_, certificate, _, _) => certificate is not null
@@ -40,6 +42,14 @@ internal static class PortForwardRuntimeChecks
                 { last = ex; await Task.Delay(250); }
             }
             if (last is not null) throw new InvalidOperationException("Real SSH forward did not become reachable.", last);
+            if (Environment.GetEnvironmentVariable("RK_FORWARD_TEST_DROP_FILE") is { Length: > 0 } dropFile)
+            {
+                File.WriteAllText(dropFile, "");
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                while (service.List().Any(item => item.Id == forward.Id))
+                    await Task.Delay(50, timeout.Token);
+                Console.WriteLine("PASS: Unexpected SSH disconnect removed the forward from the running list.");
+            }
         }
         finally
         {
@@ -51,4 +61,7 @@ internal static class PortForwardRuntimeChecks
         }
         Console.WriteLine("PASS: Real SSH forward removed and isolated settings cleaned.");
     }
+    private static int ReadPort(string name, int fallback) =>
+        Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
+            ? int.Parse(value, System.Globalization.CultureInfo.InvariantCulture) : fallback;
 }

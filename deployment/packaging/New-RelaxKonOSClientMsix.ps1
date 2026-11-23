@@ -38,6 +38,7 @@ $makeAppx = Find-SdkTool 'makeappx.exe'
 $signTool = if ($SkipSigning) { $null } else { Find-SdkTool 'signtool.exe' }
 $scriptRoot = [IO.Path]::GetFullPath($PSScriptRoot)
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot '..\..'))
+$null = Get-Command python -CommandType Application -ErrorAction Stop
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 $architecture = if ($Runtime -eq 'win-arm64') { 'arm64' } else { 'x64' }
 $packageVersion = ($Version.Split('.') + @('0', '0', '0', '0'))[0..3] -join '.'
@@ -50,8 +51,12 @@ try {
     New-Item -ItemType Directory -Path $output, $publishPath, $stagingPath, (Join-Path $stagingPath 'Assets') -Force | Out-Null
     & dotnet publish (Join-Path $projectRoot 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj') --configuration $Configuration --runtime $Runtime --self-contained true --output $publishPath
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
-    $executable = Join-Path $publishPath 'RelaxKonOS.exe'
-    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Client publish output is incomplete.' }
+    & python (Join-Path $projectRoot 'Tests\Client\verify-desktop-distribution.py') --publish-dir $publishPath --rid $Runtime
+    if ($LASTEXITCODE -ne 0) { throw 'Published desktop distribution validation failed.' }
+    $contractChecks = Join-Path $projectRoot 'Tests\ServerModules\RelaxKonOS.ServerModules.Tests.csproj'
+    & dotnet run --project $contractChecks --configuration $Configuration --no-launch-profile -- `
+        --official-desktop-module-contracts (Join-Path $publishPath 'OfficialApps')
+    if ($LASTEXITCODE -ne 0) { throw 'Published desktop archives do not satisfy the bundled server module contracts.' }
     Get-ChildItem -LiteralPath $publishPath -Force | Copy-Item -Destination $stagingPath -Recurse -Force
     $icon = Join-Path $projectRoot 'Client\RelaxKonOS.Client\Assets\RelaxKonOS-client-icon.png'
     foreach ($asset in @('Square44x44Logo.png', 'Square150x150Logo.png', 'StoreLogo.png')) {

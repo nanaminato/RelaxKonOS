@@ -86,9 +86,23 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         ShowNext();
     }
 
-    public void QueueCatalogPlan(RelaxKonOS.Client.Apps.ComponentCenter.RoappComponentInstallPlan plan)
+    public async Task QueueCatalogPlanAsync(RelaxKonOS.Client.Apps.ComponentCenter.RoappComponentInstallPlan plan)
     {
-        _pending.Enqueue(plan.Package);
+        var candidate = plan.Package;
+        try
+        {
+            var cancellationToken = _storeLifetime.Token;
+            if (JointDeployment is { } deployment
+                && await deployment.GetPendingReviewRequirementAsync(candidate, cancellationToken) is { } requiresReview)
+                candidate = candidate with { IsRecoveredDeployment = true, RequiresDeploymentReview = requiresReview };
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch
+        {
+            _installer.Discard(candidate);
+            throw;
+        }
+        _pending.Enqueue(candidate);
         ShowNext(); // Always wait for the existing explicit Install/Update command.
     }
 

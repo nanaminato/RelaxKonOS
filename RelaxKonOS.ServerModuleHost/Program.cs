@@ -216,8 +216,10 @@ public static class ModuleHostProgram
 
     private sealed record Context(string ModuleId, string ModuleDataPath, IModuleHostStorage Storage,
         ILogger Logger, IModulePrivilegeBroker Privileges, ICloudFileProviders CloudProviders,
-        IModuleDatabaseObservation DatabaseObservation) : IModuleHostDatabaseContext
+        DatabaseObservationClient DatabaseClient) : IModuleHostDatabaseContext
     {
+        public IModuleDatabaseObservation DatabaseObservation => DatabaseClient;
+        public IModuleDatabaseBackupSchedule DatabaseBackupSchedule => DatabaseClient;
         public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
     }
     private sealed class LoadContext(string entry) : AssemblyLoadContext("module-host")

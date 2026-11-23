@@ -753,6 +753,11 @@ if (args is ["--file-services-live", var smbHelper, var smbDesktop, var smbPacka
     await FileServicesLiveChecks.RunAsync(smbHelper, smbDesktop, smbPackage);
     return;
 }
+if (args is ["--file-services-live-pipe", var smbHelperConfig, var smbPipeDesktop, var smbPipePackage])
+{
+    await FileServicesLiveChecks.RunPipeAsync(smbHelperConfig, smbPipeDesktop, smbPipePackage);
+    return;
+}
 if (args.Contains("--file-services-only"))
 {
     ServerCoreChecks.VerifySmbProtocolAndElevationContract();

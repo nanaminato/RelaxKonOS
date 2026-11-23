@@ -176,7 +176,7 @@ internal sealed class LinuxUfwFirewallService : IHostFirewallService
         FirewallRuleProtocol: Enum.Parse<FirewallRuleProtocol>(args[2], true),
         FirewallSource: args[3], FirewallDestination: args[4], FirewallPort: args[5],
         FirewallRuleNumber: numbers is null ? null : int.Parse(numbers.Numbers[0], System.Globalization.CultureInfo.InvariantCulture),
-        FirewallCompanionRuleNumber: numbers?.Numbers[1] == "none" ? null : int.Parse(numbers!.Numbers[1], System.Globalization.CultureInfo.InvariantCulture));
+        FirewallCompanionRuleNumber: numbers is null || numbers.Numbers[1] == "none" ? null : int.Parse(numbers.Numbers[1], System.Globalization.CultureInfo.InvariantCulture));
 
     private static ParsedTarget ParseTarget(string target)
     {

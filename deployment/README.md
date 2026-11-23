@@ -57,11 +57,17 @@ Guardian 是可选部署组件，发布包仍携带同版本文件。首次向�
 
 ## 发布包布局
 
+PowerShell 构建 Linux ZIP 使用 Python 3.8 或更新版本写入 Unix 文件权限。解包后，客户端与服务端入口、ModuleHost 和部署脚本可直接执行。
+
 服务端发行会生成同级 `RelaxKonOS-<version>-<runtime>-application-deployments-module-publish/`，其中的执行程序集与该轮 Server ZIP 内随附程序集一致。发布独立模块时，以该目录执行 `modules pack-package`，声明 `server.application-deployments` 能力，再发布签名归档及目录。
 
-在 PowerShell 构建中添加 `-ExternalApplicationDeployments`（需要 Python 3），或在 Bash 的 `server` / `all` 参数后添加 `external-application-deployments`，可生成省去该随附程序集的 Server ZIP。同级签名输入仍会生成。随包的 `ModuleManagement:DefaultDisabledModules` 将 Application Deployments 排除在默认启用集合之外。使用 `deployment` 权限时，安装签名包后通过 `Modules:ApplicationDeployments:Enabled=true` 启用并重启。使用 `managed` 权限时，默认值只用于初始化，之后通过组件中心的模块管理操作启用。切换已有实例到精简布局前，应先停用该模块或安装独立签名包。验证变体时使用独立版本标记或输出目录，以区分同名的默认发行包。
+在 PowerShell 构建中添加 `-ExternalModules application-deployments,git,docker`（需要 Python 3），或在 Bash 的 `server` / `all` 参数后添加 `application-deployments,git,docker`，可生成省去所选随附程序集的 Server ZIP。可选模块为 `application-deployments`、`git`、`docker`、`certificates`、`webserver`、`proxy`、`firewall`、`tailscale`、`tunnels`、`system-performance`、`terminal`，以及仅适用于 Linux 的 `database`。选择 `certificates` 时须同时选择依赖它的 `webserver`。每个所选模块的签名输入保留在同级目录。Certificates 的签名输入同时包含 ACME 执行依赖。WebServer 的签名清单须声明 Certificates 的版本范围。随包的 `ModuleManagement:DefaultDisabledModules` 将所选模块排除在默认启用集合之外。使用 `deployment` 权限时，安装签名包后通过 `Modules:<模块名>:Enabled=true` 启用并重启，模块名为 `ApplicationDeployments`、`Git`、`Docker`、`Certificates`、`Webserver`、`Proxy`、`Firewall`、`Tailscale`、`Tunnels`、`SystemPerformance`、`Terminal` 或 `Database`。使用 `managed` 权限时，默认值只用于初始化，之后通过组件中心的模块管理操作启用。在 Linux System Mode 外置 Proxy 时，启动前应运行生产 Helper 并确保 systemd 可检查 Mihomo 服务归属。归属不可验证或存在未决责任时，现有启动保护会阻止启动。外置 Docker 管理模块时，应用部署仍通过 Core 的 Engine 传输访问 Docker。切换已有实例到精简布局前，应先停用所选模块或安装独立签名包。验证变体时使用独立版本标记或输出目录，以区分同名的默认发行包。
 
-Linux x64 的 `server` 和 `all` 发行构建会在输出目录生成同级的 `RelaxKonOS-<version>-linux-x64-database-module-publish/`。该目录是独立 Databases 观察模块的签名输入，位于 Server ZIP 和发行清单之外。发布时使用 [模块打包命令](../docs/architecture/RelaxKonOS.ServerModulePackage.Format.md#离线打包命令) 将其制成 `relaxkonos.database` 的 `.rkmodule` 和签名目录。发行脚本本身无需模块签名密钥。
+Linux x64 和 ARM64 的 `server` 和 `all` 发行构建会在输出目录生成同级的 `RelaxKonOS-<version>-<runtime>-database-module-publish/`。该目录是独立 Databases 观察模块的签名输入，位于 Server ZIP 和发行清单之外。发布时使用 [模块打包命令](../docs/architecture/RelaxKonOS.ServerModulePackage.Format.md#离线打包命令) 为目标 RID 制作 `relaxkonos.database` 的 `.rkmodule` 和签名目录。发行脚本本身无需模块签名密钥。
+
+Linux System Mode 的精简发行可把 `database` 加入外置模块列表。此选项移除随附数据库观察程序集并默认停用 Databases。启动前由生产 Helper 核对未决数据库责任。安装独立签名观察包后即可通过模块管理启用。凭据密文、安装台账及自动备份调度继续使用宿主权限和生命周期。
+
+Windows 与 Linux 均可把 `system-performance` 加入外置模块列表。此选项移除随附原始性能数据源并默认停用 System Performance。安装目标 RID 的签名包并启用后，Core 继续管理采样历史和推送。
 
 ```text
 manifest.json
@@ -130,11 +136,11 @@ Linux System Mode 则运行：
 ./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release
 ```
 
-Linux 打包宿主还需提供 Python 3、`zip`、`sha256sum` 与 `stat`。Linux 客户端打包会在生成 ZIP 前核对官方归档、预装配置和桌面依赖边界。Windows 发布目录可用同一校验命令检查，将路径指向解包后的 `payload/windows/client`。
+客户端打包宿主需要 Python 3。Linux Bash 打包还需提供 `zip`、`sha256sum` 与 `stat`。PowerShell 和 Bash 客户端打包均在生成 ZIP 前核对目标 RID、桌面入口架构、官方归档、预装配置和桌面依赖边界。可用同一命令复核解包后的客户端发布目录。
 PowerShell 和 Bash 客户端打包脚本还会使用构建主机上的 .NET 运行模块契约检查。脚本在写出 ZIP 之前，核对每个新生成的官方桌面归档声明的必需模块、能力和显式契约版本是否由当前 Core 随附模块提供。
 
 ```powershell
-python Tests/Client/verify-desktop-distribution.py --publish-dir <客户端发布目录>
+python Tests/Client/verify-desktop-distribution.py --publish-dir <客户端发布目录> --rid win-x64
 ```
 
 客户端的便携 ZIP 与 Windows MSIX 打包和升级流程见 [ClientDistribution.md](./ClientDistribution.md)。Linux 客户端通过便携 ZIP 分发；不提供 Debian/Ubuntu APT 仓库或 `.deb` 包。

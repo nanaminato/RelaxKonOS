@@ -16,7 +16,7 @@ chmod +x RelaxKonOS-client/payload/linux/client/RelaxKonOS
 
 ## Windows MSIX
 
-On a Windows release machine with the Windows SDK packaging tools and a trusted code-signing certificate:
+Build on Windows with Python 3, the Windows SDK packaging tools, and a trusted code-signing certificate. The build checks the desktop executable architecture, official application archives, installation profiles, and the applications' compatibility with the bundled server module contracts before creating the MSIX.
 
 ```powershell
 $env:RELAXKONOS_MSIX_CERT_PASSWORD = '<certificate password>'

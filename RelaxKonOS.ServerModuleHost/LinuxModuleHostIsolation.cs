@@ -229,9 +229,13 @@ internal static class LinuxModuleHostIsolation
         }
         RequireRootOwned(path, directory: true);
     }
-    private static SafeFileHandle OpenSourceRoot(string path)
+    internal static SafeFileHandle OpenSourceRoot(string path)
     {
-        var how = new OpenHow { Flags = 0x10000 | 0x80000, Resolve = 0x04 | 0x02 };
+        // ARM Linux retains a different O_DIRECTORY value from x86 Linux.
+        const ulong closeOnExec = 0x80000;
+        var directory = RuntimeInformation.ProcessArchitecture is Architecture.Arm64 or Architecture.Arm
+            ? 0x4000UL : 0x10000UL;
+        var how = new OpenHow { Flags = directory | closeOnExec, Resolve = 0x04 | 0x02 };
         var fd = syscall(437, -100, path, ref how, 24);
         if (fd < 0) throw new IOException();
         return new SafeFileHandle((IntPtr)fd, ownsHandle: true);

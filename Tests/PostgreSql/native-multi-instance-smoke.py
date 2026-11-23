@@ -148,6 +148,8 @@ b = state(second)
 a = control("Start", a)
 check(len(state(second)["Instances"]) == 2 and call(operation=init_operation)["InstanceId"] == second,
       "fresh Helper processes enumerate both instances and route original receipt")
+for plan in ("PostgreSqlMaintenancePlan", "PostgreSqlMigrationPlan"):
+    check(call(plan) == "database.maintenance_invalid", f"{plan} rejects a shared package before resolving a candidate")
 paths = [admin(x, "SHOW data_directory;") for x in [a, b]]
 check(paths == [f"/var/lib/relaxkonos/databases/{uuid.UUID(x['InstanceId']).hex}/data" for x in [a, b]],
       "both live processes serve distinct instance data directories")

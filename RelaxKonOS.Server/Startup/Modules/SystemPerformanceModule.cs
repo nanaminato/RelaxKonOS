@@ -16,14 +16,14 @@ namespace RelaxKonOS.Server.Startup.Modules;
 /// Host network addresses are deliberately *not* here: they answer a Core question (which addresses
 /// can a client reach this host on) and are also used by applications that never read metrics.
 /// </summary>
-internal sealed class SystemPerformanceModule : IServerModule, IServerModuleWorkResidency
+internal class SystemPerformanceModule : IServerModule, IServerModuleWorkResidency
 {
     public string Id => ServerModules.SystemPerformanceId;
     public RelaxKonOS.Server.Residency.IServerModuleRuntimeFactory RuntimeFactory { get; } = new SystemPerformanceWorkRuntimeFactory();
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Metrics, ServerCapabilities.Processes];
     public IReadOnlyList<string> Requires => [];
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         // 采集 Provider 按宿主 OS 平台选择，与 IIdentityProvider 同模式。以宿主 OS 进程身份读取，
         // 复用宿主用户/权限（不另建 ACL）。Singleton 持相邻采样差分状态。
@@ -33,10 +33,7 @@ internal sealed class SystemPerformanceModule : IServerModule, IServerModuleWork
             builder.Services.AddSingleton<ISystemMetricsProvider, LinuxMetricsProvider>();
 
         // 统一 1 秒原始读取；短期历史和 Hub 广播各自分层。
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            builder.Services.AddSingleton<ISystemPerformanceSource, WindowsPerformanceSource>();
-        else
-            builder.Services.AddSingleton<ISystemPerformanceSource, LinuxPerformanceSource>();
+        builder.Services.AddSingleton<ISystemPerformanceSource>(_ => CreateSource());
         builder.Services.AddSingleton<PerformanceHistory>();
         builder.Services.AddSingleton<PerformanceSubscriptionRegistry>();
         builder.Services.AddSingleton<PerformanceSampler>();
@@ -52,7 +49,9 @@ internal sealed class SystemPerformanceModule : IServerModule, IServerModuleWork
         builder.Services.AddHostedService<PerformanceBroadcastService>();
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    private protected virtual ISystemPerformanceSource CreateSource() => BundledPerformanceSource.Create();
+
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         endpoints.MapSystemMonitorEndpoints();
         endpoints.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath, options => options.CloseOnAuthenticationExpiration = true);

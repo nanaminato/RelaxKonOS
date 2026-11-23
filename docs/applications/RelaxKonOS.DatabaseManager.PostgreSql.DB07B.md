@@ -4,7 +4,11 @@
 
 ## 首轮范围
 
+重新查询维护或迁移计划时，桌面先清除上一份候选与迁移来源确认。只有与当前实例及修订一致的返回候选才能用于后续确认。查询失败时显示问题码对应的提示，已受理操作仍按原回执对账。
+
 Ubuntu 24.04 amd64 / systemd，既有受管 PostgreSQL 16 单实例 → PostgreSQL 18。来源核实得到 PGDG `18.7-1.pgdg24.04+2`，共享 `postgresql-common` / `postgresql-client-common` 为 `295.pgdg24.04+1`，`libpq5` 为同版 18.7。未来候选不自动成为已验证迁移目标。
+
+2026-11-24 的隔离验收中，PGDG 索引仍列出已验证版本，但实际候选为 `18.7-1.pgdg24.04+5`。现有计划要求已验证版本同时是实际候选，因此返回 `database.migration_version_unsupported`。ABI 2.6.0 签名 Databases 模块保留该问题码及 HTTP 503，PostgreSQL 状态和维护计划查询仍返回 200。
 
 官方来源为 `https://apt.postgresql.org/pub/repos/apt`、`noble-pgdg/main`，仓库公钥指纹 `B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8`。来源身份、密钥、精确目标和依赖须在提交前展示确认。宿主须已有可信系统 CA 证书；缺少时返回 `database.migration_ca_required`，不在只读计划中安装依赖。计划使用私有 APT 索引，不写全局软件源；Helper 复核签名索引、完整依赖、长度与 SHA-256。不得因版本发现自动安装，不接管外部 PostgreSQL。
 

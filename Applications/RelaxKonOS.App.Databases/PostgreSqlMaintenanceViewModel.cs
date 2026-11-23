@@ -35,7 +35,8 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql cli
     private bool SharedPackageWritable => Snapshot?.Instances?.Count is not > 1;
     public bool ShowsMigration => Snapshot?.Version == "16.15-0ubuntu0.24.04.1";
     public bool CanPlanMigration => ShowsMigration && SharedPackageWritable && CanBackup;
-    public bool CanMigrate=>CanPlanMigration&&HasPlan&&migrationPlan&&MigrationSourceAccepted&&Plan!.Candidate!.PackageName=="postgresql-18";
+    public bool CanPlanMaintenance => SharedPackageWritable && Ready;
+    public bool CanMigrate=>CanPlanMigration&&HasPlan&&migrationPlan&&MigrationSourceAccepted&&Plan is {ProblemCode:null,Candidate.PackageName:"postgresql-18"};
     public string PlanDetails=>Plan?.Candidate is {} target?target.BaseUri+" · "+target.Suite+"\n"+string.Join("\n",target.AlsoInstalls.Select(x=>Uri.UnescapeDataString(x.FileName))):"";
     partial void OnMigrationSourceAcceptedChanged(bool value)=>Notify();
     private PostgreSqlInstallationRequest? pending;
@@ -51,8 +52,9 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql cli
     private bool Ready=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation?.IsActive!=true&&OtherBusy?.Invoke()!=true&&!HasPending&&Snapshot is {Supported:true,Managed:true,InstanceId:not null,PendingOperationId:null,RemoteAccess:null};
     public bool CanBackup=>Ready&&Snapshot is {Installed:true,ProblemCode:null};
     public bool CanRestore=>CanBackup&&SelectedBackup is {RestoreVerified:true} b&&b.Version==Snapshot!.Version;
-    private bool HasPlan=>Plan?.Revision==Snapshot?.Revision&&Plan?.Candidate is not null;
-    public bool CanUpdate=>SharedPackageWritable&&CanBackup&&HasPlan&&!migrationPlan&&Plan!.Candidate!.Version!=Snapshot!.Version;
+    private bool HasPlan => Plan is { Candidate: not null } target && Snapshot is { } observed
+        && target.InstanceId == observed.InstanceId && target.Revision == observed.Revision;
+    public bool CanUpdate=>SharedPackageWritable&&CanBackup&&HasPlan&&!migrationPlan&&Plan!.ProblemCode is null&&Plan.Candidate!.Version!=Snapshot!.Version;
     public bool CanRepair=>SharedPackageWritable&&Ready&&Snapshot?.Installed==true&&HasPlan&&!migrationPlan&&Plan!.Candidate!.Version==Snapshot.Version;
     public bool CanReinstall=>SharedPackageWritable&&Ready&&Snapshot?.PackageRemoved==true&&HasPlan&&!migrationPlan;
     public bool CanKeepData=>SharedPackageWritable&&CanBackup;
@@ -69,22 +71,39 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql cli
     partial void OnBusyChanged(bool value)=>Notify();
     partial void OnDeleteConfirmationChanged(string value)=>Notify();
     partial void OnSelectedBackupChanged(PostgreSqlBackup? value)=>Notify();
-    public void Notify(){foreach(var name in new[]{nameof(ShowsMigration),nameof(CanPlanMigration),nameof(CanMigrate),nameof(CanKeepData),nameof(PlanDetails),nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanDeleteInstance),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
-    [RelayCommand] private async Task PlanAsync()
+    public void Notify(){foreach(var name in new[]{nameof(ShowsMigration),nameof(CanPlanMigration),nameof(CanPlanMaintenance),nameof(CanMigrate),nameof(CanKeepData),nameof(PlanDetails),nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanDeleteInstance),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
+    [RelayCommand] private Task PlanAsync() => CanPlanMaintenance ? ReadPlanAsync(migration: false) : Task.CompletedTask;
+    [RelayCommand] private Task MigrationPlanAsync() => CanPlanMigration ? ReadPlanAsync(migration: true) : Task.CompletedTask;
+
+    private async Task ReadPlanAsync(bool migration)
     {
-        if(!Ready)return;Busy=true;
-        try{var result=await client.MaintenancePlanAsync(default);if(!invalid){migrationPlan=false;Plan=result;Notice=DatabaseStatus.Literal("");}}
-        catch(InstallationApiException error){Notice=DatabaseStatus.Key(error.ProblemCode);}
-        catch{Notice=DatabaseStatus.Key("database.maintenance_plan_failed");}
-        finally{Busy=false;}
-    }
-    [RelayCommand] private async Task MigrationPlanAsync()
-    {
-        if(!CanPlanMigration)return;Busy=true;MigrationSourceAccepted=false;
-        try{var result=await client.MigrationPlanAsync(default);if(!invalid){migrationPlan=true;Plan=result;Notice=DatabaseStatus.Literal("");}}
-        catch(InstallationApiException error){Notice=DatabaseStatus.Key(error.ProblemCode);}
-        catch{Notice=DatabaseStatus.Key("database.maintenance_plan_failed");}
-        finally{Busy=false;}
+        var before = Snapshot!;
+        Busy = true;
+        migrationPlan = false;
+        MigrationSourceAccepted = false;
+        Plan = null;
+        try
+        {
+            var result = migration ? await client.MigrationPlanAsync(default) : await client.MaintenancePlanAsync(default);
+            if (invalid || Snapshot is not { } current || current.InstanceId != before.InstanceId
+                || current.Revision != before.Revision) return;
+            if (result.InstanceId != before.InstanceId || result.Revision != before.Revision)
+            {
+                Notice = DatabaseStatus.Key("database.maintenance_plan_failed");
+                return;
+            }
+            if (result.Candidate is null)
+            {
+                Notice = DatabaseStatus.Key(result.ProblemCode ?? "database.maintenance_plan_failed");
+                return;
+            }
+            migrationPlan = migration;
+            Plan = result;
+            Notice = result.ProblemCode is { } problem ? DatabaseStatus.Key(problem) : DatabaseStatus.Literal("");
+        }
+        catch (InstallationApiException error) { Notice = DatabaseStatus.Key(error.ProblemCode); }
+        catch { Notice = DatabaseStatus.Key("database.maintenance_plan_failed"); }
+        finally { Busy = false; }
     }
     [RelayCommand] private Task MigrateAsync()=>Submit(PostgreSqlMaintenanceAction.MigrateMajor,CanMigrate);
     [RelayCommand] private async Task SaveScheduleAsync()

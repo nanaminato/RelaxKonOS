@@ -35,6 +35,7 @@ internal static class ModulePackageReleaseDirectory
             if (!rid) blockers.Add(new("module-package-rid-mismatch", moduleId));
             if (!api) blockers.Add(new("module-package-host-api-incompatible", moduleId));
             if (ServerModules.ConflictsWithBundledModule(m)) blockers.Add(new(ServerModules.PackageModuleIdConflict, moduleId));
+            if (!InstalledModuleInstaller.HasRequiredRuntimeFiles(m)) blockers.Add(new(InstalledModuleInstaller.MissingDatabaseRuntimeFiles, moduleId));
             if (m.Dependencies.Length > 0) blockers.Add(new("module-package-dependency-verification-required", moduleId));
             return new ServerModuleReleaseDto(m.ReleaseId, moduleId, m.Version, m.Rid, m.PublisherId, m.Purpose,
                 release.ManifestSha256, release.ArchiveSha256, release.ArchiveBytes, m.HostApiMinimum, m.HostApiMaximumExclusive,

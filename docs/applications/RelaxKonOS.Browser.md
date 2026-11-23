@@ -21,6 +21,8 @@ RemoteBrowser 只负责网页导航、展示以及书签、历史和主页等浏
 
 `RelaxKonOS.App.Browser` 的 SDK 入口 `BrowserPackageApp` 创建 `BrowserViewModel` 和 `BrowserMainView`。视图通过委托调用 `NativeWebView` 的后退、前进、刷新和停止方法。
 
+`Avalonia.Controls.WebView` 随 Browser 官方归档发布，由安装后的 Browser 加载。桌面宿主提供共享 Avalonia 和浏览器数据 SDK。
+
 导航流程为：地址栏输入经 `NormalizeAddress` 归一化（域名补 `https://`、`localhost:port` 补 `http://`、搜索词转为搜索 URL）后，更新当前标签状态并通过 `ViewNavigateRequested` 请求 View 导航。导航完成后，浏览器异步记录历史并更新书签状态。
 
 支持的功能：

@@ -1,6 +1,6 @@
 # RelaxKonOS Terminal 模块设计
 
-Server 的 Terminal 已接入官方模块注册试点，默认启用。可在受控 Server 配置设置 `Modules:Terminal:Enabled=false` 并重启以禁用其 PTY 服务与 Hub；桌面端在 Server 未公布 `server.terminal` 时阻止启动和自动恢复。该开关不移除发布包中的代码或依赖，也不支持在线切换；部署和会话生命周期的验收边界见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#首个注册框架与-terminal-试点2026-10-27)。
+标准 Server 发行默认启用 Terminal。精简发行可将本地 PTY 工厂移至独立签名 `.rkmodule`，并默认禁用 Terminal。安装和启用后，通过 Core 重启加载该版本。Core 负责 Hub 授权和会话驻留，Core 与 Helper 的发行物提供 PTY 原语和用户执行 worker。桌面端启动和自动恢复要求 Server 公布 `server.terminal`。参见[模块包格式](../architecture/RelaxKonOS.ServerModulePackage.Format.md)。
 
 2026-11-04 Terminal-T1 实现：Terminal 以 resident 工作 owner 接入同一模块协调器，保持 KeepLoaded/不可释放。每个服务端会话从创建到 PTY 清理与输出发送实际完成持续持有工作租约，Hub 断连只 detach，继续保留 PTY 和 1 MiB 恢复环形缓冲。新建/关闭直接采用 `GetOrCreateAsync` / `RemoveAsync` 当前接口，没有同步兼容入口；Host Stop 关闭新建准入并等待真实清理，等待预算取消不把在途工作清零。
 
@@ -13,6 +13,8 @@ Terminal-T1 联合候选的 Windows 验证已通过：受控会话/发送/失败
 > 桌面为每个恢复的服务端 PTY 创建独立窗口，新建会话可以加入同一窗口的标签页。开启「恢复终端」后，进入已认证桌面会恢复尚未打开的存活会话。手动打开 Terminal 也会查找可恢复会话，找不到时新建。主动关闭存活的远程标签页或窗口前需要确认。字体、字号和配色经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存到工作区。
 
 > Terminal 是桌面官方基础应用。Standard 和 Developer 首次启动时从随包发行目录离线预装 `OfficialApps/relaxkonos.terminal.roapp`。Minimal 可从 **应用安装程序 → 官方应用** 安装。更新、修复和卸载使用同一入口。
+
+从应用商店安装时，安装器可审阅并安装 Terminal 的可选服务端执行包。离线预装只安装桌面归档。
 
 Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加当前用户仍存活的会话，找不到时返回 `terminal.session_not_found`，供网络恢复路径避免误创建 PTY。移动端交互规范和验收状态由 [Android AD07 文档](../../Client/RelaxKonOS.Client.Android/docs/features/TerminalAutomation.md) 维护。
 

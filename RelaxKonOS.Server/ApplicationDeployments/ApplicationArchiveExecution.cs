@@ -9,8 +9,9 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
 {
     internal const string AssemblyFile = "RelaxKonOS.ServerModule.ApplicationDeployments.dll";
     internal const string EntryType = "RelaxKonOS.Server.ApplicationDeployments.ApplicationArchiveExtractor";
-    internal static ApplicationArchiveExecution Bundled { get; } = new(() =>
-        Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments", AssemblyFile));
+    private static string BundledPath => Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments", AssemblyFile);
+    internal static bool BundledAvailable => File.Exists(BundledPath);
+    internal static ApplicationArchiveExecution Bundled { get; } = new(() => BundledPath);
 
     private delegate Task<(string? EntryPoint, string? Problem)> PrepareBuildContext(Stream archive, string destination,
         int maximumEntries, long maximumExpandedBytes, int maximumPathDepth, ApplicationSourceKind kind,

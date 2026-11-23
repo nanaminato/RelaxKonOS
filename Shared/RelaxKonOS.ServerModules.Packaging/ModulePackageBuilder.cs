@@ -118,7 +118,7 @@ public static class ModulePackageBuilder
         validateManifest?.Invoke(manifest);
         ValidateEntryType(entryFile, options.EntryType);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
-        var archivePath = Path.Combine(output, options.ModuleId + "-" + options.Version + "-" + options.Rid + ".rkmodule");
+        var archivePath = Path.Combine(output, GetArchiveFileName(manifest));
         if (!archivePath.StartsWith(Path.TrimEndingDirectorySeparator(output) + Path.DirectorySeparatorChar, PathComparison))
             throw new ModulePackageException("module-package-build-path-invalid");
         await BuildArchiveAsync(archivePath, manifestBytes, publish, options.Rid, manifest.Files, cancellationToken);
@@ -128,6 +128,9 @@ public static class ModulePackageBuilder
             origin + Path.GetFileName(archivePath));
         return release;
     }
+
+    public static string GetArchiveFileName(ModulePackageManifest manifest) =>
+        $"{manifest.ModuleId}-{manifest.Version}-{manifest.Rid}.rkmodule";
 
     private static void ValidateEntryType(string assemblyPath, string entryType)
     {

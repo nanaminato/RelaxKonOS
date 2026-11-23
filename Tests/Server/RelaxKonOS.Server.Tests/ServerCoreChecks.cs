@@ -1481,9 +1481,14 @@ internal static void VerifyThemePaletteContract()
 
 internal static async Task VerifyPerformanceSamplerAsync()
 {
+    var platformSource = BundledPerformanceSource.Create();
+    TestAssert.Assert(platformSource.GetType().Assembly.GetName().Name == "RelaxKonOS.ServerModule.SystemPerformance",
+        "The platform source was not loaded from the bundled execution assembly.");
+    TestAssert.Assert((await platformSource.ReadAsync()).Memory.TotalBytes > 0,
+        "The platform source did not read physical memory.");
     if (OperatingSystem.IsLinux())
     {
-        var linux = new LinuxPerformanceSource();
+        var linux = platformSource;
         var linuxInfo = await linux.GetInfoAsync();
         var linuxSample = await linux.ReadAsync();
         TestAssert.Assert(linuxInfo.Cpu.LogicalProcessorCount > 0, "Linux performance source did not report logical processors.");

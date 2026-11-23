@@ -62,8 +62,6 @@ internal sealed partial class ServerModules
                         + "treat this module as not safe to disable until the cause is understood.")];
                 }
             }
-            if (management?.RecoveryMode == true)
-                work = [new(module.Id, "module-recovery-host-work-unknown")];
             // Only an enabled dependent blocks a disable; a disabled one is already out of the process.
             var requiredBy = all
                 .Where(other => enabled.Contains(other) && other.Requires.Contains(module.Id, StringComparer.Ordinal))
@@ -80,7 +78,10 @@ internal sealed partial class ServerModules
                 or FirewallId or GitId or DockerId or ApplicationDeploymentsId or WebServerId or CertificatesId or ProxyId;
             var package = module is InstalledIsolatedModule || fixedExecutionPackage || module.Id == DatabaseId
                 ? currentPackages.GetValueOrDefault(module.Id) : null;
-            var moduleVersion = package?.Version ?? installed?.InstalledVersion ?? version;
+            var awaitingExternalPackage = package is null && installed is null && !HasBundledExecution(module.Id);
+            if (management?.RecoveryMode == true && !awaitingExternalPackage)
+                work = [new(module.Id, "module-recovery-host-work-unknown")];
+            var moduleVersion = awaitingExternalPackage ? null : package?.Version ?? installed?.InstalledVersion ?? version;
             var databaseReplacement = module.Id == DatabaseId && module is not InstalledIsolatedModule && package?.Runtime == "module-host";
             var executionRestart = databaseReplacement || (fixedExecutionPackage && package is not null
                 && package.ArtifactSha256 != installed?.ArtifactDigest);
@@ -99,10 +100,10 @@ internal sealed partial class ServerModules
             inventory.Add(new ServerModuleDto(module.Id, isEnabled, capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
                 runtime,
-                DesiredEnabled: desired.Contains(module.Id), Packaging: installed is null && package is null ? "bundled" : "independent",
+                DesiredEnabled: desired.Contains(module.Id), Packaging: installed is null && package is null && !awaitingExternalPackage ? "bundled" : "independent",
                 InstalledVersion: moduleVersion, DesiredVersion: moduleVersion, EffectiveVersion: effectiveVersion,
-                ArtifactDigest: package?.ArtifactSha256 ?? installed?.ArtifactDigest ?? HostDigest.Value,
-                SourceId: package?.SourceId ?? installed?.SourceId ?? "server-release",
+                ArtifactDigest: awaitingExternalPackage ? null : package?.ArtifactSha256 ?? installed?.ArtifactDigest ?? HostDigest.Value,
+                SourceId: awaitingExternalPackage ? null : package?.SourceId ?? installed?.SourceId ?? "server-release",
                 TrustState: (fixedExecutionPackage || databaseReplacement) && package is not null
                     ? package.Quarantined ? "quarantined" : "installed" : installed?.TrustState ?? "host",
                 ServiceId: management?.ServiceId, ProcessGeneration: management?.ProcessGeneration,
@@ -114,7 +115,9 @@ internal sealed partial class ServerModules
                 ConfigurationWritable: management?.Writable == true,
                 AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id), recoveryRequired,
                     host is not null, requiredBy.Length > 0,
-                    installed is not null, isEnabled, all.Any(other => other.Id != module.Id && other.Requires.Contains(module.Id))), Name: ConfigurationName(module.Id),
+                    installed is not null, isEnabled, all.Any(other => other.Id != module.Id && other.Requires.Contains(module.Id)
+                        && (other is IInstalledModuleInfo || currentPackages.ContainsKey(other.Id) || HasBundledExecution(other.Id))),
+                    awaitingExternalPackage), Name: ConfigurationName(module.Id),
                 Rid: RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid,
                 HostApiRequirement: version,
                 ResourceReleaseLevel: host is not null ? "process" : module is IServerModuleResidency ? "objects" : "none",
@@ -123,6 +126,26 @@ internal sealed partial class ServerModules
         }
         return inventory;
     }
+
+    internal string? FindMissingExecutionPackage() => _enabled
+        .FirstOrDefault(module => module is not IInstalledModuleInfo && !HasBundledExecution(module.Id))?.Id;
+
+    private static bool HasBundledExecution(string moduleId) => moduleId switch
+    {
+        ApplicationDeploymentsId => RelaxKonOS.Server.ApplicationDeployments.ApplicationArchiveExecution.BundledAvailable,
+        GitId => RelaxKonOS.Server.Git.CollectibleGitExecution.BundledAvailable,
+        DockerId => RelaxKonOS.Server.Docker.DockerComposeExecution.BundledAvailable,
+        DatabaseId => RelaxKonOS.Server.Databases.BundledDatabaseExecution.BundledAvailable,
+        SystemPerformanceId => RelaxKonOS.Server.SystemPerformance.BundledPerformanceSource.BundledAvailable,
+        TerminalId => RelaxKonOS.Server.Terminal.BundledTerminalPtyFactory.BundledAvailable,
+        CertificatesId => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "Certificates", Certificate.AcmeExecution.AssemblyFile)),
+        WebServerId => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer", WebServer.WebServerExecutionCode.AssemblyFile)),
+        ProxyId => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "Proxy", Proxy.ProxyExecutionLoadContext.AssemblyFile)),
+        FirewallId => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "Firewall", Firewall.CollectibleFirewallExecution.AssemblyFile)),
+        Modules.TailscaleModule.ModuleId => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "Tailscale", Tailscale.CollectibleTailscaleExecution.AssemblyFile)),
+        Modules.TunnelsModule.ModuleId => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "Tunnels", Tunnels.CollectibleTunnelExecution.AssemblyFile)),
+        _ => true,
+    };
 
     /// <summary>
     /// Residency as the process sees it. A module without a release boundary is reported as

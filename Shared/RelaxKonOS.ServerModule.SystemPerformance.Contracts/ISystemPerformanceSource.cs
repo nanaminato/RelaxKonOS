@@ -4,7 +4,7 @@ namespace RelaxKonOS.Server.SystemPerformance;
 
 /// <summary>
 /// 平台性能原始数据源。实现只读取当前 OS 状态；差分、速率、历史和推送全部由
-/// <see cref="PerformanceSampler"/> 统一处理，不能保存在此接口实现中。
+/// 宿主采样器统一处理，不能保存在此接口实现中。
 /// </summary>
 public interface ISystemPerformanceSource
 {

@@ -12,6 +12,8 @@
     <ProjectReference Include="../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" />
     <ProjectReference Include="../../RelaxKonOS.ServerModuleHost/RelaxKonOS.ServerModuleHost.csproj" />
     <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.DatabaseObservation/RelaxKonOS.ServerModule.DatabaseObservation.csproj" />
+    <Content Include="../../ServerModules/RelaxKonOS.ServerModule.DatabaseObservation/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.DatabaseObservation.deps.json"
+             Link="RelaxKonOS.ServerModule.DatabaseObservation.deps.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../../Applications/RelaxKonOS.App.TaskManager/RelaxKonOS.App.TaskManager.csproj" />
     <ProjectReference Include="../../Applications/RelaxKonOS.App.Git/RelaxKonOS.App.Git.csproj" />
     <ProjectReference Include="../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />

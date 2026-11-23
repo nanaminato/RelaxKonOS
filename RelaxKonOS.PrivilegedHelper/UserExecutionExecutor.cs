@@ -81,7 +81,8 @@ public static class UserExecutionExecutor
         // the flag is inherited by the PTY shell and cannot be cleared once set.
         if (!TryAssumeIdentity(account, preventPrivilegeGain: false)) return 77;
 
-        return await RelaxKonOS.Server.Terminal.LinuxTerminalWorker.RunAsync(request, shell, account.Home, account.Name);
+        return await RelaxKonOS.Server.Terminal.LinuxTerminalWorker.RunAsync(request, shell, account.Home, account.Name,
+            RelaxKonOS.Server.Terminal.TerminalUserEnvironment.Linux);
     }
 
     private static async Task<int> WriteAsync(UserExecutionResult result)

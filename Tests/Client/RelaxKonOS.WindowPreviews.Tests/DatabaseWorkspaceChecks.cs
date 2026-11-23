@@ -211,6 +211,31 @@ internal static class DatabaseWorkspaceChecks
         migrationModel.MigrationPlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(!migrationModel.CanMigrate&&!migrationModel.CanUpdate,"major discovery neither grants source trust nor becomes patch update");
         migrationModel.MigrationSourceAccepted=true;Check(migrationModel.CanMigrate,"explicit source selection enables reviewed migration");
+        migrationClient.PlanProblem = new InstallationApiException("database.migration_ca_required", HttpStatusCode.ServiceUnavailable);
+        migrationModel.PlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(migrationModel.Plan is null && !migrationModel.MigrationSourceAccepted && !migrationModel.CanMigrate
+            && migrationHandler.Bodies.Count == 0, "failed maintenance refresh retires the previous migration plan and source confirmation");
+        migrationClient.PlanProblem = null;
+        var previousPlan = migrationClient.State;
+        migrationClient.State = previousPlan with { InstanceId = Guid.NewGuid() };
+        migrationModel.MigrationPlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(migrationModel.Plan is null && !migrationModel.CanMigrate,
+            "a maintenance candidate for a different instance is refused even at the same revision");
+        migrationClient.State = previousPlan;
+        var repairState = previousPlan with
+        {
+            ProblemCode = "database.package_identity_changed",
+            Candidate = previousPlan.Candidate! with { PackageName = "postgresql-16", Version = previousPlan.Version! },
+        };
+        migrationClient.State = repairState;
+        migrationModel.Snapshot = repairState;
+        migrationModel.PlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(migrationModel.CanRepair && !migrationModel.CanUpdate,
+            "an exact same-version repair candidate remains available when the managed package reports drift");
+        migrationClient.State = previousPlan;
+        migrationModel.Snapshot = previousPlan;
+        migrationModel.MigrationPlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        migrationModel.MigrationSourceAccepted = true;
         migrationModel.MigrateCommand.ExecuteAsync(null).GetAwaiter().GetResult();Check(migrationHandler.Bodies.Count==0,"cancelled migration does not submit");
         migrationModel.ConfirmAsync=_=>Task.FromResult(true);migrationModel.MigrateCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(migrationModel.CanResume&&!migrationModel.CanMigrate,"lost migration response preserves pending intent");
@@ -273,11 +298,14 @@ internal static class DatabaseWorkspaceChecks
             CanManage = true, Snapshot = selectionClient.State, DeleteConfirmation = primary.ToString("N")
         };
         Check(!peerMaintenance.CanDeleteInstance, "primary UUID cannot confirm secondary deletion");
+        peerMaintenance.PlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(!peerMaintenance.CanPlanMaintenance && !peerMaintenance.CanPlanMigration
+            && selectionClient.LastInstance == peer, "shared package plans are not requested while multiple instances exist");
         peerMaintenance.DeleteConfirmation = peer.ToString("N");
         Check(peerMaintenance.CanDeleteInstance && !peerMaintenance.CanDelete, "secondary confirmation enables independent deletion only");
         peerMaintenance.Snapshot = selectionClient.State with { InstanceId = primary, Instances = [instanceList[0]] };
         peerMaintenance.DeleteConfirmation = primary.ToString("N");
-        Check(!peerMaintenance.CanDeleteInstance && peerMaintenance.CanDelete && peerMaintenance.CanKeepData,
+        Check(!peerMaintenance.CanDeleteInstance && peerMaintenance.CanDelete && peerMaintenance.CanKeepData && peerMaintenance.CanPlanMaintenance,
             "single primary restores shared package maintenance controls");
         selectionClient.State = selectionClient.State with { InstanceId = primary, Port = 55432, Instances = [instanceList[0]] };
         selectionClient.MissingInstance = peer;
@@ -377,8 +405,10 @@ internal static class DatabaseWorkspaceChecks
     {
         public PostgreSqlState State=new(true,true,true,"16.15-0ubuntu0.24.04.1",2,null,55432,false,false,null,null,null);
         public Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct) => Task.CompletedTask;
+        public InstallationApiException? PlanProblem { get; set; }
         public Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct)=>ReadAsync(ct);
-        public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct)=>ReadAsync(ct);
+        public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct) => PlanProblem is { } error
+            ? Task.FromException<PostgreSqlState>(error) : ReadAsync(ct);
         public Guid? MissingInstance { get; set; }
         public Guid? LastInstance { get; private set; }
         public Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null)

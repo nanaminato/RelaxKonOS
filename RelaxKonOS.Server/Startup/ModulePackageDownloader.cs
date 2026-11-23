@@ -25,6 +25,7 @@ internal static class ModulePackageDownloader
         ModulePackageCatalogStore.EnsureNotRevoked(document, releaseId, release.ArchiveSha256);
         if (ServerModules.ConflictsWithBundledModule(release.Manifest))
             throw new ModulePackageException(ServerModules.PackageModuleIdConflict);
+        InstalledModuleInstaller.VerifyRequiredRuntimeFiles(release.Manifest);
         if (!Uri.TryCreate(release.DownloadUri, UriKind.Absolute, out var uri) || uri.Scheme != "https"
             || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0
             || !release.DownloadUri.StartsWith(policy.ArtifactOrigin, StringComparison.Ordinal))

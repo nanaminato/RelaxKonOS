@@ -14,6 +14,7 @@ internal sealed class DockerComposeExecution
     internal const string ProxyProjectionEntryType = "RelaxKonOS.Server.Docker.DockerProxyProjection";
     internal const string StackOutcomeEntryType = "RelaxKonOS.Server.Docker.DockerStackOutcomePolicy";
     internal static DockerComposeExecution Shared { get; } = new(TimeSpan.FromSeconds(30));
+    internal static bool BundledAvailable => File.Exists(Path.Combine(AppContext.BaseDirectory, "Modules", "Docker", AssemblyFile));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
     private readonly List<WeakReference> generations = [];

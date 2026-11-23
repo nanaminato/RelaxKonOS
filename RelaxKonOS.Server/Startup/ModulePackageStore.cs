@@ -40,6 +40,8 @@ internal static class ModulePackageStore
                     if (!api) blockers.Add(new("module-package-host-api-incompatible", manifest.ModuleId));
                     if (ServerModules.ConflictsWithBundledModule(manifest))
                         blockers.Add(new(ServerModules.PackageModuleIdConflict, manifest.ModuleId));
+                    if (!InstalledModuleInstaller.HasRequiredRuntimeFiles(manifest))
+                        blockers.Add(new(InstalledModuleInstaller.MissingDatabaseRuntimeFiles, manifest.ModuleId));
                     items.Add(new ServerModuleStoreItemDto(policy.SourceId, manifest.ModuleId, manifest.Version,
                         manifest.ReleaseId, manifest.Rid, manifest.PublisherId, policy.Purpose,
                         revoked ? "revoked" : policy.Purpose,

@@ -117,6 +117,10 @@ internal static class InstalledIsolatedModuleChecks
                     check(supervisor.SnapshotInstalledHealth(record.ModuleId, enabled: true)?.SourceId == record.SourceId,
                         "health reports the restored source after a failed replacement");
                     await CheckServingAsync(supervisor, record.ModuleId, timeout.Token);
+                    string previousToken;
+                    using (var previousConnection = supervisor.AcquireConnection(record.ModuleId)
+                        ?? throw new InvalidOperationException("The restored module did not expose a connection."))
+                        previousToken = previousConnection.ServiceToken;
                     ModuleTrustStore.Set(root, next, "test-administrator", trusted: true, preserve: record);
                     var updated = await supervisor.ReplaceAsync(record, next,
                         () => InstalledModuleInstaller.Activate(root, next), timeout.Token);
@@ -126,6 +130,11 @@ internal static class InstalledIsolatedModuleChecks
                     var health = supervisor.SnapshotInstalledHealth(record.ModuleId, enabled: true);
                     check(health is { Status: "healthy" } && health.Version == next.Version && health.SourceId == next.SourceId,
                         "health reports the running version and new source together after hot replacement");
+                    using (var stale = supervisor.AcquireAuthenticated(previousToken))
+                    using (var current = supervisor.AcquireConnection(record.ModuleId))
+                    using (var authenticated = current is null ? null : supervisor.AcquireAuthenticated(current.ServiceToken))
+                        check(stale is null && authenticated is not null,
+                            "hot replacement withdraws the previous generation token and authenticates the running generation");
                     await CheckServingAsync(supervisor, record.ModuleId, timeout.Token);
                     ModuleTrustStore.Set(root, next, "test-administrator", trusted: false, preserve: record);
                     using var revokedConnection = supervisor.AcquireConnection(record.ModuleId);

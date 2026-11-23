@@ -172,6 +172,7 @@ internal static class ModulePackageMaintenanceCommand
         var result = await ModulePackageVerifier.VerifyCandidateAsync(archive, envelope, policy, context, history,
             values["--release-id"], DateTimeOffset.UtcNow);
         ModulePackageCatalogStore.EnsureNotRevoked(catalogState, result.Manifest.ReleaseId, result.ArchiveSha256);
+        InstalledModuleInstaller.VerifyRequiredRuntimeFiles(result.Manifest);
         Console.WriteLine(JsonSerializer.Serialize(new { readOnly = true, trustHistoryPresent = historyPresent,
             trustHistoryCommitted = false, installed = false, candidate = result }, ModulePackageJson.Options));
         return 0;

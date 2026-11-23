@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using RelaxKonOS.Protocol.Common;
@@ -13,16 +14,50 @@ namespace RelaxKonOS.ServerModule.DatabaseObservation;
 /// <summary>The isolated database entry serves observation through the Core-owned read broker.</summary>
 public sealed class DatabaseModuleHostEntry : IModuleHostEntry, IModuleHostHttp
 {
+    private CancellationTokenSource? _backupStopping;
+    private Task? _backupWorker;
+
     public string Id => DatabaseObservationProtocol.ModuleId;
 
     public ValueTask StartAsync(IModuleHostContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _ = RequireDatabaseContext(context);
+        var schedule = RequireDatabaseContext(context).DatabaseBackupSchedule;
+        _backupStopping = new CancellationTokenSource();
+        _backupWorker = RunBackupScheduleAsync(schedule, context.Logger, _backupStopping.Token);
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask StopAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public async ValueTask StopAsync(CancellationToken cancellationToken)
+    {
+        using var stopping = Interlocked.Exchange(ref _backupStopping, null);
+        if (stopping is null) return;
+        await stopping.CancelAsync();
+        await _backupWorker!;
+    }
+
+    private static async Task RunBackupScheduleAsync(IModuleDatabaseBackupSchedule schedule, ILogger logger,
+        CancellationToken stopping)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        try
+        {
+            do
+            {
+                try
+                {
+                    if (await schedule.ReadDueSlotAsync(stopping) is { } slot)
+                        await schedule.SubmitAsync(slot, stopping);
+                }
+                catch (Exception error) when (error is HttpRequestException or IOException or JsonException
+                    || error is OperationCanceledException && !stopping.IsCancellationRequested)
+                {
+                    logger.LogDebug("PostgreSQL backup schedule is waiting for Core ({FailureType})", error.GetType().Name);
+                }
+            } while (await timer.WaitForNextTickAsync(stopping));
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
+    }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, IModuleHostContext context)
     {
@@ -51,12 +86,9 @@ public sealed class DatabaseModuleHostEntry : IModuleHostEntry, IModuleHostHttp
             {
                 var snapshot = await response.Content.ReadFromJsonAsync<PostgreSqlObservationSnapshot>(
                     RelaxKonOSJsonOptions.Default, http.RequestAborted);
-                if (snapshot?.State is not { } state)
+                if (snapshot?.State is null)
                     throw new JsonException("Missing PostgreSQL observation state.");
-                await http.Response.WriteAsJsonAsync(state with
-                {
-                    ScheduledOperation = snapshot.PendingBackup ?? snapshot.CurrentSlot ?? snapshot.PreviousBackup,
-                }, RelaxKonOSJsonOptions.Default, http.RequestAborted);
+                await http.Response.WriteAsJsonAsync(snapshot.ToPublicState(), RelaxKonOSJsonOptions.Default, http.RequestAborted);
                 return;
             }
             http.Response.StatusCode = (int)response.StatusCode;

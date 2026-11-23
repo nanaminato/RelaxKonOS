@@ -38,7 +38,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         if (release.ActivationOnly)
         {
-            await EnsureEnabledAsync(plan, release, release.ArtifactIdentity, cancellationToken);
+            await EnsureEnabledAsync(plan, release, cancellationToken);
         }
         else if (!release.Satisfied)
         {
@@ -92,13 +92,13 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                 throw new ModulePackageDeploymentFailedException(operation.ModuleId, operation.OperationId, operation.ProblemCode);
             if (operation.State != "Succeeded")
                 throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
-            await EnsureEnabledAsync(plan, release, serverPlan.ArtifactSha256, cancellationToken);
+            await EnsureEnabledAsync(plan, release, cancellationToken);
         }
 
         await VerifyAsync(plan, release, cancellationToken);
     }
 
-    private async Task EnsureEnabledAsync(DeploymentPlan plan, DeploymentRelease release, string digest,
+    private async Task EnsureEnabledAsync(DeploymentPlan plan, DeploymentRelease release,
         CancellationToken cancellationToken)
     {
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
@@ -108,14 +108,18 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         if (ModuleDeploymentCatalog.RequiresRecovery(module))
             throw new ModuleDeploymentRecoveryException(module.Id, module.PendingOperationId);
         var version = release.ActivationOnly ? ModuleDeploymentCatalog.InstalledActivationVersion(module) : module.InstalledVersion;
-        if (module.ArtifactDigest != digest || version != release.Version)
+        var identity = release.ArtifactIdentity.Split('/');
+        if (module.ArtifactDigest != identity[^1] || version != release.Version || !MatchesPackageSource(module, identity))
             throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");
         if (module.PendingOperationId is not null || module.RestartRequired)
             throw new InvalidOperationException("deployment-module-AwaitingRestart");
         if (module.DesiredEnabled) return;
-        if (release.ActivationOnly && module.Packaging == "independent"
-            && ModuleDeploymentCatalog.CatalogRevision(await client.StoreSourcesAsync(cancellationToken)) != plan.Target.CatalogRevision)
-            throw new DeploymentPlanReviewRequiredException("deployment-snapshot-changed");
+        if (release.ActivationOnly && module.Packaging == "independent")
+        {
+            await VerifyInstalledPackageAsync(plan, release, module.InstalledVersion, identity, cancellationToken);
+            if (ModuleDeploymentCatalog.CatalogRevision(await client.StoreSourcesAsync(cancellationToken)) != plan.Target.CatalogRevision)
+                throw new DeploymentPlanReviewRequiredException("deployment-snapshot-changed");
+        }
 
         var desired = facts.Where(item => item.DesiredEnabled).Select(item => item.Id)
             .Append(module.Id).Order(StringComparer.Ordinal).ToArray();
@@ -169,38 +173,49 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
             && (claim.Value.Length == 0 || StringComparer.Ordinal.Equals(claim.Value, version)));
     }
 
+    private static bool MatchesPackageSource(ServerModuleDto module, string[] identity) =>
+        identity is [_, _, { Length: 64 }]
+            ? module.Packaging == "independent" && module.SourceId == identity[0]
+            : module.Packaging == "bundled";
+
     public async Task VerifyAsync(DeploymentPlan plan, DeploymentRelease release, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
-        var identity = release.ArtifactIdentity.Split('/')[^1];
+        var identity = release.ArtifactIdentity.Split('/');
+        var digest = identity[^1];
         if (module is not null && ModuleDeploymentCatalog.RequiresRecovery(module))
             throw new ModuleDeploymentRecoveryException(module.Id, module.PendingOperationId);
         if (module is null || !ModuleDeploymentCatalog.IsEffective(module))
             throw new InvalidOperationException("deployment-module-not-effective");
         if (ModuleDeploymentCatalog.EffectivePackageVersion(module) != release.Version
             || !HasPlannedCapabilities(module, release)
-            || identity.Length == 64 && module.ArtifactDigest != identity)
+            || !MatchesPackageSource(module, identity)
+            || digest.Length == 64 && module.ArtifactDigest != digest)
             throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");
 
         if (module.Packaging == "independent")
-        {
-            var packages = await client.InstalledPackagesAsync(cancellationToken);
-            var prepared = plan.PreparedSteps.SingleOrDefault(step => step.Package == release.Package);
-            if (!packages.Items.Any(package => package.ModuleId == module.Id && package.Active && !package.Quarantined
-                && package.Version == module.EffectiveVersion && package.ArtifactSha256 == identity
-                && (prepared is null || package.ManifestSha256 == prepared.ManifestSha256 && package.PublisherId == prepared.PublisherId)
-                && (release.ActivationOnly
-                    || $"{package.SourceId}/{package.ReleaseId}/{package.ArtifactSha256}" == release.ArtifactIdentity)))
-                throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");
-        }
+            await VerifyInstalledPackageAsync(plan, release, module.EffectiveVersion, identity, cancellationToken);
 
         var health = await client.CheckHealthAsync(cancellationToken);
         if (!health.Modules.Any(item => item.ModuleId == release.Package.Id && item.Enabled
             && item.Status is "host" or "loaded" or "healthy"
-            && (module.Packaging != "independent" || item.Version == module.EffectiveVersion)))
+            && (module.Packaging != "independent"
+                || item.Version == module.EffectiveVersion && item.SourceId == module.SourceId)))
             throw new InvalidOperationException("deployment-module-unhealthy");
+    }
+
+    private async Task VerifyInstalledPackageAsync(DeploymentPlan plan, DeploymentRelease release, string? version,
+        string[] identity, CancellationToken cancellationToken)
+    {
+        var packages = await client.InstalledPackagesAsync(cancellationToken);
+        var prepared = plan.PreparedSteps.SingleOrDefault(step => step.Package == release.Package);
+        if (!packages.Items.Any(package => package.ModuleId == release.Package.Id && package.Active && !package.Quarantined
+            && package.Version == version && package.ArtifactSha256 == identity[2]
+            && package.SourceId == identity[0] && package.ReleaseId == identity[1]
+            && (prepared is null || package.ManifestSha256 == prepared.ManifestSha256 && package.PublisherId == prepared.PublisherId)))
+            throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");
     }
 
     private async Task<IReadOnlyList<ServerModuleDto>> RequireServerAsync(string serverIdentity, CancellationToken cancellationToken)

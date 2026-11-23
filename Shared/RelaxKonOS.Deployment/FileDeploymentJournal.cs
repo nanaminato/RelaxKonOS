@@ -12,12 +12,21 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
         string artifactIdentity, Guid accountId, string connectionIdentity, CancellationToken cancellationToken = default,
         DeploymentComponentRelease? componentRelease = null, DeploymentServerArchive? serverArchive = null)
     {
+        var recovery = await FindPendingRecoveryAsync(package, version, artifactIdentity, accountId,
+            connectionIdentity, cancellationToken, componentRelease, serverArchive);
+        return recovery is { RequiresReview: false } ? recovery.Plan : null;
+    }
+
+    public async Task<PendingDeploymentRecovery?> FindPendingRecoveryAsync(DeploymentPackageKey package, string version,
+        string artifactIdentity, Guid accountId, string connectionIdentity, CancellationToken cancellationToken = default,
+        DeploymentComponentRelease? componentRelease = null, DeploymentServerArchive? serverArchive = null)
+    {
         var entries = await ReadPendingEntriesAsync(accountId, connectionIdentity, cancellationToken);
         var match = entries.FirstOrDefault(entry => entry.Plan.OrderedReleases[^1] is var root
             && root.Package == package && root.Version == version && root.ArtifactIdentity == artifactIdentity
             && entry.Plan.ClientBinding?.ComponentRelease == componentRelease
             && entry.Plan.ClientBinding?.ServerArchive == serverArchive);
-        return match?.Checkpoint.RequiresReview == false ? match.Plan : null;
+        return match is null ? null : new(match.Plan, match.Checkpoint.RequiresReview);
     }
 
     public async Task<IReadOnlyList<PendingDeploymentRecovery>> ReadPendingRecoveriesAsync(Guid accountId, string connectionIdentity,

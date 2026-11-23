@@ -22,7 +22,7 @@ internal sealed class InstalledIsolatedModule(InstalledModuleRecord record, stri
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         if (!record.Quarantined) InstalledModuleStore.VerifyPackage(contentRoot, record);
-        _database?.ConfigureServices(builder, context);
+        if (_database is not null) builder.Services.AddDatabaseHostServices();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)

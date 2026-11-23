@@ -48,8 +48,17 @@ internal static class ModuleRecoveryChecks
             var serverAssembly = typeof(ModuleMaintenanceCommand).Assembly.Location;
             var serverHost = serverExecutable ?? Path.Combine(Path.GetDirectoryName(serverAssembly)!,
                 OperatingSystem.IsWindows() ? "RelaxKonOS.Server.exe" : "RelaxKonOS.Server");
-            if (serverExecutable is not null && !File.Exists(serverHost))
-                throw new FileNotFoundException("The published Server executable was not found.", serverHost);
+            if (serverExecutable is not null)
+            {
+                if (!File.Exists(serverHost))
+                    throw new FileNotFoundException("The published Server executable was not found.", serverHost);
+                foreach (var fileName in new[] { "RelaxKonOS.Server.deps.json", "RelaxKonOS.Server.runtimeconfig.json" })
+                {
+                    var requiredFile = Path.Combine(Path.GetDirectoryName(serverHost)!, fileName);
+                    if (!File.Exists(requiredFile))
+                        throw new FileNotFoundException("Use the complete published Server directory for native recovery acceptance.", requiredFile);
+                }
+            }
             var useAppHost = serverExecutable is not null
                 || (File.Exists(serverHost) && File.Exists(Path.ChangeExtension(serverAssembly, ".deps.json")));
             var start = new System.Diagnostics.ProcessStartInfo(useAppHost ? serverHost : "dotnet")
@@ -103,6 +112,21 @@ internal static class ModuleRecoveryChecks
             store.RecordStartupFailure("host");
             check(verified.SequenceEqual(File.ReadAllBytes(path)),
                 "later host failure cannot rewrite already verified operation evidence");
+
+            var externalFacts = offline.Select(module => module.Id == ServerModules.ApplicationDeploymentsId
+                ? module with { Packaging = "independent", InstalledVersion = null, OrphanedWork = [] } : module).ToArray();
+            var available = modules.EnabledIds.Where(id => id != ServerModules.ApplicationDeploymentsId).ToHashSet(StringComparer.Ordinal);
+            var externalConfig = new ConfigurationBuilder().AddConfiguration(config).AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ModuleManagement:DefaultDisabledModules:0"] = ServerModules.ApplicationDeploymentsId,
+            }).Build();
+            using var externalStore = new ModuleManagementStore(externalConfig, Path.Combine(root, "external"));
+            await RejectAsync(check, () => ModuleMaintenanceCommand.RecoverAll(externalStore, externalStore.ServiceId, externalStore.Revision,
+                modules.EnabledIds, externalFacts, "local:test"), "module-recovery-catalog-mismatch");
+            var restoredAvailable = ModuleMaintenanceCommand.RecoverAll(externalStore, externalStore.ServiceId, externalStore.Revision,
+                available, externalFacts, "local:test");
+            check(restoredAvailable.State == ServerModuleOperationState.AwaitingRestart && externalStore.DesiredIds.SetEquals(available),
+                "offline recovery enables available modules and leaves the missing external package disabled");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

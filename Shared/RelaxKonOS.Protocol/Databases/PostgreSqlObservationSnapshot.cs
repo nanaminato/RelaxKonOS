@@ -3,6 +3,10 @@ using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Protocol.Databases;
 
-/// <summary>Private broker inputs for the isolated PostgreSQL state endpoint.</summary>
+/// <summary>Helper state and the bounded backup ledger candidates for projecting PostgreSQL state.</summary>
 public sealed record PostgreSqlObservationSnapshot([property: JsonRequired] PostgreSqlState State,
-    InstallationOperationDto? PendingBackup, InstallationOperationDto? CurrentSlot, InstallationOperationDto? PreviousBackup);
+    InstallationOperationDto? PendingBackup, InstallationOperationDto? CurrentSlot, InstallationOperationDto? PreviousBackup)
+{
+    public PostgreSqlState ToPublicState() =>
+        State with { ScheduledOperation = PendingBackup ?? CurrentSlot ?? PreviousBackup };
+}

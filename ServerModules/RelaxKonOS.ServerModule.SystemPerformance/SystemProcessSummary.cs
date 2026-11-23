@@ -12,20 +12,20 @@ internal static class SystemProcessSummary
     private static ProcessSummary? _cached;
     private static long _nextRefreshTimestamp;
 
-    public static ProcessSummary Read()
+    public static ProcessSummary Read(Func<int, int>? countLinuxThreads = null)
     {
         var now = Stopwatch.GetTimestamp();
         lock (CacheGate)
         {
             if (_cached is { } cached && now < _nextRefreshTimestamp) return cached;
-            var summary = OperatingSystem.IsLinux() ? ReadLinux() : ReadWindows();
+            var summary = countLinuxThreads is null ? ReadWindows() : ReadLinux(countLinuxThreads);
             _cached = summary;
             _nextRefreshTimestamp = now + Stopwatch.Frequency * 5;
             return summary;
         }
     }
 
-    private static ProcessSummary ReadLinux()
+    private static ProcessSummary ReadLinux(Func<int, int> countThreads)
     {
         var processes = 0;
         var threads = 0;
@@ -37,7 +37,7 @@ internal static class SystemProcessSummary
                 var name = Path.GetFileName(path);
                 if (!int.TryParse(name, out var pid)) continue;
                 processes++;
-                threads += RelaxKonOS.Server.SystemMonitor.LinuxProcessMetadata.CountThreads(pid);
+                threads += countThreads(pid);
                 handles += CountFileEntries(Path.Combine(path, "fd"));
             }
         }

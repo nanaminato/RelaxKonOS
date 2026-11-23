@@ -131,7 +131,16 @@ internal static class OfficialRoappChecks
                 Satisfied = true,
                 CurrentVersion = "2.0.0"
             };
-            var display = plan with { OrderedReleases = [required, satisfied, .. plan.OrderedReleases] };
+            var isolated = required with { Package = new(DeploymentPackageKind.ServerModule, "fixture.isolated") };
+            var display = plan with
+            {
+                OrderedReleases = [required, isolated, satisfied, .. plan.OrderedReleases],
+                PreparedSteps =
+                [
+                    new(required.Package, Guid.NewGuid(), plan.ExpiresAt, [], "fixture", new string('a', 64), "in-process"),
+                    new(isolated.Package, Guid.NewGuid(), plan.ExpiresAt, [], "fixture", new string('b', 64), "module-host"),
+                ],
+            };
             Control? view = null;
             var result = windows.ShowDialogAsync<bool>(owner, "Review",
                 dialog => view = AppInstallerApp.CreateDeploymentReview(dialog, display));
@@ -144,6 +153,9 @@ internal static class OfficialRoappChecks
                 && messages.Contains(LocalizedText.Format("app_installer.deployment.satisfied",
                     satisfied.Package.Id, satisfied.Version)),
                 "The production review shows the exact upgrade and identifies the reused module.");
+            Check(messages.Contains(LocalizedText.Get("app_installer.deployment.runtime.in-process"))
+                && messages.Contains(LocalizedText.Get("app_installer.deployment.runtime.module-host")),
+                "The production review explains both runtime modes even when neither declares broker permissions.");
             ClickReview(view, approved ? "common.install" : "common.cancel");
             return await result;
         }
@@ -179,19 +191,32 @@ internal static class OfficialRoappChecks
         }
     }
 
-    public static void Run(string artifact, ShellSettings settings, RelaxKonOS.AppSDK.ISystemLanguage language)
+    public static void Run(string artifact, ShellSettings settings, RelaxKonOS.AppSDK.ISystemLanguage language, Uri? nativeBrowserPage = null)
     {
         if (DeveloperProfile.IsDebug) throw new InvalidOperationException("Build this check in Release.");
-        var task = RunAsync(Path.GetFullPath(artifact), settings, language);
+        var task = RunAsync(Path.GetFullPath(artifact), settings, language, nativeBrowserPage);
+        if (nativeBrowserPage is not null)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            _ = task.ContinueWith(_ => timeout.Cancel(), CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            if (!task.IsCompleted) Dispatcher.UIThread.MainLoop(timeout.Token);
+            if (!task.IsCompleted) throw new InvalidOperationException("Native Browser package check timed out.");
+            task.GetAwaiter().GetResult();
+            return;
+        }
         var deadline = DateTime.UtcNow.AddSeconds(45);
         while (!task.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(5); }
         if (!task.IsCompleted) throw new InvalidOperationException("Official package check timed out.");
         task.GetAwaiter().GetResult();
     }
 
-    private static async Task RunAsync(string artifact, ShellSettings settings, RelaxKonOS.AppSDK.ISystemLanguage language)
+    private static async Task RunAsync(string artifact, ShellSettings settings, RelaxKonOS.AppSDK.ISystemLanguage language, Uri? nativeBrowserPage)
     {
         var applicationId = Path.GetFileNameWithoutExtension(artifact);
+        if (nativeBrowserPage is not null && (!OperatingSystem.IsWindows() || !nativeBrowserPage.IsLoopback
+            || nativeBrowserPage.Scheme != Uri.UriSchemeHttp || applicationId != "relaxkonos.browser"))
+            throw new ArgumentException("Native Browser acceptance requires Windows, the official Browser package and a loopback HTTP page.");
         var isNotepad = applicationId == "relaxkonos.notepad";
         var isEventAlerts = applicationId == "relaxkonos.event-alerts";
         var isCodeEditor = applicationId == "relaxkonos.codeeditor";
@@ -217,7 +242,7 @@ internal static class OfficialRoappChecks
         var isBrowser = applicationId == "relaxkonos.browser";
         var isTerminal = applicationId == "relaxkonos.terminal";
         var isSshFiles = applicationId == "relaxkonos.ssh-files";
-        var sftpPort = isSshFiles ? Environment.GetEnvironmentVariable("RK_TEST_SFTP_PORT") : null;
+        var sftpPort = isSshFiles || isCodeEditor ? Environment.GetEnvironmentVariable("RK_TEST_SFTP_PORT") : null;
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -257,27 +282,19 @@ internal static class OfficialRoappChecks
         {
             var (packages, applications, windows, sshFixture) = CreateRuntime();
             var installer = new AppPackageInstallerService(packages, null!, catalog);
-            if (applicationId == "relaxkonos.welcome")
+            if (applicationId is "relaxkonos.terminal" or "relaxkonos.taskmanager")
             {
                 var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
                 ((EventAlertsAuthFixture)(object)auth).State = AuthSessionState.Unauthenticated;
-                await PublishCandidateAsync(manifest => manifest["dependencies"] = new JsonObject
-                {
-                    ["optional"] = new JsonArray(new JsonObject
-                    {
-                        ["package"] = new JsonObject
-                        {
-                            ["kind"] = (int)DeploymentPackageKind.ServerModule,
-                            ["id"] = "fixture.optional",
-                        },
-                    }),
-                });
+                File.Copy(artifact, path, overwrite: true);
+                File.Copy(artifact + ".sha256", path + ".sha256", overwrite: true);
+                var expectedModule = applicationId == "relaxkonos.terminal" ? applicationId : "relaxkonos.system-performance";
                 using var review = new AppInstallerViewModel(installer)
                 {
                     JointDeployment = new(null!, auth, installer, packages, applications, journal),
                     SelectOptionalAsync = optional =>
                     {
-                        Check(optional.Count == 1 && optional[0].Package.Id == "fixture.optional", "The optional module is offered.");
+                        Check(optional.Count == 1 && optional[0].Package.Id == expectedModule, "The actual optional module is offered.");
                         return DeselectOptionalInDialogAsync(optional);
                     },
                     CurrentPackage = await installer.InspectLocalAsync(path),
@@ -291,15 +308,69 @@ internal static class OfficialRoappChecks
                         "Unchecking the optional module leaves a local application-only plan.");
                     return ConfirmReadOnlyDeploymentAsync(plan, approved);
                 };
-                await review.InstallCommand.ExecuteAsync(null);
+                await RunInstallReviewAsync();
                 Check(confirmations == 1 && packages.FindInstalled(applicationId) is null,
                     "Rejecting the local plan must leave the app uninstalled.");
                 approved = true;
-                await review.InstallCommand.ExecuteAsync(null);
+                await RunInstallReviewAsync();
                 var result = packages.FindInstalled(applicationId);
                 Check(confirmations == 2 && result is not null && File.Exists(Path.Combine(result.InstallationPath, "deployment-receipt.json")),
                     "Approving the local plan must install the app through the coordinator.");
                 await packages.UninstallAsync(applicationId);
+
+                async Task RunInstallReviewAsync()
+                {
+                    if (!isTerminal)
+                    {
+                        await review.InstallCommand.ExecuteAsync(null);
+                        return;
+                    }
+
+                    var (reviewWindows, owner) = OpenReviewOwner();
+                    ModalDialog<bool>? parent = null;
+                    var opened = reviewWindows.ShowDialogAsync<bool>(owner, "Catalog package",
+                        dialog => AppInstallerApp.CreateCatalogReview(parent = dialog, review));
+                    try
+                    {
+                        var confirm = review.ConfirmDeploymentAsync!;
+                        review.ConfirmDeploymentAsync = plan =>
+                        {
+                            confirmations++;
+                            Check(plan.OrderedReleases is [{ Package.Id: "relaxkonos.terminal" }],
+                                "Declining the module leaves the Terminal desktop package in the plan.");
+                            return confirm(plan);
+                        };
+                        var installation = review.InstallCommand.ExecuteAsync(null);
+                        var optional = await WaitForChildAsync("app_installer.deployment.optional");
+                        var choices = optional.GetLogicalDescendants().OfType<ItemsControl>().Single().ItemsSource!
+                            .Cast<CheckBox>().ToArray();
+                        Check(choices is [{ IsChecked: true }] && Equals(choices[0].Content, expectedModule),
+                            "The catalog installer shows the actual Terminal module selected by default.");
+                        choices[0].IsChecked = false;
+                        ClickReview(optional, "common.ok");
+                        ClickReview(await WaitForChildAsync("app_installer.deployment.review"),
+                            approved ? "common.install" : "common.cancel");
+                        await installation;
+                    }
+                    finally
+                    {
+                        parent!.Close(true);
+                        await opened;
+                        reviewWindows.ForceClose(owner);
+                    }
+
+                    async Task<Control> WaitForChildAsync(string key)
+                    {
+                        for (var attempt = 0; attempt < 100; attempt++)
+                        {
+                            if (reviewWindows.Windows.SingleOrDefault(window => window.Title == LocalizedText.Get(key))
+                                    ?.View.Content is Control content)
+                                return content;
+                            await Task.Delay(20);
+                        }
+                        throw new InvalidOperationException($"Catalog installer did not open {key}.");
+                    }
+                }
             }
             File.Copy(artifact, path, overwrite: true);
             File.Copy(artifact + ".sha256", path + ".sha256", overwrite: true);
@@ -308,7 +379,9 @@ internal static class OfficialRoappChecks
                 await RejectAsync(() => packages.InstallAsync(unsigned, launch: false), "Reserved ID via the generic install path");
 
             var candidate = await installer.InspectLocalAsync(path);
-            Check((isEventAlerts || isSshFiles || candidate.IconData is { Length: > 0 }) && candidate.ExpectedSha256 is not null,
+            Check((string.IsNullOrWhiteSpace(candidate.Manifest.IconPath)
+                    ? candidate.IconData is null : candidate.IconData is { Length: > 0 })
+                && candidate.ExpectedSha256 is not null,
                 "Review should freeze the digest and load any packaged icon.");
             if (isSshFiles)
             {
@@ -587,6 +660,30 @@ internal static class OfficialRoappChecks
                 databaseAuth.DatabaseAvailable = true;
             }
             compatibility.TaskManagerServerAvailable = true;
+            if (isCodeEditor && sftpPort is not null)
+            {
+                windows.Attach(new Canvas { Width = 1100, Height = 800 });
+                Check(applications.OpenFile(id, "/fixture.txt"), "The installed Code Editor accepts the SSH file.");
+                for (var attempt = 0; attempt < 100 && windows.Windows.Count == 0; attempt++)
+                    await Task.Delay(50);
+                var editor = windows.Windows.Single();
+                var model = ((Control)editor.View.Content!).DataContext
+                    ?? throw new InvalidOperationException($"The SSH file opened {(editor.View.Content as TextBlock)?.Text ?? editor.View.Content?.ToString()} instead of Code Editor.");
+                var active = model.GetType().GetProperty("ActiveDocument")!;
+                object? document = null;
+                for (var attempt = 0; attempt < 100 && document is null; attempt++)
+                {
+                    document = active.GetValue(model);
+                    if (document is null) await Task.Delay(50);
+                }
+                Check(Equals(document?.GetType().GetProperty("Text")?.GetValue(document), "RelaxKonOS SFTP fixture\n"),
+                    "The installed Code Editor reads the SSH file through the host SDK.");
+                document!.GetType().GetProperty("Text")!.SetValue(document, "RelaxKonOS SFTP edit\n");
+                var save = (Task<bool>)model.GetType().GetMethod("SaveDocumentAsync")!.Invoke(model, [document])!;
+                Check(await save, "The installed Code Editor saves the SSH file through the host SDK.");
+                windows.ForceClose(editor);
+                Console.WriteLine("The installed Code Editor opened and saved an actual SFTP document.");
+            }
             if (alertEndpoint is not null)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
@@ -902,6 +999,37 @@ internal static class OfficialRoappChecks
                     Check(browserWindow.View.Content?.GetType().FullName == "RelaxKonOS.App.Browser.Views.BrowserMainView"
                           && ((OfficialBrowserDataFixture)(object)browserData).SettingsReads == 1,
                         "The signed-in package must open its workspace and read settings through the SDK.");
+                    var browserContext = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(
+                        browserWindow.View.Content!.GetType().Assembly)!;
+                    var webView = browserContext.LoadFromAssemblyName(new System.Reflection.AssemblyName("Avalonia.Controls.WebView"));
+                    Check(System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(webView) == browserContext,
+                        "The installed Browser must load its own WebView assembly.");
+                    if (nativeBrowserPage is not null)
+                    {
+                        var view = (Control)browserWindow.View.Content!;
+                        var model = view.DataContext!;
+                        var host = new Window { Width = 1000, Height = 720 };
+                        browserWindow.View.Content = null;
+                        host.Content = view;
+                        try
+                        {
+                            host.Show();
+                            await Task.Delay(250);
+                            var navigate = (System.Windows.Input.ICommand)model.GetType().GetProperty("NavigateCommand")!.GetValue(model)!;
+                            navigate.Execute(nativeBrowserPage.AbsoluteUri);
+                            var destination = new Uri(nativeBrowserPage, "/complete");
+                            bool ReachedDestination()
+                            {
+                                var tab = model.GetType().GetProperty("SelectedTab")!.GetValue(model)!;
+                                return Equals(tab.GetType().GetProperty("Source")!.GetValue(tab), destination)
+                                    && tab.GetType().GetProperty("IsLoading")!.GetValue(tab) is false;
+                            }
+                            for (var attempt = 0; attempt < 150 && !ReachedDestination(); attempt++) await Task.Delay(100);
+                            Check(ReachedDestination(), "The native WebView executes the local page's script, follows its redirect and completes navigation.");
+                            Console.WriteLine("The installed Browser completed native WebView navigation.");
+                        }
+                        finally { host.Close(); }
+                    }
                     windows.Close(browserWindow);
                 }
             }
@@ -1156,11 +1284,17 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerTailscaleRead);
             var tailscale = isTailscale ? DispatchProxy.Create<IServerTailscale, TailscaleScopeTransport>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerDatabasesRead);
-            var scopedPermissions = alertEndpoint is not null || performanceEndpoint is not null || registryEndpoint is not null || isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
+            var sshEditor = isCodeEditor && sftpPort is not null;
+            if (sshEditor)
+            {
+                appPermissions.Granted.Add(AppPermissions.ServerFilesRead);
+                appPermissions.Granted.Add(AppPermissions.ServerFilesWrite);
+            }
+            var scopedPermissions = sshEditor || alertEndpoint is not null || performanceEndpoint is not null || registryEndpoint is not null || isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
                 || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager || isTailscale;
             var postgres = isDatabase ? new OfficialPostgreSqlFixture() : null;
             var ssh = new SshDesktopSession(null!, settings);
-            if (isSshFiles)
+            if (isSshFiles || sshEditor)
             {
                 typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Endpoint))!
                     .SetValue(ssh, sftpPort is null
@@ -1174,12 +1308,13 @@ internal static class OfficialRoappChecks
                         .SetValue(ssh, Environment.GetEnvironmentVariable("RK_TEST_SFTP_FINGERPRINT"));
                 }
             }
+            var encoding = isCodeEditor ? new TextEditorEncodingSettings(settings, null!, auth, new DefaultAppRegistry()) : null;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, performanceEndpoint is null ? null! : new RelaxKonOS.Client.Apps.TaskManager.TaskManagerClient(http, auth),
                 new ExplorerClient(http, auth, memory), ssh,
                 new SshExplorerClient(ssh), DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(),
-                null!, null!, apps, memory, null!, alertEndpoint is null ? null! : new RemoteEventAlertClient(http, auth), null!, null!,
+                null!, null!, apps, memory, encoding!, alertEndpoint is null ? null! : new RemoteEventAlertClient(http, auth), null!, null!,
                 registry: registryEndpoint is null ? null : new RelaxKonOS.Client.Apps.Registry.RegistryClient(http, auth, null!, new PresentationSettingsChanges()),
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
                 fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels, createSquidClient: squid is null ? null : () => squid,

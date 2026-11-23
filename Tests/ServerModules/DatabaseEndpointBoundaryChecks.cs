@@ -93,10 +93,10 @@ internal static class DatabaseEndpointBoundaryChecks
             || !Describe(ServerModules.Create(new ConfigurationBuilder().Build())).Capabilities.Contains(ServerCapabilities.Database))
             throw new InvalidOperationException("The database module switch must control both availability and advertised capability.");
 
-        var packagedDatabase = new InstalledIsolatedModule(
-            new InstalledModuleRecord(ServerModules.DatabaseId, "0.1.0", "database-fixture", "test", "test",
-                "", "", "", "", "", [], [], "module-host", DateTimeOffset.UtcNow),
-            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var packageRecord = new InstalledModuleRecord(ServerModules.DatabaseId, "0.1.0", "database-fixture", "test", "test",
+            "", "", "", "", "", [], [], "module-host", DateTimeOffset.UtcNow);
+        var packageRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var packagedDatabase = new InstalledIsolatedModule(packageRecord, packageRoot);
         if (await packagedDatabase.CheckHealthAsync(true, default) is not
                 { Status: "blocked", ProblemCode: "module-host-code-trust-required" }
             || await packagedDatabase.CheckHealthAsync(false, default) is not { Status: "disabled", ProblemCode: null })
@@ -110,7 +110,13 @@ internal static class DatabaseEndpointBoundaryChecks
             throw new InvalidOperationException("An installed database ModuleHost must share the database module switch and capability.");
 
         var packagedBuilder = WebApplication.CreateBuilder();
-        module.ConfigureServices(packagedBuilder, context);
+        // Exercise isolated registration without supplying an executable package to this endpoint fixture.
+        new InstalledIsolatedModule(packageRecord with { Quarantined = true }, packageRoot)
+            .ConfigureServices(packagedBuilder, context);
+        if (packagedBuilder.Services.Any(service =>
+            service.ServiceType == typeof(RelaxKonOS.ServerModule.Database.Contracts.IDatabaseQueries)
+            || service.ServiceType == typeof(PostgreSqlBackupScheduler)))
+            throw new InvalidOperationException("An isolated database module must not register bundled queries or the Core backup scheduler.");
         packagedBuilder.Services.AddSingleton<IHostElevationSessionStore>(_ => throw new NotSupportedException());
         await using (var packagedApp = packagedBuilder.Build())
         {
@@ -185,16 +191,21 @@ internal static class DatabaseEndpointBoundaryChecks
             throw new InvalidOperationException("An unauthenticated request cannot resolve an observation user."));
         var privateRoutes = ((IEndpointRouteBuilder)broker).DataSources.SelectMany(source => source.Endpoints)
             .OfType<RouteEndpoint>().ToArray();
-        if (!privateRoutes.Select(endpoint => endpoint.RoutePattern.RawText).ToHashSet().SetEquals(new[]
+        if (privateRoutes.Length != 6 || !privateRoutes.Select(endpoint =>
+            (endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods.Single(), endpoint.RoutePattern.RawText))
+            .ToHashSet().SetEquals(new[]
             {
-                DatabaseObservationProtocol.PostgreSqlState, DatabaseObservationProtocol.PostgreSqlMaintenancePlan,
-                DatabaseObservationProtocol.PostgreSqlMigrationPlan, DatabaseObservationProtocol.MySqlState
-            }) || privateRoutes.Any(route => route.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods.Single() != "GET"))
-            throw new InvalidOperationException("The private database broker must expose only the four fixed read routes.");
+                ("GET", DatabaseObservationProtocol.PostgreSqlState), ("GET", DatabaseObservationProtocol.PostgreSqlMaintenancePlan),
+                ("GET", DatabaseObservationProtocol.PostgreSqlMigrationPlan), ("GET", DatabaseObservationProtocol.MySqlState),
+                ("GET", DatabaseObservationProtocol.PostgreSqlBackupSlot), ("POST", DatabaseObservationProtocol.PostgreSqlBackupSlot)
+            }))
+            throw new InvalidOperationException("The private database broker must expose only fixed observation and backup slot routes.");
         foreach (var route in privateRoutes)
         {
             var request = new DefaultHttpContext { RequestServices = broker.Services };
-            request.Request.Method = "GET";
+            request.Request.Method = route.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.Single();
+            if (request.Request.Method == "POST")
+                request.Request.QueryString = new($"?instanceId={Guid.NewGuid():D}&scheduleId={Guid.NewGuid():D}&dueAt=2026-11-24T00:00:00Z");
             await route.RequestDelegate!(request);
             if (request.Response.StatusCode != StatusCodes.Status403Forbidden)
                 throw new InvalidOperationException("A request without a trusted module generation reached the observation broker.");
@@ -239,8 +250,11 @@ internal static class DatabaseEndpointBoundaryChecks
 
         var observation = new EntryObservationFixture();
         var entry = new DatabaseModuleHostEntry();
-        var context = new EntryContext(entry.Id, observation);
+        var schedule = new EntryScheduleFixture();
+        var context = new EntryContext(entry.Id, observation, schedule);
         await entry.StartAsync(context, default);
+        if (await schedule.Submitted.Task.WaitAsync(TimeSpan.FromSeconds(5)) != schedule.Slot)
+            throw new InvalidOperationException("The isolated backup worker must submit the observed slot.");
         await using var app = WebApplication.CreateBuilder().Build();
         entry.MapEndpoints(app, context);
         var routes = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints)
@@ -266,9 +280,11 @@ internal static class DatabaseEndpointBoundaryChecks
                 http.Request.QueryString = new QueryString("?instance=" + selected.Value.ToString("D"));
             http.Response.Body = body;
             await routes[path].RequestDelegate!(http);
+            var expectedProblem = kind == DatabaseObservationKind.PostgreSqlMigrationPlan
+                ? """{"code":"database.migration_version_unsupported"}""" : "{}";
             if (observation.Last != (kind, selected) || http.Response.StatusCode != 503
                 || http.Response.ContentType != "application/problem+json"
-                || System.Text.Encoding.UTF8.GetString(body.ToArray()) != "{}")
+                || System.Text.Encoding.UTF8.GetString(body.ToArray()) != expectedProblem)
                 throw new InvalidOperationException("The ModuleHost entry did not preserve the observation request and broker response.");
         }
         var operation = new InstallationOperationDto(Guid.NewGuid(), InstallationServiceId.PostgreSqlBackupAutomation,
@@ -284,9 +300,19 @@ internal static class DatabaseEndpointBoundaryChecks
         if (success.Response.StatusCode != 200 || projected?.InstanceId != instance || projected.ScheduledOperation != operation)
             throw new InvalidOperationException("The isolated entry must project the current backup slot into public PostgreSQL state.");
         await entry.StopAsync(default);
+
+        var stoppingSchedule = new EntryScheduleFixture { BlockSubmission = true };
+        var stoppingEntry = new DatabaseModuleHostEntry();
+        await stoppingEntry.StartAsync(new EntryContext(stoppingEntry.Id, observation, stoppingSchedule), default);
+        await stoppingSchedule.Submitted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await stoppingEntry.StopAsync(default).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        if (!stoppingSchedule.SubmissionStopped.Task.IsCompletedSuccessfully)
+            throw new InvalidOperationException("Stopping the module must cancel and drain an in-flight backup submission.");
+        await stoppingEntry.StopAsync(default);
     }
 
-    private sealed record EntryContext(string ModuleId, IModuleDatabaseObservation DatabaseObservation) : IModuleHostDatabaseContext
+    private sealed record EntryContext(string ModuleId, IModuleDatabaseObservation DatabaseObservation,
+        IModuleDatabaseBackupSchedule DatabaseBackupSchedule) : IModuleHostDatabaseContext
     {
         public string ModuleDataPath => "";
         public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
@@ -294,6 +320,24 @@ internal static class DatabaseEndpointBoundaryChecks
         public ILogger Logger => NullLogger.Instance;
         public IModulePrivilegeBroker Privileges => throw new NotSupportedException();
         public ICloudFileProviders CloudProviders => throw new NotSupportedException();
+    }
+
+    private sealed class EntryScheduleFixture : IModuleDatabaseBackupSchedule
+    {
+        public PostgreSqlBackupSlot Slot { get; } = new(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UnixEpoch);
+        public TaskCompletionSource<PostgreSqlBackupSlot> Submitted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool BlockSubmission { get; init; }
+        public TaskCompletionSource SubmissionStopped { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask<PostgreSqlBackupSlot?> ReadDueSlotAsync(CancellationToken cancellationToken) => new(Slot);
+
+        public async ValueTask SubmitAsync(PostgreSqlBackupSlot slot, CancellationToken cancellationToken)
+        {
+            Submitted.SetResult(slot);
+            if (!BlockSubmission) return;
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            finally { SubmissionStopped.SetResult(); }
+        }
     }
 
     private sealed class EntryObservationFixture : IModuleDatabaseObservation
@@ -310,7 +354,8 @@ internal static class DatabaseEndpointBoundaryChecks
                 {
                     Content = System.Net.Http.Json.JsonContent.Create(snapshot, options: RelaxKonOSJsonOptions.Default),
                 });
-            var content = new ByteArrayContent("{}"u8.ToArray());
+            var content = new ByteArrayContent((kind == DatabaseObservationKind.PostgreSqlMigrationPlan
+                ? """{"code":"database.migration_version_unsupported"}"""u8 : "{}"u8).ToArray());
             content.Headers.ContentType = new("application/problem+json");
             return ValueTask.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = content });
         }
@@ -356,6 +401,19 @@ internal static class DatabaseEndpointBoundaryChecks
         }
         finally { accessor.HttpContext = null; }
 
+        var slot = new PostgreSqlBackupSlot(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UnixEpoch);
+        handler.Slot = slot;
+        if (await client.ReadDueSlotAsync(default) != slot ||
+            handler.Requests.Last() != (HttpMethod.Get, DatabaseObservationProtocol.PostgreSqlBackupSlot, moduleToken, ""))
+            throw new InvalidOperationException("The background client must read the due slot without a user request token.");
+        await client.SubmitAsync(slot, default);
+        if (handler.Requests.Last() != (HttpMethod.Post, DatabaseObservationProtocol.PostgreSqlBackupSlot
+            + $"?instanceId={slot.InstanceId:D}&scheduleId={slot.ScheduleId:D}&dueAt=1970-01-01T00:00:00.0000000Z", moduleToken, ""))
+            throw new InvalidOperationException("The background client must submit exactly the observed slot identity.");
+        handler.Slot = null;
+        if (await client.ReadDueSlotAsync(default) is not null)
+            throw new InvalidOperationException("No Content means there is no due slot.");
+
         static async Task RejectAsync(Func<ValueTask<HttpResponseMessage>> read, HttpStatusCode status)
         {
             try { using var response = await read(); }
@@ -367,12 +425,17 @@ internal static class DatabaseEndpointBoundaryChecks
     private sealed class DatabaseObservationTransportFixture : HttpMessageHandler
     {
         internal List<(HttpMethod, string, string, string)> Requests { get; } = [];
+        internal PostgreSqlBackupSlot? Slot { get; set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add((request.Method, request.RequestUri!.PathAndQuery,
                 request.Headers.GetValues(ModuleHostProtocol.ServiceTokenHeader).Single(),
-                request.Headers.GetValues(ModulePrivilegeProtocol.RequestContextHeader).Single()));
+                request.Headers.TryGetValues(ModulePrivilegeProtocol.RequestContextHeader, out var context) ? context.Single() : ""));
+            if (request.RequestUri.AbsolutePath == DatabaseObservationProtocol.PostgreSqlBackupSlot)
+                return Task.FromResult(request.Method == HttpMethod.Get && Slot is { } slot
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(slot)) }
+                    : new HttpResponseMessage(HttpStatusCode.NoContent));
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
         }
     }

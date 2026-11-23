@@ -71,6 +71,8 @@
         "app_installer.deployment.server_changed": "The connected server changed. Review a new deployment plan for this server.",
         "app_installer.deployment.enable_installed": "Enable installed module {0} ({1})",
         "app_installer.deployment.enable_review": "Deployment enables the listed server modules. Modules listed for installation are installed first. If the server requires a restart, reconnect and retry.",
+        "app_installer.deployment.runtime.in-process": "Runs inside the server process with the server's permissions.",
+        "app_installer.deployment.runtime.module-host": "Runs in a separate ModuleHost process. The server brokers access to host resources.",
         "app_compatibility.title": "Application unavailable",
         "app_compatibility.client_platform": "{0} supports only these client platforms: {1}. This client is {2}.",
         "app_compatibility.server_platform": "{0} supports only these server platforms: {1}. The connected server is {2}.",

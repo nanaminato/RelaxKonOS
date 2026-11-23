@@ -105,6 +105,18 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
             _ = viewModel.OpenAsync();
     }
 
+    internal static Control CreateCatalogReview(ModalDialog<bool> dialog, AppInstallerViewModel review)
+    {
+        dialog.CanCancelAsync = () => Task.FromResult(!review.IsBusy);
+        review.ShowMessageAsync = (title, message) =>
+            dialog.ShowDialogAsync<bool>(title, child => CreateMessageView(child, message));
+        review.SelectOptionalAsync = requirements => dialog.ShowDialogAsync<IReadOnlyList<DeploymentRequirement>>(
+            LocalizedText.Get("app_installer.deployment.optional"), child => CreateOptionalSelection(child, requirements));
+        review.ConfirmDeploymentAsync = plan => dialog.ShowDialogAsync<bool>(
+            LocalizedText.Get("app_installer.deployment.review"), child => CreateDeploymentReview(child, plan));
+        return new AppInstallerView { DataContext = review };
+    }
+
     private static TopLevel? GetTopLevel() => Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
         ? desktop.MainWindow
         : null;
@@ -144,6 +156,11 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
             });
             var step = plan.PreparedSteps.SingleOrDefault(item => item.Package == release.Package);
             if (step is null) continue;
+            content.Children.Add(new TextBlock
+            {
+                Text = LocalizedText.Get("app_installer.deployment.runtime." + step.Runtime),
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            });
             foreach (var permission in step.Permissions)
                 content.Children.Add(new TextBlock
                 {

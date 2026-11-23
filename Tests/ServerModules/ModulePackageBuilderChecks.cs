@@ -4,6 +4,7 @@ using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.Terminal;
 
 internal static class ModulePackageBuilderChecks
 {
@@ -33,10 +34,11 @@ internal static class ModulePackageBuilderChecks
                     [source + ":PublicKeysSpki:fixture"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()),
                 }).Build();
             var official = ModulePackageHostConfiguration.Source(provisioned, "official-modules");
-            check(official.Enabled && official.Revision == 8 && official.AuthorizedModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(
+            check(official.Enabled && official.Revision == 10 && official.AuthorizedModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(
                 ["cloud-storage", "cloud-webdav", "cloud-s3", "cloud-baidu", ServerModules.DatabaseId,
                     "relaxkonos.tailscale", ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId,
-                    ServerModules.WebServerId, ServerModules.CertificatesId, ServerModules.ProxyId, "relaxkonos.tunnels", ServerModules.ApplicationDeploymentsId]),
+                    ServerModules.WebServerId, ServerModules.CertificatesId, ServerModules.ProxyId, "relaxkonos.tunnels", ServerModules.ApplicationDeploymentsId,
+                    ServerModules.SystemPerformanceId, ServerModules.TerminalId]),
                 "the provisioned official source authorizes every supported signed execution package and the existing modules");
             var keyPath = Path.Combine(root, "signing-key.pem");
             await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
@@ -60,6 +62,53 @@ internal static class ModulePackageBuilderChecks
                 check(!Directory.EnumerateFiles(wrongOutput).Any(), "a missing entry type produces no signed artifacts");
             }
             var result = await ModulePackageBuilder.BuildAsync(options, now);
+            var terminal = result.Manifest with
+            {
+                ModuleId = ServerModules.TerminalId,
+                Runtime = "in-process",
+                EntryType = BundledTerminalPtyFactory.EntryType,
+                EntryAssembly = $"server/{rid}/{BundledTerminalPtyFactory.AssemblyFile}",
+                Capabilities = [ServerCapabilities.Terminal],
+            };
+            var terminalEntry = Path.Combine(AppContext.BaseDirectory, "Modules", "Terminal", BundledTerminalPtyFactory.AssemblyFile);
+            InstalledModuleInstaller.VerifyExecutionEntry(terminalEntry, terminal);
+            check(InstalledTerminalModule.MatchesManifest(terminal) && !ServerModules.ConflictsWithBundledModule(terminal),
+                "the official Terminal execution entry can replace the bundled module");
+            try
+            {
+                InstalledModuleInstaller.VerifyExecutionEntry(fixture, terminal);
+                check(false, "an unrelated assembly must not pass the Terminal execution check");
+            }
+            catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+            {
+                check(true, "the Terminal package refuses an unrelated execution assembly");
+            }
+            foreach (var target in new[] { "linux-x64", "win-x64" })
+            {
+                var performance = result.Manifest with
+                {
+                    ModuleId = ServerModules.SystemPerformanceId,
+                    Runtime = "in-process",
+                    Rid = target,
+                    EntryType = RelaxKonOS.Server.SystemPerformance.BundledPerformanceSource.EntryType(target == "win-x64"),
+                    EntryAssembly = $"server/{target}/RelaxKonOS.ServerModule.SystemPerformance.dll",
+                    Capabilities = [ServerCapabilities.Metrics, ServerCapabilities.Processes],
+                };
+                var execution = Path.Combine(AppContext.BaseDirectory, "Modules", "SystemPerformance",
+                    "RelaxKonOS.ServerModule.SystemPerformance.dll");
+                InstalledModuleInstaller.VerifyExecutionEntry(execution, performance);
+                check(InstalledSystemPerformanceModule.MatchesManifest(performance),
+                    $"the official performance package accepts the actual {target} execution contract");
+                try
+                {
+                    InstalledModuleInstaller.VerifyExecutionEntry(fixture, performance);
+                    check(false, "an unrelated assembly must not pass the performance execution check");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                {
+                    check(true, $"the {target} performance package refuses an unrelated execution assembly");
+                }
+            }
             check(File.Exists(result.ArchivePath) && File.Exists(result.CatalogPath)
                 && File.Exists(Path.Combine(output, "manifest.json")) && File.Exists(Path.Combine(output, "public-key.spki")),
                 "module builder writes archive catalog manifest and public key");
@@ -149,6 +198,45 @@ internal static class ModulePackageBuilderChecks
             check(exit == 0 && Directory.EnumerateFiles(legacyOutput, "*.rkmodule").Count() == 1,
                 "pack-package signs a deployment module that satisfies the current build context contract");
 
+            var webAssembly = RelaxKonOS.Server.WebServer.WebServerExecutionCode.AssemblyFile;
+            var webPublish = Directory.CreateDirectory(Path.Combine(root, "webserver-input")).FullName;
+            var webEntry = Path.Combine(webPublish, webAssembly);
+            var validWebCode = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer", webAssembly));
+            var invalidWebCode = validWebCode.ToArray();
+            var reloadEntryOffset = invalidWebCode.AsSpan().IndexOf("NginxReloadExecutor\0"u8);
+            check(reloadEntryOffset >= 0, "the WebServer input contains the reload execution entry");
+            invalidWebCode[reloadEntryOffset] = (byte)'X';
+            await File.WriteAllBytesAsync(webEntry, invalidWebCode);
+            var webOutput = Path.Combine(root, "webserver-output");
+            string[] webArguments = [.. deploymentArguments, "--dependencies", "relaxkonos.certificates:1.0.0:2.0.0"];
+            webArguments[Array.IndexOf(webArguments, "--publish-dir") + 1] = webPublish;
+            webArguments[Array.IndexOf(webArguments, "--output-dir") + 1] = webOutput;
+            webArguments[Array.IndexOf(webArguments, "--module-id") + 1] = ServerModules.WebServerId;
+            webArguments[Array.IndexOf(webArguments, "--entry-assembly") + 1] = webAssembly;
+            webArguments[Array.IndexOf(webArguments, "--entry-type") + 1] = RelaxKonOS.Server.WebServer.WebServerExecutionCode.EntryType;
+            webArguments[Array.IndexOf(webArguments, "--capabilities") + 1] = ServerCapabilities.WebServer;
+            using var webError = new StringWriter();
+            try
+            {
+                Console.SetError(webError);
+                exit = await ModulePackageBuildCommand.RunAsync(webArguments);
+            }
+            finally { Console.SetError(originalError); }
+            check(exit == 1 && webError.ToString().Trim() == "module-package-execution-contract"
+                && !Directory.EnumerateFiles(webOutput).Any(),
+                "pack-package refuses WebServer without its reload executor despite a valid primary entry");
+
+            await File.WriteAllBytesAsync(webEntry, validWebCode);
+            using var webResult = new StringWriter();
+            try
+            {
+                Console.SetOut(webResult);
+                exit = await ModulePackageBuildCommand.RunAsync(webArguments);
+            }
+            finally { Console.SetOut(original); }
+            check(exit == 0 && Directory.EnumerateFiles(webOutput, "*.rkmodule").Count() == 1,
+                "pack-package signs the WebServer input when the reload contract is restored");
+
             var firstRelease = new ModulePackageRelease(result.Manifest, result.ManifestSha256, result.ArchiveSha256,
                 result.ArchiveBytes, result.DownloadUri);
             var secondRelease = ModulePackageJson.Read<ModulePackageRelease>(System.Text.Encoding.UTF8.GetBytes(
@@ -160,8 +248,21 @@ internal static class ModulePackageBuilderChecks
             var signedPath = Path.Combine(root, "aggregate-signed.json");
             await File.WriteAllBytesAsync(payloadPath, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(aggregate, ModulePackageJson.Options));
             await File.WriteAllBytesAsync(policyPath, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(signingPolicy, ModulePackageJson.Options));
-            exit = await ModuleMaintenanceCommand.RunAsync(["modules", "sign-catalog", "--payload", payloadPath,
-                "--policy", policyPath, "--private-key", keyPath, "--key-id", options.KeyId, "--output", signedPath]);
+            var artifacts = Directory.CreateDirectory(Path.Combine(root, "aggregate-artifacts")).FullName;
+            var secondArchivePath = cli.RootElement.GetProperty("archivePath").GetString()!;
+            File.Copy(result.ArchivePath, Path.Combine(artifacts, Path.GetFileName(result.ArchivePath)));
+            string[] signArguments = ["modules", "sign-catalog", "--payload", payloadPath, "--policy", policyPath,
+                "--private-key", keyPath, "--key-id", options.KeyId, "--artifact-dir", artifacts, "--output", signedPath];
+            exit = await ModuleMaintenanceCommand.RunAsync(signArguments);
+            check(exit == 1 && !File.Exists(signedPath), "aggregate signing refuses to publish if an archive is missing");
+            var stagedArchive = Path.Combine(artifacts, Path.GetFileName(secondArchivePath));
+            var archiveBytes = await File.ReadAllBytesAsync(secondArchivePath);
+            archiveBytes[^1] ^= 1;
+            await File.WriteAllBytesAsync(stagedArchive, archiveBytes);
+            exit = await ModuleMaintenanceCommand.RunAsync(signArguments);
+            check(exit == 1 && !File.Exists(signedPath), "aggregate signing refuses an archive with a changed digest");
+            File.Copy(secondArchivePath, stagedArchive, overwrite: true);
+            exit = await ModuleMaintenanceCommand.RunAsync(signArguments);
             var signedCatalog = await File.ReadAllBytesAsync(signedPath);
             var signingHistory = ModulePackageTrustHistory.Empty(signingPolicy, context);
             await using var secondArchive = File.OpenRead(cli.RootElement.GetProperty("archivePath").GetString()!);

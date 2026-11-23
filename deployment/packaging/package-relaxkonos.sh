@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION=${1:?usage: package-relaxkonos.sh VERSION [linux-x64|linux-arm64] [Release|Debug] [OUTPUT_DIRECTORY] [all|client|server] [bundled|external-application-deployments]}
+VERSION=${1:?usage: package-relaxkonos.sh VERSION [linux-x64|linux-arm64] [Release|Debug] [OUTPUT_DIRECTORY] [all|client|server] [EXTERNAL_MODULES]}
 RUNTIME=${2:-linux-x64}
 CONFIGURATION=${3:-Release}
 OUTPUT_DIRECTORY=${4:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/artifacts"}
 PACKAGE_KIND=${5:-all}
-APPLICATION_DEPLOYMENTS=${6:-bundled}
+EXTERNAL_MODULES=${6:-}
 case "$RUNTIME" in linux-x64|linux-arm64) ;; *) echo 'Linux package script supports linux-x64 and linux-arm64.' >&2; exit 64 ;; esac
 case "$CONFIGURATION" in Release|Debug) ;; *) echo 'Configuration must be Release or Debug.' >&2; exit 64 ;; esac
 case "$PACKAGE_KIND" in all|client|server) ;; *) echo 'Package kind must be all, client, or server.' >&2; exit 64 ;; esac
-case "$APPLICATION_DEPLOYMENTS" in bundled|external-application-deployments) ;; *) echo 'Invalid Application Deployments layout.' >&2; exit 64 ;; esac
-if [[ $PACKAGE_KIND == client && $APPLICATION_DEPLOYMENTS != bundled ]]; then
-  echo 'External Application Deployments requires a Server release.' >&2
+if [[ $PACKAGE_KIND == client && -n $EXTERNAL_MODULES ]]; then
+  echo 'External modules require a Server release.' >&2
   exit 64
 fi
 [[ "$VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || { echo 'Invalid version.' >&2; exit 64; }
 
 SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIRECTORY/../.." && pwd)"
+external_modules=()
+if [[ -n $EXTERNAL_MODULES ]]; then
+  python3 "$SCRIPT_DIRECTORY/externalize-server-modules.py" --validate "$EXTERNAL_MODULES" "$RUNTIME" || exit 64
+  IFS=, read -r -a external_modules <<< "$EXTERNAL_MODULES"
+fi
 OUTPUT_DIRECTORY="$(mkdir -p -- "$OUTPUT_DIRECTORY" && cd -- "$OUTPUT_DIRECTORY" && pwd)"
 
 new_package() {
@@ -32,10 +36,15 @@ new_package() {
 }
 
 publish_component() {
-  local project="$1" name="$2" executable="$3" destination
+  local project="$1" name="$2" executable="$3" destination required
   destination="$BUNDLE/payload/linux/$name"
   dotnet publish "$PROJECT_ROOT/$project" --configuration "$CONFIGURATION" "-p:RuntimeIdentifier=$RUNTIME" --self-contained true --output "$destination" "-p:InformationalVersion=$VERSION"
-  [[ -f "$destination/$executable" ]] || { echo "Publish output does not contain $executable." >&2; exit 1; }
+  for required in "$executable" "$executable.dll" "$executable.deps.json" "$executable.runtimeconfig.json"; do
+    if [[ ! -f "$destination/$required" || ! -s "$destination/$required" ]]; then
+      echo "Publish output for $project is missing a non-empty $required." >&2
+      exit 1
+    fi
+  done
 }
 
 publish_deployment_tools() {
@@ -88,7 +97,8 @@ publish_deployment_tools
 if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == client ]]; then
   new_package client
   publish_component 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS
-  python3 "$PROJECT_ROOT/Tests/Client/verify-desktop-distribution.py" --publish-dir "$BUNDLE/payload/linux/client"
+  python3 "$PROJECT_ROOT/Tests/Client/verify-desktop-distribution.py" \
+    --publish-dir "$BUNDLE/payload/linux/client" --rid "$RUNTIME"
   dotnet run --project "$PROJECT_ROOT/Tests/ServerModules/RelaxKonOS.ServerModules.Tests.csproj" \
     --configuration "$CONFIGURATION" --no-launch-profile -- \
     --official-desktop-module-contracts "$BUNDLE/payload/linux/client/OfficialApps"
@@ -106,25 +116,27 @@ if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == server ]]; then
   cp -a "$PROJECT_ROOT/deployment/bootstrap" "$BUNDLE/deployment/bootstrap"
   cp -a "$PROJECT_ROOT/deployment/linux" "$BUNDLE/deployment/linux"
   cp -a "$PROJECT_ROOT/deployment/user" "$BUNDLE/deployment/user"
-  if [[ $RUNTIME == linux-x64 ]]; then
-    (
-      new_package database-module-publish
-      database_project="$PROJECT_ROOT/ServerModules/RelaxKonOS.ServerModule.DatabaseObservation"
-      dotnet publish "$database_project/RelaxKonOS.ServerModule.DatabaseObservation.csproj" \
-        --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained false \
-        --output "$BUNDLE" "-p:InformationalVersion=$VERSION"
-      [[ -f "$BUNDLE/RelaxKonOS.ServerModule.DatabaseObservation.dll" ]]
-      printf 'Databases module signing input: %s\n' "$BUNDLE"
-    )
-  fi
+  (
+    new_package database-module-publish
+    database_project="$PROJECT_ROOT/ServerModules/RelaxKonOS.ServerModule.DatabaseObservation"
+    dotnet publish "$database_project/RelaxKonOS.ServerModule.DatabaseObservation.csproj" \
+      --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained false \
+      --output "$BUNDLE" "-p:InformationalVersion=$VERSION"
+    [[ -f "$BUNDLE/RelaxKonOS.ServerModule.DatabaseObservation.dll" ]]
+    printf 'Databases module signing input: %s\n' "$BUNDLE"
+  )
   (
     source_assembly="$BUNDLE/payload/linux/server/Modules/ApplicationDeployments/RelaxKonOS.ServerModule.ApplicationDeployments.dll"
     new_package application-deployments-module-publish
     cp -- "$source_assembly" "$BUNDLE/"
     printf 'Application Deployments module signing input: %s\n' "$BUNDLE"
   )
-  if [[ $APPLICATION_DEPLOYMENTS == external-application-deployments ]]; then
-    python3 "$SCRIPT_DIRECTORY/externalize-application-deployments.py" "$BUNDLE/payload/linux/server"
+  if [[ -n $EXTERNAL_MODULES ]]; then
+    for module in "${external_modules[@]}"; do
+      if [[ $module != application-deployments && $module != database ]]; then (new_package "$module-module-publish"); fi
+    done
+    python3 "$SCRIPT_DIRECTORY/externalize-server-modules.py" "$BUNDLE/payload/linux/server" \
+      "$OUTPUT_DIRECTORY/RelaxKonOS-$VERSION-$RUNTIME" "$EXTERNAL_MODULES" "$RUNTIME"
   fi
   complete_package server '"server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","privilegedHelper":"payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper","launcher":"deployment/user/relaxkon"'
 fi

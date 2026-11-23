@@ -264,7 +264,13 @@ internal static class BrowserChecks
             navigated = null;
             model.NavigateCommand.ExecuteAsync(input).GetAwaiter().GetResult();
             Check(navigated is null && model.SelectedTab.Source == original, $"Invalid address is rejected without throwing or replacing the current tab: {input}");
-            Check(model.StatusText.ToString() == RelaxKonOS.Client.Localization.LocalizedText.Get("browser.status.invalid_address"), "Invalid address reports the localized status");
+            var expectedStatus = Language.CurrentLanguage.Split('-', 2)[0] switch
+            {
+                "zh" => "无效地址",
+                "ja" => "アドレスが無効です",
+                _ => "Invalid address",
+            };
+            Check(model.StatusText.ToString() == expectedStatus, "Invalid address reports the localized status");
         }
         Console.WriteLine("PASS: Browser malformed-address regression and URL/search normalization.");
     }

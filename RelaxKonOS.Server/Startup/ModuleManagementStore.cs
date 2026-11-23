@@ -128,6 +128,18 @@ internal sealed partial class ModuleManagementStore : IDisposable
                     : operation).ToList() };
             if (!Writable) _document = _document with { EnabledIds = configured, Policies = policies,
                 Revision = Hash(JsonSerializer.Serialize(new { configured, policies }, RelaxKonOSJsonOptions.Default)) };
+            if (recoverPackages && !RecoveryMode)
+            {
+                var selectedModules = Writable
+                    ? ServerModules.CreateManaged(_document.EnabledIds.ToHashSet(StringComparer.Ordinal), installedModules)
+                    : configuredModules;
+                if (selectedModules.FindMissingExecutionPackage() is { } missingModule)
+                {
+                    // No package execution started. Keep durable desired state and staged packages available for a retry.
+                    ModulePackageStartupGuard.Complete(contentRoot);
+                    throw new InvalidOperationException($"Enabled module {missingModule} requires a signed execution package.");
+                }
+            }
             _ = residency.WithPolicies(_document.Policies, configuredModules.KnownReleasableModuleIds);
             Save(_document);
             _fileHash = Hash(File.ReadAllText(_path));
@@ -138,12 +150,14 @@ internal sealed partial class ModuleManagementStore : IDisposable
     }
 
     internal IReadOnlyList<ServerModuleActionAdmission> Admissions(bool runtimeSupported = false, ServerModuleResidencyDto? residency = null, bool desiredEnabled = true, bool recoveryRequired = false,
-        bool moduleHost = false, bool hasDependents = false, bool independent = false, bool effectiveEnabled = false, bool removeHasDependents = false) =>
+        bool moduleHost = false, bool hasDependents = false, bool independent = false, bool effectiveEnabled = false,
+        bool removeHasDependents = false, bool awaitingExternalPackage = false) =>
         Enum.GetValues<ServerModuleAction>().Select(action =>
         {
             var reason = action switch
             {
                 _ when RecoveryMode && action != ServerModuleAction.Enable => "module-recovery-mode",
+                ServerModuleAction.Enable when awaitingExternalPackage => "module-package-install-required",
                 ServerModuleAction.Enable or ServerModuleAction.Disable => Writable ? null : "module-configuration-read-only",
                 ServerModuleAction.SetResidencyPolicy when !Writable => "module-configuration-read-only",
                 ServerModuleAction.SetResidencyPolicy => runtimeSupported ? null : "module-action-unsupported",
@@ -224,7 +238,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
     {
         List<ServerModuleBlocker> blockers = [];
         if (RecoveryMode && (request.Action != ServerModuleAction.Enable
-            || !request.EnabledModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(inventory.Select(module => module.Id))))
+            || !request.EnabledModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(inventory.Where(HasExecutionPackage).Select(module => module.Id))))
             blockers.Add(new("module-recovery-mode"));
         if (!Writable && !IsRuntimeAction(request.Action)) blockers.Add(new("module-configuration-read-only"));
         if (request.Action is not (ServerModuleAction.Enable or ServerModuleAction.Disable or ServerModuleAction.SetResidencyPolicy or ServerModuleAction.Remove) && !IsRuntimeAction(request.Action)) blockers.Add(new("module-action-unsupported"));
@@ -238,6 +252,9 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 if (!_document.Policies.ContainsKey(id)) blockers.Add(new("module-action-unsupported", id));
         }
         var desired = request.EnabledModuleIds.ToHashSet(StringComparer.Ordinal);
+        if (request.Action == ServerModuleAction.Enable)
+            blockers.AddRange(inventory.Where(module => desired.Contains(module.Id) && !HasExecutionPackage(module))
+                .Select(module => new ServerModuleBlocker("module-package-install-required", module.Id)));
         if (request.Action is ServerModuleAction.Disable or ServerModuleAction.Remove)
         {
             var affected = request.ModuleIds.ToHashSet(StringComparer.Ordinal);
@@ -258,7 +275,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 if (module?.EffectiveEnabled == true) blockers.Add(new("module-remove-restart-required", id));
                 if (module is { RecoveryState: not "none" } || module?.OrphanedWork.Count > 0)
                     blockers.Add(new("module-recovery-blocked", id));
-                if (inventory.Any(item => item.Id != id && item.Requires.Contains(id))
+                if (inventory.Any(item => item.Id != id && HasExecutionPackage(item) && item.Requires.Contains(id))
                     || installed.Any(item => item.ModuleId != id && item.Requires.Contains(id)))
                     blockers.Add(new("module-dependency-blocked", id));
             }
@@ -297,6 +314,8 @@ internal sealed partial class ModuleManagementStore : IDisposable
         }
         return blockers;
     }
+
+    internal static bool HasExecutionPackage(ServerModuleDto module) => module is not { Packaging: "independent", InstalledVersion: null };
 
     internal ServerModuleOperationDto Apply(string actor, Guid planId, IReadOnlyList<ServerModuleDto> inventory)
     {

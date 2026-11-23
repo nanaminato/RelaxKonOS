@@ -53,9 +53,10 @@ internal static class ModuleMaintenanceCommand
             var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
             var facts = await stopped.DescribeAsync(services, context, CancellationToken.None);
             // Offline work is unknown, never assumed absent. This command only enables the entire
-            // compiled set, so it cannot introduce a new deactivation or discard durable ownership.
-            facts = facts.Select(module => module with { OrphanedWork = ["module-offline-work-unknown"] }).ToArray();
-            var operation = RecoverAll(store, serviceId, revision, catalog.EnabledIds, facts,
+            // available set, so it cannot introduce a new deactivation or discard durable ownership.
+            var available = facts.Where(ModuleManagementStore.HasExecutionPackage).Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
+            facts = facts.Select(module => available.Contains(module.Id) ? module with { OrphanedWork = ["module-offline-work-unknown"] } : module).ToArray();
+            var operation = RecoverAll(store, serviceId, revision, catalog.EnabledIds.Where(available.Contains).ToHashSet(StringComparer.Ordinal), facts,
                 "local-recovery:" + localIdentity);
             Console.WriteLine(JsonSerializer.Serialize(operation, RelaxKonOSJsonOptions.Default));
             return 0;
@@ -73,7 +74,8 @@ internal static class ModuleMaintenanceCommand
         IReadOnlySet<string> catalogIds, IReadOnlyList<ServerModuleDto> offlineFacts, string actor)
     {
         var target = catalogIds.Order(StringComparer.Ordinal).ToArray();
-        if (!catalogIds.SetEquals(offlineFacts.Select(x => x.Id))) throw new ModuleManagementException("module-recovery-catalog-mismatch");
+        if (!catalogIds.SetEquals(offlineFacts.Where(ModuleManagementStore.HasExecutionPackage).Select(x => x.Id)))
+            throw new ModuleManagementException("module-recovery-catalog-mismatch");
         var plan = store.Preview(actor, new(serviceId, ServerModuleAction.Enable, target, target, revision,
             "local-recovery-" + revision), offlineFacts);
         return store.Apply(actor, plan.PlanId, offlineFacts);

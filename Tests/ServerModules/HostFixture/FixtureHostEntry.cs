@@ -134,6 +134,15 @@ public sealed class FixtureUnhealthyHostEntry : FixtureHostEntry
         ValueTask.FromResult(new ModuleHostHealth(false, "fixture-unhealthy"));
 }
 
+public sealed class FixtureUnhealthyDatabaseEntry : IModuleHostEntry, IModuleHostHealth
+{
+    public string Id => RelaxKonOS.ModuleHost.Protocol.DatabaseObservationProtocol.ModuleId;
+    public ValueTask StartAsync(IModuleHostContext context, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public ValueTask StopAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public ValueTask<ModuleHostHealth> CheckHealthAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ModuleHostHealth(false, "fixture-database-unhealthy"));
+}
+
 public class FixtureUnhealthyWebDavEntry : IModuleHostEntry, IModuleHostHealth
 {
     public virtual string Id => RelaxKonOS.ModuleHost.Protocol.CloudProviderProtocol.WebDavModuleId;

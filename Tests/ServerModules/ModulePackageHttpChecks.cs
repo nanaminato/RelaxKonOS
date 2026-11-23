@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.ModuleHost.Protocol;
+using DesktopDeployment = RelaxKonOS.Deployment;
 using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.Common;
@@ -29,6 +30,7 @@ using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.Tailscale;
+using RelaxKonOS.ServerModule.Database.Contracts;
 using RelaxKonOS.ServerModule.DatabaseObservation;
 
 internal static class ModulePackageHttpChecks
@@ -82,6 +84,10 @@ internal static class ModulePackageHttpChecks
             var databaseAssembly = Path.GetFileName(databaseEntry.Assembly.Location);
             Directory.CreateDirectory(databasePublish);
             File.Copy(databaseEntry.Assembly.Location, Path.Combine(databasePublish, databaseAssembly));
+            var databaseDependencies = Path.ChangeExtension(databaseAssembly, ".deps.json");
+            File.Copy(Path.Combine(AppContext.BaseDirectory, databaseDependencies), Path.Combine(databasePublish, databaseDependencies));
+            var protocol = typeof(RelaxKonOS.Protocol.Common.HostPlatformKind).Assembly.Location;
+            File.Copy(protocol, Path.Combine(databasePublish, Path.GetFileName(protocol)));
             var databaseOptions = packageOptions with
             {
                 PublishDirectory = databasePublish,
@@ -95,17 +101,41 @@ internal static class ModulePackageHttpChecks
                 Ui = new("Database Observation", "", "", null, "UNLICENSED"),
             };
             var database = isolated ? null : await ModulePackageBuilder.BuildAsync(databaseOptions, now);
+            ModulePackageBuildResult? incompleteDatabase = null;
             if (database is not null)
             {
+                var incompletePublish = Path.Combine(root, "database-incomplete-publish");
+                Directory.CreateDirectory(incompletePublish);
+                File.Copy(databaseEntry.Assembly.Location, Path.Combine(incompletePublish, databaseAssembly));
+                incompleteDatabase = await ModulePackageBuilder.BuildAsync(databaseOptions with
+                {
+                    PublishDirectory = incompletePublish,
+                    OutputDirectory = Path.Combine(root, "database-incomplete"),
+                    Version = "1.0.1",
+                    ReleaseId = "fixture-database-incomplete-" + rid,
+                }, now);
+                var incomplete = database.Manifest with
+                {
+                    Files = database.Manifest.Files.Where(file => !file.Path.EndsWith("/RelaxKonOS.Protocol.dll", StringComparison.Ordinal)).ToArray(),
+                };
+                try
+                {
+                    InstalledModuleInstaller.VerifyExecutionContract(databasePublish, incomplete);
+                    check(false, "Databases installation rejects a manifest missing runtime files before committing");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-database-runtime-files-missing")
+                {
+                    check(true, "Databases installation rejects a manifest missing runtime files before committing");
+                }
                 check(ModulePackageVerifier.SupportsHostApi(database.Manifest, "1.0.0")
-                    && !ModulePackageVerifier.SupportsHostApi(database.Manifest with { HostApiMinimum = "2.4.0" }, "1.0.0"),
-                    "database observation packages require a host API range starting at 2.5.0 or later");
+                    && !ModulePackageVerifier.SupportsHostApi(database.Manifest with { HostApiMinimum = "2.5.0" }, "1.0.0"),
+                    "database observation packages require a host API range starting at 2.6.0 or later");
                 var obsoleteOutput = Path.Combine(root, "obsolete-database");
                 try
                 {
                     await ModulePackageBuilder.BuildAsync(databaseOptions with
                     {
-                        HostApiMinimum = "2.4.0", OutputDirectory = obsoleteOutput,
+                        HostApiMinimum = "2.5.0", OutputDirectory = obsoleteOutput,
                     }, now);
                     check(false, "the builder rejects an obsolete database host API range");
                 }
@@ -272,7 +302,7 @@ internal static class ModulePackageHttpChecks
             }
             var envelope = dependent is null ? await File.ReadAllBytesAsync(built.CatalogPath)
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
-                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
+                    now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!), Release(incompleteDatabase!),
                         .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release),
                         .. docker.Select(Release), .. deployments.Select(Release), .. webServer.Select(Release), .. certificates.Select(Release), .. proxy.Select(Release), .. tunnels.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
@@ -332,6 +362,9 @@ internal static class ModulePackageHttpChecks
 
             await using var app = builder.Build();
             app.UseAuthentication(); app.UseAuthorization();
+            app.MapGet(ServerApiRoutes.Modules, async (HttpContext http, CancellationToken ct) => Results.Ok(
+                (await modules.DescribeAsync(http.RequestServices, http.RequestServices.GetRequiredService<ServerModuleContext>(), ct))
+                    .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User)))).RequireAuthorization();
             app.MapServerModuleManagementEndpoints();
             app.Urls.Add("http://127.0.0.1:0");
             await app.StartAsync();
@@ -341,9 +374,65 @@ internal static class ModulePackageHttpChecks
             {
                 var databaseOffers = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
                     ServerModuleManagementRoutes.ModuleStoreSearch + "?q=" + ServerModules.DatabaseId, RelaxKonOSJsonOptions.Default);
-                check(database.Manifest.Capabilities.Length == 0 && databaseOffers?.Items is
-                    [{ ModuleId: ServerModules.DatabaseId, Capabilities: [ServerCapabilities.Database], RidCompatible: true }],
+                var completeOffer = databaseOffers?.Items.Single(item => item.ReleaseId == database.Manifest.ReleaseId);
+                check(database.Manifest.Capabilities.Length == 0 && completeOffer is
+                    { ModuleId: ServerModules.DatabaseId, Capabilities: [ServerCapabilities.Database], RidCompatible: true, BlockedBy: [] },
                     "the accepted official database offer advertises the Core-owned database capability");
+                var incompleteOffer = databaseOffers?.Items.Single(item => item.ReleaseId == incompleteDatabase!.Manifest.ReleaseId);
+                check(incompleteOffer?.BlockedBy.Any(blocker => blocker.ProblemCode == InstalledModuleInstaller.MissingDatabaseRuntimeFiles) == true,
+                    "the store labels the incomplete signed Databases release as blocked");
+                var desktopSession = System.Reflection.DispatchProxy.Create<RelaxKonOS.Client.Services.Auth.IAuthSession, JointDeploymentAcceptance.SessionProxy>();
+                var desktopIdentity = (JointDeploymentAcceptance.SessionProxy)(object)desktopSession;
+                desktopIdentity.Url = client.BaseAddress!.AbsoluteUri;
+                desktopIdentity.ConnectionIdentity = serviceId;
+                var desktopClient = new RelaxKonOS.Client.Services.Modules.ServerModuleManagementClient(client, desktopSession);
+                var snapshot = await new RelaxKonOS.Client.Services.Modules.ModuleDeploymentCatalog(desktopClient).ReadAsync(default);
+                check(snapshot.Store.Values.Where(item => item.ModuleId == ServerModules.DatabaseId)
+                        .Select(item => item.ReleaseId).SequenceEqual([database.Manifest.ReleaseId])
+                    && snapshot.Releases.All(release => release.Package.Id != ServerModules.DatabaseId
+                        || release.Version != incompleteDatabase!.Manifest.Version),
+                    "desktop deployment accepts only the complete Databases release from the live store");
+                var databaseKey = new DesktopDeployment.DeploymentPackageKey(DesktopDeployment.DeploymentPackageKind.ServerModule, ServerModules.DatabaseId);
+                var desktopRelease = new DesktopDeployment.DeploymentRelease(new(DesktopDeployment.DeploymentPackageKind.Application, "fixture.database-desktop"),
+                    "1.0.0", "fixture-desktop", false,
+                    [new(databaseKey, database.Manifest.Version, Capability: ServerCapabilities.Database)],
+                    System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
+                var downloadableReleases = snapshot.Releases.Where(release => snapshot.Store.ContainsKey(release.ArtifactIdentity)).ToArray();
+                var deployment = DesktopDeployment.DeploymentResolver.Resolve(desktopRelease, downloadableReleases, []);
+                check(deployment.Succeeded && deployment.OrderedReleases is [var chosen, _]
+                    && chosen.Package == databaseKey && chosen.Version == database.Manifest.Version
+                    && chosen.ArtifactIdentity.EndsWith(database.ArchiveSha256, StringComparison.Ordinal),
+                    "the deployment resolver chooses the complete older Databases archive and its digest");
+                var needsNewer = desktopRelease with { Requires = [new(databaseKey, incompleteDatabase!.Manifest.Version, Capability: ServerCapabilities.Database)] };
+                var unavailable = DesktopDeployment.DeploymentResolver.Resolve(needsNewer, downloadableReleases, []);
+                check(!unavailable.Succeeded && unavailable.ProblemPackage == databaseKey,
+                    "the deployment resolver refuses a minimum version that only the incomplete package can meet");
+                try
+                {
+                    using var download = new PackageDownloadHandler(await File.ReadAllBytesAsync(incompleteDatabase!.ArchivePath));
+                    await ModulePackageDownloader.DownloadAsync(root, builder.Configuration, builder.Environment,
+                        "official", incompleteDatabase.Manifest.ReleaseId, now, download);
+                    check(false, "the downloader refuses the incomplete Databases release");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == InstalledModuleInstaller.MissingDatabaseRuntimeFiles)
+                {
+                    check(true, "the downloader refuses the incomplete Databases release");
+                }
+                using var incompleteUpload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
+                    new ByteArrayContent(await File.ReadAllBytesAsync(incompleteDatabase!.ArchivePath)));
+                incompleteUpload.EnsureSuccessStatusCode();
+                var staged = (await incompleteUpload.Content.ReadFromJsonAsync<ServerModulePackageUploadDto>(RelaxKonOSJsonOptions.Default))!;
+                using var rejectedPlan = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                    new ServerModulePackageInstallRequest("official", incompleteDatabase.Manifest.ReleaseId, staged.UploadId), RelaxKonOSJsonOptions.Default);
+                check(rejectedPlan.StatusCode == HttpStatusCode.Conflict
+                    && (await rejectedPlan.Content.ReadAsStringAsync()).Contains(InstalledModuleInstaller.MissingDatabaseRuntimeFiles, StringComparison.Ordinal),
+                    "the HTTP install preview refuses to freeze an incomplete Databases release");
+                using var rejectedAutoPlan = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageAutoPlan,
+                    new ServerModulePackageAutoPlanRequest(staged.UploadId), RelaxKonOSJsonOptions.Default);
+                check(rejectedAutoPlan.StatusCode == HttpStatusCode.Conflict
+                    && (await rejectedAutoPlan.Content.ReadAsStringAsync()).Contains(InstalledModuleInstaller.MissingDatabaseRuntimeFiles, StringComparison.Ordinal)
+                    && !File.Exists(Path.Combine(root, "data", "module-management", "package-plans.json")),
+                    "automatic preview reports the signed Databases runtime conflict without persisting a plan");
             }
 
             foreach (var query in new[] { "fixture-http", "FixtureHttp", " sample module " })
@@ -358,7 +447,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + deployments.Length + webServer.Length + certificates.Length + proxy.Length + tunnels.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 6 + tailscale.Length + firewall.Length + git.Length + docker.Length + deployments.Length + webServer.Length + certificates.Length + proxy.Length + tunnels.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -730,6 +819,8 @@ internal static class ModulePackageHttpChecks
                         "a fresh Core host validates restored Proxy overview, subscription and direct publication executors from the installed package");
                 await VerifyRestoredWebServerAsync(root, check);
                 var dockerHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                dockerHost.Services.Configure<DockerComposeOptions>(options =>
+                    options.DataDirectory = Path.Combine(root, "compose-acceptance"));
                 var mirrorOwner = Guid.NewGuid();
                 var mirrors = new InMemoryImageMirrorRepository();
                 var selectedMirror = mirrors.Create(new RelaxKonOS.Server.Domain.ImageMirror
@@ -786,6 +877,13 @@ internal static class ModulePackageHttpChecks
                         && pending.ArtifactDigest == database.ArchiveSha256 && pending.InstalledVersion == database.Manifest.Version
                         && pending.EffectiveVersion != pending.InstalledVersion,
                         "a first signed Databases install reports the pending replacement before Core restarts");
+                    var databaseHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                    var databaseContext = ServerModuleContext.Create(databaseHost.Configuration, databaseHost.Environment, "memory");
+                    var isolatedDatabase = InstalledModuleCatalog.Load(root).Single(module => module.Id == ServerModules.DatabaseId);
+                    isolatedDatabase.ConfigureServices(databaseHost, databaseContext);
+                    check(databaseHost.Services.Any(service => service.ServiceType == typeof(IPostgreSqlBackupScheduleHost))
+                        && databaseHost.Services.All(service => service.ServiceType != typeof(IDatabaseQueries)),
+                        "isolated Databases keeps the Core backup port without registering the bundled observation implementation");
                     var afterDatabase = await client.GetFromJsonAsync<ServerModuleHealthPageDto>(
                         ServerModuleManagementRoutes.ModuleHealth, RelaxKonOSJsonOptions.Default);
                     var runningDatabase = afterDatabase?.Modules.Single(module => module.ModuleId == ServerModules.DatabaseId);
@@ -990,7 +1088,8 @@ internal static class ModulePackageHttpChecks
             preview.EnsureSuccessStatusCode();
             var plan = (await preview.Content.ReadFromJsonAsync<ServerModulePackagePlanDto>(RelaxKonOSJsonOptions.Default))!;
             using var applied = await client.PostAsync(ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", plan.PlanId.ToString()), null);
-            applied.EnsureSuccessStatusCode();
+            if (!applied.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Applying {moduleId} {package.Manifest.Version} returned {(int)applied.StatusCode}: {await applied.Content.ReadAsStringAsync()}");
             var result = (await applied.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
             var receipt = await ReadReceiptAsync(result.OperationId);
             check(result.Record.ArtifactSha256 == package.ArchiveSha256 && receipt.Version == package.Manifest.Version

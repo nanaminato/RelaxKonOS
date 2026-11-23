@@ -1,6 +1,5 @@
 using System.Text.Json;
 using RelaxKonOS.ModulePackaging;
-using RelaxKonOS.Server.ApplicationDeployments;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -22,7 +21,7 @@ internal static class ModulePackageBuildCommand
 
     internal static async Task<int> SignCatalogAsync(string[] args)
     {
-        string[] required = ["--payload", "--policy", "--private-key", "--key-id", "--output"];
+        string[] required = ["--payload", "--policy", "--private-key", "--key-id", "--artifact-dir", "--output"];
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         try
         {
@@ -45,8 +44,22 @@ internal static class ModulePackageBuildCommand
             var signed = await ModulePackageBuilder.SignCatalogAsync(catalog, values["--key-id"], values["--private-key"]);
             var context = new ModulePackageContext("offline-release-validation", ModulePackagePlatform.CurrentRid,
                 ModulePackageHostConfiguration.HostApiVersion, false);
-            _ = ModulePackageVerifier.VerifyCatalog(signed.Envelope, policy, context,
+            var verified = ModulePackageVerifier.VerifyCatalog(signed.Envelope, policy, context,
                 ModulePackageTrustHistory.Empty(policy, context), DateTimeOffset.UtcNow);
+            var artifactDirectory = Path.GetFullPath(values["--artifact-dir"]);
+            var revokedIds = verified.NextHistory.RevokedReleaseIds.ToHashSet(StringComparer.Ordinal);
+            var revokedDigests = verified.NextHistory.RevokedDigests.ToHashSet(StringComparer.Ordinal);
+            foreach (var release in verified.Catalog.Releases)
+            {
+                if (revokedIds.Contains(release.Manifest.ReleaseId) || revokedDigests.Contains(release.ArchiveSha256))
+                    continue;
+                InstalledModuleInstaller.VerifyRequiredRuntimeFiles(release.Manifest);
+                var archivePath = Path.Combine(artifactDirectory, ModulePackageBuilder.GetArchiveFileName(release.Manifest));
+                if (!File.Exists(archivePath))
+                    throw new ModulePackageException("module-package-build-artifact-missing");
+                await using var archive = File.OpenRead(archivePath);
+                await ModulePackageVerifier.VerifyArchiveContentAsync(archive, release);
+            }
             await using var output = new FileStream(values["--output"], FileMode.CreateNew, FileAccess.Write, FileShare.None);
             await output.WriteAsync(signed.Envelope);
             return 0;
@@ -115,17 +128,7 @@ internal static class ModulePackageBuildCommand
             {
                 if (ServerModules.ConflictsWithBundledModule(manifest))
                     throw new ModulePackageException(ServerModules.PackageModuleIdConflict);
-                if (InstalledApplicationDeploymentsModule.MatchesManifest(manifest))
-                {
-                    try
-                    {
-                        ApplicationArchiveExecution.ValidateEntryPoint(Path.Combine(options.PublishDirectory, ApplicationArchiveExecution.AssemblyFile));
-                    }
-                    catch (InvalidDataException)
-                    {
-                        throw new ModulePackageException("module-package-execution-contract");
-                    }
-                }
+                InstalledModuleInstaller.VerifyExecutionEntry(Path.Combine(options.PublishDirectory, options.EntryAssembly), manifest);
             });
             Console.WriteLine(JsonSerializer.Serialize(new
             {

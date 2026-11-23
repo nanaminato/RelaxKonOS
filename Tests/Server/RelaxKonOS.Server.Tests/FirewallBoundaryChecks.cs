@@ -82,6 +82,14 @@ internal static class FirewallBoundaryChecks
             Check(transport.Calls == before && !(await port.ExecuteAsync(new(FirewallHostOperation.WindowsStatus, FirewallRuleNumber: 1), default)).Success
                 && transport.Calls == before, $"{platform}: unknown verbs and fields belonging to another operation never reach Core transport");
             await VerifyPendingBudgetAsync(fixture, Check);
+            if (platform == HostPlatformKind.Linux)
+            {
+                transport.Mode = Mode.Success;
+                before = transport.Calls;
+                var created = await service.CreateRuleAsync(new("allow", "in", "tcp", "127.0.0.1", "any", "43197"), default);
+                Check(created.Success && transport.Calls == before + 1,
+                    "Linux: a new rule has no existing rule numbers and reaches the Core Helper once");
+            }
         }
         WeakReference? failedCode = null;
         var failedActivation = Task.Run(() => new CollectibleFirewallExecution(null!, code => failedCode = code));

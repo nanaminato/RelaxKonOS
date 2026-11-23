@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Endpoints;
@@ -14,7 +15,30 @@ using RelaxKonOS.Server.Privileged;
 
 internal static class FileServicesLiveChecks
 {
-    internal static async Task RunAsync(string helper, string desktopRunner, string package)
+    internal static Task RunAsync(string helper, string desktopRunner, string package) =>
+        RunAsync(new OneShotHelper(Path.GetFullPath(helper)), desktopRunner, package);
+
+    internal static Task RunPipeAsync(string configPath, string desktopRunner, string package)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("This check uses Windows SMB.");
+        PrivilegedHelperOptions? options;
+        try
+        {
+            options = JsonSerializer.Deserialize<PrivilegedHelperOptions>(File.ReadAllText(configPath),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("The Helper pipe configuration is not valid JSON.");
+        }
+        if (options is null || string.IsNullOrWhiteSpace(options.PipeName)
+            || string.IsNullOrWhiteSpace(options.SharedSecret))
+            throw new InvalidOperationException("The Helper pipe configuration must specify a pipe and shared secret.");
+        return RunAsync(new WindowsNamedPipePrivilegedOperationTransport(options,
+            NullLogger<WindowsNamedPipePrivilegedOperationTransport>.Instance), desktopRunner, package);
+    }
+
+    private static async Task RunAsync(IPrivilegedOperationTransport transport, string desktopRunner, string package)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("This check uses Windows SMB.");
         var builder = WebApplication.CreateBuilder();
@@ -29,7 +53,7 @@ internal static class FileServicesLiveChecks
         builder.Services.AddSingleton<IServerModeResolver, ProgressTestMode>();
         builder.Services.AddSingleton<IHostElevationSessionStore>(_ => throw new NotSupportedException());
         builder.Services.AddSingleton<IFileServiceAudit>(_ => throw new NotSupportedException());
-        builder.Services.AddSingleton<IPrivilegedOperationTransport>(new ReadOnlyHelper(Path.GetFullPath(helper)));
+        builder.Services.AddSingleton<IPrivilegedOperationTransport>(new ReadOnlyHelper(transport));
         builder.Services.AddSingleton<IPrivilegedSmbOperations, PrivilegedSmbOperations>();
         builder.Services.AddSingleton<IWindowsSmbPlatformAdapter, WindowsSmbPlatformAdapter>();
         builder.Services.AddSingleton<IWindowsSmbOwnershipLedger, WindowsSmbOwnershipLedger>();
@@ -58,12 +82,20 @@ internal static class FileServicesLiveChecks
         if (desktop.ExitCode != 0) throw new InvalidOperationException($"Desktop test exited with code {desktop.ExitCode}.");
     }
 
-    private sealed class ReadOnlyHelper(string executable) : IPrivilegedOperationTransport
+    private sealed class ReadOnlyHelper(IPrivilegedOperationTransport transport) : IPrivilegedOperationTransport
     {
-        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
         {
             if (request.Operation is not (PrivilegedOperationKind.SmbDetect or PrivilegedOperationKind.SmbReadManagedConfiguration))
                 throw new InvalidOperationException("The live SMB check permits only read operations.");
+            return transport.ExecuteAsync(request, cancellationToken);
+        }
+    }
+
+    private sealed class OneShotHelper(string executable) : IPrivilegedOperationTransport
+    {
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
             var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true };
             using var helper = Process.Start(start) ?? throw new InvalidOperationException("Helper did not start.");
             try

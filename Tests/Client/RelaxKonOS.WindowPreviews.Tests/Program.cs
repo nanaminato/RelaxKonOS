@@ -13,6 +13,7 @@ using CommunityToolkit.Mvvm.Input;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.ServerCenter;
@@ -44,6 +45,35 @@ try
 {
 LanguageSwitchDiagnostics.Initialize(Path.Combine(AppContext.BaseDirectory, "preview-qa", "logs"));
 TaskbarPreviewDiagnostics.Initialize(Path.Combine(AppContext.BaseDirectory, "preview-qa", "logs"));
+if (args is ["--official-browser-native", var nativeArtifact, var nativeAddress])
+{
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native Browser acceptance requires Windows.");
+    var osArchitecture = RuntimeInformation.OSArchitecture;
+    var processArchitecture = RuntimeInformation.ProcessArchitecture;
+    if (osArchitecture != processArchitecture)
+        throw new PlatformNotSupportedException($"Native Browser acceptance requires a {osArchitecture} test runner. This process is {processArchitecture}.");
+    Console.WriteLine($"Native Browser acceptance on Windows {osArchitecture}, process {processArchitecture}.");
+    var result = new TaskCompletionSource();
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            AppBuilder.Configure<PreviewTestApp>().UsePlatformDetect().SetupWithoutStarting();
+            using var nativeAppearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
+            var nativeSettings = new ShellSettings(nativeAppearance);
+            var nativeLanguage = new LocalizationService(nativeSettings, new SshDesktopSession(null!, nativeSettings));
+            using var nativeServices = new ServiceCollection().AddSingleton(nativeLanguage).BuildServiceProvider();
+            typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, nativeServices);
+            OfficialRoappChecks.Run(nativeArtifact, nativeSettings, nativeLanguage, new Uri(nativeAddress));
+            result.SetResult();
+        }
+        catch (Exception error) { result.SetException(error); }
+    });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    result.Task.GetAwaiter().GetResult();
+    return;
+}
 AppBuilder.Configure<PreviewTestApp>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());

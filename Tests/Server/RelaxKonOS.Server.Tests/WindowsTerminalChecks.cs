@@ -15,7 +15,7 @@ internal static class WindowsTerminalChecks
         foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
             environment[(string)entry.Key] = (string)entry.Value!;
         var marker = "terminal_" + Guid.NewGuid().ToString("N");
-        using var pty = new ConPty();
+        using var pty = (ConPty)BundledTerminalPtyFactory.Create().Create();
         var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var output = new StringBuilder();
@@ -75,7 +75,7 @@ internal static class WindowsTerminalChecks
             services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(root, "keys")));
             services.AddSingleton<Microsoft.Extensions.Hosting.IHostEnvironment>(new TestHostEnvironment(root));
             services.AddSingleton<RelaxKonOS.Server.Settings.WorkspaceEnvironmentService>();
-            services.AddSingleton<IPtyFactory>(new PlatformPtyFactory(null!, null!, null!, null!, null!));
+            services.AddSingleton<IPtyFactory>(new PlatformPtyFactory(null!, null!, null!, null!, null!, null!));
             services.AddSingleton<TerminalSessionManager>();
             services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(new TerminalTestLeases());
             services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService>(new TestHostAccountPrivilegeService());

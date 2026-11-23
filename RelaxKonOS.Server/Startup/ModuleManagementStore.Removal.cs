@@ -27,7 +27,7 @@ internal sealed partial class ModuleManagementStore
         CheckRemovalPath(Path.GetDirectoryName(archive)!);
         var now = DateTimeOffset.UtcNow;
         var policies = new Dictionary<string, ServerModuleResidencyPolicyDto>(_document.Policies, StringComparer.Ordinal);
-        policies.Remove(target.ModuleId);
+        if (!ServerModules.HasBundledResidencyPolicy(target.ModuleId)) policies.Remove(target.ModuleId);
         var operation = new ServerModuleOperationDto(operationId, saved.Plan.PlanId, ServiceId,
             ServerModuleOperationState.Prepared, now, now, Guid.NewGuid().ToString("N"), _document.EnabledIds);
         Commit(_document with

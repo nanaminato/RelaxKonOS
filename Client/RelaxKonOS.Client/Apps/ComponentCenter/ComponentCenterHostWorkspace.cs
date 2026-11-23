@@ -1,4 +1,6 @@
 using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Client.Services.AppPackages;
+using RelaxKonOS.Client.Apps.AppInstaller;
 using RelaxKonOS.Client.Apps.WebServers;
 using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
@@ -136,8 +138,7 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
             throw;
         }
         _model = model;
-        if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService))
-                is RelaxKonOS.Client.Services.AppPackages.AppPackageInstallerService desktopInstaller
+        if (context.Services.GetService<AppPackageInstallerService>() is { } desktopInstaller
             && desktopPackages is not null)
         {
             model.DesktopInstalledVersion = id => desktopPackages.FindInstalled(id)?.Version;
@@ -146,13 +147,13 @@ public sealed class ComponentCenterHostWorkspace(IServiceProvider services) : IC
                 var plan = await new RoappComponentInstallerProvider(desktopInstaller).PlanAsync(
                     ComponentCatalog.SourceFor(id), id);
                 using var review = new RelaxKonOS.Client.Apps.AppInstaller.ViewModels.AppInstallerViewModel(desktopInstaller)
-                    { AllowPackageSelection = false };
-                review.QueueCatalogPlan(plan);
-                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("app_installer.title"), dialog =>
                 {
-                    dialog.CanCancelAsync = () => Task.FromResult(!review.IsBusy);
-                    return new RelaxKonOS.Client.Apps.AppInstaller.Views.AppInstallerView { DataContext = review };
-                }, new Size(720, 650));
+                    AllowPackageSelection = false,
+                    JointDeployment = context.Services.GetService<JointAppDeploymentService>(),
+                };
+                await review.QueueCatalogPlanAsync(plan);
+                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("app_installer.title"),
+                    dialog => AppInstallerApp.CreateCatalogReview(dialog, review), new Size(720, 650));
                 model.RefreshDesktopPackages();
             };
             model.RefreshDesktopPackages();

@@ -48,9 +48,9 @@ def request_close(window):
         x11.XCloseDisplay(display)
 
 
-def find_window(process, titles=("RelaxKonOS",)):
+def find_window(process, titles=("RelaxKonOS",), *, timeout=40):
     title_pattern = "|".join(re.escape(title) for title in titles)
-    deadline = time.monotonic() + 40
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError(f"Desktop exited before opening a window (status {process.returncode}).")
@@ -75,10 +75,13 @@ def main():
     parser.add_argument("publish_directory", type=Path)
     parser.add_argument("--dotnet", default="dotnet")
     parser.add_argument("--apphost", action="store_true", help="Run the published RelaxKonOS executable directly.")
+    parser.add_argument("--startup-timeout", type=int, default=40, help="Seconds to wait for each window.")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--profile", choices=["minimal", "standard", "developer"])
     selection.add_argument("--first-run", action="store_true", help="Dismiss the initial app selection and verify Minimal.")
     args = parser.parse_args()
+    if args.startup_timeout <= 0:
+        parser.error("--startup-timeout must be positive")
     publish = args.publish_directory.resolve(strict=True)
     entry = publish / ("RelaxKonOS" if args.apphost else "RelaxKonOS.dll")
     command = [str(entry.resolve(strict=True))]
@@ -102,9 +105,10 @@ def main():
                                        cwd=publish, env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
                 if args.first_run:
-                    dialog = find_window(process, ("Choose desktop apps", "选择桌面应用", "デスクトップアプリの選択"))
+                    dialog = find_window(process, ("Choose desktop apps", "选择桌面应用", "デスクトップアプリの選択"),
+                                         timeout=args.startup_timeout)
                     request_close(dialog)
-                window = find_window(process)
+                window = find_window(process, timeout=args.startup_timeout)
                 drive = home / "data" / "RelaxKonOS" / "SystemDrive"
                 if not (drive / "System").is_dir():
                     raise RuntimeError("Desktop did not initialize the system drive under the isolated data directory.")

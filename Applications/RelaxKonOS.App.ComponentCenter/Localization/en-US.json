@@ -833,6 +833,7 @@
     "server_modules.action.remove_single": "Select one module to uninstall.",
     "server_modules.plan.remove_data": "This uninstalls the module package, not just disabling it or releasing memory. Business data, cloud account settings and remote files are retained. Dependent modules or active work may block uninstall.",
     "server_modules.problem.module_bundled_not_removable": "Bundled modules cannot be uninstalled independently.",
+    "server_modules.problem.module_package_install_required": "Install the signed package before enabling this module.",
     "server_modules.problem.module_remove_disable_first": "Disable the module before uninstalling it.",
     "server_modules.problem.module_remove_restart_required": "Restart the server to finish disabling this module before uninstalling it.",
     "server_modules.problem.module_remove_recovery_required": "Module removal needs recovery before another change can proceed.",

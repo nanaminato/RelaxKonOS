@@ -16,8 +16,11 @@ using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
+using RelaxKonOS.Protocol.Hubs;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.AppPermissions;
@@ -25,6 +28,8 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.DesktopRestore;
+using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 using RelaxKonOS.Client.Apps.ComponentCenter;
@@ -295,6 +300,8 @@ internal static class JointDeploymentAcceptance
     {
         var serverRoot = Path.Combine(root, "server");
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
+        builder.Services.Configure<DockerComposeOptions>(options =>
+            options.DataDirectory = Path.Combine(root, "compose-acceptance"));
         builder.Services.AddSingleton<IImageMirrorRepository, InMemoryImageMirrorRepository>();
         builder.Services.AddSingleton<IPrivilegedOperationTransport, DisabledPrivilegedOperationTransport>();
         builder.Services.AddSingleton<DockerStackOperationStore>();
@@ -1047,7 +1054,9 @@ internal static class JointDeploymentAcceptance
                 var reactivationCandidate = await installer.InspectLocalAsync(candidate.LocalPath);
                 var reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
                 var activate = reactivation.Plan.OrderedReleases.Single(item => item.Package.Id == moduleId);
+                var activatedPackage = InstalledModuleStore.Read(serverRoot).Single(item => item.ModuleId == moduleId);
                 Require(reactivation.Plan.PreparedSteps.IsEmpty && activate.ActivationOnly
+                    && activate.ArtifactIdentity == $"{activatedPackage.SourceId}/{activatedPackage.ReleaseId}/{activatedPackage.ArtifactSha256}"
                     && activate.Requires.Select(requirement => new ModulePackageDependency(requirement.Package.Id,
                         requirement.MinimumVersion!, requirement.MaximumVersionExclusive!)).SequenceEqual(dependencies),
                     "reactivating the disabled signed module preserves installed dependency ranges without downloading an archive");
@@ -1092,6 +1101,18 @@ internal static class JointDeploymentAcceptance
                 Require(await joint.FindPendingAsync(reactivationCandidate, default) is null
                     && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
                     "changing the installed archive after checkpoint creation requires review before enable");
+                reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
+                factory.SubstituteActivationReleaseAfterSnapshot(moduleId);
+                try
+                {
+                    await joint.ExecuteAsync(reactivation, default);
+                    throw new InvalidOperationException("Expected the changed release ID to require review before enabling.");
+                }
+                catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
+                finally { factory.SubstituteActivationReleaseAfterSnapshot(null); }
+                Require(await joint.FindPendingAsync(reactivationCandidate, default) is null
+                    && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
+                    "changing only the installed release ID after checkpoint creation requires review before enable");
                 reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
                 factory.SubstituteEnabledReceipt = true;
                 var appliesBefore = factory.SubmittedEnableApplies;
@@ -1352,11 +1373,13 @@ internal static class JointDeploymentAcceptance
     public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
         RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, ServerModules.DatabaseId));
 
-    public static void RunLiveApplicationDeployments(string server, string archive, string state, string phase) =>
-        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, ServerModules.ApplicationDeploymentsId));
+    public static void RunLiveExternalModule(string server, string archive, string state, string phase, string moduleId,
+        bool installCertificates = false) =>
+        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, moduleId,
+            installCertificates: installCertificates));
 
-    public static void RunLiveGit(string server, string archive, string state, string repository) =>
-        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), "reuse",
+    public static void RunLiveGit(string server, string archive, string state, string phase, string repository) =>
+        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase,
             ServerModules.GitId, repository));
 
     private static void RunWithDispatcher(Func<Task> run)
@@ -1374,11 +1397,21 @@ internal static class JointDeploymentAcceptance
     }
 
     private static async Task RunLiveAsync(Uri server, string archive, string state, string phase, string moduleId,
-        string? repository = null)
+        string? repository = null, bool installCertificates = false)
     {
+        var externalLayout = moduleId is ServerModules.ApplicationDeploymentsId or ServerModules.GitId or ServerModules.DockerId
+            or ServerModules.CertificatesId or ServerModules.WebServerId or ServerModules.ProxyId or ServerModules.FirewallId
+            or RelaxKonOS.Server.Startup.Modules.TailscaleModule.ModuleId or RelaxKonOS.Server.Startup.Modules.TunnelsModule.ModuleId;
+        var appId = moduleId switch
+        {
+            ServerModules.WebServerId => "relaxkonos.webservers",
+            ServerModules.SystemPerformanceId => "relaxkonos.taskmanager",
+            _ => moduleId,
+        };
         if (server.Scheme != "http" || server.Host != "127.0.0.1" || server.PathAndQuery != "/"
-            || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "enable" or "resume" or "reuse" or "uninstall"))
-            throw new ArgumentException("Expected a loopback Server and a start, enable, resume, reuse or uninstall phase.");
+            || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "enable" or "resume" or "reuse" or "uninstall" or "remove")
+            || phase == "remove" && !externalLayout)
+            throw new ArgumentException("Expected a loopback Server and a supported acceptance phase.");
         var username = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_USER");
         var password = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_PASSWORD");
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
@@ -1399,21 +1432,65 @@ internal static class JointDeploymentAcceptance
         var drive = new VirtualSystemDrive(Path.Combine(state, "drive"));
         var permissions = DispatchProxy.Create<IAppPermissionManager, PermissionProxy>();
         var factory = new LiveHttpFactory(moduleHttp);
-        var packages = new DeveloperPackageManager(applications, null!, windows, permissions, new Diagnostics(), drive,
+        var devicePreferences = new DesktopDevicePreferences(Path.Combine(state, "terminal-device.json"));
+        ExternalAppContextFactory? appContext = null;
+        ServiceProvider? fixtureLocalization = null;
+        if (moduleId == ServerModules.TerminalId)
+        {
+            windows.Attach(new Avalonia.Controls.Canvas { Width = 1000, Height = 720 });
+            devicePreferences.Update(current => current with { TerminalVtEngine = "Native" });
+            var settings = new ShellSettings(null!);
+            var ssh = new SshDesktopSession(null!, settings);
+            var localization = new LocalizationService(settings, ssh);
+            fixtureLocalization = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
+            typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, fixtureLocalization);
+            appContext = new ExternalAppContextFactory(permissions, null!, localization,
+                settings, null!, auth, null!, windows, null!, null!, ssh, null!, new SettingsNavigationService(applications),
+                null!, null!, applications, new UsageMemoryStore(Path.Combine(state, "usage-memory.json")), null!,
+                null!, null!, null!, devicePreferences: devicePreferences);
+        }
+        using var fixtureLocalizationLifetime = fixtureLocalization;
+        var packages = new DeveloperPackageManager(applications, appContext!, windows, permissions, new Diagnostics(), drive,
             Path.GetDirectoryName(archive)!, moduleHttp: factory, moduleSession: auth);
         await packages.LoadInstalledAsync();
+        var moduleClient = new ServerModuleManagementClient(moduleHttp, auth);
+        if (phase == "remove")
+        {
+            var inventory = await moduleClient.ReadAsync();
+            var stopped = inventory.Single(item => item.Id == moduleId);
+            Require(stopped is { Packaging: "independent", InstalledVersion: not null, EffectiveEnabled: false, DesiredEnabled: false },
+                "the signed module has stopped before online removal");
+            var removal = await moduleClient.PreviewAsync(new(stopped.ServiceId!, ServerModuleAction.Remove, [moduleId],
+                [.. inventory.Where(item => item.DesiredEnabled).Select(item => item.Id)], stopped.DesiredRevision!, $"remove-signed-module-{moduleId}"));
+            Require(removal.BlockedBy.Count == 0 && !removal.RestartRequired, "removing the stopped package requires no restart");
+            Require((await moduleClient.ApplyAsync(removal.PlanId)).State == ServerModuleOperationState.Succeeded,
+                "the real server removes the signed execution package online");
+            var absent = (await moduleClient.ReadAsync()).Single(item => item.Id == moduleId);
+            Require(absent is { Packaging: "independent", InstalledVersion: null, EffectiveEnabled: false, DesiredEnabled: false }
+                && absent.AllowedActions?.Single(action => action.Action == ServerModuleAction.Enable) is { Allowed: false },
+                "the external module returns to its uninstalled state after removal");
+            return;
+        }
         if (phase == "uninstall")
         {
-            Require(await packages.UninstallAsync(moduleId) && !applications.IsRegistered(new AppId(moduleId)),
+            Require(await packages.UninstallAsync(appId) && !applications.IsRegistered(new AppId(appId)),
                 $"the desktop uninstalls its own {moduleId} application");
+            if (externalLayout)
+            {
+                var disable = await PreviewDisableAsync($"disable-after-desktop-uninstall-{moduleId}");
+                Require(disable.BlockedBy.Count == 0 && disable.RestartRequired,
+                    "uninstalling the desktop app releases the managed disable blocker");
+                Require((await moduleClient.ApplyAsync(disable.PlanId)).State == ServerModuleOperationState.AwaitingRestart,
+                    "the Core persists the disabled state for the next restart");
+            }
             return;
         }
         var installer = new AppPackageInstallerService(packages, null!, trust);
         var deployment = new JointAppDeploymentService(factory, auth, installer, packages,
             applications, new FileDeploymentJournal(Path.Combine(state, "journal")));
         var candidate = await installer.InspectLocalAsync(archive);
-        Require(candidate.Manifest.Id == moduleId, $"the fixture uses the {moduleId} desktop package");
-        if (moduleId == ServerModules.GitId)
+        Require(candidate.Manifest.Id == appId, $"the fixture uses the {moduleId} desktop package");
+        if (moduleId == ServerModules.GitId && phase == "reuse")
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(repository);
             var review = await deployment.PrepareAsync(candidate, [], default);
@@ -1422,8 +1499,15 @@ internal static class JointDeploymentAcceptance
                     && release.Satisfied && release.Capabilities.GetValueOrDefault(ServerCapabilities.Git) == RelaxKonOS.Protocol.Git.GitApiRoutes.CapabilityContractVersion),
                 "Project Editor reuses the running Git module with its declared contract version");
             var installedGit = await deployment.ExecuteAsync(review, default);
-            Require(installedGit.Id == moduleId && applications.IsRegistered(new AppId(moduleId)),
+            Require(installedGit.Id == moduleId && applications.IsRegistered(new AppId(appId)),
                 "the desktop registers Project Editor after checking the live Git module");
+            await VerifyGitRepositoryAsync();
+            return;
+        }
+
+        async Task VerifyGitRepositoryAsync()
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(repository);
             var git = new RelaxKonOS.Client.Apps.Git.RemoteGitClient(loginHttp, auth);
             var registered = await git.RegisterRepositoryAsync(new("Joint deployment fixture", repository));
             const string remoteName = "fixture-acceptance";
@@ -1448,15 +1532,47 @@ internal static class JointDeploymentAcceptance
                 Remote: remoteName, RemoteBranch: "fixture-verified"));
             Require(push is { Success: true, Operation: "push", RequiresCredentials: false },
                 "the desktop Git client pushes the selected branch to the isolated bare repository");
+        }
+        if (moduleId == ServerModules.TerminalId && phase is "start" or "enable" or "resume")
+        {
+            await VerifyTerminalCatalogReviewAsync(windows, installer, deployment, candidate, phase);
+            Require(applications.IsRegistered(new AppId(appId)) == (phase == "resume"),
+                "the catalog review registers Terminal only after the signed module is running");
+            if (phase == "resume")
+                await VerifyTerminalSessionRecoveryAsync(server, auth,
+                    new TerminalDesktopRestoreParticipant(packages, applications, devicePreferences), windows);
             return;
         }
         if (phase == "start")
         {
-            var review = await deployment.PrepareAsync(candidate, [], default);
-            Require(review.Plan.PreparedSteps is [{ Package.Id: var preparedModule }] && preparedModule == moduleId,
-                $"the desktop prepares a signed {moduleId} server package before installation");
+            if (externalLayout)
+            {
+                var inventory = await moduleClient.ReadAsync();
+                var missing = inventory.Single(module => module.Id == moduleId);
+                Require(missing is { Packaging: "independent", InstalledVersion: null, DesiredEnabled: false }
+                    && missing.AllowedActions?.Single(action => action.Action == ServerModuleAction.Enable) is { Allowed: false },
+                    "the external Core inventory shows an uninstalled module and blocks premature enable");
+                var enable = new ServerModulePlanRequest(missing.ServiceId!, ServerModuleAction.Enable, [moduleId],
+                    [.. inventory.Where(module => module.DesiredEnabled).Select(module => module.Id), moduleId],
+                    missing.DesiredRevision!, $"enable-before-signed-install-{moduleId}");
+                var blocked = await moduleClient.PreviewAsync(enable);
+                Require(blocked.BlockedBy.Any(blocker => blocker.ModuleId == moduleId && blocker.ProblemCode == "module-package-install-required"),
+                    "the real managed enable plan requires the signed execution package");
+            }
+            var optionalModule = moduleId is ServerModules.SystemPerformanceId or ServerModules.TerminalId;
+            var optional = optionalModule ? candidate.Manifest.Dependencies?.Optional ?? [] : [];
+            if (optionalModule)
+                Require(optional is [var requirement] && requirement.Package.Id == moduleId,
+                    $"the official {appId} package offers {moduleId} as an optional dependency");
+            var review = await deployment.PrepareAsync(candidate, optional, default);
+            string[] expected = installCertificates ? [ServerModules.CertificatesId, moduleId] : [moduleId];
+            Require(review.Plan.PreparedSteps.Select(step => step.Package.Id).SequenceEqual(expected),
+                "the desktop prepares signed packages in dependency order before installation");
+            if (moduleId == ServerModules.WebServerId && !installCertificates)
+                Require(review.Plan.OrderedReleases.Any(release => release.Package.Id == ServerModules.CertificatesId && release.Satisfied),
+                    "Web Server Manager reuses the running Certificates dependency before downloading WebServer");
             await ExpectRestartAsync(deployment, review);
-            Require(!applications.IsRegistered(new AppId(moduleId)),
+            Require(!applications.IsRegistered(new AppId(appId)),
                 $"the desktop waits for the server module before registering {moduleId}");
             return;
         }
@@ -1466,7 +1582,7 @@ internal static class JointDeploymentAcceptance
         if (phase == "enable")
         {
             await ExpectRestartAsync(deployment, resumed);
-            Require(!applications.IsRegistered(new AppId(moduleId)), "the desktop waits for the managed enable to take effect");
+            Require(!applications.IsRegistered(new AppId(appId)), "the desktop waits for the managed enable to take effect");
             return;
         }
         if (phase == "reuse")
@@ -1477,20 +1593,236 @@ internal static class JointDeploymentAcceptance
                 $"the desktop reuses the running signed {moduleId} module");
         var installed = await deployment.ExecuteAsync(resumed, default);
         var manifest = applications.GetManifest(new AppId(installed.Id));
-        Require(installed.Id == moduleId && manifest is not null,
+        Require(installed.Id == appId && manifest is not null,
             $"the desktop plan registers {moduleId} after verifying the running module");
-        if (moduleId != ServerModules.DatabaseId) return;
+        if (moduleId == ServerModules.GitId)
+            await VerifyGitRepositoryAsync();
+        if (moduleId is ServerModules.CertificatesId or ServerModules.WebServerId)
+        {
+            var route = moduleId == ServerModules.CertificatesId
+                ? CertificateApiRoutes.Certificates : RelaxKonOS.Protocol.WebServers.WebServerApiRoutes.WebServers;
+            using var collection = await moduleHttp.GetAsync(new Uri(server, route));
+            collection.EnsureSuccessStatusCode();
+            using var payload = JsonDocument.Parse(await collection.Content.ReadAsStringAsync());
+            Require(payload.RootElement.ValueKind == JsonValueKind.Array,
+                "the authenticated production collection API returns the module's business data");
+        }
+        if (installCertificates)
+        {
+            var inventory = await moduleClient.ReadAsync();
+            var certificates = inventory.Single(module => module.Id == ServerModules.CertificatesId);
+            Require(certificates is { Packaging: "independent", EffectiveEnabled: true, EffectiveVersion: not null }
+                && certificates.RequiredBy.Contains(moduleId),
+                "the same plan activates the signed Certificates dependency before WebServer");
+        }
+        if (moduleId == ServerModules.SystemPerformanceId)
+        {
+            using var snapshot = await moduleHttp.GetAsync(new Uri(server, RelaxKonOS.Protocol.SystemMonitor.SystemMonitorApiRoutes.PerformanceSnapshot));
+            snapshot.EnsureSuccessStatusCode();
+            using var content = JsonDocument.Parse(await snapshot.Content.ReadAsStringAsync());
+            Require(content.RootElement.GetProperty("memory").GetProperty("totalBytes").GetInt64() > 0,
+                "the running signed module reports native physical memory");
+            return;
+        }
+        if (moduleId == ServerModules.TerminalId)
+        {
+            var participant = new TerminalDesktopRestoreParticipant(packages, applications, devicePreferences);
+            await VerifyTerminalSessionRecoveryAsync(server, auth, participant, windows);
+            return;
+        }
+        if (externalLayout)
+        {
+            var disable = await PreviewDisableAsync($"disable-while-desktop-installed-{moduleId}");
+            Require(disable.BlockedBy.Any(blocker => blocker.ModuleId == moduleId
+                && blocker.ProblemCode == "module-desktop-dependency-blocked"),
+                "the installed desktop app blocks disabling its live server module");
+            return;
+        }
         using var readinessServices = new ServiceCollection().AddSingleton(packages).AddSingleton(applications)
             .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
             .AddSingleton<IHttpClientFactory>(new LiveHttpFactory(moduleHttp)).BuildServiceProvider();
         using var readiness = new ApplicationAvailabilityService(auth, readinessServices, null!);
         Require(await readiness.RefreshAsync(manifest!) is { State: ComponentAvailabilityKind.NoPermission, PackageKind: null },
             "launch readiness accepts the signed module and reaches the separate component permission check");
+
+        async Task<ServerModulePlanDto> PreviewDisableAsync(string key)
+        {
+            var inventory = await moduleClient.ReadAsync();
+            var module = inventory.Single(item => item.Id == moduleId);
+            return await moduleClient.PreviewAsync(new(module.ServiceId!, ServerModuleAction.Disable, [moduleId],
+                [.. inventory.Where(item => item.DesiredEnabled && item.Id != moduleId).Select(item => item.Id)],
+                module.DesiredRevision!, key));
+        }
     }
 
     private sealed class LiveHttpFactory(HttpClient http) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => http;
+    }
+
+    private static async Task VerifyTerminalCatalogReviewAsync(RelaxKonOS.WindowManager.WindowManager windows,
+        AppPackageInstallerService installer, JointAppDeploymentService deployment, AppPackageCandidate candidate, string phase)
+    {
+        using var review = new AppInstallerViewModel(installer)
+        {
+            AllowPackageSelection = false,
+            JointDeployment = deployment,
+            CurrentPackage = candidate,
+        };
+        var owner = windows.Create(new RelaxKonOS.WindowManager.WindowCreateOptions(new("fixture.component-center"),
+            "Component catalog", new Avalonia.Controls.TextBlock(), new RelaxKonOS.Core.Primitives.Rect(0, 0, 800, 600)));
+        RelaxKonOS.WindowManager.ModalDialog<bool>? catalog = null;
+        var opened = windows.ShowDialogAsync<bool>(owner, "Catalog package", dialog =>
+            RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp.CreateCatalogReview(catalog = dialog, review));
+        try
+        {
+            var install = review.InstallCommand.ExecuteAsync(null);
+            if (phase == "start")
+            {
+                var optional = await WaitForChildAsync("app_installer.deployment.optional");
+                var choices = Controls<Avalonia.Controls.ItemsControl>(optional).Single().ItemsSource!.Cast<Avalonia.Controls.CheckBox>().ToArray();
+                Require(choices is [{ IsChecked: true }] && Equals(choices[0].Content, ServerModules.TerminalId),
+                    "the catalog installer defaults to the signed Terminal module");
+                Click(optional, "common.ok");
+            }
+            Click(await WaitForChildAsync("app_installer.deployment.review"), "common.install");
+            if (phase != "resume")
+            {
+                var message = await WaitForChildAsync("app_installer.error.install_title");
+                Require(review.Status.Resolve().Contains(LocalizedText.Get("app_installer.deployment.restart_pending"), StringComparison.Ordinal),
+                    "the installer announces the pending Core restart");
+                Click(message, "common.ok");
+            }
+            await install.WaitAsync(TimeSpan.FromSeconds(35));
+        }
+        finally
+        {
+            catalog!.Close(true);
+            await opened;
+            windows.ForceClose(owner);
+        }
+
+        async Task<Avalonia.Controls.Control> WaitForChildAsync(string key)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(35);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (windows.Windows.SingleOrDefault(window => window.Title == LocalizedText.Get(key))
+                        ?.View.Content is Avalonia.Controls.Control content)
+                    return content;
+                await Task.Delay(50);
+            }
+            throw new InvalidOperationException($"The catalog installer did not open {key}. Status: {review.Status.Resolve()}");
+        }
+
+        static IEnumerable<T> Controls<T>(Avalonia.Controls.Control view) =>
+            Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(view).OfType<T>();
+
+        static void Click(Avalonia.Controls.Control view, string key) =>
+            Controls<Avalonia.Controls.Button>(view).Single(button => Equals(button.Content, LocalizedText.Get(key)))
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+    }
+
+    private static async Task VerifyTerminalSessionRecoveryAsync(Uri server, IAuthSession auth,
+        TerminalDesktopRestoreParticipant participant, RelaxKonOS.WindowManager.IWindowManager windows)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        var cancellation = timeout.Token;
+        HubConnection Connect() => new HubConnectionBuilder()
+            .WithUrl(new Uri(server, "/hubs/terminals"), options =>
+                options.AccessTokenProvider = () => auth.GetAccessTokenAsync(TimeSpan.FromSeconds(30), ct: cancellation))
+            .Build();
+
+        var nonce = Guid.NewGuid().ToString("N");
+        var marker = "rk_recovery_" + nonce;
+        string sessionId;
+        await using (var first = Connect())
+        {
+            var output = ObserveTerminalMarker(first, marker);
+            await first.StartAsync(cancellation);
+            var started = await first.InvokeAsync<AttachTerminalResponse>("Start",
+                new StartTerminalRequest(80, 24, 0, 0, null, null), null, cancellation);
+            Require(started.Created && !string.IsNullOrWhiteSpace(started.SessionId), "the signed module creates a real PTY session");
+            sessionId = started.SessionId;
+            byte[] input = Encoding.UTF8.GetBytes($"printf '%s%s\\n' rk_recovery_ {nonce}\n");
+            await first.InvokeAsync("Input", input, cancellation);
+            await output.WaitAsync(cancellation);
+        }
+
+        var desktop = new DesktopRestoreContext(Guid.NewGuid(), auth);
+        await participant.RestoreAsync(desktop, cancellation);
+        Require(windows.Windows is [{ Info.OwnerAppId.Value: "relaxkonos.terminal" }],
+            "the installed Terminal package opens a window for the real disconnected session");
+        await participant.RestoreAsync(desktop, cancellation);
+        Require(windows.Windows.Count == 1, "repeated desktop restore does not duplicate the Terminal window");
+
+        await using var resumed = Connect();
+        var replay = ObserveTerminalMarker(resumed, marker);
+        await resumed.StartAsync(cancellation);
+        var sessions = await resumed.InvokeAsync<List<TerminalSessionInfo>>("ListSessions", cancellation);
+        Require(sessions.Any(session => session.SessionId == sessionId && !session.HasExited),
+            "disconnect preserves the same live PTY session");
+        var attached = await resumed.InvokeAsync<AttachTerminalResponse>("AttachExisting", sessionId, cancellation);
+        Require(attached.SessionId == sessionId && !attached.Created, "the second connection attaches to the original PTY");
+        await replay.WaitAsync(cancellation);
+        await resumed.StopAsync(cancellation);
+
+        var restored = windows.Windows.Single();
+        var workspace = (Avalonia.Controls.Control)restored.View.Content!;
+        restored.View.Content = null;
+        var host = new Avalonia.Controls.Window { Width = 900, Height = 600, Content = workspace };
+        host.Styles.Add(new Avalonia.Themes.Fluent.FluentTheme());
+        host.Show();
+        try
+        {
+            var view = workspace.GetVisualDescendants().OfType<Avalonia.Controls.UserControl>()
+                .Single(control => control.GetType().FullName == "RelaxKonOS.App.Terminal.TerminalView");
+            var model = view.DataContext!;
+            var surfaceProperty = model.GetType().GetProperty("Surface")!;
+            try
+            {
+                while (surfaceProperty.GetValue(model) is not BuiltInTerminalSurface { Control.Screen: not null })
+                    await Task.Delay(50, cancellation);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                var status = model.GetType().GetProperty("StatusText")?.GetValue(model);
+                throw new InvalidOperationException($"The restored terminal view did not start its native screen. Status: {status}");
+            }
+            Require(surfaceProperty.GetValue(model) is BuiltInTerminalSurface
+                { Control.VtProcessorPreference: RoyalTerminal.Terminal.VtProcessorPreference.Native },
+                "the restored view mounts a native terminal screen");
+            await using var cleanup = Connect();
+            await cleanup.StartAsync(cancellation);
+            var live = await cleanup.InvokeAsync<List<TerminalSessionInfo>>("ListSessions", cancellation);
+            Require(live is [{ HasExited: false }] && live[0].SessionId == sessionId,
+                "the loaded workspace reuses the original PTY without starting another");
+            host.Content = null;
+            while ((await cleanup.InvokeAsync<List<TerminalSessionInfo>>("ListSessions", cancellation)).Count != 0)
+                await Task.Delay(50, cancellation);
+            Console.WriteLine("PASS: unloading the installed Terminal view closes its original PTY");
+        }
+        finally
+        {
+            host.Close();
+            windows.ForceClose(restored);
+        }
+    }
+
+    private static Task ObserveTerminalMarker(HubConnection connection, string marker)
+    {
+        var output = new StringBuilder();
+        var seen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.On<byte[]>("OnOutput", bytes =>
+        {
+            lock (output)
+            {
+                output.Append(Encoding.UTF8.GetString(bytes));
+                if (output.ToString().Contains(marker, StringComparison.Ordinal))
+                    seen.TrySetResult();
+            }
+        });
+        return seen.Task;
     }
 
     private static async Task RunAsync(string archive, IReadOnlyList<string> bundledModuleArchives)
@@ -1898,6 +2230,14 @@ internal static class JointDeploymentAcceptance
                 Console.WriteLine("PASS: installed manifest drift is rejected even when the archive digest is unchanged");
             }
             finally { factory.SubstituteInstalledManifest = false; }
+            factory.SubstituteInventorySource = "different-source";
+            try
+            {
+                await executor.VerifyAsync(review.Plan, moduleRelease, default);
+                throw new InvalidOperationException("Expected running source drift to require a new review.");
+            }
+            catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
+            finally { factory.SubstituteInventorySource = null; }
             factory.SubstituteBlockedHealth = true;
             try
             {
@@ -2663,6 +3003,12 @@ internal static class JointDeploymentAcceptance
         public string? SubstituteServerIdentity { set => handler.SubstituteServerIdentity = value; }
         public bool SubstituteInstalledDigest { get => handler.SubstituteInstalledDigest; set => handler.SubstituteInstalledDigest = value; }
         public bool SubstituteInstalledManifest { set => handler.SubstituteInstalledManifest = value; }
+        public void SubstituteActivationReleaseAfterSnapshot(string? module)
+        {
+            handler.ActivationReleaseModule = module;
+            handler.ActivationInstalledReads = 0;
+        }
+        public string? SubstituteInventorySource { set => handler.SubstituteInventorySource = value; }
         public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public bool SubstituteCapabilities { get => handler.SubstituteCapabilities; set => handler.SubstituteCapabilities = value; }
         public string ObservedCapabilityVersion { set => handler.ObservedCapabilityVersion = value; }
@@ -2729,6 +3075,9 @@ internal static class JointDeploymentAcceptance
         public string? SubstituteServerIdentity { get; set; }
         public bool SubstituteInstalledDigest { get; set; }
         public bool SubstituteInstalledManifest { get; set; }
+        public string? ActivationReleaseModule { get; set; }
+        public int ActivationInstalledReads { get; set; }
+        public string? SubstituteInventorySource { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
         public string? FaultedModule { get; set; }
@@ -2822,8 +3171,9 @@ internal static class JointDeploymentAcceptance
                     throw new HttpRequestException("fixture-dependency-reply-lost");
                 }
             }
-            if ((SubstituteInstalledDigest || SubstituteInstalledManifest) && request.Method == HttpMethod.Get
-                && path == ServerModuleManagementRoutes.InstalledPackages)
+            var installedRead = request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.InstalledPackages;
+            var alterActivationRelease = installedRead && ActivationReleaseModule is not null && ++ActivationInstalledReads > 1;
+            if (installedRead && (SubstituteInstalledDigest || SubstituteInstalledManifest || alterActivationRelease))
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
@@ -2833,7 +3183,9 @@ internal static class JointDeploymentAcceptance
                 {
                     Content = JsonContent.Create(page with
                     {
-                        Items = page.Items.Select(item => item.ModuleId == ModuleId
+                        Items = page.Items.Select(item => alterActivationRelease && item.ModuleId == ActivationReleaseModule
+                            ? item with { ReleaseId = "replacement-release" }
+                            : item.ModuleId == ModuleId
                             ? item with
                             {
                                 ArtifactSha256 = SubstituteInstalledDigest ? new string('0', 64) : item.ArtifactSha256,
@@ -2883,7 +3235,8 @@ internal static class JointDeploymentAcceptance
                 && ActivationDigestModule is not null && ++ActivationInventoryReads > 1;
             if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules
                 && (FaultedModule is not null || HideEffectiveVersion || SubstituteCapabilities || SubstituteInventoryDigest
-                    || SubstituteServerIdentity is not null || IncompatibleDependencyModule is not null || alterActivationDigest))
+                    || SubstituteServerIdentity is not null || IncompatibleDependencyModule is not null || alterActivationDigest
+                    || SubstituteInventorySource is not null))
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
@@ -2895,6 +3248,7 @@ internal static class JointDeploymentAcceptance
                         : module.Id == FaultedModule
                         ? module with { Residency = new("faulted", false, "KeepLoaded", 0, 0, null, null, null, "fixture", null) }
                         : HideEffectiveVersion && module.Id == ModuleId ? module with { EffectiveVersion = null }
+                        : SubstituteInventorySource is { } source && module.Id == ModuleId ? module with { SourceId = source }
                         : SubstituteCapabilities && module.Id == ModuleId ? module with { Capabilities = ["fixture.changed"], CapabilityContractVersions =
                             new Dictionary<string, string> { ["fixture.changed"] = ObservedCapabilityVersion } }
                         : SubstituteInventoryDigest && module.Id == ModuleId ? module with { ArtifactDigest = new string('0', 64) }

@@ -7,7 +7,7 @@ namespace RelaxKonOS.Server.Startup;
 
 internal static class DatabaseServiceRegistration
 {
-    public static void AddDatabaseServices(this IServiceCollection services)
+    public static void AddDatabaseHostServices(this IServiceCollection services)
     {
         services.AddSingleton<PostgreSqlComponentAdapter>();
         services.AddSingleton<IComponentLifecycleAdapter>(services => services.GetRequiredService<PostgreSqlComponentAdapter>());
@@ -25,8 +25,9 @@ internal static class DatabaseServiceRegistration
         services.AddSingleton<IInstallationService, PostgreSqlMaintenanceInstallationService>();
         services.AddSingleton<IInstallationService, MySqlMaintenanceInstallationService>();
         services.AddSingleton<IInstallationService, PostgreSqlBackupAutomationInstallationService>();
-        services.AddSingleton<IPostgreSqlBackupScheduleHost, PostgreSqlBackupScheduleHost>();
+        services.AddSingleton<PostgreSqlBackupScheduleHost>();
+        services.AddSingleton<IPostgreSqlBackupScheduleHost>(sp => sp.GetRequiredService<PostgreSqlBackupScheduleHost>());
+        services.AddSingleton<IPostgreSqlBackupLedger>(sp => sp.GetRequiredService<PostgreSqlBackupScheduleHost>());
         services.AddSingleton<IDatabaseQueryHost, DatabaseQueryHost>();
-        BundledDatabaseExecution.Instance.AddServices(services);
     }
 }

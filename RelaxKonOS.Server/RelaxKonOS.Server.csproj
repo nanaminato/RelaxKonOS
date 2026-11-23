@@ -78,6 +78,12 @@
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Database/RelaxKonOS.ServerModule.Database.csproj" ReferenceOutputAssembly="false" />
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Database/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Database.dll" Link="Modules/Database/RelaxKonOS.ServerModule.Database.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Database.Contracts/RelaxKonOS.ServerModule.Database.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Terminal/RelaxKonOS.ServerModule.Terminal.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Terminal.Execution/RelaxKonOS.ServerModule.Terminal.Execution.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.Terminal.Execution/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Terminal.Execution.dll" Link="Modules/Terminal/RelaxKonOS.ServerModule.Terminal.Execution.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.SystemPerformance.Contracts/RelaxKonOS.ServerModule.SystemPerformance.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.SystemPerformance/RelaxKonOS.ServerModule.SystemPerformance.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.SystemPerformance/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.SystemPerformance.dll" Link="Modules/SystemPerformance/RelaxKonOS.ServerModule.SystemPerformance.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Tailscale.Contracts/RelaxKonOS.ServerModule.Tailscale.Contracts.csproj" />
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Tunnels.Contracts/RelaxKonOS.ServerModule.Tunnels.Contracts.csproj" />
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Tunnels/RelaxKonOS.ServerModule.Tunnels.csproj" ReferenceOutputAssembly="false" />

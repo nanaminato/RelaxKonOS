@@ -61,7 +61,9 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
                     var requirements = signed is null
                         ? module.Requires.Select(id => new DeploymentRequirement(Key(id)))
                         : package!.Dependencies.Select(ToRequirement);
-                    releases.Add(new(Key(module.Id), activationVersion, module.ArtifactDigest!, false,
+                    var activationIdentity = signed is null ? module.ArtifactDigest!
+                        : Identity(signed.SourceId, signed.ReleaseId, signed.ArtifactSha256);
+                    releases.Add(new(Key(module.Id), activationVersion, activationIdentity, false,
                         [.. requirements], ObservedCapabilities(module))
                     {
                         ActivationOnly = true,

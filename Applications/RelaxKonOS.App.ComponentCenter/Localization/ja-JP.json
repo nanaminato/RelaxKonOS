@@ -833,6 +833,7 @@
     "server_modules.action.remove_single": "アンインストールするモジュールを一つ選択してください。",
     "server_modules.plan.remove_data": "モジュールの無効化やメモリ解放ではなく、パッケージをアンインストールします。業務データ、クラウドアカウント設定、リモートファイルは保持されます。依存モジュールや実行中の処理がある場合、操作が拒否されることがあります。",
     "server_modules.problem.module_bundled_not_removable": "同梱モジュールは個別にアンインストールできません。",
+    "server_modules.problem.module_package_install_required": "このモジュールを有効にする前に、署名済みパッケージをインストールしてください。",
     "server_modules.problem.module_remove_disable_first": "先にモジュールを無効にしてからアンインストールしてください。",
     "server_modules.problem.module_remove_restart_required": "サーバーを再起動して無効化を反映してから、アンインストールしてください。",
     "server_modules.problem.module_remove_recovery_required": "モジュールの削除を復旧するまで、他の変更はできません。",

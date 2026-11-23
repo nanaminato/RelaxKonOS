@@ -60,11 +60,8 @@
         <PackageReference Include="RoyalApps.RoyalTerminal.GhosttySharp.Native.Win64"/>
         <PackageReference Include="RoyalApps.RoyalTerminal.GhosttySharp.Native.Linux64"/>
         <PackageReference Include="RoyalApps.RoyalTerminal.GhosttySharp.Native.OSX"/>
-        <!-- Explorer: behaviors 用于双击导航等交互；Newtonsoft 保留 Jaya 配置模型序列化 -->
-        <PackageReference Include="Xaml.Behaviors.Avalonia"/>
+        <!-- Network Inspector formats recorded JSON payloads. -->
         <PackageReference Include="Newtonsoft.Json"/>
-        <!-- Browser: NativeWebView 控件 -->
-        <PackageReference Include="Avalonia.Controls.WebView"/>
         <!-- 服务器中心：内置 SSH/SFTP 传输，替代对系统 ssh/scp/sftp 命令的依赖 -->
         <PackageReference Include="SSH.NET"/>
         <PackageReference Include="QRCoder" />

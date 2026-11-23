@@ -19,7 +19,7 @@
    <Button Content="{DynamicResource database.resume}" Command="{Binding ResumeScheduleCommand}" IsVisible="{Binding CanResumeSchedule}" HorizontalAlignment="Left" />
    <TextBlock Text="{Binding ScheduleInstallation.SummaryText}" TextWrapping="Wrap" />
    <TextBlock Text="{DynamicResource database.maintenance_hint}" TextWrapping="Wrap" />
-   <Button Content="{DynamicResource database.maintenance_plan}" Command="{Binding PlanCommand}" HorizontalAlignment="Left" />
+   <Button Content="{DynamicResource database.maintenance_plan}" Command="{Binding PlanCommand}" IsEnabled="{Binding CanPlanMaintenance}" HorizontalAlignment="Left" />
    <TextBlock Text="{Binding Candidate}" />
    <TextBlock Text="{Binding PlanDetails}" TextWrapping="Wrap" />
    <StackPanel IsVisible="{Binding ShowsMigration}" Spacing="10">

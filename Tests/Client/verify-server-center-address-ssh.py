@@ -35,11 +35,12 @@ class AddressServer(paramiko.ServerInterface):
         return True
 
 
-def run(runner, official_apps):
+def run(runner, official_apps, timeout):
+    command = ["dotnet", runner] if runner.lower().endswith(".dll") else [runner]
     key = paramiko.ECDSAKey.generate()
     server = AddressServer(secrets.token_urlsafe(24))
     with socket.create_server(("127.0.0.1", 0)) as listener, ThreadPoolExecutor(max_workers=1) as executor:
-        listener.settimeout(30)
+        listener.settimeout(timeout)
 
         def serve():
             connection, _ = listener.accept()
@@ -57,7 +58,7 @@ def run(runner, official_apps):
         session = executor.submit(serve)
         env = dict(os.environ, RK_TEST_SSH_ADDRESS_PORT=str(listener.getsockname()[1]),
                    RK_TEST_SSH_ADDRESS_PUBLIC_KEY=key.get_base64(), RK_TEST_SSH_ADDRESS_PASSWORD=server.password)
-        result = subprocess.run(["dotnet", runner, "--server-center-package-only", official_apps], env=env, timeout=90)
+        result = subprocess.run([*command, "--server-center-package-only", official_apps], env=env, timeout=timeout)
         if result.returncode == 0:
             session.result()
         return result.returncode
@@ -67,5 +68,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runner", type=Path)
     parser.add_argument("official_apps", type=Path)
+    parser.add_argument("--timeout", type=int, default=90, help="Maximum seconds for the desktop check.")
     args = parser.parse_args()
-    raise SystemExit(run(str(args.runner.resolve(strict=True)), str(args.official_apps.resolve(strict=True))))
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
+    raise SystemExit(run(str(args.runner.resolve(strict=True)), str(args.official_apps.resolve(strict=True)), args.timeout))

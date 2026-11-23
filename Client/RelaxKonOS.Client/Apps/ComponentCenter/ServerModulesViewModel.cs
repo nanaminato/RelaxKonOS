@@ -94,7 +94,7 @@ public sealed record ServerModuleStoreSourceRow(ServerModuleStoreSourceDto Fact)
     string IServerModuleStoreSourceRow.StatusText => StatusText.Resolve();
     string IServerModuleStoreSourceRow.CountText => CountText.Resolve();
     string IServerModuleStoreSourceRow.ProblemText => ProblemText.Resolve();
-    public string SourceId => Fact.SourceId;
+    public string? SourceId => Fact.SourceId;
     public LocalizedStatus StatusText => ServerModulesViewModel.StoreSourceStatus(Fact.Status);
     public LocalizedStatus CountText => LocalizedStatus.Format("server_modules.store.releases",
         Fact.ReleaseCount, Fact.RevokedCount);
@@ -1109,8 +1109,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     });
     [RelayCommand(CanExecute = nameof(CanRestoreAll))] private Task RestoreAllAsync() => ReviewPreviewAsync(async () =>
     {
-        var first = Modules[0];
-        var ids = Modules.Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+        var modules = RecoveryCandidates.ToArray();
+        if (modules.FirstOrDefault() is not { } first) return;
+        var ids = modules.Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
         Plan = await client.PreviewAsync(new(first.ServiceId!, ServerModuleAction.Enable, ids, ids, first.DesiredRevision!, Guid.NewGuid().ToString("N")));
     });
     private Task PreviewAsync(bool enabled) => ReviewPreviewAsync(async () =>
@@ -1184,7 +1185,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public string PackagePlanModuleText => PackagePlan?.ModuleId ?? "—";
     public string PackagePlanVersionText => PackagePlan?.Version ?? "—";
     public string PackagePlanPublisherText => PackagePlan?.PublisherId ?? "—";
-    public string PackagePlanRuntimeText => PackagePlan?.Runtime ?? "—";
+    public string PackagePlanRuntimeText => PackagePlan is { } plan
+        ? LocalizedText.Get("app_installer.deployment.runtime." + plan.Runtime)
+        : "—";
     public string PackagePlanReleaseText => PackagePlan?.ReleaseId ?? "—";
     public string PackagePlanDigestText => ShortDigest(PackagePlan?.ArtifactSha256);
     public string PackagePlanExpiresText => FormatTime(PackagePlan?.ExpiresAt);
@@ -1277,8 +1280,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         }
         Notify();
     });
-    public bool CanRestoreAll => IsHostRecovery && !Busy && client.IsCurrent
-        && Modules.All(module => module.AllowedActions?.Any(action => action.Action == ServerModuleAction.Enable && action.Allowed) == true);
+    private IEnumerable<ServerModuleDto> RecoveryCandidates => Modules.Where(module => module is not { Packaging: "independent", InstalledVersion: null });
+    public bool CanRestoreAll => IsHostRecovery && !Busy && client.IsCurrent && RecoveryCandidates.Any()
+        && RecoveryCandidates.All(module => module.AllowedActions?.Any(action => action.Action == ServerModuleAction.Enable && action.Allowed) == true);
 
     // ── Property change wiring ──────────────────────────────────────────────────────────────
     partial void OnSelectedChanged(ServerModuleDto? value)
@@ -1530,6 +1534,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         var text = code switch
         {
             "module-bundled-not-removable" => LocalizedStatus.Key("server_modules.problem.module_bundled_not_removable"),
+            "module-package-install-required" => LocalizedStatus.Key("server_modules.problem.module_package_install_required"),
             "module-remove-disable-first" => LocalizedStatus.Key("server_modules.problem.module_remove_disable_first"),
             "module-remove-restart-required" => LocalizedStatus.Key("server_modules.problem.module_remove_restart_required"),
             "module-remove-recovery-required" => LocalizedStatus.Key("server_modules.problem.module_remove_recovery_required"),
@@ -1573,7 +1578,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             "module-package-release-revoked" => LocalizedStatus.Key("server_modules.problem.module_package_release_revoked"),
             "module-package-rid-mismatch" => LocalizedStatus.Key("server_modules.problem.module_package_rid_mismatch"),
             "module-package-host-api-incompatible" => LocalizedStatus.Key("server_modules.problem.module_package_host_api_incompatible"),
-            "module-package-module-id-conflict" or "module-package-execution-contract" =>
+            "module-package-module-id-conflict" or "module-package-execution-contract" or "module-package-database-runtime-files-missing" =>
                 LocalizedStatus.Key("server_modules.problem.module_package_module_id_conflict"),
             "module-package-artifact-verification-required" => LocalizedStatus.Key("server_modules.problem.module_package_artifact_verification_required"),
             "module-package-dependency-verification-required" => LocalizedStatus.Key("server_modules.problem.module_package_dependency_verification_required"),

@@ -131,6 +131,9 @@ internal static class ModuleRemovalChecks
                     { Packaging: "bundled", EffectiveEnabled: false, DesiredEnabled: false, TrustState: "host", SourceId: "server-release" },
                     "removing an independent replacement immediately reveals the disabled bundled module in the deployment inventory");
             }
+            using (var restarted = new ModuleManagementStore(configuration, replacementRoot))
+                check(restarted.EffectivePolicies.ContainsKey(ServerModules.GitId) && !restarted.DesiredIds.Contains(ServerModules.GitId),
+                    "removing a Git replacement preserves its residency policy through the next Core startup");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

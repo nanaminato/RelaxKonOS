@@ -68,6 +68,8 @@ internal static class DesktopDistributionChecks
                 var scanner = new ApplicationCatalogScanner(drive, new BuiltInDescriptorSeeder(drive, builtIns), builtIns,
                     services, diagnostics);
                 await scanner.ScanAndRegisterBuiltInsAsync(applications, cancellationToken);
+                if (!applications.Registered.Select(app => app.Id).SequenceEqual([new AppId("relaxkonos.appinstaller")]))
+                    throw new InvalidOperationException("Before profile provisioning, the desktop must register only the built-in App Installer.");
                 const string interruptedApp = "relaxkonos.notepad";
                 var profileSource = source;
                 if (profile == "developer")

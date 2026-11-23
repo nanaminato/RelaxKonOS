@@ -53,10 +53,23 @@ internal static class OfficialStoreChecks
         var packagesOnline = new Dictionary<string, byte[]>();
         var releases = Array.Empty<object>();
         var redirect = false;
+        (TaskCompletionSource Started, TaskCompletionSource Aborted)? pausedDownload = null;
         host.MapGet("/stable/catalog.json", () => Results.Json(new { schemaVersion = 1, releases }));
-        host.MapGet("/stable/{app}/{version}.roapp", (string app, string version) =>
-            redirect ? Results.Redirect("/stable/catalog.json") : app == AppIdText && packagesOnline.TryGetValue(version, out var bytes)
-                ? Results.Bytes(bytes, "application/octet-stream") : Results.NotFound());
+        host.MapGet("/stable/{app}/{version}.roapp", async (string app, string version, HttpContext context) =>
+        {
+            if (pausedDownload is { } paused)
+            {
+                paused.Started.TrySetResult();
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted); }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+                {
+                    paused.Aborted.TrySetResult();
+                    return Results.Empty;
+                }
+            }
+            return redirect ? Results.Redirect("/stable/catalog.json") : app == AppIdText && packagesOnline.TryGetValue(version, out var bytes)
+                ? Results.Bytes(bytes, "application/octet-stream") : Results.NotFound();
+        });
         await host.StartAsync();
 
         using var http = new HttpClient(new HttpClientHandler
@@ -83,7 +96,7 @@ internal static class OfficialStoreChecks
         var id = new AppId(AppIdText);
         try
         {
-            var v1 = ReadPackage(artifact, "1.0.0");
+            var v1 = await File.ReadAllBytesAsync(artifact);
             var v2 = ReadPackage(artifact, "1.1.0");
             var broken = ReadPackage(artifact, "1.2.0", "Fixture.MissingEntry");
             var interrupted = ReadPackage(artifact, "1.3.0");
@@ -106,11 +119,13 @@ internal static class OfficialStoreChecks
                 var firstReview = model.CurrentPackage;
                 Check(firstReview?.Manifest.Id == AppIdText && firstReview.DeleteWhenFinished && !applications.IsRegistered(id),
                     "Download stages an official package and waits for review.");
+                Check((await File.ReadAllBytesAsync(firstReview!.LocalPath)).AsSpan().SequenceEqual(v1),
+                    "The first review stages the unmodified official release archive.");
                 await model.InstallCommand.ExecuteAsync(null);
                 var first = packages.FindInstalled(AppIdText);
                 Check(first is { Version: "1.0.0" }, $"Install should activate version 1.0.0. {model.Status}");
                 Check(applications.SupportsFile(id, "/files/README"), "Install registers the Notepad file association.");
-                Check(!File.Exists(firstReview!.LocalPath), "Install removes the downloaded artifact.");
+                Check(!File.Exists(firstReview.LocalPath), "Install removes the downloaded artifact.");
 
                 var document = drive.ResolveRootChild($"Users/{drive.LocalProfileId}/Documents/repair-check.txt");
                 const string documentContents = "Keep this document when repairing Notepad.";
@@ -145,7 +160,30 @@ internal static class OfficialStoreChecks
                 corrupted[^1] ^= 1;
                 packagesOnline["1.1.0"] = corrupted;
                 await RejectAsync(() => installer.StageOfficialAsync(release, default), "Corrupt download");
+                await model.DownloadOfficialCommand.ExecuteAsync(null);
+                Check(model.CurrentPackage is null && packages.FindInstalled(AppIdText) == repaired
+                    && model.Status.ToString() == LocalizedText.Get("app_installer.store.download_failed"),
+                    "The installer reports the corrupt download without offering review or replacing the installed app.");
                 packagesOnline["1.1.0"] = v2;
+                var downloadSignals = (Started: new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+                    Aborted: new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+                pausedDownload = downloadSignals;
+                var pendingDownload = model.DownloadOfficialCommand.ExecuteAsync(null);
+                try
+                {
+                    await downloadSignals.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    model.DownloadOfficialCommand.Cancel();
+                    await pendingDownload;
+                    await downloadSignals.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    Check(model.CurrentPackage is null && packages.FindInstalled(AppIdText) == repaired
+                        && model.Status.ToString() == LocalizedText.Get("app_installer.store.download_cancelled"),
+                        "Cancelling a live HTTPS download leaves the installed app available and opens no review.");
+                }
+                finally
+                {
+                    model.DownloadOfficialCommand.Cancel();
+                    pausedDownload = null;
+                }
                 var oldSource = await File.ReadAllTextAsync(sourceConfig);
                 var oldReview = await installer.StageOfficialAsync(release, default);
                 try

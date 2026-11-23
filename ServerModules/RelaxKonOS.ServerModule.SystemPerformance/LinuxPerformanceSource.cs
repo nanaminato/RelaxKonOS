@@ -7,7 +7,7 @@ using RelaxKonOS.Protocol.SystemMonitor;
 namespace RelaxKonOS.Server.SystemPerformance;
 
 /// <summary>Linux 原始性能数据源。只读取 /proc、/sys 与 .NET 网络/文件系统 API，不保存差分状态。</summary>
-public sealed class LinuxPerformanceSource : ISystemPerformanceSource
+public sealed class LinuxPerformanceSource(Func<int, int> countThreads) : ISystemPerformanceSource
 {
     public ValueTask<PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default)
     {
@@ -35,7 +35,7 @@ public sealed class LinuxPerformanceSource : ISystemPerformanceSource
             ReadFilesystemUsage(), ReadDiskCounters(), ReadNetworkCounters(), Environment.TickCount64 / 1000));
     }
 
-    private static RawCpuTimes ReadCpu()
+    private RawCpuTimes ReadCpu()
     {
         RawCpuTimes? aggregate = null;
         var logical = new List<RawCpuTimes>();
@@ -57,7 +57,7 @@ public sealed class LinuxPerformanceSource : ISystemPerformanceSource
         }
         catch { /* source will expose an empty/zero sample rather than leak OS errors. */ }
         aggregate ??= new RawCpuTimes(0, 0, null, null, null, Array.Empty<RawCpuTimes>(), null);
-        var processSummary = SystemProcessSummary.Read();
+        var processSummary = SystemProcessSummary.Read(countThreads);
         return aggregate with
         {
             LogicalProcessors = logical,

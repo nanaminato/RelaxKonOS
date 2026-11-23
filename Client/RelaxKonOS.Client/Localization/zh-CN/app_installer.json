@@ -71,6 +71,8 @@
         "app_installer.deployment.server_changed": "连接的服务器已变更。请为当前服务器审阅新的部署计划。",
         "app_installer.deployment.enable_installed": "启用已安装模块 {0}（{1}）",
         "app_installer.deployment.enable_review": "部署将启用列出的服务端模块，需要安装的模块会先安装。若服务端需要重启，请重新连接后重试。",
+        "app_installer.deployment.runtime.in-process": "在服务端进程内运行，并使用该进程的权限。",
+        "app_installer.deployment.runtime.module-host": "在独立的 ModuleHost 进程中运行，由服务端代理对宿主资源的访问。",
         "app_compatibility.title": "应用程序不可用",
         "app_compatibility.client_platform": "{0} 仅支持以下客户端平台：{1}；当前客户端为 {2}。",
         "app_compatibility.server_platform": "{0} 仅支持以下服务端平台：{1}；当前连接的服务端为 {2}。",

@@ -233,20 +233,61 @@ if (args is ["--signed-git-joint-acceptance", var signedGitApp])
     return;
 }
 
-if (args is ["--live-application-deployments-joint-deployment", var appServer, var appArchive, var appState, var appPhase])
+if (args is ["--live-performance-joint-deployment", var performanceServer, var performanceArchive, var performanceState, var performancePhase])
 {
-    JointDeploymentAcceptance.RunLiveApplicationDeployments(appServer, appArchive, appState, appPhase);
+    JointDeploymentAcceptance.RunLiveExternalModule(performanceServer, performanceArchive, performanceState, performancePhase,
+        ServerModules.SystemPerformanceId);
     return;
 }
+
+if (args is ["--live-terminal-joint-deployment", var terminalServer, var terminalArchive, var terminalState, var terminalPhase])
+{
+    JointDeploymentAcceptance.RunLiveExternalModule(terminalServer, terminalArchive, terminalState, terminalPhase,
+        ServerModules.TerminalId);
+    return;
+}
+
+if (args is ["--live-application-deployments-joint-deployment", var appServer, var appArchive, var appState, var appPhase])
+{
+    JointDeploymentAcceptance.RunLiveExternalModule(appServer, appArchive, appState, appPhase, ServerModules.ApplicationDeploymentsId);
+    return;
+}
+if (args is ["--live-docker-joint-deployment", var dockerServer, var dockerArchive, var dockerState, var dockerPhase])
+{
+    JointDeploymentAcceptance.RunLiveExternalModule(dockerServer, dockerArchive, dockerState, dockerPhase, ServerModules.DockerId);
+    return;
+}
+if (args is ["--live-proxy-joint-deployment", var proxyServer, var proxyArchive, var proxyState, var proxyPhase])
+{
+    JointDeploymentAcceptance.RunLiveExternalModule(proxyServer, proxyArchive, proxyState, proxyPhase, ServerModules.ProxyId);
+    return;
+}
+
+if (args is ["--live-network-module-joint-deployment", var networkServer, var networkArchive, var networkState, var networkPhase, var networkModule]
+    && networkModule is "firewall" or "tailscale" or "tunnels")
+{
+    JointDeploymentAcceptance.RunLiveExternalModule(networkServer, networkArchive, networkState, networkPhase, $"relaxkonos.{networkModule}");
+    return;
+}
+
+if (args is [var websiteCommand, var websiteServer, var websiteArchive, var websiteState, var websitePhase]
+    && websiteCommand is "--live-certificates-joint-deployment" or "--live-webserver-joint-deployment" or "--live-webserver-full-joint-deployment")
+{
+    var moduleId = websiteCommand == "--live-certificates-joint-deployment" ? ServerModules.CertificatesId : ServerModules.WebServerId;
+    JointDeploymentAcceptance.RunLiveExternalModule(websiteServer, websiteArchive, websiteState, websitePhase, moduleId,
+        installCertificates: websiteCommand == "--live-webserver-full-joint-deployment");
+    return;
+}
+
 if (args is ["--live-databases-joint-deployment", var liveServer, var liveArchive, var liveState, var livePhase])
 {
     JointDeploymentAcceptance.RunLiveDatabases(liveServer, liveArchive, liveState, livePhase);
     return;
 }
 
-if (args is ["--live-git-joint-deployment", var gitServer, var gitArchive, var gitState, var gitRepository])
+if (args is ["--live-git-joint-deployment", var gitServer, var gitArchive, var gitState, var gitPhase, var gitRepository])
 {
-    JointDeploymentAcceptance.RunLiveGit(gitServer, gitArchive, gitState, gitRepository);
+    JointDeploymentAcceptance.RunLiveGit(gitServer, gitArchive, gitState, gitPhase, gitRepository);
     return;
 }
 

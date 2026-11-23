@@ -89,7 +89,7 @@
       <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
        <StackPanel Spacing="2">
         <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.runtime}" />
-        <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding PackagePlanRuntimeText}" />
+        <TextBlock Classes="field-value" FontSize="12" TextWrapping="Wrap" Text="{Binding PackagePlanRuntimeText}" />
        </StackPanel>
        <StackPanel Grid.Column="1" Spacing="2" IsVisible="{Binding HasPackagePlanPrivileges}">
         <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.privileges}" />

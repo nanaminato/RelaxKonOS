@@ -10,17 +10,28 @@ param(
     [string] $OutputDirectory = 'artifacts',
     [ValidateSet('all', 'client', 'server')]
     [string] $PackageKind = 'all',
-    [switch] $ExternalApplicationDeployments
+    [string[]] $ExternalModules = @()
 )
 
 $ErrorActionPreference = 'Stop'
-if ($ExternalApplicationDeployments -and $PackageKind -eq 'client') { throw 'ExternalApplicationDeployments requires a Server release.' }
+if ($ExternalModules.Count -and $PackageKind -eq 'client') { throw 'ExternalModules requires a Server release.' }
+$externalizeScript = Join-Path $PSScriptRoot 'externalize-server-modules.py'
+if ($ExternalModules.Count) {
+    $ExternalModules = @($ExternalModules | ForEach-Object { $_.ToLowerInvariant() })
+    # Each PowerShell argument is a module ID. Bash accepts a single comma-separated list.
+    if ($ExternalModules -match ',') { throw 'Pass each external module as a separate array item.' }
+    & python $externalizeScript --validate ($ExternalModules -join ',') $Runtime
+    if ($LASTEXITCODE -ne 0) { throw 'Invalid external module selection.' }
+}
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { throw 'Version may contain only letters, numbers, dot, underscore, and dash.' }
 $launcherSource = Join-Path $projectRoot 'deployment\launcher'
 
 $platform = if ($Runtime.StartsWith('win-')) { 'windows' } else { 'linux' }
+if ($platform -eq 'linux' -or $PackageKind -in @('all', 'client')) {
+    $null = Get-Command python -CommandType Application -ErrorAction Stop
+}
 $extension = if ($platform -eq 'windows') { '.exe' } else { '' }
 $downloadBase = $DownloadBaseUri.TrimEnd('/')
 
@@ -40,7 +51,15 @@ function New-PackageDirectory([string] $PackageKind) {
 function Publish-Component([string] $Project, [string] $Destination, [string] $Executable) {
     & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration "-p:RuntimeIdentifier=$Runtime" --self-contained true --output $Destination "-p:InformationalVersion=$Version"
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Project." }
-    if (-not (Test-Path -LiteralPath (Join-Path $Destination $Executable) -PathType Leaf)) { throw "Publish output did not contain $Executable." }
+    $assembly = if ($Executable.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) {
+        [IO.Path]::GetFileNameWithoutExtension($Executable)
+    } else { $Executable }
+    foreach ($required in @($Executable, "$assembly.dll", "$assembly.deps.json", "$assembly.runtimeconfig.json")) {
+        $file = Get-Item -LiteralPath (Join-Path $Destination $required) -ErrorAction SilentlyContinue
+        if ($null -eq $file -or $file.PSIsContainer -or $file.Length -le 0) {
+            throw "Publish output for $Project is missing a non-empty $required."
+        }
+    }
 }
 
 function Publish-DeploymentTools() {
@@ -134,7 +153,12 @@ function Complete-Package($Package, [hashtable] $Payload) {
     $manifest.payload[$platform] = $Payload
     $manifestPath = Join-Path $Package.Directory 'manifest.json'
     [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
-    Compress-PortableArchive -Source $Package.Directory -Archive $Package.Archive
+    if ($platform -eq 'linux') {
+        & python (Join-Path $PSScriptRoot 'zip-linux-release.py') $Package.Directory $Package.Archive
+        if ($LASTEXITCODE -ne 0) { throw 'Creating the Linux release ZIP failed.' }
+    } else {
+        Compress-PortableArchive -Source $Package.Directory -Archive $Package.Archive
+    }
     $hash = (Get-FileHash -LiteralPath $Package.Archive -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText(($Package.Archive + '.sha256'), "$hash  $([IO.Path]::GetFileName($Package.Archive))`n", [Text.UTF8Encoding]::new($false))
     $descriptor = [ordered]@{
@@ -158,6 +182,8 @@ if ($PackageKind -in @('all', 'client')) {
 $clientPackage = New-PackageDirectory 'client'
 $clientDestination = Join-Path $clientPackage.Directory "payload\$platform\client"
 Publish-Component 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj' $clientDestination "RelaxKonOS$extension"
+& python (Join-Path $projectRoot 'Tests\Client\verify-desktop-distribution.py') --publish-dir $clientDestination --rid $Runtime
+if ($LASTEXITCODE -ne 0) { throw 'Published desktop distribution validation failed.' }
 $contractChecks = Join-Path $projectRoot 'Tests\ServerModules\RelaxKonOS.ServerModules.Tests.csproj'
 & dotnet run --project $contractChecks --configuration $Configuration --no-launch-profile -- `
     --official-desktop-module-contracts (Join-Path $clientDestination 'OfficialApps')
@@ -190,7 +216,7 @@ if ($platform -eq 'linux') {
     $serverPayload['launcher'] = 'deployment/user/relaxkon'
     Convert-LinuxShellScriptsToLf $serverPackage.Directory
 }
-if ($Runtime -eq 'linux-x64') {
+if ($platform -eq 'linux') {
     $databasePublish = New-PackageDirectory 'database-module-publish'
     $databaseProject = Join-Path $projectRoot 'ServerModules/RelaxKonOS.ServerModule.DatabaseObservation/RelaxKonOS.ServerModule.DatabaseObservation.csproj'
     & dotnet publish $databaseProject --configuration $Configuration --runtime $Runtime --self-contained false `
@@ -205,9 +231,13 @@ $applicationDeploymentsAssembly = Join-Path $serverPackage.Directory `
     "payload/$platform/server/Modules/ApplicationDeployments/RelaxKonOS.ServerModule.ApplicationDeployments.dll"
 Copy-Item -LiteralPath $applicationDeploymentsAssembly -Destination $applicationDeploymentsPublish.Directory
 Write-Host "Application Deployments module signing input: $($applicationDeploymentsPublish.Directory)"
-if ($ExternalApplicationDeployments) {
-    & python (Join-Path $PSScriptRoot 'externalize-application-deployments.py') (Join-Path $serverPackage.Directory "payload/$platform/server")
-    if ($LASTEXITCODE -ne 0) { throw 'Could not externalize Application Deployments in the Server payload.' }
+if ($ExternalModules.Count) {
+    foreach ($module in $ExternalModules) {
+        if ($module -notin @('application-deployments', 'database')) { $null = New-PackageDirectory "$module-module-publish" }
+    }
+    & python $externalizeScript (Join-Path $serverPackage.Directory "payload/$platform/server") `
+        (Join-Path $OutputDirectory "RelaxKonOS-$Version-$Runtime") ($ExternalModules -join ',') $Runtime
+    if ($LASTEXITCODE -ne 0) { throw 'Could not externalize the selected Server modules.' }
 }
 Complete-Package $serverPackage $serverPayload
 }

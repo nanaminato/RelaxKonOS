@@ -28,7 +28,7 @@ payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 
 
 ### 启用官方来源
 
-Server 的默认配置声明了 `official-modules`，目录地址为 `https://modules.relaxkon.com/stable/catalog.json`。默认策略修订 6 授权四个云存储模块、`relaxkonos.database` 和下文列出的七个官方执行包。来源默认停用。拿到发布方通过独立可信渠道交付的 ECDSA P-256 公钥后，在服务内容根目录的 `appsettings.host.json` 合并以下配置。键名须与发布工具的签名 KeyId 一致。已有自定义来源策略的部署需自行更新授权模块和策略修订。
+Server 的默认配置声明了 `official-modules`，目录地址为 `https://modules.relaxkon.com/stable/catalog.json`。默认策略修订 9 授权四个云存储模块、`relaxkonos.database` 和下文列出的十个官方执行包。来源默认停用。拿到发布方通过独立可信渠道交付的 ECDSA P-256 公钥后，在服务内容根目录的 `appsettings.host.json` 合并以下配置。键名须与发布工具的签名 KeyId 一致。已有自定义来源策略的部署需自行更新授权模块和策略修订。
 
 ```json
 {
@@ -105,12 +105,14 @@ RelaxKonOS.Server modules pack-package \
 发布多个模块、版本或 RID 时，将各次 `pack-package` 标准输出 JSON 中的 `release` 对象汇入同一 `ModulePackageCatalog` 的 `releases` 数组。填写来源、递增序号、UTC 有效期及撤销集合，再生成签名目录。
 
 ```text
-RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <启用的官方源策略JSON> --private-key <离线PEM> --key-id <keyId> --output <新catalog.json>
+RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <启用的官方源策略JSON> --private-key <离线PEM> --key-id <keyId> --artifact-dir <归档暂存目录> --output <新catalog.json>
 ```
 
-策略包含目标部署所用的授权模块、HTTPS origin 及签名公钥。签名前校验已有归档的模块 ABI 下限，写出前验证签名、目录条目和内置模块替换契约。目标路径必须尚不存在。部署时仍由宿主根据自身已接纳的历史核验目录序号、不可变版本和撤销记录。
+策略包含目标部署所用的授权模块、HTTPS origin 及签名公钥。签名前校验模块 ABI 下限及内置模块替换契约。暂存目录收集所有未撤销发布的原始归档，沿用打包产生的 `<模块ID>-<版本>-<RID>.rkmodule` 文件名。写出前验证签名、目录条目，以及各 RID 归档的长度、摘要、清单和逐文件摘要。缺包或校验失败时不会写出目录。目标路径必须尚不存在。部署时仍由宿主根据自身已接纳的历史核验目录序号、不可变版本和撤销记录。
 
-使用 `pack-package` 打包以下随 Core 发行的执行代码时，从该发行的 `Modules/<目录>` 取指定 RID 的文件，使用 `--purpose official --runtime in-process`。打包、商店和安装共用内置模块替换检查。部署方需在已信任来源策略中显式授权相应模块 ID。
+使用 `pack-package` 打包以下随 Core 发行的执行代码时，从该发行的 `Modules/<目录>` 或同级精简发行签名输入 `RelaxKonOS-<version>-<runtime>-<module>-module-publish/` 取指定 RID 的文件，使用 `--purpose official --runtime in-process`。打包、商店和安装共用内置模块替换检查。部署方需在已信任来源策略中显式授权相应模块 ID。
+
+执行入口检查会在打包进程中加载程序集。官方精简发行的托管执行程序集以 AnyCPU 编译，因此可在 x64 Core CLI 上签名 Windows ARM64 的执行包。归档仍须使用实际发行 RID，Core、Helper 和 ModuleHost 的可执行文件仍针对该 RID 构建。
 
 | 模块 ID | 目录 | 入口类型 | 能力 |
 | --- | --- | --- | --- |
@@ -123,8 +125,10 @@ RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <�
 | `relaxkonos.certificates` | `Certificates` | `RelaxKonOS.Server.Certificate.AnvilAcmeExecutor` | `server.certificates` |
 | `relaxkonos.proxy` | `Proxy` | `RelaxKonOS.Server.Proxy.ProxyOverviewExecutor` | `server.proxy,server.gateway-proxy,server.proxy-server` |
 | `relaxkonos.tunnels` | `Tunnels` | `RelaxKonOS.ServerModule.Tunnels.TunnelExecution` | `server.tunnels` |
+| `relaxkonos.system-performance` | `SystemPerformance` | `RelaxKonOS.Server.SystemPerformance.WindowsPerformanceSource`（Windows）或 `RelaxKonOS.Server.SystemPerformance.LinuxPerformanceSource`（Linux） | `server.metrics,server.processes` |
+| `relaxkonos.terminal` | `Terminal` | `RelaxKonOS.ServerModule.Terminal.Execution.LocalTerminalPtyFactory` | `server.terminal` |
 
-入口程序集文件名为 `RelaxKonOS.ServerModule.<目录>.dll`。Git 的 `capabilityContractVersions` 必须声明当前 `GitApiRoutes.CapabilityContractVersion`。Web Server 的依赖声明必须包含 `relaxkonos.certificates` 的受支持版本区间。Certificates 的发布目录须包含 `Certify.ACME.Anvil.dll`、`BouncyCastle.Cryptography.dll` 和 `Newtonsoft.Json.dll`。这些执行包的版本切换在 Core 重启时生效。
+入口程序集文件名为 `RelaxKonOS.ServerModule.<目录>.dll`，Terminal 使用 `RelaxKonOS.ServerModule.Terminal.Execution.dll`。Terminal 的 Hub、授权和会话驻留由 Core 处理。Core 和 Helper 各自随发行物提供 PTY 原语和用户执行 worker。Git 的 `capabilityContractVersions` 必须声明当前 `GitApiRoutes.CapabilityContractVersion`。Web Server 的依赖声明必须包含 `relaxkonos.certificates` 的受支持版本区间。Certificates 的发布目录须包含 `Certify.ACME.Anvil.dll`、`BouncyCastle.Cryptography.dll` 和 `Newtonsoft.Json.dll`。这些执行包的版本切换在 Core 重启时生效。离线 CLI 对这些官方执行包在归档和签名前执行与安装相同的入口契约检查。
 
 Proxy 包解包并验证文件摘要后，宿主检查总览、连接快照、订阅解析、排队订阅、Mihomo 发布和 Squid 回执入口的接口和公开构造签名。检查在提交版本目录前完成，无需创建执行器实例。重用或激活暂存版本、回退至历史版本时重新验证文件摘要与执行契约。执行契约不兼容时返回 `module-package-execution-contract`，保留当前选中的版本。
 
@@ -219,8 +223,9 @@ remove-installed 只移除 `installed.json` 记录，默认保留版本文件；
 `ModulePackageManifest` 只接受 schemaVersion=3，必填 `runtime`、`privileges`、`ui`。旧 v1/v2 清单、缺字段、未知运行模式、未知能力类别或未知字段都拒绝；不保留双解析。发布者身份继续使用 `publisherId`，不接收 `publisher` 别名。签名目录 envelope/payload、来源策略仍是其各自的 schemaVersion=1 与 `ServerModuleCatalog.v1` 签名域；它们不是模块清单版本。
 
 - `runtime=in-process` 只接受 `purpose=official`，继续使用进程内 ABI 1.0.0。
-- `runtime=module-host` 当前使用 ModuleHost ABI 2.5.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。`cloud-storage` 和 `cloud-baidu` 需要 ABI 2.3.0，`cloud-webdav` 和 `cloud-s3` 的最低 ABI 仍为 2.2.0。
-- `relaxkonos.database` 的 `module-host` 包需要 ABI 2.5.0。Core 的私有 broker 为 PostgreSQL 状态查询返回 Helper 状态和备份操作候选，由独立观察入口组装公开状态。打包、目录和安装兼容性检查均要求 `hostApiMinimum` 至少为 `2.5.0`。
+- `runtime=module-host` 当前使用 ModuleHost ABI 2.6.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。`cloud-storage` 和 `cloud-baidu` 需要 ABI 2.3.0，`cloud-webdav` 和 `cloud-s3` 的最低 ABI 仍为 2.2.0。
+- `relaxkonos.database` 的 `module-host` 包需要 ABI 2.6.0。Core 的私有 broker 为 PostgreSQL 状态查询返回 Helper 状态和备份操作候选，由独立观察入口组装公开状态。打包、目录和安装兼容性检查均要求 `hostApiMinimum` 至少为 `2.6.0`。签名入口运行备份调度循环，经私有 broker 查询和提交到期时段。Core 负责时段复核、幂等受理和操作台账，Helper 保留特权执行。
+- Databases 观察包的入口旁须有非空的 `.deps.json` 和 `RelaxKonOS.Protocol.dll`。`pack-package` 与 `sign-catalog` 均检查待发布归档的这两项文件。
 - `privileges` 是 **能力类别 + 类型化资源范围** 的数组，最多 64 项，由 `kind` 判别。类别、字段、动作枚举和范围都按共享 `ModuleCapabilityCatalog` 校验；未知类别或未知字段直接拒绝。
   - 每个声明必须带 `platforms`（`linux`/`windows`/`macos`），且必须包含清单 `rid` 对应的平台。
   - `service.manage`：`services[{serviceId, actions}]`，动作限 `start`/`stop`/`restart`。已验证可执行的类别。

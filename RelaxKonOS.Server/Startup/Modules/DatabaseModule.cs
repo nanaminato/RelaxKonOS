@@ -12,8 +12,13 @@ internal sealed class DatabaseModule : IServerModule, IServerModuleDeactivationG
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.Database];
     public IReadOnlyList<string> Requires => [];
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context) =>
-        builder.Services.AddDatabaseServices();
+    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    {
+        builder.Services.AddDatabaseHostServices();
+        builder.Services.AddSingleton<PostgreSqlBackupScheduler>();
+        builder.Services.AddHostedService(services => services.GetRequiredService<PostgreSqlBackupScheduler>());
+        BundledDatabaseExecution.Instance.AddBundledObservation(builder.Services);
+    }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {

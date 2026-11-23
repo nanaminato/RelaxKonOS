@@ -38,6 +38,15 @@ internal static class ModuleHostChecks
             var path = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.Copy(Path.Combine(AppContext.BaseDirectory, "HostFixture.dll"), path);
+            if (OperatingSystem.IsLinux())
+            {
+                using var sourceRoot = LinuxModuleHostIsolation.OpenSourceRoot(root);
+                check(!sourceRoot.IsInvalid, $"the native ModuleHost can open a package source directory on {rid}");
+                var rejectedFile = false;
+                try { using var file = LinuxModuleHostIsolation.OpenSourceRoot(path); }
+                catch (IOException) { rejectedFile = true; }
+                check(rejectedFile, $"the native ModuleHost requires a directory for its package source on {rid}");
+            }
             var bytes = await File.ReadAllBytesAsync(path);
             var manifest = new
             {

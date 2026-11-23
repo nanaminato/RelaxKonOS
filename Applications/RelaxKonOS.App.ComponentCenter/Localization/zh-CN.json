@@ -833,6 +833,7 @@
     "server_modules.action.remove_single": "请一次选择一个模块卸载。",
     "server_modules.plan.remove_data": "这将卸载模块包，不是仅禁用模块或释放内存。保留业务数据、网盘账号配置及远端文件；存在依赖模块或运行中的任务时可能无法卸载。",
     "server_modules.problem.module_bundled_not_removable": "内置捆绑模块不能单独卸载。",
+    "server_modules.problem.module_package_install_required": "请先安装签名模块包，再启用此模块。",
     "server_modules.problem.module_remove_disable_first": "请先禁用模块，再进行卸载。",
     "server_modules.problem.module_remove_restart_required": "请先重启服务器，使模块禁用生效，再进行卸载。",
     "server_modules.problem.module_remove_recovery_required": "模块卸载需要恢复处理，暂时不能进行其他变更。",

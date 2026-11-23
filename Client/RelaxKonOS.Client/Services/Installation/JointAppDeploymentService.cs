@@ -98,24 +98,45 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
         bool localOnly = false)
     {
-        var scope = CaptureSessionScope();
-        var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
-        var key = App(candidate.Manifest.Id);
-        var componentRelease = ComponentReleaseOf(candidate);
-        var plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
-            digest, Guid.Empty, "", cancellationToken, componentRelease, candidate.ServerArchive);
-        if (plan is null && !localOnly && scope is { } remote && IsCurrent(remote))
-            plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
-                digest, remote.AccountId, remote.ConnectionIdentity, cancellationToken, componentRelease, candidate.ServerArchive);
-        if (plan?.ClientBinding is not { } binding) return null;
-        if (!MatchesComponentRelease(binding, candidate, digest)
-            || binding.ServerArchive != candidate.ServerArchive || !MatchesScope(binding, scope)) return null;
+        var (recovery, digest) = await FindRecoveryAsync(candidate, cancellationToken, localOnly, resumableOnly: true);
+        if (recovery is not { Plan: { ClientBinding: { } binding } plan }) return null;
         return new(plan, candidate with
         {
             ExpectedSha256 = digest,
             InstalledVersion = plan.OrderedReleases[^1].CurrentVersion,
             ExpectedInstalledPath = binding.InstalledPath,
+            IsRecoveredDeployment = true,
+            RequiresDeploymentReview = false,
         });
+    }
+
+    internal async Task<bool?> GetPendingReviewRequirementAsync(AppPackageCandidate candidate, CancellationToken cancellationToken)
+    {
+        var (recovery, _) = await FindRecoveryAsync(candidate, cancellationToken, localOnly: false, resumableOnly: false);
+        return recovery?.RequiresReview;
+    }
+
+    private async Task<(PendingDeploymentRecovery? Recovery, string Digest)> FindRecoveryAsync(
+        AppPackageCandidate candidate, CancellationToken cancellationToken, bool localOnly, bool resumableOnly)
+    {
+        var scope = CaptureSessionScope();
+        var digest = await ReadArtifactIdentityAsync(candidate, cancellationToken);
+        var key = App(candidate.Manifest.Id);
+        var componentRelease = ComponentReleaseOf(candidate);
+        var recovery = await FindAsync(Guid.Empty, "");
+        if (recovery is null && !localOnly && scope is { } remote && IsCurrent(remote))
+            recovery = await FindAsync(remote.AccountId, remote.ConnectionIdentity);
+        if (recovery?.Plan.ClientBinding is not { } binding) return (null, digest);
+        if (!MatchesComponentRelease(binding, candidate, digest)
+            || binding.ServerArchive != candidate.ServerArchive || !MatchesScope(binding, scope)) return (null, digest);
+        return (recovery, digest);
+
+        async Task<PendingDeploymentRecovery?> FindAsync(Guid account, string identity)
+        {
+            var pending = await journal.FindPendingRecoveryAsync(key, candidate.Manifest.Version, digest,
+                account, identity, cancellationToken, componentRelease, candidate.ServerArchive);
+            return pending is { RequiresReview: true } && resumableOnly ? null : pending;
+        }
     }
 
     private static DeploymentComponentRelease? ComponentReleaseOf(AppPackageCandidate candidate) =>
@@ -246,16 +267,19 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         DeveloperPackageManager packages) =>
         digest is not null
         && manifest.Dependencies?.Required is not { Count: > 0 }
-        && manifest.ServerRequirements is { SupportedPlatforms.Count: 0 } requirements
-        && (manifest.Id switch
+        && HasSupportedBundledLaunchRequirements(manifest.Id, manifest.ServerRequirements)
+        && string.Equals(Path.GetFullPath(path), Path.GetFullPath(packages.OfficialSource.BundledPath(manifest.Id)),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    internal static bool HasSupportedBundledLaunchRequirements(string appId, ApplicationServerRequirements? requirements) =>
+        requirements is { SupportedPlatforms.Count: 0 }
+        && (appId switch
         {
             "relaxkonos.taskmanager" => requirements.RequiredCapabilities.ToHashSet(StringComparer.Ordinal)
                 .SetEquals([ServerCapabilities.Metrics, ServerCapabilities.Processes]),
             "relaxkonos.terminal" => requirements.RequiredCapabilities is [ServerCapabilities.Terminal],
             _ => false,
-        })
-        && string.Equals(Path.GetFullPath(path), Path.GetFullPath(packages.OfficialSource.BundledPath(manifest.Id)),
-            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        });
 
     private static ApplicationManifest RuntimeManifest(DeveloperPackageManifest manifest) =>
         new(new AppId(manifest.Id), manifest.DisplayName, manifest.Version,

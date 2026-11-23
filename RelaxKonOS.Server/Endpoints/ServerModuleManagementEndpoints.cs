@@ -294,6 +294,7 @@ internal static class ServerModuleManagementEndpoints
             var serviceId = ModuleManagementStore.ReadRecoveryReport(context.ContentRootPath).ServiceId;
             var document = ModulePackageCatalogStore.Read(context.ContentRootPath, serviceId);
             var candidates = new List<AcceptedModulePackageCandidate>();
+            var missingDatabaseRuntimeFiles = false;
             foreach (var sourceId in document.Sources.Keys.OrderBy(id => id == "official" ? 0 : 1).ThenBy(id => id, StringComparer.Ordinal))
             {
                 try
@@ -310,6 +311,10 @@ internal static class ServerModuleManagementEndpoints
                                 context.Configuration, context.Environment, sourceId, path, release.Manifest.ReleaseId,
                                 DateTimeOffset.UtcNow, takeHostLock: false, cancellationToken));
                         }
+                        catch (ModulePackageException error) when (error.ProblemCode == InstalledModuleInstaller.MissingDatabaseRuntimeFiles)
+                        {
+                            missingDatabaseRuntimeFiles = true;
+                        }
                         catch (ModulePackageException) { }
                     }
                 }
@@ -317,7 +322,9 @@ internal static class ServerModuleManagementEndpoints
             }
             var groups = candidates.GroupBy(candidate => (candidate.Manifest.ModuleId, candidate.Manifest.Version,
                 candidate.ArchiveSha256)).ToArray();
-            if (groups.Length == 0) return Problem("module-package-upload-not-authorized", 404);
+            if (groups.Length == 0)
+                return missingDatabaseRuntimeFiles ? Problem(InstalledModuleInstaller.MissingDatabaseRuntimeFiles, 409)
+                    : Problem("module-package-upload-not-authorized", 404);
             if (groups.Length > 1) return Problem("module-package-upload-ambiguous", 409);
             var selected = groups[0].OrderBy(candidate => candidate.SourceId == "official" ? 0 : 1).First();
             var plan = ModulePackagePlanStore.Create(context.ContentRootPath, Actor(http.User), request.UploadId,
@@ -495,7 +502,7 @@ internal static class ServerModuleManagementEndpoints
             exception.ProblemCode is "module-package-plan-forbidden" ? 403
                 : exception.ProblemCode is "module-package-plan-not-found" ? 404
                 : exception.ProblemCode is "module-package-plan-expired" or "module-package-plan-already-applied"
-                    or "module-package-execution-contract" ? 409
+                    or "module-package-execution-contract" or InstalledModuleInstaller.MissingDatabaseRuntimeFiles ? 409
                 : exception.ProblemCode is "module-package-source-invalid" ? 400
                 : exception.ProblemCode is "module-package-source-unconfigured" or "module-package-source-not-accepted" ? 404 : 503); }
         catch (Exception exception) when (exception is IOException or System.UnauthorizedAccessException)

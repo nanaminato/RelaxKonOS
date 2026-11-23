@@ -1,7 +1,7 @@
-"""Run the official SSH Files package check against an in-memory loopback SFTP server.
+"""Run the official SSH Files or Code Editor check against a loopback SFTP server.
 
 Requires Paramiko and a Release build of the preview test runner. Pass the test
-runner DLL and the built .roapp with its companion .sha256 file.
+runner executable or DLL and the built .roapp with its companion .sha256 file.
 """
 
 import argparse
@@ -72,6 +72,8 @@ class Directory(paramiko.SFTPServerInterface):
 
     def open(self, path, flags, attr):
         path = self.canonicalize(path)
+        if path == "/fixture.txt" and flags == os.O_WRONLY | os.O_CREAT | os.O_TRUNC:
+            return UploadHandle(flags, self.files, path)
         if (path in {"/upload.txt", "/tree/root.txt", "/tree/nested/child.txt", "/tree/fixture.txt"}
                 and flags & os.O_CREAT and flags & os.O_EXCL
                 and path not in self.files and posixpath.dirname(path) in self.directories):
@@ -129,6 +131,7 @@ class Server(paramiko.ServerInterface):
 
 
 def run(runner, package):
+    command = ["dotnet", runner] if runner.lower().endswith(".dll") else [os.path.abspath(runner)]
     files = {"/fixture.txt": b"RelaxKonOS SFTP fixture\n"}
     directories = {"/"}
     key = paramiko.RSAKey.generate(2048)
@@ -160,8 +163,12 @@ def run(runner, package):
         try:
             environment = dict(os.environ, RK_TEST_SFTP_PORT=str(listener.getsockname()[1]),
                                RK_TEST_SFTP_PASSWORD=password, RK_TEST_SFTP_FINGERPRINT="SHA256:" + fingerprint)
-            return subprocess.run(["dotnet", runner, "--official-roapp-only", package],
-                                  env=environment, timeout=90).returncode
+            result = subprocess.run([*command, "--official-roapp-only", package],
+                                    env=environment, timeout=90).returncode
+            if not result and os.path.basename(package) == "relaxkonos.codeeditor.roapp":
+                if files["/fixture.txt"] != b"RelaxKonOS SFTP edit\n":
+                    raise RuntimeError("Code Editor did not persist the expected bytes on the SFTP server")
+            return result
         finally:
             stopped.set()
             accept.result()
