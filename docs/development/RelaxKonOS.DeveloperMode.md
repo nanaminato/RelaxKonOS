@@ -40,9 +40,21 @@ CLI 通过回环 HTTP 传输文件，无需生成 `.roapp`。Debug 客户端验�
 
 ### Profile 与结果
 
-- Debug 路径为 `%LOCALAPPDATA%/RelaxKonOS/Debug/<profile>/SystemDrive`。每个 profile 独立保存配对令牌和本地应用授权。可用 `RELAXKONOS_DEV_DATA_HOME` 指定 Debug 数据父目录，客户端仍在其中创建 `RelaxKonOS/Debug/<profile>`。同一个 profile 的数据目录只能由一个桌面进程打开。
+通常无需配置。需要自定义位置时，在 Rider 中打开 **Run → Edit Configurations → 桌面客户端配置 → Environment variables**，添加 `RELAXKONOS_DATA_HOME`，值填写当前用户可写的绝对路径，例如 `C:\Users\<用户名>\RelaxKonOSData`（替换为实际用户目录），保存后重新启动调试。该路径是父目录，默认 Debug profile 会在其中创建 `RelaxKonOS\Debug\default`。
+
+命令行使用相同配置：
+
+```powershell
+$env:RELAXKONOS_DATA_HOME = Join-Path $env:USERPROFILE 'RelaxKonOSData'
+dotnet run --project Client/RelaxKonOS.Client.Desktop -c Debug
+```
+
+默认使用操作系统提供的当前用户本地应用数据目录（Windows 通常为 `C:\Users\<用户名>\AppData\Local`），无需配置额外盘符，通常不需要管理员权限。自定义位置时建议使用构建输出目录之外的固定目录，避免清理 `bin` 时删除调试数据。切换目录不会自动迁移旧数据；如需保留旧配对和应用数据，请关闭客户端后将原 profile 目录完整复制到新位置。不同构建配置或 RID 的 Debug 构建默认复用同一 profile。
+
+- Debug 默认路径为 `%LOCALAPPDATA%/RelaxKonOS/Debug/<profile>/SystemDrive`。每个 profile 独立保存配对令牌和本地应用授权。同一个 profile 的数据目录只能由一个桌面进程打开。若此目录因 ACL 或运行环境限制无法写入，应检查权限或显式配置数据父目录，不能假定任意固定 C 盘目录都可写。
+- Debug 和 Release 均使用 `RELAXKONOS_DATA_HOME` 指定数据父目录（取代 `RELAXKONOS_DEV_DATA_HOME`）。Debug 在其中创建 `RelaxKonOS/Debug/<profile>`，Release 创建 `RelaxKonOS`；相对路径以程序所在目录为基准，空值使用默认目录。启动时会检查目录写权限，失败时报告实际路径及配置方法，不自动切换到其他目录。
 - 命名 profile 使用稳定的派生端口。端口被占用时，通过客户端的 `RELAXKONOS_DEV_PORT` 和 CLI 的 `--port` 指定同一可用端口。CLI 支持 `--profile`，桥接会校验请求目标。自动化可以在启动 Debug 进程时显式设 `RELAXKONOS_DEV_ENABLE=1`，配对仍使用该 profile 的 `developer-mode.json` 生成的令牌。
-- Release 继续使用 `%LOCALAPPDATA%/RelaxKonOS/SystemDrive` 及既有配对数据，拒绝 Direct Deploy 路由。远端工作区及服务端应用数据仍由所登录的服务器管理。
+- Release 未指定数据父目录时使用 `%LOCALAPPDATA%/RelaxKonOS/SystemDrive` 及既有配对数据，拒绝 Direct Deploy 路由。远端工作区及服务端应用数据仍由所登录的服务器管理。
 - `deploy`、`reload`、`rollback`、`status` 和 `diagnostics` 各写一行 JSON 到 stdout。`watch --direct` 每次尝试写一行 JSON，编译日志和监听信息写到 stderr。独立命令失败退出码为 `1`。Agent 可直接调用已构建的 CLI，以获得纯 JSON 输出。
 
 ```json
@@ -110,7 +122,7 @@ dotnet run --project /path/to/RelaxKonOS/Tools/RelaxKonOS.DevCli -- pack ./MyApp
 
 `pack` 需要一个当前进程能写的中转目录，按 `--work-dir` → `RELAXKONOS_DEVCLI_TMP` → 系统临时目录 → `%LOCALAPPDATA%\RelaxKonOS\DevCli` → `<项目>/.tmp/devcli` 的顺序取第一个通过写入探测的位置，并在使用非默认项时打印 `Scratch:`。受限宿主（应用容器、收紧的终端、杀软策略）会把系统临时目录和用户级 NuGet 缓存对 .NET 进程关闭；此时 CLI 会把子进程的 `TMP`/`TEMP` 指向同一中转根，并在默认包目录不可写时把 `NUGET_PACKAGES`、`NUGET_HTTP_CACHE_PATH` 改到 `<中转根>/nuget` 下并打印 `NuGet cache:`，因此打包会在工作区内完成而不是以权限错误终止。中转根可随时删除，代价是下次重新下载包。
 
-客户端必须有权写入当前 VSD 的 `Programs/External`。`vsd.package.storage-unavailable` 会给出受限目录。若沙箱限制应用数据目录，可用 `RELAXKONOS_DEV_DATA_HOME` 为 Debug 选择一个允许写入的父目录。
+客户端必须有权写入当前 VSD 的 `Programs/External`。`vsd.package.storage-unavailable` 会给出受限目录。若沙箱限制应用数据目录，可用 `RELAXKONOS_DATA_HOME` 选择一个允许写入的父目录。
 
 ## 开发包格式
 
