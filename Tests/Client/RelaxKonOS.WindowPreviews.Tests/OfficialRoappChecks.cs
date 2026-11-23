@@ -169,7 +169,10 @@ internal static class OfficialRoappChecks
         Uri? performanceEndpoint = performancePort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(performancePort)}/");
         var registryPort = isRegistry ? Environment.GetEnvironmentVariable("RK_TEST_REGISTRY_PORT") : null;
         Uri? registryEndpoint = registryPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(registryPort)}/");
+        var deploymentsPort = isApplicationDeployments ? Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_PORT") : null;
+        Uri? deploymentsEndpoint = deploymentsPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(deploymentsPort)}/");
         if (alertEndpoint is not null || performanceEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "observer");
+        if (deploymentsEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
         var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
@@ -710,6 +713,14 @@ internal static class OfficialRoappChecks
                     Check(model.GetType().FullName == "RelaxKonOS.App.ApplicationDeployments.ApplicationDeploymentsViewModel"
                         && model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
                         "The installed deployment workspace honors a read-only grant.");
+                    if (deploymentsEndpoint is not null)
+                    {
+                        var rows = (System.Collections.IEnumerable)model.GetType().GetProperty("Applications")!.GetValue(model)!;
+                        bool HasSavedDefinition() => rows.Cast<object>().Any(row => row.GetType().GetProperty("Name")!.GetValue(row) is "renamed");
+                        for (var attempt = 0; attempt < 100 && !HasSavedDefinition(); attempt++) await Task.Delay(50);
+                        Check(HasSavedDefinition(), "The installed deployment workspace lists the renamed definition from the production server API.");
+                        Console.WriteLine("The installed Application Deployments workspace listed a saved definition over loopback HTTP.");
+                    }
                 }
                 if (isProxyManager)
                 {
@@ -1012,9 +1023,17 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.DesktopPortForwardingManage);
             var forwarding = isPortForwarding ? DispatchProxy.Create<IPortForwardingService, PendingForwardService>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerApplicationDeploymentsRead);
-            var deployments = isApplicationDeployments
-                ? DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>() : null;
-            if (deployments is not null) ((DeploymentHostStub)(object)deployments).Seed();
+            IServerApplicationDeployments? deployments = null;
+            if (deploymentsEndpoint is not null)
+            {
+                ((EventAlertsAuthFixture)(object)auth).ServiceId = deploymentsEndpoint.AbsoluteUri;
+                deployments = new RelaxKonOS.Client.Apps.ApplicationDeployments.RemoteApplicationDeploymentClient(http, auth);
+            }
+            else if (isApplicationDeployments)
+            {
+                deployments = DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>();
+                ((DeploymentHostStub)(object)deployments).Seed();
+            }
             appPermissions.Granted.Add(AppPermissions.ServerTunnelsRead);
             var tunnels = isTunnels ? DispatchProxy.Create<IServerTunnels, TunnelCapabilityClient>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerSquidRead);

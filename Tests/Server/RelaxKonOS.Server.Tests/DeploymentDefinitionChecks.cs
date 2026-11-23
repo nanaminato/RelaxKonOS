@@ -12,11 +12,11 @@ using RelaxKonOS.Server.Files;
 
 internal static class DeploymentDefinitionChecks
 {
-    public static async Task RunAsync()
+    public static async Task RunAsync(string? desktopRunner = null, string? archive = null)
     {
         var root = Path.Combine(Path.GetTempPath(), "relaxkonos-bp16-definition-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        try { await VerifyAsync(root); }
+        try { await VerifyAsync(root, desktopRunner, archive); }
         finally
         {
             var resolved = Path.GetFullPath(root);
@@ -27,7 +27,7 @@ internal static class DeploymentDefinitionChecks
         }
     }
 
-    private static async Task VerifyAsync(string root)
+    private static async Task VerifyAsync(string root, string? desktopRunner, string? archive)
     {
         var environment = new TestHostEnvironment(root);
         var options = new ApplicationDeploymentOptions();
@@ -165,6 +165,13 @@ internal static class DeploymentDefinitionChecks
         var reopenedSecrets = new ApplicationDeploymentSecretStore(environment, options, DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "keys"))), catalog);
         Check(reopenedSecrets.Reveal(created.Id, "TOKEN", 1) == "original_secret" && reopenedSecrets.Reveal(other.Id, "OTHER", 4) == "other_4",
             "Pinned encrypted secret versions must survive reopening the actual protected store.");
+        if (desktopRunner is not null && archive is not null)
+        {
+            Check(Path.GetFileName(archive) == "relaxkonos.application-deployments.roapp", "Supply the official Application Deployments archive.");
+            await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, archive, "RK_TEST_DEPLOYMENTS_PORT", new Uri(address).Port);
+            Check(readEngine.Calls.All(call => call == nameof(IDockerEngineService.ListContainersAsync)),
+                "The read-only packaged workspace must not execute Docker actions.");
+        }
         await app.StopAsync();
         Console.WriteLine("BP16 definition contract, HTTP authorization, replay, conflict, exact fields, secret retention, and immutable revision checks passed.");
     }

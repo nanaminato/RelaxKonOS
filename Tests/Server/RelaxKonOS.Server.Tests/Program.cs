@@ -612,7 +612,13 @@ if (args.Contains("--catalog-update-only"))
 }
 if (args.Contains("--deployment-definition-only"))
 {
-    try { await DeploymentDefinitionChecks.RunAsync(); }
+    try
+    {
+        if (args is ["--deployment-definition-only", var deploymentDesktop, var deploymentArchive])
+            await DeploymentDefinitionChecks.RunAsync(deploymentDesktop, deploymentArchive);
+        else
+            await DeploymentDefinitionChecks.RunAsync();
+    }
     catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     return;
 }
