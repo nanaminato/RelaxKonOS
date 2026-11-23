@@ -79,12 +79,17 @@ internal static class DeploymentRuntimeLiveChecks
         const string imageReference = "busybox:1.37";
         Require((await engine.InspectImageAsync(imageReference, ct))?.Id == imageId,
             $"The local {imageReference} tag must identify the supplied image.");
-        var cachedEngine = DispatchProxy.Create<IDockerEngineService, CachedImageEngine>();
-        ((CachedImageEngine)(object)cachedEngine).Engine = engine;
+        var pullFromRegistry = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_PULL_IMAGE") == "1";
+        var deploymentEngine = engine;
+        if (!pullFromRegistry)
+        {
+            deploymentEngine = DispatchProxy.Create<IDockerEngineService, CachedImageEngine>();
+            ((CachedImageEngine)(object)deploymentEngine).Engine = engine;
+        }
         var directory = Directory.CreateTempSubdirectory("rk-deployment-http-");
         var applicationId = Guid.Empty;
         var options = new ApplicationDeploymentOptions();
-        var runtime = new ApplicationDeploymentRuntime(cachedEngine, options, new HealthClientFactory(workload), NullLogger<ApplicationDeploymentRuntime>.Instance);
+        var runtime = new ApplicationDeploymentRuntime(deploymentEngine, options, new HealthClientFactory(workload), NullLogger<ApplicationDeploymentRuntime>.Instance);
         try
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = directory.FullName });
@@ -143,7 +148,7 @@ internal static class DeploymentRuntimeLiveChecks
                     { State: DeploymentOperationState.Succeeded, Kind: DeploymentOperationKind.Deploy }, "The window did not activate exactly one revision through a completed deployment.");
                 Require((await workload.GetStringAsync($"http://127.0.0.1:{port}/ready", ct)).Trim() == marker,
                     "The window-deployed workload did not serve the expected marker.");
-                Console.WriteLine("Installed Application Deployments window activated a real Docker workload.");
+                Console.WriteLine($"Installed Application Deployments window activated a real Docker workload (registry pull: {pullFromRegistry}).");
                 return;
             }
             var request = new DeployApplicationRequest(new(ImageReference: imageReference,
@@ -169,7 +174,7 @@ internal static class DeploymentRuntimeLiveChecks
                 && snapshot.Revisions.Count == 1 && snapshot.Revisions[0].Id == activeRevisionId
                 && snapshot.Operations.Contains(receipt), "The application did not expose the active revision and completed deployment receipt.");
             Require((await workload.GetStringAsync($"http://127.0.0.1:{port}/ready", ct)).Trim() == marker, "The activated workload did not serve the expected marker.");
-            Console.WriteLine("Live deployment HTTP submission, terminal receipt, replay and activated workload passed.");
+            Console.WriteLine($"Live deployment HTTP submission, terminal receipt, replay and activated workload passed (registry pull: {pullFromRegistry}).");
         }
         finally
         {
