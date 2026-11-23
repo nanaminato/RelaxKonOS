@@ -39,7 +39,7 @@
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 签名双包及 Certificates 复用已验，Linux 真实 Nginx 直连重载、拒绝坏配置及修正后重载已验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
-| application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期和已安装窗口读取服务端部署定义已验，实际工作负载部署待验 |
+| application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows 与 Linux x64 包生命周期和已安装窗口读取服务端部署定义已验，实际工作负载部署待验 |
 | database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows 和 Linux 随附及签名双包已验，Windows 真实 Helper IPC 控制读取已验 |
 | ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 已验，远端桌面待验 |
@@ -939,3 +939,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows 与 Linux x64 的 Registry 官方包联调改用生产 SQLite 写回仓储。服务端经 HTTP 保存配置、停机写回，再用新宿主和新仓储实例打开同一数据库。已安装窗口经 SDK 读取 `12h`，通过包生命周期回归。用户和工作区身份仍使用本地测试夹具。
 - Windows 和 Linux x64 的已安装 Registry 窗口选中从 SQLite 恢复的 `12h`，通过“恢复默认”命令向生产版本化写入接口保存 `24h`。再停机并以新仓储实例打开数据库，生产 HTTP 仍返回 `24h`。本轮仅修改隔离测试用户的工作区值。
 - Windows Release Application Deployments 官方包通过窗口联调。已安装窗口以只读应用授权，通过生产桌面客户端和环回 HTTP 显示服务端已修改并保存的部署定义。测试使用本地读取身份和受控 Docker 查询夹具，没有执行部署。可用 Server.Tests 的 `--deployment-definition-only <桌面验收运行器> <relaxkonos.application-deployments.roapp>` 复现。
+- Linux x64 从 `dfc691b3c` 自包含发布，在 WSL 独立网络使用 Linux 官方 Application Deployments 归档通过同一读取联调与生命周期检查。只读窗口显示保存的部署定义，服务端定义更新授权、版本冲突、幂等重放、秘密保留和修订不可变检查通过。Docker 调用限于查询夹具。
