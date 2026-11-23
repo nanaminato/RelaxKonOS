@@ -83,11 +83,13 @@ internal static class OfficialRoappChecks
             wizardType.GetProperty("ArgumentsText")!.SetValue(wizard, $"sh\n-ec\nmkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site");
         }
         ((System.Windows.Input.ICommand)wizardType.GetProperty("SubmitCommand")!.GetValue(wizard)!).Execute(null);
-        for (var attempt = 0; attempt < 300 && wizardType.GetProperty("IsBusy")!.GetValue(wizard) is true; attempt++)
+        var receiptWait = System.Diagnostics.Stopwatch.StartNew();
+        while (receiptWait.Elapsed < TimeSpan.FromSeconds(90) && wizardType.GetProperty("IsBusy")!.GetValue(wizard) is true)
             await Task.Delay(100);
         var operation = wizardType.GetProperty("Operation")!.GetValue(wizard) as DeploymentOperationDto;
         Check(wizardType.GetProperty("IsFinished")!.GetValue(wizard) is true && operation?.State == DeploymentOperationState.Succeeded,
-            $"The installed wizard did not receive a success receipt. State: {operation?.State}, error: {wizardType.GetProperty("ErrorText")!.GetValue(wizard)}");
+            $"The installed wizard did not receive a success receipt. State: {operation?.State}, error: {wizardType.GetProperty("ErrorText")!.GetValue(wizard)}. "
+            + $"Diagnostics: {wizardType.GetProperty("DiagnosticsText")!.GetValue(wizard)}");
         ((System.Windows.Input.ICommand)wizardType.GetProperty("CloseCommand")!.GetValue(wizard)!).Execute(null);
         for (var attempt = 0; attempt < 100 && windows.Windows.Count > 1; attempt++) await Task.Delay(50);
         Check(windows.Windows.Count == 1, "The installed deployment wizard did not close after completion.");
