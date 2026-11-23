@@ -940,3 +940,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows 和 Linux x64 的已安装 Registry 窗口选中从 SQLite 恢复的 `12h`，通过“恢复默认”命令向生产版本化写入接口保存 `24h`。再停机并以新仓储实例打开数据库，生产 HTTP 仍返回 `24h`。本轮仅修改隔离测试用户的工作区值。
 - Windows Release Application Deployments 官方包通过窗口联调。已安装窗口以只读应用授权，通过生产桌面客户端和环回 HTTP 显示服务端已修改并保存的部署定义。测试使用本地读取身份和受控 Docker 查询夹具，没有执行部署。可用 Server.Tests 的 `--deployment-definition-only <桌面验收运行器> <relaxkonos.application-deployments.roapp>` 复现。
 - Linux x64 从 `dfc691b3c` 自包含发布，在 WSL 独立网络使用 Linux 官方 Application Deployments 归档通过同一读取联调与生命周期检查。只读窗口显示保存的部署定义，服务端定义更新授权、版本冲突、幂等重放、秘密保留和修订不可变检查通过。Docker 调用限于查询夹具。
+- Windows Release 的 `--deployment-runtime-live <本机已缓存的 BusyBox 镜像 ID>` 通过真实 Docker Desktop Linux Engine 验收。服务端部署运行时创建带归属标签的容器，启动并验证环回 HTTP 就绪与独有响应，随后停止、删除并确认无残留。已安装窗口发起部署及服务端操作回执的联调仍待验收。
