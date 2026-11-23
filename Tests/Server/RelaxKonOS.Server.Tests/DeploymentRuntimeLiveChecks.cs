@@ -81,7 +81,10 @@ internal static class DeploymentRuntimeLiveChecks
         Require((await engine.InspectImageAsync(cachedReference, ct))?.Id == imageId,
             $"The local {cachedReference} tag must identify the supplied image.");
         var pullFromRegistry = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_PULL_IMAGE") == "1";
+        var buildArchive = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_BUILD_ARCHIVE") == "1";
         var coldImage = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_COLD_IMAGE");
+        Require(!buildArchive || desktopRunner is null && coldImage is null,
+            "Archive build acceptance submits directly over HTTP and does not use cold image deployment mode.");
         var imageReference = coldImage ?? cachedReference;
         HashSet<string>? priorImageIds = null;
         if (coldImage is not null)
@@ -98,7 +101,11 @@ internal static class DeploymentRuntimeLiveChecks
             ((CachedImageEngine)(object)deploymentEngine).Engine = engine;
         }
         var directory = Directory.CreateTempSubdirectory("rk-deployment-http-");
+        if (buildArchive)
+            deploymentEngine = new DockerCliEngineService(new() { BuildRoots = [Path.Combine(directory.FullName, new ApplicationDeploymentOptions().RootDirectory, "build")] },
+                new DisabledDockerProxyResolver(), NullLogger<DockerCliEngineService>.Instance);
         var applicationId = Guid.Empty;
+        var marker = "http-fixture-" + Guid.NewGuid().ToString("N")[..12];
         var cleanupRuntime = new ApplicationDeploymentRuntime(engine, new(), new HealthClientFactory(workload), NullLogger<ApplicationDeploymentRuntime>.Instance);
         try
         {
@@ -136,8 +143,8 @@ internal static class DeploymentRuntimeLiveChecks
                 var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
                 using var http = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(address) };
                 http.DefaultRequestHeaders.Add("X-Test-Role", "controller");
-                var marker = "http-fixture-" + Guid.NewGuid().ToString("N")[..12];
-                var definition = new CreateApplicationRequest(marker, ApplicationSourceKind.Image, HealthCheckPath: "/ready", HostPort: port);
+                var definition = new CreateApplicationRequest(marker, buildArchive ? ApplicationSourceKind.PythonProject : ApplicationSourceKind.Image,
+                    HealthCheckPath: "/ready", HostPort: port);
                 using var created = await SendAsync(http, ApplicationDeploymentApiRoutes.Applications, definition, "create", ct);
                 var application = (await created.Content.ReadFromJsonAsync<ApplicationDto>(RelaxKonOSJsonOptions.Default, ct))!;
                 applicationId = application.Id;
@@ -155,9 +162,9 @@ internal static class DeploymentRuntimeLiveChecks
                     Console.WriteLine($"Installed Application Deployments window activated a real Docker workload (registry pull: {pullFromRegistry}).");
                     return;
                 }
-                var request = new DeployApplicationRequest(new(ImageReference: imageReference,
-                    Arguments: ["sh", "-ec", $"mkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site"]),
-                    application.UpdatedAt, Confirmed: true);
+                var source = buildArchive ? await UploadPythonFixtureAsync(http, marker, ct) : new DeploymentSourceInputDto(ImageReference: imageReference,
+                    Arguments: ["sh", "-ec", $"mkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site"]);
+                var request = new DeployApplicationRequest(source, application.UpdatedAt, Confirmed: true);
                 var route = ApplicationDeploymentApiRoutes.Deploy(application.Id);
                 using var submitted = await SendAsync(http, route, request, "deploy", ct);
                 Require(submitted.StatusCode == HttpStatusCode.Accepted, "Deploy did not return an accepted operation.");
@@ -179,6 +186,13 @@ internal static class DeploymentRuntimeLiveChecks
                     && snapshot.Operations.Contains(receipt), "The application did not expose the active revision and completed deployment receipt.");
                 Require((await workload.GetStringAsync($"http://127.0.0.1:{port}/ready", ct)).Trim() == marker, "The activated workload did not serve the expected marker.");
                 await VerifyPulledIdentityAsync(snapshot!.Revisions.Single().ImageId);
+                if (buildArchive)
+                {
+                    var revision = snapshot.Revisions.Single();
+                    Require(revision.ImageReference.StartsWith($"relaxkonos-ad/{marker}:", StringComparison.Ordinal) && revision.EntryPoint == "python -m fixture",
+                        "The active revision did not bind the image built from the staged Python archive.");
+                    Console.WriteLine("The staged Python archive built and served its HTTP fixture through the production deployment path.");
+                }
                 Console.WriteLine($"Live deployment HTTP submission, terminal receipt, replay and activated workload passed (registry pull: {pullFromRegistry}).");
             }
             finally { await app.StopAsync(); }
@@ -193,6 +207,18 @@ internal static class DeploymentRuntimeLiveChecks
                     foreach (var container in await cleanupRuntime.FindApplicationContainersAsync(applicationId, cleanup.Token))
                         Require((await cleanupRuntime.RemoveAsync(container.Id, cleanup.Token)).Success, $"Failed to remove fixture container {container.Id}.");
                     Require((await cleanupRuntime.FindApplicationContainersAsync(applicationId, cleanup.Token)).Count == 0, "Deployment fixture containers remain.");
+                    if (buildArchive)
+                    {
+                        var repository = $"relaxkonos-ad/{marker}";
+                        var images = await engine.ListImagesAsync(cleanup.Token);
+                        foreach (var image in images.Where(image => image.Repository == repository))
+                        {
+                            Require(images.Count(candidate => candidate.Id == image.Id) == 1, "The fixture image has another tag.");
+                            Require((await engine.DeleteImageAsync(image.Id, new(image.Id, Confirmed: true), cleanup.Token)).Success,
+                                $"Failed to remove built fixture image {image.Id}.");
+                        }
+                        Require(!(await engine.ListImagesAsync(cleanup.Token)).Any(image => image.Repository == repository), "Build fixture image remains.");
+                    }
                 }
             }
             finally
@@ -212,6 +238,35 @@ internal static class DeploymentRuntimeLiveChecks
                 "The activated revision did not bind an image newly present in the local Docker image inventory.");
             Console.WriteLine($"Registry pulled a new local image for {imageReference} and the revision bound its ID.");
         }
+    }
+
+    private static async Task<DeploymentSourceInputDto> UploadPythonFixtureAsync(HttpClient http, string marker, CancellationToken ct)
+    {
+        using var archive = new MemoryStream();
+        using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var requirements = zip.CreateEntry("publish/requirements.txt").Open()) requirements.Write("# Standard library only\n"u8);
+            using var program = new StreamWriter(zip.CreateEntry("publish/fixture.py").Open());
+            program.Write($$"""
+                from http.server import BaseHTTPRequestHandler, HTTPServer
+
+                class Handler(BaseHTTPRequestHandler):
+                    def do_GET(self):
+                        self.send_response(200 if self.path == '/ready' else 404)
+                        self.end_headers()
+                        self.wfile.write(b'{{marker}}')
+
+                HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+                """);
+        }
+        archive.Position = 0;
+        using var form = new MultipartFormDataContent();
+        form.Add(new StreamContent(archive), "file", "python-fixture.zip");
+        using var upload = await http.PostAsync(ApplicationDeploymentApiRoutes.Uploads, form, ct);
+        upload.EnsureSuccessStatusCode();
+        var staged = await upload.Content.ReadFromJsonAsync<DeploymentStagedFileDto>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new InvalidOperationException("The upload returned no staged archive.");
+        return new(ArchiveReferenceId: staged.ReferenceId, ProgramEntry: "fixture");
     }
 
     private static async Task<HttpResponseMessage> SendAsync<T>(HttpClient client, string route, T body, string key, CancellationToken ct)
