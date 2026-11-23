@@ -173,5 +173,5 @@ internal interface IApplicationTemplate
     /// returns the container entry point plus its arguments.
     /// </summary>
     Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
-        DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, CancellationToken cancellationToken);
+        DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken);
 }

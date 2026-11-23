@@ -952,3 +952,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Core 已移除对解包实现程序集的编译期引用。随附程序集从 `Modules/ApplicationDeployments` 按需加载，解包结束后请求卸载该加载上下文。Windows Release 专项验证程序集引用边界、实际解包和超限错误码。独立签名包和安装版本选路仍待接入。
 - Application Deployments 支持通过可信来源安装签名 `.rkmodule`，重启后选用已安装版本的解包程序集。安装、回滚和启动均核对执行入口，执行前复验已安装包。Windows Release 模块 HTTP 专项使用测试签名验证两个版本的安装与升级、回滚原版本及从恢复版本实际解包。已外置的执行范围为 ZIP 解包，生产来源尚未发布该包。
 - ZIP 解包和单层发布目录展开现由同一执行程序集完成。Windows Release 验证带外层目录的 .NET 发布归档可生成正确的构建上下文，安装和回滚专项也验证恢复后的签名程序集能把归档文件放到构建根目录。Dockerfile 生成仍由 Core 按模板执行。
+- Java、.NET 与 Python 模板通过所选执行程序集写入 Dockerfile 和受控 `.dockerignore`。Core 模板继续计算构建定义和入口。Windows Release 部署进度专项通过真实 HTTP 暂存和 .NET 构建上下文检查，签名包回滚专项确认恢复版本写入原 Dockerfile 文本并替换归档提供的 `.dockerignore`。

@@ -229,7 +229,7 @@ internal static class ApplicationDeploymentProgressVerification
         archive.Position = 0;
         Check(await ApplicationArchiveExecution.Bundled.PrepareAsync(archive, context, 10, 4096, 4, default) is null,
             "The archive execution assembly must prepare the wrapped publish.");
-        await template.PrepareBuildContextAsync(plan, context, application, new ApplicationDeploymentOptions(), CancellationToken.None);
+        await template.PrepareBuildContextAsync(plan, context, application, new ApplicationDeploymentOptions(), ApplicationArchiveExecution.Bundled, CancellationToken.None);
 
         var ignore = await File.ReadAllTextAsync(Path.Combine(context, ".dockerignore"));
         var dockerfile = await File.ReadAllTextAsync(Path.Combine(context, "Dockerfile"));

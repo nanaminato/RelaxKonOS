@@ -14,24 +14,37 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
 
     private delegate Task<string?> PrepareArchive(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken);
+    private delegate Task WriteDockerfile(string destination, string dockerfile, CancellationToken cancellationToken);
 
-    internal async Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries,
+    internal Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
+        => ExecuteAsync<PrepareArchive, string?>("PrepareAsync", execute =>
+            execute(archive, destination, maximumEntries, maximumExpandedBytes, maximumPathDepth, cancellationToken), cancellationToken);
+
+    internal Task WriteDockerfileAsync(string destination, string dockerfile, CancellationToken cancellationToken)
+        => ExecuteAsync<WriteDockerfile, bool>("WriteDockerfileAsync", async execute =>
+        {
+            await execute(destination, dockerfile, cancellationToken);
+            return true;
+        }, cancellationToken);
+
+    private async Task<TResult> ExecuteAsync<TEntry, TResult>(string method, Func<TEntry, Task<TResult>> invoke,
+        CancellationToken cancellationToken) where TEntry : Delegate
     {
         cancellationToken.ThrowIfCancellationRequested();
         var context = new AssemblyLoadContext("ApplicationDeployments archive execution", isCollectible: true);
         try
         {
-            PrepareArchive execute;
+            TEntry execute;
             try
             {
-                execute = Load(context, resolvePath());
+                execute = Bind<TEntry>(Load(context, resolvePath()), method);
             }
             catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException or ModulePackageException)
             {
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed);
             }
-            return await execute(archive, destination, maximumEntries, maximumExpandedBytes, maximumPathDepth, cancellationToken);
+            return await invoke(execute);
         }
         finally
         {
@@ -42,24 +55,40 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
     internal static void ValidateEntryPoint(string path)
     {
         var context = new AssemblyLoadContext("ApplicationDeployments archive validation", isCollectible: true);
-        try { _ = Load(context, path); }
+        try
+        {
+            var type = Load(context, path);
+            _ = Bind<PrepareArchive>(type, "PrepareAsync");
+            _ = Bind<WriteDockerfile>(type, "WriteDockerfileAsync");
+        }
         finally { context.Unload(); }
     }
 
-    private static PrepareArchive Load(AssemblyLoadContext context, string path)
+    private static Type Load(AssemblyLoadContext context, string path)
     {
         try
         {
             using var code = File.OpenRead(path);
-            var type = context.LoadFromStream(code).GetType(EntryType, throwOnError: true)!;
-            var method = type.GetMethod("PrepareAsync", BindingFlags.Public | BindingFlags.Static)
-                ?? throw new MissingMethodException(EntryType, "PrepareAsync");
-            return method.CreateDelegate<PrepareArchive>();
+            return context.LoadFromStream(code).GetType(EntryType, throwOnError: true)!;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException
-            or TypeLoadException or MissingMethodException or ArgumentException or AmbiguousMatchException)
+            or TypeLoadException or ArgumentException)
         {
             throw new InvalidDataException("Application Deployments archive entry could not be loaded.", exception);
+        }
+    }
+
+    private static TEntry Bind<TEntry>(Type type, string name) where TEntry : Delegate
+    {
+        try
+        {
+            var method = type.GetMethod(name, BindingFlags.Public | BindingFlags.Static)
+                ?? throw new MissingMethodException(EntryType, name);
+            return method.CreateDelegate<TEntry>();
+        }
+        catch (Exception exception) when (exception is MissingMethodException or ArgumentException or AmbiguousMatchException)
+        {
+            throw new InvalidDataException("Application Deployments entry does not match its execution contract.", exception);
         }
     }
 }

@@ -551,6 +551,12 @@ internal static class ModulePackageHttpChecks
                     check(await executor.PrepareAsync(archive, destination, 10, 1024, 4, default) is null
                         && await File.ReadAllTextAsync(Path.Combine(destination, "content.txt")) == "installed",
                         "rolled-back Application Deployments package extracts a build archive with installed execution");
+                    const string dockerfile = "FROM busybox:1.37\nCOPY content.txt /content.txt\n";
+                    await File.WriteAllTextAsync(Path.Combine(destination, ".dockerignore"), "*\n");
+                    await executor.WriteDockerfileAsync(destination, dockerfile, default);
+                    check(await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile")) == dockerfile
+                        && !(await File.ReadAllTextAsync(Path.Combine(destination, ".dockerignore"))).Contains('*'),
+                        "rolled-back Application Deployments package writes the generated build files");
                 }
                 await VerifyExecutionPackageVersionsAsync<InstalledCertificateModule>(client, root, certificates, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);

@@ -257,15 +257,16 @@ internal sealed class ApplicationDeploymentService(
         var arguments = plan.Arguments;
         if (template is not ImageTemplate)
         {
+            var execution = archiveExecution ?? ApplicationArchiveExecution.Bundled;
             TryDeleteDirectory(contextDirectory);
             Directory.CreateDirectory(contextDirectory);
             using (var archive = staging.Open(plan.ArchiveReferenceId!, actor))
             {
-                if (await (archiveExecution ?? ApplicationArchiveExecution.Bundled).PrepareAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
+                if (await execution.PrepareAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
                     options.MaximumExpandedBytes, options.MaximumPathDepth, cancellationToken) is { } archiveProblem)
                     throw new ApplicationDeploymentException(archiveProblem, 400);
             }
-            (entryPoint, arguments) = await template.PrepareBuildContextAsync(plan, contextDirectory, application, options, cancellationToken);
+            (entryPoint, arguments) = await template.PrepareBuildContextAsync(plan, contextDirectory, application, options, execution, cancellationToken);
         }
 
         if (gitImageReference is null)
