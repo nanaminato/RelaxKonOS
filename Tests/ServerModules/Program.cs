@@ -197,6 +197,12 @@ if (args is ["--signed-docker-joint-acceptance", var signedDockerApp])
     return;
 }
 
+if (args is ["--signed-application-deployments-joint-acceptance", var signedDeploymentApp])
+{
+    JointDeploymentAcceptance.RunSignedApplicationDeployments(signedDeploymentApp);
+    return;
+}
+
 if (args is ["--signed-certificates-joint-acceptance", var signedCertificatesApp])
 {
     JointDeploymentAcceptance.RunSignedCertificates(signedCertificatesApp);

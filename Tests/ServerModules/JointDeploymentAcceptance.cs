@@ -51,6 +51,7 @@ using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Server.Certificate;
+using ApplicationArchiveExecution = RelaxKonOS.Server.ApplicationDeployments.ApplicationArchiveExecution;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Git;
@@ -255,6 +256,28 @@ internal static class JointDeploymentAcceptance
     public static void RunSignedDocker(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
         ServerModules.DockerId, ServerCapabilities.Docker, "Docker", DockerComposeExecution.AssemblyFile,
         DockerComposeExecution.EntryType, null, VerifySignedDockerAsync));
+
+    public static void RunSignedApplicationDeployments(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
+        ServerModules.ApplicationDeploymentsId, ServerCapabilities.ApplicationDeployments, "ApplicationDeployments",
+        ApplicationArchiveExecution.AssemblyFile, ApplicationArchiveExecution.EntryType, null, VerifySignedApplicationDeploymentsAsync));
+
+    private static async Task VerifySignedApplicationDeploymentsAsync(TestHost _, string root)
+    {
+        var serverRoot = Path.Combine(root, "server");
+        var installed = InstalledModuleCatalog.Load(serverRoot).OfType<InstalledApplicationDeploymentsModule>().Single();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = serverRoot });
+        installed.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+        await using var host = builder.Build();
+        using var archive = new MemoryStream();
+        using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
+        using (var entry = zip.CreateEntry("publish/fixture.txt").Open()) entry.Write("joint deployment"u8);
+        archive.Position = 0;
+        var context = Path.Combine(root, "deployment-build-context");
+        var execution = host.Services.GetRequiredService<ApplicationArchiveExecution>();
+        Require(await execution.PrepareAsync(archive, context, 4, 1024, 4, default) is null
+            && await File.ReadAllTextAsync(Path.Combine(context, "fixture.txt")) == "joint deployment",
+            "the joint-installed Application Deployments module prepares an archive using the signed execution assembly");
+    }
 
     private static async Task VerifySignedDockerAsync(TestHost _, string root)
     {
@@ -2493,7 +2516,7 @@ internal static class JointDeploymentAcceptance
                 builder.Services.AddSingleton<IHostElevationSessionStore, NoElevation>();
                 ServerModules.CreateManaged(new HashSet<string> { ServerModules.FirewallId }, installed).ConfigureServices(builder, context);
             }
-            foreach (var module in online.Where(module => module.Id is not (ServerModules.FirewallId or ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId or ServerModules.ProxyId)))
+            foreach (var module in online.Where(module => module.Id is not (ServerModules.FirewallId or ServerModules.GitId or "relaxkonos.tailscale" or ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId or ServerModules.ProxyId or ServerModules.ApplicationDeploymentsId)))
                 module.ConfigureServices(builder, context);
             builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(options =>
                 options.DataDirectory = Path.Combine(root, "docker-compose"));
@@ -2551,7 +2574,7 @@ internal static class JointDeploymentAcceptance
                         .Select(module => ServerModuleManagementEndpoints.ForActor(module, http.User)))).RequireAuthorization();
                 app.MapGet("/fixture-core", () => "ready");
                 app.MapServerModuleManagementEndpoints();
-                foreach (var module in online.Where(module => module.Id is not (ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId or ServerModules.ProxyId))) module.MapEndpoints(app, context);
+                foreach (var module in online.Where(module => module.Id is not (ServerModules.CertificatesId or ServerModules.DockerId or ServerModules.WebServerId or ServerModules.ProxyId or ServerModules.ApplicationDeploymentsId))) module.MapEndpoints(app, context);
                 app.Urls.Add("http://127.0.0.1:0");
                 await app.StartAsync();
                 store.VerifyStartup(modules.EnabledIds);
