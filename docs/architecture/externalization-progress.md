@@ -943,3 +943,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release 的 `--deployment-runtime-live <本机已缓存的 BusyBox 镜像 ID>` 通过真实 Docker Desktop Linux Engine 验收。服务端部署运行时创建带归属标签的容器，启动并验证环回 HTTP 就绪与独有响应，随后停止、删除并确认无残留。已安装窗口发起部署及服务端操作回执的联调仍待验收。
 - 同一专项现已覆盖生产 HTTP 创建和提交、隔离台账的终态回执与幂等重放、修订激活以及真实工作负载响应。修复 Docker Engine 返回 `busybox` 时无法匹配 `library/busybox` 的问题。测试使用控制者身份夹具及本机缓存镜像，镜像拉取由夹具处理。已安装窗口提交部署的验收仍待执行。
 - Windows Release 的 `--deployment-runtime-live <缓存镜像 ID> <桌面验收运行器> <Application Deployments 官方归档>` 通过窗口写入联调。已安装应用从生产 HTTP 加载隔离部署定义，在实际部署向导中填写镜像与参数并提交，经桌面 SDK 轮询取得成功回执。服务端确认仅激活一个修订，Docker 工作负载返回预期响应，测试容器随后清理。官方包生命周期检查同轮通过。测试使用控制者身份夹具及本机缓存镜像。
+- Linux x64 从 `1fc359b43` 发布自包含桌面和服务端验收程序。在 WSL 验收发行版使用 Linux 官方归档和已有 Docker Desktop Unix 套接字通过同一窗口写入专项。向导收到成功回执，服务端只激活一个修订，工作负载返回预期响应，测试容器完成清理。官方包完整性、更新、失败安装、重启和卸载也通过。测试复用 Windows 验收使用的 Docker Engine、控制者身份夹具和缓存镜像。
