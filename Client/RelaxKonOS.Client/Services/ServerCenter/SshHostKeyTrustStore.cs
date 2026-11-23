@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -43,9 +44,7 @@ public sealed class SshHostKeyTrustStore : ISshHostKeyTrustStore
 
     public SshHostKeyTrustStore(string? directory = null)
     {
-        var root = directory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RelaxKonOS",
+        var root = directory ?? Path.Combine(ClientDataPaths.Root,
             "servercenter");
         _filePath = Path.Combine(root, "pinned-host-keys.json");
     }

@@ -7,6 +7,8 @@
   </PropertyGroup>
   <!-- Exercise the production view model without bootstrapping the desktop or a server. -->
   <ItemGroup>
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/ClientDataPaths.cs" Link="ClientDataPaths.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/Developer/DeveloperProfile.cs" Link="DeveloperProfile.cs" />
     <ProjectReference Include="../../../Framework/RelaxKonOS.UI/RelaxKonOS.UI.csproj" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Views/ComputerOverviewView.cs" Link="ComputerOverviewView.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/CloudAuthorizationNavigation.cs" Link="CloudAuthorizationNavigation.cs" />

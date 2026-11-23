@@ -9,9 +9,7 @@ namespace RelaxKonOS.Client.Services;
 public sealed class UriSchemeRoutingDiagnostics : IAppActivationDiagnostics
 {
     private static readonly object FileGate = new();
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "logs", "uri-scheme-routing.log");
+    private static readonly string LogPath = Path.Combine(ClientDataPaths.Root, "logs", "uri-scheme-routing.log");
 
     public static string FilePath => LogPath;
 

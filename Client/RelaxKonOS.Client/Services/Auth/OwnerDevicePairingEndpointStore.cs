@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -13,8 +14,7 @@ public interface IOwnerDevicePairingEndpointStore
 
 public sealed class OwnerDevicePairingEndpointStore : IOwnerDevicePairingEndpointStore
 {
-    private readonly string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "owner-device-pairing-endpoints.json");
+    private readonly string path = Path.Combine(ClientDataPaths.Root, "owner-device-pairing-endpoints.json");
 
     public async Task<string?> GetAsync(string serviceId, CancellationToken ct = default)
         => (await ReadAsync(ct)).Endpoints.SingleOrDefault(item => item.ServiceId == serviceId)?.Endpoint;

@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
@@ -101,9 +102,7 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
 
     public RememberedSessionStore(string? directory = null)
     {
-        var root = directory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RelaxKonOS");
+        var root = directory ?? ClientDataPaths.Root;
         _windowsFilePath = Path.Combine(root, "remembered-session.bin");
         _linuxProfilesPath = Path.Combine(root, "remembered-connections.json");
     }

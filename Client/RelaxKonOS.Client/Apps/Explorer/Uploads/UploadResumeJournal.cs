@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Text.Json;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Uploads;
@@ -41,9 +42,7 @@ public sealed class UploadResumeJournal
 
     public UploadResumeJournal(string? path = null)
     {
-        _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RelaxKonOS", "upload-resume.json");
+        _path = path ?? Path.Combine(ClientDataPaths.Root, "upload-resume.json");
     }
 
     /// <summary>Path of the journal file, so a test can point it somewhere disposable.</summary>

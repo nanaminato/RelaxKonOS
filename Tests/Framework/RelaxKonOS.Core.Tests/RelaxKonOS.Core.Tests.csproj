@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/ClientDataPaths.cs" Link="ClientDataPaths.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/Developer/DeveloperProfile.cs" Link="DeveloperProfile.cs" />
+    <Compile Include="../../../Shared/RelaxKonOS.Protocol/Developer/DeveloperBridgeTarget.cs" Link="DeveloperBridgeTarget.cs" />
     <ProjectReference Include="../../../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" />
     <ProjectReference Include="../../../Framework/RelaxKonOS.Shell/RelaxKonOS.Shell.csproj" />
     <!-- Keep the storage-boundary test dependency-free while the local desktop SDK is incomplete. -->

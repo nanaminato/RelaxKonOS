@@ -5,9 +5,7 @@ namespace RelaxKonOS.Client.Services;
 /// <summary>Stores the display language used exclusively by the sign-in experience.</summary>
 public sealed class LocalLanguageStore
 {
-    private readonly string _path = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "client-language.json");
+    private readonly string _path = Path.Combine(ClientDataPaths.Root, "client-language.json");
 
     public string Load()
     {

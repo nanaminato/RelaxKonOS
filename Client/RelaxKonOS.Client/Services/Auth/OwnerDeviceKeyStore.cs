@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
@@ -64,10 +65,8 @@ public sealed class OwnerDeviceKeyStore : IOwnerDeviceKeyStore
     private static readonly IPlatformSecretStore LinuxSecretService = new LinuxSecretServiceStore(
         PlatformSecretSlot.LinuxSecret("com.relaxkonos.client.owner-device-key", "application", "RelaxKonOS.Client",
             "RelaxKonOS owner device key"));
-    private readonly string windowsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "owner-device-keys.bin");
-    private readonly string linuxPassphraseFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "owner-device-keys.encrypted.json");
+    private readonly string windowsFile = Path.Combine(ClientDataPaths.Root, "owner-device-keys.bin");
+    private readonly string linuxPassphraseFile = Path.Combine(ClientDataPaths.Root, "owner-device-keys.encrypted.json");
 
     public async Task<OwnerDeviceKeyMaterial?> LoadAsync(string serviceId, string? passphrase, CancellationToken ct = default)
     {

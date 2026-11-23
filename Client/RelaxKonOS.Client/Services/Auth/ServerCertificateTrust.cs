@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Collections.Concurrent;
 using System.Net.Security;
 using System.Security.Cryptography;
@@ -34,8 +35,7 @@ public sealed class ServerCertificateTrust
 
     public ServerCertificateTrust(string? directory = null)
     {
-        _path = Path.Combine(directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RelaxKonOS", "servercenter"), "tls-certificate-pins.json");
+        _path = Path.Combine(directory ?? Path.Combine(ClientDataPaths.Root, "servercenter"), "tls-certificate-pins.json");
         try
         {
             if (File.Exists(_path))

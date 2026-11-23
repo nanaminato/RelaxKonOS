@@ -216,20 +216,26 @@ public partial class BrowserMainView : UserControl
     private static void ConfigureWebViewEnvironment(object? sender, WebViewEnvironmentRequestedEventArgs e)
     {
         BrowserDiagnostics.Record($"NativeWebView environment requested: {e.GetType().FullName}.");
-        if (!OperatingSystem.IsLinux())
-            return;
-
-        // Avalonia 12 exposes this switch on its Linux-specific event args, while the
-        // public event uses the platform-neutral base type. Use the runtime type here so
-        // non-Linux builds do not need a reference to the internal backend type.
-        try
+        var browserRoot = System.IO.Path.Combine(RelaxKonOS.Client.Services.ClientDataPaths.Root, "browser");
+        switch (e)
         {
-            ((dynamic)e).PreferWebKitGtkInstead = true;
-            BrowserDiagnostics.Record("Requested WebKitGTK backend on Linux.");
-        }
-        catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
-        {
-            BrowserDiagnostics.Record("Linux WebView backend selection is unavailable in this runtime.");
+            case Avalonia.Platform.WindowsWebView2EnvironmentRequestedEventArgs windows:
+                windows.UserDataFolder = browserRoot;
+                break;
+            case Avalonia.Platform.GtkWebViewEnvironmentRequestedEventArgs gtk:
+                gtk.BaseDataDirectory = browserRoot;
+                gtk.BaseCacheDirectory = System.IO.Path.Combine(browserRoot, "cache");
+                break;
+            case Avalonia.Platform.LinuxWpeWebViewEnvironmentRequestedEventArgs wpe:
+                wpe.DataDirectory = browserRoot;
+                wpe.CacheDirectory = System.IO.Path.Combine(browserRoot, "cache");
+                wpe.PreferWebKitGtkInstead = true;
+                break;
+            case Avalonia.Platform.AppleWKWebViewEnvironmentRequestedEventArgs apple:
+                // WKWebView does not expose a directory override. Keep browser state in memory
+                // rather than writing a second persistent store outside the selected root.
+                apple.NonPersistentDataStore = true;
+                break;
         }
     }
 

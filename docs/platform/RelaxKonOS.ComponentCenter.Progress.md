@@ -21,6 +21,10 @@ Core 下载客户端改为按主机/域名、通配符、IP/CIDR 与可选端口
 桌面安装台账入口改用统一 `IHostElevationBroker`，删除仅输入密码的独立提权接口。组件中心及数据库调用方同步采用准确能力与目标的管理员授权；支持输入其他管理员账号，密码错误和非管理员提示由统一弹窗处理。成功授权后仅使用原幂等键重试一次，取消不重试。共享安装反馈补齐权限拒绝及授权错误映射。客户端及安装测试项目构建通过；Nginx 授权重试、取消、原键保持及错误映射专项回归通过。尝试无界面全量回归时在 `TaskPreviewClientChecks` 的观察设备预览断言失败，不能记录为全量通过；此项不是 Nginx 下载、实际安装、启动或跨版本升级的实机验收。
 
 
+## 客户端持久目录统一（2026-11-23，CC-05 / MR-01）
+
+桌面客户端的组件来源信任日志与缓存、草稿、任务引用和模块操作引用改由 `ClientDataPaths.Root` 定位，跟随启动时验证的用户数据目录及 Debug profile。切换目录不自动复制旧信任，不改变签名验证、冻结计划、宿主安装或恢复执行权。Windows Debug/Release 的统一路径及设备密钥跨进程持久化验收通过；此项不增加受管软件安装、跨版本升级或回滚实机验收。目录边界和验证范围见[客户端数据目录](../development/RelaxKonOS.DeveloperMode.md#profile-与结果)。
+
 ## PostgreSQL 原生平台扩展（2026-11-17，DB-07D）
 
 组件中心通过 Core 内置的 PostgreSQL 适配器为 Ubuntu 26.04 amd64 / PostgreSQL 18 和 Debian 13 amd64 / PostgreSQL 17 生成签名 APT 软件包安装计划。常规状态查询独立于 APT 刷新，维护从数据库引擎管理进入。实现和验收范围见[数据库平台扩展](../applications/RelaxKonOS.DatabaseManager.Design.md#db-07d-postgresql-原生平台扩展)。

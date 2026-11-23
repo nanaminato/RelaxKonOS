@@ -15,6 +15,8 @@ RemoteBrowser 只负责网页导航、展示以及书签、历史和主页等浏
 
 `BrowserApp` 创建 `BrowserViewModel` 与 `BrowserMainView`。`NativeWebView` 负责平台原生渲染；View 通过委托调用其后退、前进、刷新和停止方法，ViewModel 不持有 WebView 引用。
 
+本地浏览器数据通过客户端统一数据根目录配置：Windows WebView2 使用 `ClientDataPaths.Root/browser`，Linux GTK/WPE 的数据与缓存分别使用该目录和其 `cache` 子目录。macOS WKWebView 不支持任意目录覆盖，使用非持久数据存储，因此内嵌网页的 Cookie 等状态不跨客户端重启保留。Windows 下已验证环境参数配置，Linux/macOS 尚未实机验收；此项不改变服务端书签、历史和偏好的持久化责任。完整目录边界见[开发者模式的数据目录说明](../development/RelaxKonOS.DeveloperMode.md#profile-与结果)。
+
 导航流程为：地址栏输入经 `NormalizeAddress` 归一化（域名补 `https://`、`localhost:port` 补 `http://`、搜索词转为搜索 URL）后，更新当前标签状态并通过 `ViewNavigateRequested` 请求 View 导航。导航完成后，浏览器异步记录历史并更新书签状态。
 
 支持的功能：

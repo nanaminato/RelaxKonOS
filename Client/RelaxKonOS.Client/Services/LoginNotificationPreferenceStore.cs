@@ -5,9 +5,7 @@ namespace RelaxKonOS.Client.Services;
 /// <summary>Stores non-sensitive, device-local choices for sign-in notifications.</summary>
 public sealed class LoginNotificationPreferenceStore
 {
-    private readonly string _path = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "login-notifications.json");
+    private readonly string _path = Path.Combine(ClientDataPaths.Root, "login-notifications.json");
 
     public bool IsPasswordSaveWarningDismissed()
     {

@@ -31,8 +31,6 @@ public sealed partial class DeveloperPackageManager
     private readonly VirtualSystemDriveService _drive;
     private readonly string _root;
     private readonly string _catalogPath;
-    private readonly string _legacyRoot;
-    private readonly string _legacyCatalogPath;
     private readonly ConcurrentDictionary<string, DeveloperAppRecord> _catalog;
     private readonly SemaphoreSlim _mutations = new(1, 1);
     private readonly OfficialDesktopPackages _official;
@@ -68,8 +66,6 @@ public sealed partial class DeveloperPackageManager
         _drive.EnsureCreated();
         _root = _drive.ExternalProgramsDirectory;
         _catalogPath = _drive.ResolveRootChild("System/external-catalog.json");
-        _legacyRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "developer-apps");
-        _legacyCatalogPath = Path.Combine(_legacyRoot, "catalog.json");
         _catalog = new(LoadCatalog(_catalogPath), StringComparer.Ordinal);
     }
 
@@ -155,9 +151,6 @@ public sealed partial class DeveloperPackageManager
         // so it must remain asynchronous; synchronously waiting here prevents the UI dispatcher
         // from running the file I/O continuations and stops the login window from being created.
         await DiscoverExternalPackagesAsync(cancellationToken);
-#if !DEBUG
-        await MigrateLegacyPackagesAsync(cancellationToken);
-#endif
         CleanupStagingDebris();
         CleanupDeferredUninstalls();
         foreach (var record in _catalog.Values.ToArray())
@@ -493,55 +486,6 @@ public sealed partial class DeveloperPackageManager
                 // deleting it here makes a transient parser mismatch look like an uninstall.
                 RecordActivationDiagnostic($"VSD package discovery: app={SafeDiagnosticId(appId)}, code={code}, error={exception.GetType().Name}.");
             }
-        }
-    }
-
-    /// <summary>Copies, rather than deletes, legacy development packages into the VSD layout.</summary>
-    private async Task MigrateLegacyPackagesAsync(CancellationToken cancellationToken)
-    {
-        foreach (var legacy in LoadCatalog(_legacyCatalogPath).Values)
-        {
-            if (_catalog.ContainsKey(legacy.Id)) continue;
-            try
-            {
-                ValidateAppId(legacy.Id);
-                if (OfficialDesktopPackages.IsReserved(legacy.Id)) throw new InvalidOperationException();
-                if (legacy.PermissionModelVersion != 2 || !Directory.Exists(legacy.Path)) throw new InvalidOperationException();
-                var legacyRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_legacyRoot)) + Path.DirectorySeparatorChar;
-                var source = Path.GetFullPath(legacy.Path);
-                if (!source.StartsWith(legacyRoot, StringComparison.Ordinal)) throw new InvalidOperationException();
-
-                var versionId = $"legacy-{Guid.NewGuid():N}";
-                var destination = VersionPath(legacy.Id, versionId);
-                CopyDirectoryWithoutLinks(source, destination);
-                var migrated = legacy with { Path = destination, IconPath = null };
-                await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.relaxkonos.json"), ToDescriptor(migrated), cancellationToken);
-                await _drive.WriteJsonAtomicallyAsync(CurrentPath(migrated.Id), new ExternalCurrentVersion(1, migrated.Id, versionId), cancellationToken);
-                _catalog[migrated.Id] = migrated;
-                RecordActivationDiagnostic($"VSD package migration: app={migrated.Id}, result=migrated.");
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or VirtualSystemDriveException)
-            {
-                RecordActivationDiagnostic($"VSD package migration: app={SafeDiagnosticId(legacy.Id)}, result=retained-legacy, code={VirtualSystemDriveProblemCode.PackageLayoutInvalid}.");
-            }
-        }
-        SaveCatalog(_catalogPath, _catalog);
-    }
-
-    private static void CopyDirectoryWithoutLinks(string source, string destination)
-    {
-        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories).Prepend(source))
-        {
-            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException();
-            var relative = Path.GetRelativePath(source, directory);
-            Directory.CreateDirectory(relative == "." ? destination : Path.Combine(destination, relative));
-        }
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-        {
-            if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException();
-            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(file, target, overwrite: false);
         }
     }
 

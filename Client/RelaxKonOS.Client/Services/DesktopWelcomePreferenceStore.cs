@@ -11,9 +11,7 @@ namespace RelaxKonOS.Client.Services;
 /// </summary>
 public sealed class DesktopWelcomePreferenceStore
 {
-    private readonly string _path = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "desktop-welcome.json");
+    private readonly string _path = Path.Combine(ClientDataPaths.Root, "desktop-welcome.json");
 
     public bool HasCompleted(string? serverUrl, string? username)
     {

@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Diagnostics;
 using Avalonia.Threading;
 
@@ -11,9 +12,7 @@ namespace RelaxKonOS.Client.Apps.Browser;
 internal static class BrowserDiagnostics
 {
     private static readonly object FileGate = new();
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "logs", "browser-diagnostics.log");
+    private static readonly string LogPath = Path.Combine(ClientDataPaths.Root, "logs", "browser-diagnostics.log");
 
     private static long _lastUiPulse = Stopwatch.GetTimestamp();
     private static int _watchdogStarted;

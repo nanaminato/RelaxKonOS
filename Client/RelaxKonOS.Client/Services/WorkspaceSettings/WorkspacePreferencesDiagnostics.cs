@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
 
@@ -10,8 +11,7 @@ internal static class WorkspacePreferencesDiagnostics
 {
     private static readonly object Gate = new();
     private const long MaximumBytes = 2 * 1024 * 1024;
-    private static readonly string DirectoryPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "logs");
+    private static readonly string DirectoryPath = Path.Combine(ClientDataPaths.Root, "logs");
 
     public static PreferencesSaveFailure Classify(Exception exception) => exception switch
     {

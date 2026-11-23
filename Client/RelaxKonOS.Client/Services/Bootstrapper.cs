@@ -334,14 +334,12 @@ public static class Bootstrapper
         services.AddSingleton<ISettingsNavigation, SettingsNavigationService>();
         services.AddSingleton<ExternalAppContextFactory>();
         services.AddSingleton<DeveloperPackageManager>();
-        services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-catalog-sources"), "desktop-user"));
+        services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(ClientDataPaths.Root, "component-catalog-sources"), "desktop-user"));
         services.AddSingleton<AppPackageInstallerService>();
         services.AddSingleton<DeveloperBridgeService>();
         // Port forwarding owns local ssh processes and a device-local, non-secret settings file.
         // It is intentionally not part of Workspace preference synchronization.
-        services.AddSingleton(new RelaxKonOS.Client.Apps.PortForwarding.PortForwardingSettingsStore(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "port-forwarding.json")));
+        services.AddSingleton(new RelaxKonOS.Client.Apps.PortForwarding.PortForwardingSettingsStore(Path.Combine(ClientDataPaths.Root, "port-forwarding.json")));
         services.AddSingleton<RelaxKonOS.Client.Apps.PortForwarding.IPortForwardingService, RelaxKonOS.Client.Apps.PortForwarding.PortForwardingService>();
         // PreferencesSync 监听登录态，登录后把服务端偏好应用到 ShellSettings + DefaultAppRegistry。
         services.AddSingleton<PreferencesSync>();
@@ -368,12 +366,9 @@ public static class Bootstrapper
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).RemoveAllLoggers();
         services.AddSingleton<RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>();
-        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDraftStore(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-drafts")));
-        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentTaskReferenceStore(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-tasks")));
-        services.AddSingleton(new RelaxKonOS.Client.Services.Modules.ServerModuleReferenceStore(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "module-operations")));
+        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDraftStore(Path.Combine(ClientDataPaths.Root, "component-drafts")));
+        services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentTaskReferenceStore(Path.Combine(ClientDataPaths.Root, "component-tasks")));
+        services.AddSingleton(new RelaxKonOS.Client.Services.Modules.ServerModuleReferenceStore(Path.Combine(ClientDataPaths.Root, "module-operations")));
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProxyServer.IProxyServerClient, RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient>()
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ComponentCenter.ITaskPlanPreviewClient, RelaxKonOS.Client.Apps.ComponentCenter.TaskPlanPreviewClient>()

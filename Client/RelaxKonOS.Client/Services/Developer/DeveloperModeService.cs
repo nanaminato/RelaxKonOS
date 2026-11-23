@@ -12,7 +12,7 @@ public sealed class DeveloperModeService
     private DeveloperModeState _state;
 
     public DeveloperModeService()
-        : this(Path.Combine(DeveloperProfile.DataDirectory, "developer-mode.json"))
+        : this(Path.Combine(ClientDataPaths.Root, "developer-mode.json"))
     {
 #if DEBUG
         if (!IsEnabled && Environment.GetEnvironmentVariable("RELAXKONOS_DEV_ENABLE") == "1")

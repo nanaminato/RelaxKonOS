@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Text.Json;
 using RelaxKonOS.Protocol.ServerCenter;
 
@@ -8,7 +9,7 @@ public sealed class LoginTunnelStore
 {
     private readonly string _path;
     public LoginTunnelStore(string? directory = null) => _path = Path.Combine(directory ??
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS"), "login-tunnels.json");
+        ClientDataPaths.Root, "login-tunnels.json");
 
     public IReadOnlyList<SshLoginTunnelProfile> Load()
     {

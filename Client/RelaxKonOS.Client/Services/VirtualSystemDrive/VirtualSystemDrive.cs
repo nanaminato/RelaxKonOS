@@ -20,7 +20,7 @@ public sealed class VirtualSystemDrive
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    public VirtualSystemDrive() : this(Path.Combine(DeveloperProfile.DataDirectory, "SystemDrive")) { }
+    public VirtualSystemDrive() : this(Path.Combine(ClientDataPaths.Root, "SystemDrive")) { }
 
     internal VirtualSystemDrive(string root)
     {

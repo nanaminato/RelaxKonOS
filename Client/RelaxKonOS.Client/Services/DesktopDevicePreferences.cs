@@ -12,8 +12,7 @@ public sealed class DesktopDevicePreferences : ObservableObject
     public bool SaveFailed { get; private set; }
     public event EventHandler? Changed;
 
-    public DesktopDevicePreferences() : this(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "desktop-device.json")) { }
+    public DesktopDevicePreferences() : this(Path.Combine(ClientDataPaths.Root, "desktop-device.json")) { }
 
     public DesktopDevicePreferences(string path)
     {

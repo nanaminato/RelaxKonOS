@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.Client.Services.ServerCenter;
@@ -7,9 +8,9 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
 {
     private readonly object _gate = new();
     private RelaxKonOS.Protocol.Workspace.WorkspacePreferencesDto? _previousPreferences;
-    public string PreferencesDirectory { get; } = preferencesDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "ssh-desktop");
+    public string PreferencesDirectory { get; } = preferencesDirectory ?? Path.Combine(ClientDataPaths.Root, "ssh-desktop");
     public DesktopDevicePreferences DevicePreferences { get; } = new(Path.Combine(
-        preferencesDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "ssh-desktop"), "device.json"));
+        preferencesDirectory ?? Path.Combine(ClientDataPaths.Root, "ssh-desktop"), "device.json"));
     private string PreferencesPath => Path.Combine(PreferencesDirectory, "preferences.json");
 
     /// <summary>Isolated SFTP identity from an already verified SSH connection; never changes desktop preferences.</summary>

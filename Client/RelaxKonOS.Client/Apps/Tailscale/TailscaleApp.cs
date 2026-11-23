@@ -26,7 +26,7 @@ public sealed class TailscaleApp : RemoteApplicationBase
         var model = new TailscaleViewModel(context.Services.GetRequiredService<ITailscaleClient>(),
             context.Services.GetRequiredService<ITailscaleOperationReferences>(), context.Services.GetRequiredService<IHostElevationBroker>(), language);
         var login = new TailscaleLoginViewModel(context.Services.GetRequiredService<ITailscaleLoginClient>(),
-            new TailscaleOperationReferences(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "tailscale-login-operations.json")),
+            new TailscaleOperationReferences(Path.Combine(ClientDataPaths.Root, "tailscale-login-operations.json")),
             context.Services.GetRequiredService<IHostElevationBroker>(), language)
             { HostMayHaveChanged = model.InvalidateControl, ReadBackendStateAsync = model.ReadBackendStateAsync,
               AccountLineProvider = () => model.AccountLine };

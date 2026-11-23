@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -37,9 +38,7 @@ public sealed class HostTargetStore : IHostTargetStore
 
     public HostTargetStore(string? directory = null)
     {
-        var root = directory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RelaxKonOS",
+        var root = directory ?? Path.Combine(ClientDataPaths.Root,
             "servercenter");
         _filePath = Path.Combine(root, "host-targets.json");
     }

@@ -11,7 +11,7 @@ public sealed class UsageMemoryStore
     private Dictionary<string, Dictionary<string, string>> accounts = new();
     private long generation;
 
-    public UsageMemoryStore() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "usage-memory.json")) { }
+    public UsageMemoryStore() : this(Path.Combine(ClientDataPaths.Root, "usage-memory.json")) { }
     public UsageMemoryStore(string path)
     {
         this.path = path;

@@ -6,7 +6,7 @@ namespace RelaxKonOS.Client.Services.Developer;
 /// The Virtual System Drive refused a write that an installation requires.
 /// </summary>
 /// <remarks>
-/// The drive has exactly one root, <c>{LocalApplicationData}/RelaxKonOS/SystemDrive</c>, so an install
+/// The drive has exactly one root, <c>{ClientDataPaths.Root}/SystemDrive</c>, so an install
 /// can never relocate itself when that root is read-only, owned by another account, or blocked by a
 /// sandbox policy. Reporting the package folder (not a random staging id) lets the installer tell the
 /// user which folder to fix, instead of surfacing the file system's own "Access to the path … is

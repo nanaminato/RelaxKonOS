@@ -44,6 +44,25 @@ CLI 通过回环 HTTP 传输文件，无需生成 `.roapp`。Debug 客户端验�
 
 验证成功后将位置保存到程序旁的 `data-location.txt`，下次启动自动使用；显式设置的 `RELAXKONOS_DATA_HOME` 优先于此文件。如果程序目录不可写，会明确提示无法记住位置，用户可选择“仅本次使用并继续”。清理构建输出会移除该位置记录，但不会删除放在输出目录之外的实际数据。此机制不自动选择临时目录，避免系统清理导致数据丢失。
 
+客户端持久文件统一由 `ClientDataPaths.Root` 定位，Debug 为 `<数据父目录>/RelaxKonOS/Debug/<profile>`，Release 为 `<数据父目录>/RelaxKonOS`。以下内容均在该根目录中，不再自行写入另一份 AppData：
+
+| 相对位置 | 内容 |
+| --- | --- |
+| `owner-device-keys.bin`、`owner-device-keys.encrypted.json`、`owner-device-pairing-endpoints.json` | Windows DPAPI 设备密钥、Linux 显式口令加密密钥、设备配对地址 |
+| `remembered-session.bin`、`remembered-connections.json`、`login-tunnels.json` | 记住的登录及登录隧道记录 |
+| `client-language.json`、`desktop-device.json`、`desktop-welcome.json`、`login-notifications.json`、`usage-memory.json` | 本机偏好和交互记忆 |
+| `servercenter/`、`ssh-desktop/` | 主机记录、SSH 凭据与信任、TLS 信任、操作记录及 SSH 桌面偏好 |
+| `component-catalog-sources/`、`component-drafts/`、`component-tasks/`、`module-operations/` | 组件来源信任与缓存、草稿、任务及模块操作引用 |
+| `port-forwarding.json`、`tailscale-operations.json`、`tailscale-login-operations.json`、`upload-resume.json` | 端口转发、Tailscale 和上传续传记录 |
+| `logs/`、`browser/` | 诊断日志；Windows WebView2、Linux GTK/WPE 的浏览器数据及缓存 |
+| `SystemDrive/`、`app-data/`、`app-permissions-v2.*`、`developer-mode.json`、`.client.lock` | 虚拟系统盘、应用数据和权限、开发者配置及 Debug 进程锁 |
+
+边界：程序旁的 `data-location.txt` 仅用于启动时发现数据根目录；传输、剪贴板、安装暂存及受保护的本机部署暂存仍按临时文件规则管理，用户主动保存或导出的文件使用用户所选目标。macOS Keychain 和 Linux Secret Service 继续由操作系统安全存储管理，不改为明文文件；WKWebView 不提供任意数据目录覆盖，macOS 内嵌网页存储使用非持久模式，Cookie 等状态不跨客户端重启保留。未在 macOS/Linux 实机验收该平台行为。
+
+切换目录不自动读取、合并或迁移旧目录的凭据和信任记录。需要保留时应在关闭客户端后显式复制对应文件；Windows DPAPI 文件仍绑定原 Windows 用户，不能通过复制给其他用户解密。旧开发包目录的启动迁移入口已移除，使用当前 VSD 包布局。
+
+2026-11-23 统一存储验收：Windows Debug/Release 分别通过两个独立进程完成设备密钥创建、更新、重启加载、相同公钥核对和私钥签名验证，并核对 16 个默认存储路径、浏览器环境目录配置及持久目录源码审计。完整 Windows Debug 桌面另行验证：从不可用数据父路径恢复到已保存测试密钥的可写目录，进入登录页并加载其中的语言偏好；清除路径环境变量后重启，仍直接进入同一语言的登录页；关闭后再次解密密钥、比对公钥并签名成功。仅验证本地密钥持久化，不代表服务端设备注册或真实 WebView 内核运行验收。登录、文件管理器和 ServerCenter 回归通过；Core 存储边界套件构建通过，但符号链接逃逸子项受本机缺少创建符号链接特权阻挡，未记为全量通过。
+
 启动恢复窗口在依赖注入和数据目录初始化之前使用内存中的默认外观，确保输入框与按钮正常显示。2026-11-23 已在 Windows Debug 真实界面验证：将数据父目录设为普通文件以触发不可用错误，通过原生目录选择器选择可写目录，点击“使用此目录”后进入登录页；关闭客户端并清除 `RELAXKONOS_DATA_HOME` 后重启，从 `data-location.txt` 读取先前选择并直接进入登录页。该验收没有提交登录请求，也不代表已完成服务端连接验证。
 
 也可以在 Rider 中打开 **Run → Edit Configurations → 桌面客户端配置 → Environment variables**，添加 `RELAXKONOS_DATA_HOME`，值填写实测可写的绝对路径。该路径是父目录，默认 Debug profile 会在其中创建 `RelaxKonOS\Debug\default`。用户目录同样可能受到运行环境限制，不能仅根据盘符或目录名称认定其可写。

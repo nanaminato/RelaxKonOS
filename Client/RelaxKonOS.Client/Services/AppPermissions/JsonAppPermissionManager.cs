@@ -29,7 +29,7 @@ public sealed class JsonAppPermissionManager : IAppPermissionManager, IAppPermis
     {
         _applications = applications;
         _useEncryption = OperatingSystem.IsWindows();
-        var root = Developer.DeveloperProfile.DataDirectory;
+        var root = ClientDataPaths.Root;
         _path = Path.Combine(root, _useEncryption ? "app-permissions-v2.dat" : "app-permissions-v2.json");
         DeleteLegacyFiles(root);
         _grants = Load(_path, _useEncryption);

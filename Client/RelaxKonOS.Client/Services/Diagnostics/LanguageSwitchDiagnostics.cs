@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -24,8 +25,7 @@ internal static class LanguageSwitchDiagnostics
         lock (Gate)
         {
             if (_path is not null) return;
-            directory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "RelaxKonOS", "logs");
+            directory ??= Path.Combine(ClientDataPaths.Root, "logs");
             _path = Path.Combine(directory, $"language-switch-{DateTime.Now:yyyyMMdd-HHmmss-fff}-{Environment.ProcessId}.log");
             try
             {

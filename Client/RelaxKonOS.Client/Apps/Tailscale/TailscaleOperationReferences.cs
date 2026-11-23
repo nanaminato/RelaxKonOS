@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.HostSettings;
 
@@ -14,8 +15,7 @@ public sealed class TailscaleOperationReferences : ITailscaleOperationReferences
 {
     private readonly string _path;
     private readonly object _gate = new();
-    public TailscaleOperationReferences() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "tailscale-operations.json")) { }
+    public TailscaleOperationReferences() : this(Path.Combine(ClientDataPaths.Root, "tailscale-operations.json")) { }
     public TailscaleOperationReferences(string path) => _path = path;
     public IReadOnlyList<Guid> Read(HostSettingsConnection connection)
     {

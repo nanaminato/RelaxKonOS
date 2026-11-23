@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -108,9 +109,7 @@ public sealed class SshCredentialStore : ISshCredentialStore
 
     public SshCredentialStore(string? directory = null)
     {
-        var root = directory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RelaxKonOS",
+        var root = directory ?? Path.Combine(ClientDataPaths.Root,
             "servercenter");
         _windowsFilePath = Path.Combine(root, "ssh-credentials.bin");
     }

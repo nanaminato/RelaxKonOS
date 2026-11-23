@@ -30,7 +30,7 @@ public sealed class AppDataManager : IAppDataManager
     {
         _permissions = permissions;
         _settings = settings;
-        _localDataRoot = Path.GetFullPath(Path.Combine(Developer.DeveloperProfile.DataDirectory, "app-data"));
+        _localDataRoot = Path.GetFullPath(Path.Combine(ClientDataPaths.Root, "app-data"));
     }
 
     public async Task<AppDataClearResult> ClearAsync(
