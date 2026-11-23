@@ -816,6 +816,20 @@ internal static class JointDeploymentAcceptance
                 Require(dependencies.All(dependency => review.Plan.OrderedReleases.Any(release =>
                     release.Package == new DeploymentPackageKey(DeploymentPackageKind.ServerModule, dependency.ModuleId) && release.Satisfied)),
                     "the signed Web Server plan reuses its effective Certificates dependency");
+            if (moduleId == ServerModules.WebServerId)
+            {
+                factory.SubstituteAppliedPublisher = true;
+                try
+                {
+                    await joint.ExecuteAsync(review, default);
+                    throw new InvalidOperationException("Expected the accepted response with a different publisher to be rejected.");
+                }
+                catch (InvalidOperationException error) when (error.Message == "deployment-module-receipt-unavailable") { }
+                Require((await joint.FindPendingAsync(candidate, default))?.Plan.Id == review.Plan.Id
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 1
+                    && !apps.IsRegistered(new AppId(candidate.Manifest.Id)),
+                    "a mismatched apply response leaves the confirmed plan pending with its original package operation");
+            }
             await ExpectRestartAsync(joint, review);
             Require(!apps.IsRegistered(new AppId(candidate.Manifest.Id)), $"the desktop waits for the signed {moduleId} package to become effective");
             var pendingClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
@@ -2593,6 +2607,7 @@ internal static class JointDeploymentAcceptance
         public bool DropDependencyReply { set => handler.DropDependencyReply = value; }
         public bool ExpirePackageApply { set => handler.ExpirePackageApply = value; }
         public bool DropPackageApplyReply { set => handler.DropPackageApplyReply = value; }
+        public bool SubstituteAppliedPublisher { set => handler.SubstituteAppliedPublisher = value; }
         public string? HideStoreModule { set => handler.HideStoreModule = value; }
         public string? IncompatibleDependencyModule { set => handler.IncompatibleDependencyModule = value; }
         public bool BlockDependencyRelease { set => handler.BlockDependencyRelease = value; }
@@ -2620,6 +2635,7 @@ internal static class JointDeploymentAcceptance
         public bool DropDependencyReply { get; set; }
         public bool ExpirePackageApply { get; set; }
         public bool DropPackageApplyReply { get; set; }
+        public bool SubstituteAppliedPublisher { get; set; }
         public string? HideStoreModule { get; set; }
         public string? IncompatibleDependencyModule { get; set; }
         public bool BlockDependencyRelease { get; set; }
@@ -2699,6 +2715,19 @@ internal static class JointDeploymentAcceptance
                     using var response = await base.SendAsync(request, cancellationToken);
                     response.EnsureSuccessStatusCode();
                     throw new HttpRequestException("fixture-package-apply-response-lost");
+                }
+                if (SubstituteAppliedPublisher)
+                {
+                    SubstituteAppliedPublisher = false;
+                    using var response = await base.SendAsync(request, cancellationToken);
+                    response.EnsureSuccessStatusCode();
+                    var result = (await response.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(
+                        RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = JsonContent.Create(result with { Record = result.Record with { PublisherId = "other-publisher" } },
+                            options: RelaxKonOSJsonOptions.Default),
+                    };
                 }
             }
             if (path?.StartsWith(ServerModuleManagementRoutes.DesktopDependencies + "/", StringComparison.Ordinal) == true)
