@@ -908,3 +908,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 服务端在提交时确认暂存归档缺失，或归档与计划绑定的目标不一致时，联合部署要求重新审阅。Windows 隔离验收移除本轮暂存文件，经真实 HTTP 提交获取拒绝并确认没有创建包操作。新审阅重新暂存归档后完成安装。
 - 复用运行中的独立模块时，联合部署从已安装包接口获取经清单摘要核对的传递版本范围。Windows 签名 Web Server 双包验收在商店响应省略其发行项时，仍从已安装清单获得对 Certificates 的最低版本和排除式最高版本。
 - Windows Release 的 Welcome 与 Databases 联合部署专项通过。完整模块套件首次在云上传冲突断言失败，单独重跑通过全部 1,498 项检查。
+- 桌面启动守卫使用模块运行清单提供的签名依赖范围。Windows 签名 Web Server 专项先核对服务端从实际运行版本清单返回的 Certificates 约束，再在测试响应中收紧范围，确认守卫拒绝启动，即使 Certificates 仍在运行。

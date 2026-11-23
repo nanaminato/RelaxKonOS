@@ -184,6 +184,11 @@ internal static class InstalledModuleStore
     internal static ModulePackageManifest ReadVerifiedManifest(string contentRoot, InstalledModuleRecord record) =>
         ReadManifestAtRoot(ResolvePackageRoot(contentRoot, record.PackagePath), record);
 
+    internal static ServerModuleReleaseDependencyDto[] ReadDependencyRanges(string contentRoot, InstalledModuleRecord record) =>
+        record.Quarantined || record.Requires.Length == 0 ? [] : ReadVerifiedManifest(contentRoot, record).Dependencies
+            .Select(dependency => new ServerModuleReleaseDependencyDto(dependency.ModuleId,
+                dependency.MinimumVersion, dependency.MaximumVersionExclusive)).ToArray();
+
     private static ModulePackageManifest ReadManifestAtRoot(string root, InstalledModuleRecord record)
     {
         var manifestPath = Path.Combine(root, "manifest.json");

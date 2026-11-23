@@ -85,6 +85,14 @@ internal sealed partial class ServerModules
             var effectiveVersion = module is InstalledIsolatedModule
                 ? host is { Status: "running" } ? host.Version : null
                 : isEnabled ? installed?.InstalledVersion ?? version : null;
+            var activePackage = package ?? (installed is null ? null : currentPackages.GetValueOrDefault(module.Id));
+            ServerModuleReleaseDependencyDto[] dependencies = [];
+            if (activePackage is { Quarantined: false } && activePackage.Version == effectiveVersion)
+            {
+                try { dependencies = InstalledModuleStore.ReadDependencyRanges(context.ContentRootPath, activePackage); }
+                catch (Exception error) when (error is RelaxKonOS.ModulePackaging.ModulePackageException or IOException or UnauthorizedAccessException)
+                { recoveryRequired = true; }
+            }
             var capabilities = installed?.TrustState == "quarantined" || QuarantinedDependencies.Contains(module.Id) ? [] : module.Capabilities;
             inventory.Add(new ServerModuleDto(module.Id, isEnabled, capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
@@ -109,7 +117,7 @@ internal sealed partial class ServerModules
                 HostApiRequirement: version,
                 ResourceReleaseLevel: host is not null ? "process" : module is IServerModuleResidency ? "objects" : "none",
                 DesiredResidencyPolicy: desiredPolicy, EffectiveResidencyPolicy: effectivePolicy,
-                CapabilityContractVersions: module.CapabilityContractVersions));
+                CapabilityContractVersions: module.CapabilityContractVersions) { Dependencies = dependencies });
         }
         return inventory;
     }

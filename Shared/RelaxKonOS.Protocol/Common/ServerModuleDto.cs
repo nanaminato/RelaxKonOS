@@ -41,4 +41,8 @@ public sealed record ServerModuleDto(
     string ResourceReleaseLevel = "none",
     ServerModuleResidencyPolicyDto? DesiredResidencyPolicy = null,
     ServerModuleResidencyPolicyDto? EffectiveResidencyPolicy = null,
-    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null);
+    IReadOnlyDictionary<string, string>? CapabilityContractVersions = null)
+{
+    [JsonRequired]
+    public IReadOnlyList<ServerModuleReleaseDependencyDto> Dependencies { get; init; } = [];
+}

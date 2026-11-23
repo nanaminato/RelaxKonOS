@@ -838,6 +838,21 @@ internal static class JointDeploymentAcceptance
                     && effective.Requires.Select(requirement => new ModulePackageDependency(requirement.Package.Id,
                     requirement.MinimumVersion!, requirement.MaximumVersionExclusive!)).SequenceEqual(dependencies),
                     "reusing an installed signed module absent from the store preserves its manifest dependency ranges");
+                var observed = (await client.ReadAsync()).Single(module => module.Id == moduleId);
+                Require(observed.Dependencies.Select(dependency => new ModulePackageDependency(dependency.ModuleId,
+                    dependency.MinimumVersion, dependency.MaximumVersionExclusive)).SequenceEqual(dependencies),
+                    "module inventory exposes the verified dependency ranges of the running module");
+                using var readinessServices = new ServiceCollection().AddSingleton(packages).AddSingleton(apps)
+                    .AddSingleton<IHttpClientFactory>(factory).BuildServiceProvider();
+                using var readiness = new ApplicationAvailabilityService(auth, readinessServices, null!);
+                factory.IncompatibleDependencyModule = moduleId;
+                try
+                {
+                    Require(await readiness.RefreshAsync(apps.GetManifest(new AppId(installed.Id))!) is
+                        { CanOpen: false, ComponentId: ServerModules.CertificatesId },
+                        "launch readiness rejects an effective transitive dependency outside the observed version range");
+                }
+                finally { factory.IncompatibleDependencyModule = null; }
             }
             if (incompatible is not null)
             {
@@ -2478,6 +2493,7 @@ internal static class JointDeploymentAcceptance
         public bool ExpirePackageApply { set => handler.ExpirePackageApply = value; }
         public bool DropPackageApplyReply { set => handler.DropPackageApplyReply = value; }
         public string? HideStoreModule { set => handler.HideStoreModule = value; }
+        public string? IncompatibleDependencyModule { set => handler.IncompatibleDependencyModule = value; }
         public bool BlockDependencyRelease { set => handler.BlockDependencyRelease = value; }
         public HttpClient CreateClient(string name)
         {
@@ -2499,6 +2515,7 @@ internal static class JointDeploymentAcceptance
         public bool ExpirePackageApply { get; set; }
         public bool DropPackageApplyReply { get; set; }
         public string? HideStoreModule { get; set; }
+        public string? IncompatibleDependencyModule { get; set; }
         public bool BlockDependencyRelease { get; set; }
         public bool SubstituteReceiptRelease { get; set; }
         public bool SubstituteHealthVersion { get; set; }
@@ -2620,7 +2637,8 @@ internal static class JointDeploymentAcceptance
                 };
             }
             if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules
-                && (FaultedModule is not null || HideEffectiveVersion || SubstituteCapabilities || SubstituteInventoryDigest || SubstituteServerIdentity is not null))
+                && (FaultedModule is not null || HideEffectiveVersion || SubstituteCapabilities || SubstituteInventoryDigest
+                    || SubstituteServerIdentity is not null || IncompatibleDependencyModule is not null))
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
@@ -2635,6 +2653,8 @@ internal static class JointDeploymentAcceptance
                         : SubstituteCapabilities && module.Id == ModuleId ? module with { Capabilities = ["fixture.changed"], CapabilityContractVersions =
                             new Dictionary<string, string> { ["fixture.changed"] = ObservedCapabilityVersion } }
                         : SubstituteInventoryDigest && module.Id == ModuleId ? module with { ArtifactDigest = new string('0', 64) }
+                        : module.Id == IncompatibleDependencyModule ? module with { Dependencies = [.. module.Dependencies.Select(dependency =>
+                            dependency with { MinimumVersion = "9999.0.0", MaximumVersionExclusive = "10000.0.0" })] }
                         : module).ToArray(), options: RelaxKonOSJsonOptions.Default),
                 };
             }

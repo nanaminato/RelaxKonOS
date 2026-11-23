@@ -470,9 +470,7 @@ internal static class ServerModuleManagementEndpoints
     private static ServerInstalledModuleDto InstalledDto(string contentRoot, InstalledModuleRecord module, InstalledModuleRecord? current) =>
         new(module.ModuleId, module.Version, module.ReleaseId, module.SourceId, module.PublisherId, module.ArtifactSha256,
             module.ManifestSha256, module.PackagePath, module.EntryAssembly, module.EntryType, module.Capabilities,
-            module.Requires, module.Quarantined || module.Requires.Length == 0 ? [] : InstalledModuleStore.ReadVerifiedManifest(contentRoot, module)
-                .Dependencies.Select(dependency => new ServerModuleReleaseDependencyDto(dependency.ModuleId,
-                    dependency.MinimumVersion, dependency.MaximumVersionExclusive)).ToArray(), module.InstalledAt,
+            module.Requires, InstalledModuleStore.ReadDependencyRanges(contentRoot, module), module.InstalledAt,
             current is not null && current.ModuleId == module.ModuleId && current.Version == module.Version
                 && current.ArtifactSha256 == module.ArtifactSha256,
             module.Quarantined);

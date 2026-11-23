@@ -177,7 +177,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         RuntimeSemanticVersion.TryParse(value, out var version) ? version.Normalized
         : Version.TryParse(value, out var assembly) && assembly.Revision == 0 ? assembly.ToString(3) : null;
 
-    private static DeploymentRequirement ToRequirement(ServerModuleReleaseDependencyDto dependency) =>
+    internal static DeploymentRequirement ToRequirement(ServerModuleReleaseDependencyDto dependency) =>
         new(Key(dependency.ModuleId), dependency.MinimumVersion, dependency.MaximumVersionExclusive);
 
     private static string Identity(string sourceId, string releaseId, string digest) =>

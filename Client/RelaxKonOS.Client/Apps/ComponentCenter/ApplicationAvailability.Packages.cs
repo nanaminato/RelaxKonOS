@@ -59,11 +59,14 @@ public sealed partial class ApplicationAvailabilityService
                 local = ReadInstalledApplications(rootKey).ToArray();
                 result = DeploymentResolver.Resolve(root, local.Concat(modules
                     .Where(ModuleDeploymentCatalog.IsEffective)
+                    .Where(module => module.Packaging != "independent" || module.InstalledVersion == module.EffectiveVersion)
                     .Select(module => (Module: module, Version: ModuleDeploymentCatalog.EffectivePackageVersion(module)))
                     .Where(item => item.Version is not null)
                     .Select(item => new DeploymentRelease(
                         new(DeploymentPackageKind.ServerModule, item.Module.Id), item.Version!, item.Module.ArtifactDigest ?? "",
-                        true, [.. item.Module.Requires.Select(dependency => new DeploymentRequirement(new(DeploymentPackageKind.ServerModule, dependency)))],
+                        true, [.. item.Module.Packaging == "independent"
+                            ? item.Module.Dependencies.Select(ModuleDeploymentCatalog.ToRequirement)
+                            : item.Module.Requires.Select(dependency => new DeploymentRequirement(new(DeploymentPackageKind.ServerModule, dependency)))],
                         ModuleDeploymentCatalog.ObservedCapabilities(item.Module)))), []);
                 if (result.ProblemPackage is { Kind: DeploymentPackageKind.ServerModule } unavailable
                     && modules.SingleOrDefault(module => module.Id == unavailable.Id) is { } dependency)

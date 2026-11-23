@@ -134,7 +134,8 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
     {
         var facts = await SendAsync<IReadOnlyList<ServerModuleDto>>(HttpMethod.Get, ServerApiRoutes.Modules, cancellationToken: cancellationToken);
         if (facts.Count is 0 or > 128 || facts.Any(x => string.IsNullOrEmpty(x.Id) || string.IsNullOrEmpty(x.ServiceId)
-            || string.IsNullOrEmpty(x.DesiredRevision) || string.IsNullOrEmpty(x.ProcessGeneration))
+            || string.IsNullOrEmpty(x.DesiredRevision) || string.IsNullOrEmpty(x.ProcessGeneration)
+            || !ValidDependencyRanges(x.Dependencies))
             || facts.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != facts.Count
             || facts.Select(x => x.ServiceId).Distinct(StringComparer.Ordinal).Count() != 1)
             throw new InvalidOperationException("module-response-invalid");
@@ -391,12 +392,16 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         && ValidIds([module.ModuleId]) && module.Version is { Length: > 0 and <= 32 }
         && module.ReleaseId is { Length: > 0 and <= 128 } && ValidDigest(module.ArtifactSha256)
         && ValidDigest(module.ManifestSha256) && module.InstalledAt != default
-        && ValidIds(module.Requires) && module.Dependencies is { Count: <= 128 }
-        && module.Dependencies.All(dependency => dependency is not null && ValidIds([dependency.ModuleId])
-            && Version.TryParse(dependency.MinimumVersion, out var minimum)
-            && Version.TryParse(dependency.MaximumVersionExclusive, out var maximum) && minimum < maximum)
+        && ValidIds(module.Requires) && ValidDependencyRanges(module.Dependencies)
         && (module.Quarantined ? module.Dependencies.Count == 0 : module.Requires.Order(StringComparer.Ordinal)
             .SequenceEqual(module.Dependencies.Select(dependency => dependency.ModuleId).Order(StringComparer.Ordinal), StringComparer.Ordinal));
+
+    private static bool ValidDependencyRanges(IReadOnlyList<ServerModuleReleaseDependencyDto>? dependencies) =>
+        dependencies is { Count: <= 128 }
+        && dependencies.All(dependency => dependency is not null && ValidIds([dependency.ModuleId])
+            && Version.TryParse(dependency.MinimumVersion, out var minimum)
+            && Version.TryParse(dependency.MaximumVersionExclusive, out var maximum) && minimum < maximum)
+        && dependencies.Select(dependency => dependency.ModuleId).Distinct(StringComparer.Ordinal).Count() == dependencies.Count;
 
     private static void ValidatePackagePlan(ServerModulePackagePlanDto plan)
     {
