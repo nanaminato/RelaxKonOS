@@ -266,6 +266,7 @@ internal static class InstalledModuleInstaller
             else if (InstalledTailscaleModule.MatchesManifest(manifest)) CollectibleTailscaleExecution.VerifyStagedExecution(entry);
             else if (InstalledTunnelsModule.MatchesManifest(manifest)) CollectibleTunnelExecution.VerifyStagedExecution(entry);
             else if (InstalledDockerModule.MatchesManifest(manifest)) DockerComposeExecution.ValidateEntryPoints(entry);
+            else if (InstalledApplicationDeploymentsModule.MatchesManifest(manifest)) ApplicationDeployments.ApplicationArchiveExecution.ValidateEntryPoint(entry);
             else if (InstalledWebServerModule.MatchesManifest(manifest)) WebServerExecutionCode.ValidateEntryPoints(entry);
             else if (InstalledCertificateModule.MatchesManifest(manifest)) AcmeExecution.ValidateEntryPoint(entry);
             else if (InstalledGitModule.MatchesManifest(manifest)) CollectibleGitExecution.VerifyStagedExecution(entry);

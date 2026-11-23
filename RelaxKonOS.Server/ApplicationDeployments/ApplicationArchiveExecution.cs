@@ -1,36 +1,33 @@
 using System.Reflection;
 using System.Runtime.Loader;
+using RelaxKonOS.ModulePackaging;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
 namespace RelaxKonOS.Server.ApplicationDeployments;
 
-internal static class ApplicationArchiveExecution
+internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
 {
     internal const string AssemblyFile = "RelaxKonOS.ServerModule.ApplicationDeployments.dll";
     internal const string EntryType = "RelaxKonOS.Server.ApplicationDeployments.ApplicationArchiveExtractor";
+    internal static ApplicationArchiveExecution Bundled { get; } = new(() =>
+        Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments", AssemblyFile));
 
     private delegate Task<string?> ExtractArchive(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken);
 
-    internal static async Task<string?> ExtractAsync(Stream archive, string destination, int maximumEntries,
+    internal async Task<string?> ExtractAsync(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var context = new AssemblyLoadContext("ApplicationDeployments archive execution", isCollectible: true);
         try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments", AssemblyFile);
             ExtractArchive execute;
             try
             {
-                using var code = File.OpenRead(path);
-                var type = context.LoadFromStream(code).GetType(EntryType, throwOnError: true)!;
-                var method = type.GetMethod("ExtractAsync", BindingFlags.Public | BindingFlags.Static)
-                    ?? throw new MissingMethodException(EntryType, "ExtractAsync");
-                execute = method.CreateDelegate<ExtractArchive>();
+                execute = Load(context, resolvePath());
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException
-                or TypeLoadException or MissingMethodException or ArgumentException or AmbiguousMatchException)
+            catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException or ModulePackageException)
             {
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed);
             }
@@ -39,6 +36,30 @@ internal static class ApplicationArchiveExecution
         finally
         {
             context.Unload();
+        }
+    }
+
+    internal static void ValidateEntryPoint(string path)
+    {
+        var context = new AssemblyLoadContext("ApplicationDeployments archive validation", isCollectible: true);
+        try { _ = Load(context, path); }
+        finally { context.Unload(); }
+    }
+
+    private static ExtractArchive Load(AssemblyLoadContext context, string path)
+    {
+        try
+        {
+            using var code = File.OpenRead(path);
+            var type = context.LoadFromStream(code).GetType(EntryType, throwOnError: true)!;
+            var method = type.GetMethod("ExtractAsync", BindingFlags.Public | BindingFlags.Static)
+                ?? throw new MissingMethodException(EntryType, "ExtractAsync");
+            return method.CreateDelegate<ExtractArchive>();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException
+            or TypeLoadException or MissingMethodException or ArgumentException or AmbiguousMatchException)
+        {
+            throw new InvalidDataException("Application Deployments archive entry could not be loaded.", exception);
         }
     }
 }

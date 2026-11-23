@@ -35,7 +35,8 @@ internal sealed class ApplicationDeploymentService(
     ApplicationDeploymentLiveLogs liveLogs,
     IDeploymentImageBuildSource imageBuilds,
     ILogger<ApplicationDeploymentService> logger,
-    ApplicationManagedComposeInstall? managedCompose = null)
+    ApplicationManagedComposeInstall? managedCompose = null,
+    ApplicationArchiveExecution? archiveExecution = null)
 {
     /// <summary>Read-only secret delivery path inside the workload container.</summary>
     public const string SecretsMountPath = "/run/relaxkonos/secrets";
@@ -260,7 +261,7 @@ internal sealed class ApplicationDeploymentService(
             Directory.CreateDirectory(contextDirectory);
             using (var archive = staging.Open(plan.ArchiveReferenceId!, actor))
             {
-                if (await ApplicationArchiveExecution.ExtractAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
+                if (await (archiveExecution ?? ApplicationArchiveExecution.Bundled).ExtractAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
                     options.MaximumExpandedBytes, options.MaximumPathDepth, cancellationToken) is { } archiveProblem)
                     throw new ApplicationDeploymentException(archiveProblem, 400);
             }

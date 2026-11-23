@@ -77,7 +77,7 @@ internal sealed partial class ServerModules
             var installed = module as IInstalledModuleInfo;
             var host = hostStatuses?.GetValueOrDefault(module.Id);
             var fixedExecutionPackage = module.Id is Modules.TailscaleModule.ModuleId or Modules.TunnelsModule.ModuleId
-                or FirewallId or GitId or DockerId or WebServerId or CertificatesId or ProxyId;
+                or FirewallId or GitId or DockerId or ApplicationDeploymentsId or WebServerId or CertificatesId or ProxyId;
             var package = module is InstalledIsolatedModule || fixedExecutionPackage || module.Id == DatabaseId
                 ? currentPackages.GetValueOrDefault(module.Id) : null;
             var moduleVersion = package?.Version ?? installed?.InstalledVersion ?? version;

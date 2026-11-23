@@ -13,6 +13,7 @@ internal sealed partial class ServerModules
         BundledIds.Value.Contains(manifest.ModuleId) && !IsOfficialDatabaseModuleHost(manifest)
         && !InstalledTailscaleModule.MatchesManifest(manifest) && !InstalledFirewallModule.MatchesManifest(manifest)
         && !InstalledGitModule.MatchesManifest(manifest) && !InstalledDockerModule.MatchesManifest(manifest)
+        && !InstalledApplicationDeploymentsModule.MatchesManifest(manifest)
         && !InstalledWebServerModule.MatchesManifest(manifest) && !InstalledCertificateModule.MatchesManifest(manifest)
         && !InstalledProxyModule.MatchesManifest(manifest) && !InstalledTunnelsModule.MatchesManifest(manifest);
 
@@ -92,6 +93,7 @@ internal sealed partial class ServerModules
         var packagedFirewall = installed.Any(module => module is InstalledFirewallModule);
         var packagedGit = installed.Any(module => module is InstalledGitModule);
         var packagedDocker = installed.Any(module => module is InstalledDockerModule);
+        var packagedApplicationDeployments = installed.Any(module => module is InstalledApplicationDeploymentsModule);
         var packagedWebServer = installed.Any(module => module is InstalledWebServerModule);
         var packagedCertificates = installed.Any(module => module is InstalledCertificateModule);
         var packagedProxy = installed.Any(module => module is InstalledProxyModule);
@@ -101,6 +103,7 @@ internal sealed partial class ServerModules
             && (!packagedTailscale || module.Id != Modules.TailscaleModule.ModuleId)
             && (!packagedFirewall || module.Id != FirewallId)
             && (!packagedGit || module.Id != GitId) && (!packagedDocker || module.Id != DockerId)
+            && (!packagedApplicationDeployments || module.Id != ApplicationDeploymentsId)
             && (!packagedWebServer || module.Id != WebServerId)
             && (!packagedCertificates || module.Id != CertificatesId) && (!packagedProxy || module.Id != ProxyId)), .. installed];
     }

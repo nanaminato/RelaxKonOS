@@ -267,6 +267,7 @@ internal static class InstalledModuleCatalog
             { ModuleId: ServerModules.FirewallId, Runtime: "in-process" } => new InstalledFirewallModule(record, contentRoot),
             { ModuleId: ServerModules.GitId, Runtime: "in-process" } => new InstalledGitModule(record, contentRoot),
             { ModuleId: ServerModules.DockerId, Runtime: "in-process" } => new InstalledDockerModule(record, contentRoot),
+            { ModuleId: ServerModules.ApplicationDeploymentsId, Runtime: "in-process" } => new InstalledApplicationDeploymentsModule(record, contentRoot),
             { ModuleId: Modules.TunnelsModule.ModuleId, Runtime: "in-process" } => new InstalledTunnelsModule(record, contentRoot),
             { ModuleId: ServerModules.WebServerId, Runtime: "in-process" } => new InstalledWebServerModule(record, contentRoot),
             { ModuleId: ServerModules.CertificatesId, Runtime: "in-process" } => new InstalledCertificateModule(record, contentRoot),

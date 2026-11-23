@@ -6,21 +6,23 @@ using RelaxKonOS.Server.Endpoints;
 
 namespace RelaxKonOS.Server.Startup.Modules;
 
-internal sealed class ApplicationDeploymentsModule : IServerModule, IServerModuleDeactivationGuard
+internal class ApplicationDeploymentsModule : IServerModule, IServerModuleDeactivationGuard
 {
     public string Id => ServerModules.ApplicationDeploymentsId;
     public IReadOnlyList<string> Capabilities => [ServerCapabilities.ApplicationDeployments];
     public IReadOnlyList<string> Requires => [];
+    private protected virtual ApplicationArchiveExecution ArchiveExecution => ApplicationArchiveExecution.Bundled;
 
-    public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
+    public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
+        builder.Services.AddSingleton(ArchiveExecution);
         builder.Services.AddApplicationDeploymentServices();
         builder.Services.AddSingleton<BackupRecoveryObjectStore>();
         builder.Services.AddSingleton<ApplicationDefinitionBackupService>();
         builder.Services.AddHostedService<BackupRecoveryCoordinator>();
     }
 
-    public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
+    public virtual void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
     {
         endpoints.MapApplicationDeploymentEndpoints();
         endpoints.MapBackupRecoveryEndpoints();

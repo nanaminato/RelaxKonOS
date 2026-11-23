@@ -950,3 +950,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Application Deployments 进入随附服务端模块目录，默认启用，可通过 `Modules:ApplicationDeployments:Enabled` 停用。模块统一拥有部署与备份路由、日志 Hub 和后台协调器，并检查未完成操作及不可读台账。Core 保留网站发布所需的共享定义读取和台账检查。Windows Release 验证禁用时移除协调器、路由和能力，并在启用模块的验收宿主使用官方桌面包完成真实 Docker 部署。独立签名包仍待实现。
 - 部署构建上下文的 ZIP 解包迁入 `RelaxKonOS.ServerModule.ApplicationDeployments` 执行程序集。Core 继续授权并打开暂存对象、传递限额和记录操作回执。Windows Release 验证正常归档提取、超出限额的错误码及部署定义 HTTP 回归。程序集当前由 Core 直接引用并随发行交付，签名包加载仍待接入。
 - Core 已移除对解包实现程序集的编译期引用。随附程序集从 `Modules/ApplicationDeployments` 按需加载，解包结束后请求卸载该加载上下文。Windows Release 专项验证程序集引用边界、实际解包和超限错误码。独立签名包和安装版本选路仍待接入。
+- Application Deployments 支持通过可信来源安装签名 `.rkmodule`，重启后选用已安装版本的解包程序集。安装、回滚和启动均核对执行入口，执行前复验已安装包。Windows Release 模块 HTTP 专项使用测试签名验证两个版本的安装与升级、回滚原版本及从恢复版本实际解包。已外置的执行范围为 ZIP 解包，生产来源尚未发布该包。

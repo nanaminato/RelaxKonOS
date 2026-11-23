@@ -16,6 +16,7 @@ using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.ImageMirrors;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Certificate;
+using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
@@ -87,6 +88,7 @@ internal static class ModulePackageHttpChecks
             ModulePackageBuildResult[] firewall = [];
             ModulePackageBuildResult[] git = [];
             ModulePackageBuildResult[] docker = [];
+            ModulePackageBuildResult[] deployments = [];
             ModulePackageBuildResult[] webServer = [];
             ModulePackageBuildResult[] certificates = [];
             ModulePackageBuildResult[] proxy = [];
@@ -154,6 +156,20 @@ internal static class ModulePackageHttpChecks
                 docker = [await ModulePackageBuilder.BuildAsync(dockerOptions, now),
                     await ModulePackageBuilder.BuildAsync(dockerOptions with
                     { Version = "2.0.0", ReleaseId = "docker-2.0.0-" + rid }, now)];
+                var deploymentOptions = dockerOptions with
+                {
+                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments"),
+                    OutputDirectory = Path.Combine(root, "application-deployments-package"),
+                    ModuleId = ServerModules.ApplicationDeploymentsId,
+                    ReleaseId = "application-deployments-1.0.0-" + rid,
+                    EntryAssembly = ApplicationArchiveExecution.AssemblyFile,
+                    EntryType = ApplicationArchiveExecution.EntryType,
+                    Capabilities = [ServerCapabilities.ApplicationDeployments],
+                    Ui = new("Application Deployments", "", "", null, "UNLICENSED"),
+                };
+                deployments = [await ModulePackageBuilder.BuildAsync(deploymentOptions, now),
+                    await ModulePackageBuilder.BuildAsync(deploymentOptions with
+                    { Version = "2.0.0", ReleaseId = "application-deployments-2.0.0-" + rid }, now)];
                 var webOptions = dockerOptions with
                 {
                     PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer"),
@@ -216,14 +232,14 @@ internal static class ModulePackageHttpChecks
                 : (await ModulePackageBuilder.SignCatalogAsync(new ModulePackageCatalog(1, "official", 1, now,
                     now.AddHours(1), [Release(built), Release(dependent), Release(incompatible!), Release(database!),
                         .. tailscale.Select(Release), .. firewall.Select(Release), .. git.Select(Release),
-                        .. docker.Select(Release), .. webServer.Select(Release), .. certificates.Select(Release), .. proxy.Select(Release), .. tunnels.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
+                        .. docker.Select(Release), .. deployments.Select(Release), .. webServer.Select(Release), .. certificates.Select(Release), .. proxy.Select(Release), .. tunnels.Select(Release), Release(incompatibleGit!)], [], []), "builder-key", keyPath)).Envelope;
             static ModulePackageRelease Release(ModulePackageBuildResult result) => new(result.Manifest,
                 result.ManifestSha256, result.ArchiveSha256, result.ArchiveBytes,
                 $"https://modules.example/{Path.GetFileName(result.ArchivePath)}");
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", dependent is null ? ["fixture-http"]
                     : ["fixture-http", "fixture-dependent", ServerModules.DatabaseId, "relaxkonos.tailscale",
-                        ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId, ServerModules.WebServerId,
+                        ServerModules.FirewallId, ServerModules.GitId, ServerModules.DockerId, ServerModules.ApplicationDeploymentsId, ServerModules.WebServerId,
                         ServerModules.CertificatesId, ServerModules.ProxyId, "relaxkonos.tunnels"],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
             await File.WriteAllTextAsync(Path.Combine(root, "appsettings.host.json"), JsonSerializer.Serialize(new
@@ -300,7 +316,7 @@ internal static class ModulePackageHttpChecks
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
-                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + webServer.Length + certificates.Length + proxy.Length + tunnels.Length),
+                && sources.Sources[0].Status == "current" && sources.Sources[0].ReleaseCount == (dependent is null ? 1 : 5 + tailscale.Length + firewall.Length + git.Length + docker.Length + deployments.Length + webServer.Length + certificates.Length + proxy.Length + tunnels.Length),
                 "module store source inventory reports the accepted catalog revision");
 
             using var downloadHandler = new PackageDownloadHandler(await File.ReadAllBytesAsync(built.ArchivePath));
@@ -520,6 +536,22 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledFirewallModule>(client, root, firewall, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
+                await VerifyExecutionPackageVersionsAsync<InstalledApplicationDeploymentsModule>(client, root, deployments, check);
+                var deploymentHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+                var deploymentModule = InstalledModuleCatalog.Load(root).OfType<InstalledApplicationDeploymentsModule>().Single();
+                deploymentModule.ConfigureServices(deploymentHost, ServerModuleContext.Create(deploymentHost.Configuration, deploymentHost.Environment, "memory"));
+                await using (var deploymentApp = deploymentHost.Build())
+                {
+                    var executor = deploymentApp.Services.GetRequiredService<ApplicationArchiveExecution>();
+                    using var archive = new MemoryStream();
+                    using (var zip = new System.IO.Compression.ZipArchive(archive, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+                    using (var entry = zip.CreateEntry("content.txt").Open()) entry.Write("installed"u8);
+                    archive.Position = 0;
+                    var destination = Path.Combine(root, "installed-deployment-context");
+                    check(await executor.ExtractAsync(archive, destination, 10, 1024, 4, default) is null
+                        && await File.ReadAllTextAsync(Path.Combine(destination, "content.txt")) == "installed",
+                        "rolled-back Application Deployments package extracts a build archive with installed execution");
+                }
                 await VerifyExecutionPackageVersionsAsync<InstalledCertificateModule>(client, root, certificates, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledProxyModule>(client, root, proxy, check);
