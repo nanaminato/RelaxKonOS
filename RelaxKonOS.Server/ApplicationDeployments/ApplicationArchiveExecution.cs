@@ -14,7 +14,7 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
 
     private delegate Task<string?> PrepareArchive(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken);
-    private delegate Task WriteDockerfile(string destination, ApplicationSourceKind kind, string baseImage, int port,
+    private delegate Task<string?> WriteDockerfile(string destination, ApplicationSourceKind kind, string baseImage, int port,
         string entry, bool selfContained, CancellationToken cancellationToken);
 
     internal Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries,
@@ -22,13 +22,13 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
         => ExecuteAsync<PrepareArchive, string?>("PrepareAsync", execute =>
             execute(archive, destination, maximumEntries, maximumExpandedBytes, maximumPathDepth, cancellationToken), cancellationToken);
 
-    internal Task WriteDockerfileAsync(string destination, ApplicationSourceKind kind, string baseImage, int port,
+    internal async Task WriteDockerfileAsync(string destination, ApplicationSourceKind kind, string baseImage, int port,
         string entry, bool selfContained, CancellationToken cancellationToken)
-        => ExecuteAsync<WriteDockerfile, bool>("WriteDockerfileAsync", async execute =>
-        {
-            await execute(destination, kind, baseImage, port, entry, selfContained, cancellationToken);
-            return true;
-        }, cancellationToken);
+    {
+        var problem = await ExecuteAsync<WriteDockerfile, string?>("WriteDockerfileAsync",
+            execute => execute(destination, kind, baseImage, port, entry, selfContained, cancellationToken), cancellationToken);
+        if (problem is not null) throw new ApplicationDeploymentException(problem, 400);
+    }
 
     private async Task<TResult> ExecuteAsync<TEntry, TResult>(string method, Func<TEntry, Task<TResult>> invoke,
         CancellationToken cancellationToken) where TEntry : Delegate

@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
@@ -196,43 +194,9 @@ internal sealed class JavaJarTemplate : ApplicationTemplateBase
     public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
         DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken)
     {
-        var root = ApplicationTemplateCatalog.PublishRoot(contextDirectory);
-        var jars = Directory.GetFiles(root, "*.jar", SearchOption.AllDirectories);
-        if (jars.Length != 1)
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-        if (!await HasMainClassAsync(jars[0], cancellationToken))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EntryPointInvalid, 400);
-
-        var staged = Path.Combine(contextDirectory, JarFileName);
-        if (!string.Equals(jars[0], staged, StringComparison.Ordinal))
-        {
-            File.Copy(jars[0], staged, overwrite: true);
-            File.Delete(jars[0]);
-        }
-
-        var baseImage = plan.BaseImage ?? options.JavaBaseImage;
-        await execution.WriteDockerfileAsync(contextDirectory, ApplicationSourceKind.JavaJar, baseImage, definition.ContainerPort, JarFileName, false, cancellationToken);
+        await execution.WriteDockerfileAsync(contextDirectory, Kind, plan.BaseImage ?? options.JavaBaseImage,
+            definition.ContainerPort, JarFileName, false, cancellationToken);
         return ($"java -jar {RuntimeDirectory}/{JarFileName}", plan.Arguments);
-    }
-
-    /// <summary>An executable JAR is required because <c>java -jar</c> needs a manifest main class.</summary>
-    private static async Task<bool> HasMainClassAsync(string jarPath, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await using var file = File.OpenRead(jarPath);
-            using var archive = new ZipArchive(file, ZipArchiveMode.Read);
-            var manifest = archive.GetEntry("META-INF/MANIFEST.MF");
-            if (manifest is null) return false;
-            await using var stream = manifest.Open();
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
-                if (line.StartsWith("Main-Class:", StringComparison.OrdinalIgnoreCase) && line["Main-Class:".Length..].Trim().Length > 0)
-                    return true;
-            return false;
-        }
-        catch (InvalidDataException) { return false; }
-        catch (IOException) { return false; }
     }
 
     private static bool IsRuntimeLine(string value) => value.Length is >= 1 and <= 16
@@ -369,7 +333,6 @@ internal sealed class DotNetPublishTemplate : ApplicationTemplateBase
 internal sealed class PythonProjectTemplate : ApplicationTemplateBase
 {
     public const string RuntimeDirectory = "/app";
-    public const string RequirementsFileName = "requirements.txt";
 
     public override ApplicationSourceKind Kind => ApplicationSourceKind.PythonProject;
     public override string TemplateVersion => "1.0";
@@ -396,20 +359,9 @@ internal sealed class PythonProjectTemplate : ApplicationTemplateBase
     public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
         DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken)
     {
-        var root = ApplicationTemplateCatalog.PublishRoot(contextDirectory);
-        var requirements = Path.Combine(root, RequirementsFileName);
-        if (!File.Exists(requirements))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-        if (!await HasLockedRequirementsAsync(requirements, cancellationToken))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
-
         var module = plan.ProgramEntry!;
-        var segments = module.Split('.');
-        if (!File.Exists(Path.Combine(root, $"{segments[0]}.py")) && !Directory.Exists(Path.Combine(root, segments[0])))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EntryPointInvalid, 400);
-
-        var baseImage = plan.BaseImage ?? options.PythonBaseImage;
-        await execution.WriteDockerfileAsync(contextDirectory, ApplicationSourceKind.PythonProject, baseImage, definition.ContainerPort, module, false, cancellationToken);
+        await execution.WriteDockerfileAsync(contextDirectory, Kind, plan.BaseImage ?? options.PythonBaseImage,
+            definition.ContainerPort, module, false, cancellationToken);
         return ($"python -m {module}", plan.Arguments);
     }
 
@@ -421,21 +373,4 @@ internal sealed class PythonProjectTemplate : ApplicationTemplateBase
     private static bool IsRuntimeLine(string value) => value.Length is >= 1 and <= 16
         && value.Split('.').All(part => part.Length > 0 && part.All(char.IsAsciiDigit));
 
-    /// <summary>The first-stage Python input is deliberately reproducible: every dependency must
-    /// identify an exact distribution version, or a direct artifact with an integrity fragment.</summary>
-    private static async Task<bool> HasLockedRequirementsAsync(string path, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var lines = await File.ReadAllLinesAsync(path, cancellationToken);
-            return lines.All(line =>
-            {
-                var value = line.Trim();
-                return value.Length == 0 || value.StartsWith('#')
-                    || value.Contains("==", StringComparison.Ordinal)
-                    || value.Contains(" @ ", StringComparison.Ordinal) && value.Contains("#sha256=", StringComparison.OrdinalIgnoreCase);
-            });
-        }
-        catch (IOException) { return false; }
-    }
 }

@@ -552,13 +552,24 @@ internal static class ModulePackageHttpChecks
                         && await File.ReadAllTextAsync(Path.Combine(destination, "content.txt")) == "installed",
                         "rolled-back Application Deployments package extracts a build archive with installed execution");
                     await File.WriteAllTextAsync(Path.Combine(destination, ".dockerignore"), "*\n");
+                    using (var jar = System.IO.Compression.ZipFile.Open(Path.Combine(destination, "demo.jar"), System.IO.Compression.ZipArchiveMode.Create))
+                    using (var manifest = jar.CreateEntry("META-INF/MANIFEST.MF").Open()) manifest.Write("Main-Class: Demo\n"u8);
                     await executor.WriteDockerfileAsync(destination, RelaxKonOS.Protocol.ApplicationDeployments.ApplicationSourceKind.JavaJar,
                         "eclipse-temurin:21-jre-jammy", 8080, "app.jar", false, default);
                     var dockerfile = await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile"));
                     check(dockerfile.StartsWith("FROM eclipse-temurin:21-jre-jammy", StringComparison.Ordinal)
                         && dockerfile.Contains("\"-jar\",\"/app/app.jar\"", StringComparison.Ordinal)
+                        && File.Exists(Path.Combine(destination, "app.jar")) && !File.Exists(Path.Combine(destination, "demo.jar"))
                         && !(await File.ReadAllTextAsync(Path.Combine(destination, ".dockerignore"))).Contains('*'),
                         "rolled-back Application Deployments package writes the generated build files");
+                    await File.WriteAllTextAsync(Path.Combine(destination, "requirements.txt"), "example==1.0.0\n");
+                    await File.WriteAllTextAsync(Path.Combine(destination, "demo.py"), "print('hello')\n");
+                    await executor.WriteDockerfileAsync(destination, RelaxKonOS.Protocol.ApplicationDeployments.ApplicationSourceKind.PythonProject,
+                        "python:3.12-slim", 8080, "demo", false, default);
+                    dockerfile = await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile"));
+                    check(dockerfile.Contains("RUN pip install --requirement /app/requirements.txt", StringComparison.Ordinal)
+                        && dockerfile.Contains("ENTRYPOINT [\"python\",\"-m\",\"demo\"]", StringComparison.Ordinal),
+                        "rolled-back Application Deployments package prepares a locked Python payload");
                 }
                 await VerifyExecutionPackageVersionsAsync<InstalledCertificateModule>(client, root, certificates, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledWebServerModule>(client, root, webServer, check);

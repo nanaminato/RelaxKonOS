@@ -954,3 +954,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - ZIP 解包和单层发布目录展开现由同一执行程序集完成。Windows Release 验证带外层目录的 .NET 发布归档可生成正确的构建上下文，安装和回滚专项也验证恢复后的签名程序集能把归档文件放到构建根目录。Dockerfile 生成仍由 Core 按模板执行。
 - Java、.NET 与 Python 模板通过所选执行程序集写入 Dockerfile 和受控 `.dockerignore`。Core 模板继续计算构建定义和入口。Windows Release 部署进度专项通过真实 HTTP 暂存和 .NET 构建上下文检查，签名包回滚专项确认恢复版本写入原 Dockerfile 文本并替换归档提供的 `.dockerignore`。
 - Java、.NET 与 Python 的 Dockerfile 生成迁入所选执行程序集。Core 继续校验发布内容、基础镜像和入口参数，并将结构化数据传入生成入口。Windows Release 签名包回滚专项验证恢复版本实际生成 Java Dockerfile 并覆盖归档的 `.dockerignore`，部署进度专项覆盖框架依赖型 .NET 发布上下文。
+- Java 的 JAR 主类检查与暂存，以及 Python 的锁定依赖和入口模块检查，迁入所选执行程序集。Windows Release 签名包回滚验收验证恢复版本暂存真实 JAR 归档并生成 Java 和 Python 构建文件。本轮未运行 Docker 镜像构建，.NET 发布内容检查仍在 Core。
