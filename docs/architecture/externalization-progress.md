@@ -963,3 +963,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Application Deployments 桌面清单声明同 ID 服务端模块和 `server.application-deployments` 能力为必需依赖。官方来源信任配置修订提升至 8，并允许该模块。Windows Release 重打包验证安装审阅识别依赖、缺联合回执的直接安装被拒绝，使用测试回执通过包生命周期。本轮未发布生产目录，也未使用新桌面归档执行真实联合计划。
 - Windows Release 使用重打包归档通过 `--signed-application-deployments-joint-acceptance`。验收副本仅提高模块最低版本以触发签名安装。真实桌面协调器在模块生效前保留计划，隔离服务端重启后按原回执完成应用登记。已安装执行程序集实际准备 ZIP 上下文，桌面卸载释放依赖登记并保留模块。生产目录未发布。
 - Windows Release 使用未修改的重打包 Application Deployments 归档通过 `--joint-deployment-acceptance`。已停用的随附模块生成仅启用计划，无包下载或安装回执，重启生效后登记客户端。有效模块直接复用，安装未增加模块操作，卸载清除依赖登记并保留模块。此轮验收管理与协调路径，未运行 Docker 工作负载。
+- Linux x64 从 `1ca0e73f1` 发布自包含验收运行器，在 WSL 完成签名模块与随附模块两套联合验收。签名安装使用仅提高模块最低版本的桌面副本，重启后按原计划登记，并由已安装执行程序集准备 ZIP 上下文。随附模块使用未修改的重打包归档，验证停用后仅启用、就绪时直接复用，以及卸载释放依赖登记。两套测试均正常退出，本轮未发起 Docker 构建。
