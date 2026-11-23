@@ -24,19 +24,20 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();
 
-        builder.Services.AddApplicationDeploymentServices();
+        builder.Services.AddApplicationDeploymentState();
+        builder.Services.AddBackupRecoveryState();
+    }
 
+    internal static void AddBackupRecoveryState(this IServiceCollection services)
+    {
         // Backup recovery has a separate operator-managed key domain. Its default is deliberately
         // unavailable, so no backup workflow can silently fall back to application Data Protection keys.
-        builder.Services.AddSingleton(sp =>
+        services.AddSingleton(sp =>
             sp.GetRequiredService<IConfiguration>().GetSection("BackupRecovery")
                 .Get<RelaxKonOS.Server.BackupRecovery.BackupRecoveryOptions>()
             ?? new RelaxKonOS.Server.BackupRecovery.BackupRecoveryOptions());
-        builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider,
+        services.AddSingleton<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider,
             RelaxKonOS.Server.BackupRecovery.ConfigurationBackupRecoveryKeyProvider>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.BackupRecoveryObjectStore>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.BackupRecoveryManifestStore>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.ApplicationDefinitionBackupService>();
-        builder.Services.AddHostedService<RelaxKonOS.Server.BackupRecovery.BackupRecoveryCoordinator>();
+        services.AddSingleton<RelaxKonOS.Server.BackupRecovery.BackupRecoveryManifestStore>();
     }
 }

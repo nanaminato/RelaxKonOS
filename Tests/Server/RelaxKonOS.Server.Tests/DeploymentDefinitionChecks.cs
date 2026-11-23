@@ -9,6 +9,7 @@ using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Server.Startup;
 
 internal static class DeploymentDefinitionChecks
 {
@@ -29,6 +30,21 @@ internal static class DeploymentDefinitionChecks
 
     private static async Task VerifyAsync(string root, string? desktopRunner, string? archive)
     {
+        var disabledBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        var disabled = ServerModules.CreateManaged(new HashSet<string>());
+        var context = ServerModuleContext.Create(disabledBuilder.Configuration, disabledBuilder.Environment, "memory");
+        disabledBuilder.Services.AddApplicationDeploymentState();
+        disabledBuilder.Services.AddBackupRecoveryState();
+        disabled.ConfigureServices(disabledBuilder, context);
+        await using (var disabledHost = disabledBuilder.Build())
+        {
+            disabled.MapEndpoints(disabledHost, context);
+            Check(!disabled.Capabilities.Contains(ServerCapabilities.ApplicationDeployments)
+                && disabledHost.Services.GetService<ApplicationDeploymentCoordinator>() is null
+                && !((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)disabledHost).DataSources.Any(),
+                "A disabled deployment module must expose no coordinator, routes, Hub or capability.");
+        }
+
         var environment = new TestHostEnvironment(root);
         var options = new ApplicationDeploymentOptions();
         var catalog = new ApplicationDeploymentCatalogStore(environment, options);

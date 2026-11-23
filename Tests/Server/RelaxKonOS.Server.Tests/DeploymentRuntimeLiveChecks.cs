@@ -9,6 +9,7 @@ using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Server.Startup;
 
 internal static class DeploymentRuntimeLiveChecks
 {
@@ -118,14 +119,17 @@ internal static class DeploymentRuntimeLiveChecks
             builder.Services.AddSingleton<IDockerProxyResolver, DisabledDockerProxyResolver>();
             builder.Services.AddSingleton<IOutboundProxyHttpClientFactory, OutboundProxyHttpClientFactory>();
             builder.Services.AddSingleton<IWebServerManager>(new WebServerManager([]));
-            builder.Services.AddApplicationDeploymentServices();
+            builder.Services.AddApplicationDeploymentState();
+            builder.Services.AddBackupRecoveryState();
+            var moduleContext = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+            var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ApplicationDeploymentsId });
+            modules.ConfigureServices(builder, moduleContext);
             builder.Services.AddSingleton<RelaxKonOS.Server.EventAlerts.IOperationalEventPublisher, CatalogUpdateEventPublisher>();
             builder.Services.AddSingleton<IFileService>(_ => throw new NotSupportedException("No staged input is used."));
             await using var app = builder.Build();
             app.UseAuthentication();
             app.UseAuthorization();
-            app.MapApplicationDeploymentEndpoints();
-            app.MapHub<ApplicationDeploymentLogsHub>(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath);
+            modules.MapEndpoints(app, moduleContext);
             await app.StartAsync(ct);
             try
             {

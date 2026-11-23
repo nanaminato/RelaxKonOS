@@ -79,6 +79,7 @@ internal sealed partial class ServerModules
             new Modules.GitModule(),
             new Modules.TailscaleModule(),
             new Modules.DockerModule(),
+            new Modules.ApplicationDeploymentsModule(),
             new Modules.CertificateModule(),
             new Modules.DatabaseModule(),
             new Modules.WebServerModule(),

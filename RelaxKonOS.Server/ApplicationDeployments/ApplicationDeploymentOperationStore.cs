@@ -299,7 +299,7 @@ internal sealed class ApplicationDeploymentOperationStore
     internal bool HasUnresolvedOutcome(Guid applicationId) => Read().Any(x =>
         x.Operation.ApplicationId == applicationId && HasUnresolvedOutcome(x.Operation));
 
-    private static bool BlocksMutation(DeploymentOperationDto operation) => Active(operation)
+    internal static bool BlocksMutation(DeploymentOperationDto operation) => Active(operation)
         || HasUnresolvedOutcome(operation);
 
     private static bool HasUnresolvedOutcome(DeploymentOperationDto operation) => operation.RecoveryProblemCode

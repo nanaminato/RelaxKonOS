@@ -494,6 +494,7 @@ Check(defaults.IsEnabled(ServerModules.FirewallId), "default enables firewall");
 Check(defaults.IsEnabled(ServerModules.SystemPerformanceId), "default enables system performance");
 Check(defaults.IsEnabled(ServerModules.GitId), "default enables git");
 Check(defaults.IsEnabled(ServerModules.DockerId), "default enables docker");
+Check(defaults.IsEnabled(ServerModules.ApplicationDeploymentsId), "default enables application deployments");
 Check(defaults.IsEnabled(ServerModules.CertificatesId), "default enables certificates");
 Check(defaults.IsEnabled(ServerModules.WebServerId), "default enables web server");
 Check(defaults.IsEnabled(ServerModules.ProxyId), "default enables proxy");
@@ -526,7 +527,7 @@ Reject(() => ServerModules.Resolve([new FakeModule("a", [], ["server.metric"])],
     "undeclared capability name rejected");
 
 foreach (var disabled in new[] { ServerModules.TerminalId, ServerModules.FirewallId, ServerModules.SystemPerformanceId,
-             ServerModules.GitId, ServerModules.DockerId, ServerModules.WebServerId, ServerModules.ProxyId })
+             ServerModules.GitId, ServerModules.DockerId, ServerModules.ApplicationDeploymentsId, ServerModules.WebServerId, ServerModules.ProxyId })
 {
     var name = ServerModules.ConfigurationName(disabled);
     var modules = ServerModules.Create(Config(($"Modules:{name}:Enabled", "false")));
@@ -553,7 +554,8 @@ Check(ServerModules.Create(Config(("Modules:Firewall:Enabled", "false")))
 Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabilities.Firewall,
         ServerCapabilities.Metrics, ServerCapabilities.Processes, ServerCapabilities.Git, ServerCapabilities.Docker,
         ServerCapabilities.Certificates, ServerCapabilities.WebServer, ServerCapabilities.Tailscale, ServerCapabilities.Database,
-        ServerCapabilities.Proxy, ServerCapabilities.GatewayProxy, ServerCapabilities.ProxyServer, ServerCapabilities.Tunnels]),
+        ServerCapabilities.Proxy, ServerCapabilities.GatewayProxy, ServerCapabilities.ProxyServer, ServerCapabilities.Tunnels,
+        ServerCapabilities.ApplicationDeployments]),
     "default capability set is exactly the declared module capabilities");
 
 // Web server / website publication is asserted without a host: its publication coordinator is bound

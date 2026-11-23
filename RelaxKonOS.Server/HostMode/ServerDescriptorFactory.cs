@@ -87,6 +87,7 @@ public static class ServerDescriptorFactory
                 Processes = capabilities.Processes && enabledModuleCapabilities.Contains(ServerCapabilities.Processes),
                 Firewall = capabilities.Firewall && enabledModuleCapabilities.Contains(ServerCapabilities.Firewall),
                 Docker = capabilities.Docker && enabledModuleCapabilities.Contains(ServerCapabilities.Docker),
+                ApplicationDeployments = capabilities.ApplicationDeployments && enabledModuleCapabilities.Contains(ServerCapabilities.ApplicationDeployments),
                 WebServer = capabilities.WebServer && enabledModuleCapabilities.Contains(ServerCapabilities.WebServer),
                 Certificates = capabilities.Certificates && enabledModuleCapabilities.Contains(ServerCapabilities.Certificates),
                 // One host flag covers three applications (engine, Squid gateway, sing-box proxy

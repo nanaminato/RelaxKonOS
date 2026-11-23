@@ -112,8 +112,6 @@ internal static class ServerPipeline
         app.MapProcessGuardianEndpoints();
         app.MapFileServiceEndpoints();
         app.MapInstallationEndpoints();
-        app.MapApplicationDeploymentEndpoints();
-        app.MapBackupRecoveryEndpoints();
         if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
@@ -125,8 +123,6 @@ internal static class ServerPipeline
         // a disabled module leaves nothing behind here.
         app.Services.GetRequiredService<ServerModules>().MapEndpoints(app, moduleContext);
         app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath, options => options.CloseOnAuthenticationExpiration = true);
-        app.MapHub<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogsHub>(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath,
-            options => options.CloseOnAuthenticationExpiration = true);
         app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath, options => options.CloseOnAuthenticationExpiration = true);
         if (eventAlertsOptions.Enabled)
             app.MapHub<RelaxKonOS.Server.Hubs.EventAlertsHub>("/hubs/event-alerts", options => options.CloseOnAuthenticationExpiration = true);
