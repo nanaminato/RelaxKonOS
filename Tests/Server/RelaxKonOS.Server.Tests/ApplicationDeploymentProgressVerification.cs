@@ -209,8 +209,7 @@ internal static class ApplicationDeploymentProgressVerification
     private static async Task VerifyDotNetPublishContextAsync(string root)
     {
         var context = Path.Combine(root, "dotnet-publish-context");
-        Directory.CreateDirectory(context);
-        var wrapper = Path.Combine(context, "published-application");
+        var wrapper = Path.Combine(root, "published-application");
         Directory.CreateDirectory(wrapper);
         await File.WriteAllTextAsync(Path.Combine(wrapper, ".dockerignore"), "*\n!Dockerfile\n");
         await File.WriteAllTextAsync(Path.Combine(wrapper, "Demo.dll"), "published-assembly");
@@ -225,12 +224,16 @@ internal static class ApplicationDeploymentProgressVerification
         var plan = new DeploymentPlan(ApplicationSourceKind.DotNetPublish, "1.0", "test:1", null,
             "archive", null, null, [], false);
         var template = ApplicationTemplateCatalog.Require(ApplicationSourceKind.DotNetPublish);
-        ApplicationTemplateCatalog.UnwrapPublishRoot(context);
+        using var archive = new MemoryStream();
+        ZipFile.CreateFromDirectory(wrapper, archive, CompressionLevel.Fastest, includeBaseDirectory: true);
+        archive.Position = 0;
+        Check(await ApplicationArchiveExecution.Bundled.PrepareAsync(archive, context, 10, 4096, 4, default) is null,
+            "The archive execution assembly must prepare the wrapped publish.");
         await template.PrepareBuildContextAsync(plan, context, application, new ApplicationDeploymentOptions(), CancellationToken.None);
 
         var ignore = await File.ReadAllTextAsync(Path.Combine(context, ".dockerignore"));
         var dockerfile = await File.ReadAllTextAsync(Path.Combine(context, "Dockerfile"));
-        Check(!Directory.Exists(wrapper) && !ignore.Contains('*') && File.Exists(Path.Combine(context, "Demo.dll")),
+        Check(!Directory.Exists(Path.Combine(context, "published-application")) && !ignore.Contains('*') && File.Exists(Path.Combine(context, "Demo.dll")),
             "A wrapped publish must become the build root, and its .dockerignore must not control the generated context.");
         Check(dockerfile.Contains("FROM mcr.microsoft.com/dotnet/aspnet:10.0", StringComparison.Ordinal)
             && dockerfile.Contains("RUN test -f /app/Demo.dll", StringComparison.Ordinal),

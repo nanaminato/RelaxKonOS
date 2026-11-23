@@ -10,7 +10,7 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// </summary>
 public static class ApplicationArchiveExtractor
 {
-    public static async Task<string?> ExtractAsync(Stream archive, string destination, int maximumEntries, long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
+    public static async Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries, long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(destination);
         var root = Path.GetFullPath(destination);
@@ -59,7 +59,26 @@ public static class ApplicationArchiveExtractor
             }
         }
 
+        UnwrapPublishRoot(root, cancellationToken);
         return null;
+    }
+
+    private static void UnwrapPublishRoot(string root, CancellationToken cancellationToken)
+    {
+        var directories = Directory.GetDirectories(root);
+        if (directories.Length != 1 || Directory.EnumerateFiles(root).Any()) return;
+
+        // Docker reads the extraction directory as its build context. The generated Dockerfile
+        // needs context-relative paths even when the archive wraps the application in a directory.
+        var wrapper = directories[0];
+        foreach (var entry in Directory.EnumerateFileSystemEntries(wrapper))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var destination = Path.Combine(root, Path.GetFileName(entry));
+            if (Directory.Exists(entry)) Directory.Move(entry, destination);
+            else File.Move(entry, destination);
+        }
+        Directory.Delete(wrapper);
     }
 
     private static ZipArchive? OpenArchive(Stream archive)

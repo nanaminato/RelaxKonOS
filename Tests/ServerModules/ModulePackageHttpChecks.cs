@@ -545,10 +545,10 @@ internal static class ModulePackageHttpChecks
                     var executor = deploymentApp.Services.GetRequiredService<ApplicationArchiveExecution>();
                     using var archive = new MemoryStream();
                     using (var zip = new System.IO.Compression.ZipArchive(archive, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
-                    using (var entry = zip.CreateEntry("content.txt").Open()) entry.Write("installed"u8);
+                    using (var entry = zip.CreateEntry("wrapped/content.txt").Open()) entry.Write("installed"u8);
                     archive.Position = 0;
                     var destination = Path.Combine(root, "installed-deployment-context");
-                    check(await executor.ExtractAsync(archive, destination, 10, 1024, 4, default) is null
+                    check(await executor.PrepareAsync(archive, destination, 10, 1024, 4, default) is null
                         && await File.ReadAllTextAsync(Path.Combine(destination, "content.txt")) == "installed",
                         "rolled-back Application Deployments package extracts a build archive with installed execution");
                 }

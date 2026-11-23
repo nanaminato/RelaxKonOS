@@ -63,31 +63,6 @@ internal static class ApplicationTemplateCatalog
         var files = Directory.GetFiles(contextDirectory);
         return directories.Length == 1 && files.Length == 0 ? directories[0] : contextDirectory;
     }
-
-    /// <summary>
-    /// Moves a lone top-level wrapper directory's content up one level so the build context root and
-    /// the publish root are the same directory. The Docker engine is handed the extraction root as
-    /// the build context, and every template writes its generated Dockerfile into that same root with
-    /// context-relative paths (<c>COPY requirements.txt</c>, <c>COPY . /app</c>). Leaving the payload
-    /// inside a wrapper would therefore make it invisible to the Dockerfile: the build would fail on
-    /// the first <c>COPY</c>, and a wildcard copy would land the payload one directory too deep for
-    /// the declared entry point. Unwrapping happens once, exactly like <see cref="PublishRoot"/>.
-    /// </summary>
-    internal static void UnwrapPublishRoot(string contextDirectory)
-    {
-        var root = PublishRoot(contextDirectory);
-        if (string.Equals(root, contextDirectory, StringComparison.Ordinal)) return;
-
-        foreach (var entry in Directory.EnumerateFileSystemEntries(root))
-        {
-            var destination = Path.Combine(contextDirectory, Path.GetFileName(entry));
-            // Directory.Move happened to rename files on Windows, but Linux requires the API to
-            // match the entry type. Production hosts are Linux, so keep this explicit.
-            if (Directory.Exists(entry)) Directory.Move(entry, destination);
-            else File.Move(entry, destination);
-        }
-        Directory.Delete(root);
-    }
 }
 
 internal abstract class ApplicationTemplateBase : IApplicationTemplate
