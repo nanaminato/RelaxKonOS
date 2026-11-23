@@ -211,10 +211,12 @@ internal static class CloudProviderPackageAcceptance
                     var update = await InstallAsync(runtime.Client, compiled[2]);
                     await RequireReceiptAsync(runtime.Client, update.OperationId, "Succeeded", null);
                     await RunningAsync(runtime, providerId, "1.1.0");
+                    await RequireActiveInventoryAsync(runtime.Client, compiled[2]);
                     await VerifyProviderAsync(runtime, route, payload);
                     var broken = await InstallAsync(runtime.Client, compiled[3]);
                     await RequireReceiptAsync(runtime.Client, broken.OperationId, "Failed", "module-host-update-rolled-back");
                     await RunningAsync(runtime, providerId, "1.1.0");
+                    await RequireActiveInventoryAsync(runtime.Client, compiled[2]);
                     await VerifyProviderAsync(runtime, route, payload);
                     Check(Generation(runtime, Cloud) == siblingGeneration && runtime.Store.ProcessGeneration == coreGeneration
                         && await runtime.Client.GetStringAsync("/acceptance-core", ct) == "ready", "Core and CloudStorage generations remain running");
@@ -368,6 +370,7 @@ internal static class CloudProviderPackageAcceptance
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.MapGet("/acceptance-core", () => "ready");
+                modules.MapEndpoints(app, context);
                 app.MapServerModuleManagementEndpoints();
                 await app.StartAsync(ct);
                 store.VerifyStartup(modules.EnabledIds);
@@ -435,6 +438,20 @@ internal static class CloudProviderPackageAcceptance
                 if (status is { Status: "faulted" }) throw new InvalidOperationException($"{module} failed to start: {status.ProblemCode}");
                 await Task.Delay(50, ready.Token);
             }
+        }
+
+        async Task RequireActiveInventoryAsync(HttpClient client, ModulePackageRelease release)
+        {
+            var detail = await client.GetFromJsonAsync<ServerModuleDto>(ServerModuleManagementRoutes.Detail
+                .Replace("{moduleId}", release.Manifest.ModuleId), RelaxKonOSJsonOptions.Default, ct);
+            var health = await client.GetFromJsonAsync<ServerModuleHealthPageDto>(ServerModuleManagementRoutes.ModuleHealth,
+                RelaxKonOSJsonOptions.Default, ct);
+            Check(detail is { Packaging: "independent", EffectiveEnabled: true, RestartRequired: false }
+                && detail.InstalledVersion == release.Manifest.Version && detail.EffectiveVersion == release.Manifest.Version
+                && detail.ArtifactDigest == release.ArchiveSha256
+                && health?.Modules.Single(module => module.ModuleId == release.Manifest.ModuleId) is { Status: "healthy" } running
+                && running.Version == release.Manifest.Version,
+                "module detail and health agree on the active signed release after live update or rollback");
         }
 
         async Task RequireReceiptAsync(HttpClient client, Guid id, string state, string? problem)

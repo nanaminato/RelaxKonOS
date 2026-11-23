@@ -916,3 +916,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 从 `ddf536943` 自包含发布，在禁用外网的容器内使用 Linux 官方桌面归档，通过签名 Web Server、签名 Tunnels 与 Welcome/Databases 联合部署专项共 134 项断言。专项覆盖本机依赖范围、越界启动拒绝、目录变化和额外启用变更后的重新审阅、签名包重启边界及丢失提交响应恢复。随后同一构建通过完整模块套件的 1,510 项检查。本轮未连接真实 FRP、Nginx 或系统 Helper。
 - 首次安装签名 Databases ModuleHost 包后，Core 在重启前报告独立包版本、归档摘要和待重启状态，同时保留当前生效版本。Windows Release 模块包 HTTP 专项经暂存、签名计划和代码授权提交复验该边界。此项使用签名测试包，未启动数据库工作负载。
 - Databases 的签名替换回归同时核对三个事实：模块清单报告新包与待重启状态，操作回执绑定新归档且处于 `AwaitingRestart`，健康接口继续报告安装前的宿主实现。Windows Release 与无外网 Linux x64 容器均通过。验证范围为首次提交到重启前。
+- Windows 与 Linux x64 的隔离 CloudS3 在线回归同时查验模块详情与健康接口。升级到 1.1.0 后，两接口均报告该运行版本，详情绑定对应签名归档摘要且无需重启。1.2.0 健康检查失败并回滚后，两个接口仍报告健康的 1.1.0，原连接继续可用。此轮使用本地 S3 测试配置。
