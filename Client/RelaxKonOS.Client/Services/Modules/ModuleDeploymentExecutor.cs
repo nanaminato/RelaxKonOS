@@ -95,13 +95,13 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
     {
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
-        if (module is null || module.ArtifactDigest != digest)
+        if (module is null)
             throw new InvalidOperationException("deployment-module-not-effective");
         if (ModuleDeploymentCatalog.RequiresRecovery(module))
             throw new ModuleDeploymentRecoveryException(module.Id, module.PendingOperationId);
         var version = release.ActivationOnly ? ModuleDeploymentCatalog.InstalledActivationVersion(module) : module.InstalledVersion;
-        if (version != release.Version)
-            throw new InvalidOperationException("deployment-module-not-effective");
+        if (module.ArtifactDigest != digest || version != release.Version)
+            throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");
         if (module.PendingOperationId is not null || module.RestartRequired)
             throw new InvalidOperationException("deployment-module-AwaitingRestart");
         if (module.DesiredEnabled) return;

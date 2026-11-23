@@ -1016,6 +1016,18 @@ internal static class JointDeploymentAcceptance
                     && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
                     "an enable preview that would remove another module requires review and is not applied");
                 reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
+                factory.SubstituteActivationDigestAfterSnapshot(moduleId);
+                try
+                {
+                    await joint.ExecuteAsync(reactivation, default);
+                    throw new InvalidOperationException("Expected the replacement artifact to require review before enabling.");
+                }
+                catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
+                finally { factory.SubstituteActivationDigestAfterSnapshot(null); }
+                Require(await joint.FindPendingAsync(reactivationCandidate, default) is null
+                    && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
+                    "changing the installed archive after checkpoint creation requires review before enable");
+                reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
                 await ExpectRestartAsync(joint, reactivation);
                 await host.DisposeAsync();
                 host = await TestHost.StartAsync(serverRoot, config);
@@ -2548,6 +2560,11 @@ internal static class JointDeploymentAcceptance
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
         public void ChangeSecondCatalogRevision() => handler.CatalogReadsUntilChange = 2;
         public bool AlterEnablePreview { set => handler.AlterEnablePreview = value; }
+        public void SubstituteActivationDigestAfterSnapshot(string? moduleId)
+        {
+            handler.ActivationDigestModule = moduleId;
+            handler.ActivationInventoryReads = 0;
+        }
         public bool DropDependencyReply { set => handler.DropDependencyReply = value; }
         public bool ExpirePackageApply { set => handler.ExpirePackageApply = value; }
         public bool DropPackageApplyReply { set => handler.DropPackageApplyReply = value; }
@@ -2572,6 +2589,8 @@ internal static class JointDeploymentAcceptance
         public bool DropEnableResponse { get; set; }
         public int CatalogReadsUntilChange { get; set; }
         public bool AlterEnablePreview { get; set; }
+        public string? ActivationDigestModule { get; set; }
+        public int ActivationInventoryReads { get; set; }
         public bool DropDependencyReply { get; set; }
         public bool ExpirePackageApply { get; set; }
         public bool DropPackageApplyReply { get; set; }
@@ -2708,9 +2727,11 @@ internal static class JointDeploymentAcceptance
                         : receipt! with { ReleaseId = "other-release" }, options: RelaxKonOSJsonOptions.Default),
                 };
             }
+            var alterActivationDigest = request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules
+                && ActivationDigestModule is not null && ++ActivationInventoryReads > 1;
             if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules
                 && (FaultedModule is not null || HideEffectiveVersion || SubstituteCapabilities || SubstituteInventoryDigest
-                    || SubstituteServerIdentity is not null || IncompatibleDependencyModule is not null))
+                    || SubstituteServerIdentity is not null || IncompatibleDependencyModule is not null || alterActivationDigest))
             {
                 using var response = await base.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
@@ -2725,6 +2746,7 @@ internal static class JointDeploymentAcceptance
                         : SubstituteCapabilities && module.Id == ModuleId ? module with { Capabilities = ["fixture.changed"], CapabilityContractVersions =
                             new Dictionary<string, string> { ["fixture.changed"] = ObservedCapabilityVersion } }
                         : SubstituteInventoryDigest && module.Id == ModuleId ? module with { ArtifactDigest = new string('0', 64) }
+                        : alterActivationDigest && module.Id == ActivationDigestModule ? module with { ArtifactDigest = new string('0', 64) }
                         : module.Id == IncompatibleDependencyModule ? module with { Dependencies = [.. module.Dependencies.Select(dependency =>
                             dependency with { MinimumVersion = "9999.0.0", MaximumVersionExclusive = "10000.0.0" })] }
                         : module).ToArray(), options: RelaxKonOSJsonOptions.Default),
