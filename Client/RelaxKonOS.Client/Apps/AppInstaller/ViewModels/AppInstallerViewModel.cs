@@ -215,7 +215,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     private bool CanInstall() => CurrentPackage is not null && !IsBusy;
     private bool CanSkip() => CurrentPackage is not null && !IsBusy;
 
-    private static string DeploymentProblem(Exception error) => error switch
+    internal static string DeploymentProblem(Exception error) => error switch
     {
         DeploymentResolutionException { Message: "deployment-dependency-conflict", Package: { } package } =>
             LocalizedText.Format(package.Kind == DeploymentPackageKind.ServerModule
@@ -228,8 +228,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         ModulePackageDeploymentFailedException failure =>
             LocalizedText.Format("app_installer.deployment.module_package_failed", failure.ModuleId, failure.OperationId),
         { Message: "module-desktop-dependency-unavailable" } => LocalizedText.Get("app_installer.deployment.module_protection_unavailable"),
-        { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         { Message: "deployment-module-unhealthy" } => LocalizedText.Get("app_installer.deployment.health_pending"),
+        { Message: "deployment-module-receipt-unavailable" } => LocalizedText.Get("app_installer.deployment.receipt_unavailable"),
         { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),
         HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError or HttpRequestError.NameResolutionError } =>
             LocalizedText.Get("app_installer.deployment.server_unreachable"),
@@ -242,6 +242,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         { Message: "deployment-plan-expired" or "deployment-module-plan-expired" or "deployment-snapshot-changed"
             or "deployment-client-dependency-changed" } =>
             LocalizedText.Get("app_installer.deployment.review_again"),
+        { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
         _ => error.Message,
     };
 

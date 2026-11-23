@@ -67,6 +67,7 @@
         "app_installer.deployment.session_changed": "ログインセッションが変わりました。サインイン後にデプロイ計画をもう一度確認してください。",
         "app_installer.deployment.plan_in_progress": "このデプロイ計画は実行中です。完了を待ってから再試行してください。",
         "app_installer.deployment.review_again": "デプロイ計画が無効になりました。インストールする前に、計画をもう一度確認してください。",
+        "app_installer.deployment.receipt_unavailable": "サーバー操作の結果を確認できませんでした。このデプロイを再試行して、操作の状態を確認してください。",
         "app_installer.deployment.server_changed": "接続先のサーバーが変わりました。このサーバー向けの新しいデプロイ計画を確認してください。",
         "app_installer.deployment.enable_installed": "インストール済みモジュール {0}（{1}）を有効化",
         "app_installer.deployment.enable_review": "一覧のサーバーモジュールを有効化します。インストールが必要なモジュールは先にインストールします。サーバーの再起動が必要な場合は、再接続してから再試行してください。",

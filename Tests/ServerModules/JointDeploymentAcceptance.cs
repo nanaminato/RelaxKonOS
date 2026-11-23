@@ -19,6 +19,7 @@ using Avalonia.Threading;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Client.Services.AppPackages;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
@@ -741,6 +742,7 @@ internal static class JointDeploymentAcceptance
             var settings = new ShellSettings(null!);
             var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
             using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
+            typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
             var windows = new RelaxKonOS.WindowManager.WindowManager();
             var apps = new ApplicationManager(windows, services);
             var drive = new VirtualSystemDrive(Path.Combine(root, "desktop"));
@@ -766,7 +768,6 @@ internal static class JointDeploymentAcceptance
                     .Select(entry => "--exclude-bundled-app=" + (string)entry!["appId"]!);
                 var provisioner = new BundledApplicationProvisioner(packages, installer, joint, drive);
                 await provisioner.RunAsync(["--installation-profile=developer", .. exclusions]);
-                typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
                 using var store = new AppInstallerViewModel(installer) { JointDeployment = joint, ProfileChoices = provisioner };
                 await store.RefreshOfficialCommand.ExecuteAsync(null);
                 Require(store.SelectedOfficialApp is { SelectedByProfile: true } selected && selected.Id == candidate.Manifest.Id,
@@ -1038,6 +1039,13 @@ internal static class JointDeploymentAcceptance
                 }
                 catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
                 finally { factory.SubstituteActivationDigestAfterSnapshot(null); }
+                Require(AppInstallerViewModel.DeploymentProblem(new DeploymentPlanReviewRequiredException("deployment-module-not-effective"))
+                        == LocalizedText.Get("app_installer.deployment.review_again")
+                    && AppInstallerViewModel.DeploymentProblem(new InvalidOperationException("deployment-module-not-effective"))
+                        == LocalizedText.Get("app_installer.deployment.activation_pending")
+                    && AppInstallerViewModel.DeploymentProblem(new InvalidOperationException("deployment-module-receipt-unavailable"))
+                        == LocalizedText.Get("app_installer.deployment.receipt_unavailable"),
+                    "installation guidance distinguishes review, activation wait, and retrying an uncertain receipt");
                 Require(await joint.FindPendingAsync(reactivationCandidate, default) is null
                     && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
                     "changing the installed archive after checkpoint creation requires review before enable");

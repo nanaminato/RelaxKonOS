@@ -67,6 +67,7 @@
         "app_installer.deployment.session_changed": "登录会话已变更。请登录后重新审阅部署计划。",
         "app_installer.deployment.plan_in_progress": "此部署计划正在执行。请等待执行结束后再试。",
         "app_installer.deployment.review_again": "部署计划已失效。请重新审阅部署计划后再安装。",
+        "app_installer.deployment.receipt_unavailable": "无法核对服务端操作回执。请重试此部署以查询操作状态。",
         "app_installer.deployment.server_changed": "连接的服务器已变更。请为当前服务器审阅新的部署计划。",
         "app_installer.deployment.enable_installed": "启用已安装模块 {0}（{1}）",
         "app_installer.deployment.enable_review": "部署将启用列出的服务端模块，需要安装的模块会先安装。若服务端需要重启，请重新连接后重试。",
