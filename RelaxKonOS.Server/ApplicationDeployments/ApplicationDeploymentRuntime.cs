@@ -372,11 +372,18 @@ internal sealed class ApplicationDeploymentRuntime(
         return (Normalize(imageReference[..separator]), imageReference[(separator + 1)..]);
     }
 
-    /// <summary>Docker may report an official image repository as either <c>name</c> or <c>library/name</c>.</summary>
+    /// <summary>Canonicalizes Docker Hub spellings without conflating repositories on other registries.</summary>
     private static string Normalize(string repository)
     {
-        var name = repository.Contains('/') ? repository : $"library/{repository}";
-        return name.Contains('.') || name.Contains(':') || name.StartsWith("localhost/", StringComparison.Ordinal) ? repository : name;
+        var separator = repository.IndexOf('/');
+        if (separator < 0) return $"docker.io/library/{repository}";
+        var first = repository[..separator];
+        if (first is "docker.io" or "index.docker.io")
+        {
+            var path = repository[(separator + 1)..];
+            return path.Contains('/') ? $"docker.io/{path}" : $"docker.io/library/{path}";
+        }
+        return first is "localhost" || first.Contains('.') || first.Contains(':') ? repository : $"docker.io/{repository}";
     }
 
     /// <summary>Appends a bounded, sanitized diagnostic line for the server log without echoing secrets.</summary>

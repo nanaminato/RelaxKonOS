@@ -39,7 +39,7 @@
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 签名双包及 Certificates 复用已验，Linux 真实 Nginx 直连重载、拒绝坏配置及修正后重载已验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
-| application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows 与 Linux x64 包生命周期和已安装窗口读取服务端部署定义已验，实际工作负载部署待验 |
+| application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows 与 Linux x64 官方包生命周期、定义读取、窗口提交部署、真实 Docker 工作负载和成功回执已验。Windows 另已验证首次拉取并绑定新镜像 ID |
 | database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows 和 Linux 随附及签名双包已验，Windows 真实 Helper IPC 控制读取已验 |
 | ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 已验，远端桌面待验 |

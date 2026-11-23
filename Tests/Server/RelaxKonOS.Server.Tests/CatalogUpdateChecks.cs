@@ -554,6 +554,16 @@ internal static class CatalogUpdateChecks
         Check((await runtime.ResolveImageIdentityAsync(reference, "linux/amd64", default)).ImageId is null,
             "A mismatched image platform cannot activate.");
 
+        var publicId = "sha256:" + new string('b', 64);
+        var privateId = "sha256:" + new string('c', 64);
+        fixture.ListedImages = [new(privateId, "mirror.example/library/busybox", "1.37", "", ""),
+            new(publicId, "busybox", "1.37", "", "")];
+        foreach (var tag in new[] { "busybox:1.37", "library/busybox:1.37", "docker.io/library/busybox:1.37", "index.docker.io/busybox:1.37" })
+            Check((await runtime.ResolveImageIdentityAsync(tag, "linux/amd64", default)).ImageId == publicId,
+                $"Docker Hub tag {tag} must resolve to its observed image ID.");
+        Check((await runtime.ResolveImageIdentityAsync("mirror.example/library/busybox:1.37", "linux/amd64", default)).ImageId == privateId,
+            "An explicitly addressed registry must retain its own image identity.");
+
         fixture.Volume = new("legacy-data", "local", "/private",
             new Dictionary<string, string> { [ApplicationDeploymentValidation.OwnerLabel] = ApplicationDeploymentValidation.OwnerValue }, []);
         var reserved = await DockerApplicationResourcePolicy.DeleteVolumeAsync(engine, "relaxkonos-ca-project_db", true, default);
@@ -639,6 +649,7 @@ public class CatalogUpdateEngine : DispatchProxy
     public DockerContainerCreateRequest? CreatedContainer { get; set; }
     public DockerStatusDto? ReportedStatus { get; set; }
     public DockerImageIdentity? Image { get; set; }
+    public IReadOnlyList<DockerImageDto> ListedImages { get; set; } = [];
     public Dictionary<string, DockerImageIdentity> Images { get; set; } = [];
     public Dictionary<string, DockerContainerDetailsDto> Containers { get; set; } = [];
     public bool LocalCompose { get; set; }
@@ -649,6 +660,7 @@ public class CatalogUpdateEngine : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args) {
         Calls.Add(method!.Name);
         if (method.Name == nameof(IDockerEngineService.ListContainersAsync)) return Task.FromResult<IReadOnlyList<DockerContainerDto>>([]);
+        if (method.Name == nameof(IDockerEngineService.ListImagesAsync)) return Task.FromResult(ListedImages);
         if (method.Name == nameof(IDockerEngineService.GetStatusAsync)) { Started.TrySetResult(); return ReportedStatus is { } status ? Task.FromResult(status) : Status.Task; }
         if (method.Name == nameof(IDockerEngineService.UsesLocalComposeEndpointAsync)) return Task.FromResult(LocalCompose);
         if (method.Name == nameof(IDockerEngineService.InspectImageAsync)) return Task.FromResult(Images.GetValueOrDefault((string)args![0]!) ?? Image);
