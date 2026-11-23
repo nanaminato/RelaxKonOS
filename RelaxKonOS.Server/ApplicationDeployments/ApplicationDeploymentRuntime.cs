@@ -178,7 +178,7 @@ internal sealed class ApplicationDeploymentRuntime(
 
         var images = await engine.ListImagesAsync(cancellationToken);
         var expected = SplitReference(imageReference);
-        var match = images.FirstOrDefault(image => string.Equals(image.Repository, expected.Repository, StringComparison.Ordinal)
+        var match = images.FirstOrDefault(image => string.Equals(Normalize(image.Repository), expected.Repository, StringComparison.Ordinal)
             && string.Equals(image.Tag, expected.Tag, StringComparison.Ordinal));
         return match is null ? (null, null) : (match.Id, $"{match.Repository}:{match.Tag}");
     }
@@ -372,7 +372,7 @@ internal sealed class ApplicationDeploymentRuntime(
         return (Normalize(imageReference[..separator]), imageReference[(separator + 1)..]);
     }
 
-    /// <summary>Docker reports an official image repository as <c>library/name</c>.</summary>
+    /// <summary>Docker may report an official image repository as either <c>name</c> or <c>library/name</c>.</summary>
     private static string Normalize(string repository)
     {
         var name = repository.Contains('/') ? repository : $"library/{repository}";

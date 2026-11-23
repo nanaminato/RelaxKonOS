@@ -941,3 +941,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Windows Release Application Deployments 官方包通过窗口联调。已安装窗口以只读应用授权，通过生产桌面客户端和环回 HTTP 显示服务端已修改并保存的部署定义。测试使用本地读取身份和受控 Docker 查询夹具，没有执行部署。可用 Server.Tests 的 `--deployment-definition-only <桌面验收运行器> <relaxkonos.application-deployments.roapp>` 复现。
 - Linux x64 从 `dfc691b3c` 自包含发布，在 WSL 独立网络使用 Linux 官方 Application Deployments 归档通过同一读取联调与生命周期检查。只读窗口显示保存的部署定义，服务端定义更新授权、版本冲突、幂等重放、秘密保留和修订不可变检查通过。Docker 调用限于查询夹具。
 - Windows Release 的 `--deployment-runtime-live <本机已缓存的 BusyBox 镜像 ID>` 通过真实 Docker Desktop Linux Engine 验收。服务端部署运行时创建带归属标签的容器，启动并验证环回 HTTP 就绪与独有响应，随后停止、删除并确认无残留。已安装窗口发起部署及服务端操作回执的联调仍待验收。
+- 同一专项现已覆盖生产 HTTP 创建和提交、隔离台账的终态回执与幂等重放、修订激活以及真实工作负载响应。修复 Docker Engine 返回 `busybox` 时无法匹配 `library/busybox` 的问题。测试使用控制者身份夹具及本机缓存镜像，镜像拉取由夹具处理。已安装窗口提交部署的验收仍待执行。
