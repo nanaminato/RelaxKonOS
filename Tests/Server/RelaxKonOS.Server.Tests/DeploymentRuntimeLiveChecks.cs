@@ -82,6 +82,7 @@ internal static class DeploymentRuntimeLiveChecks
             $"The local {cachedReference} tag must identify the supplied image.");
         var pullFromRegistry = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_PULL_IMAGE") == "1";
         var buildArchive = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_BUILD_ARCHIVE") == "1";
+        var installedRoot = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_INSTALLED_ROOT");
         var coldImage = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_COLD_IMAGE");
         Require(!buildArchive || desktopRunner is null && coldImage is null,
             "Archive build acceptance submits directly over HTTP and does not use cold image deployment mode.");
@@ -129,7 +130,11 @@ internal static class DeploymentRuntimeLiveChecks
             builder.Services.AddApplicationDeploymentState();
             builder.Services.AddBackupRecoveryState();
             var moduleContext = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
-            var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ApplicationDeploymentsId });
+            var installed = installedRoot is null ? [] : InstalledModuleCatalog.Load(Path.GetFullPath(installedRoot));
+            if (installedRoot is not null)
+                Require(installed.OfType<InstalledApplicationDeploymentsModule>().SingleOrDefault() is
+                    { InstalledVersion: "1.0.0", TrustState: "installed" }, "Expected the restored signed deployment execution version.");
+            var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.ApplicationDeploymentsId }, installed);
             modules.ConfigureServices(builder, moduleContext);
             builder.Services.AddSingleton<RelaxKonOS.Server.EventAlerts.IOperationalEventPublisher, CatalogUpdateEventPublisher>();
             builder.Services.AddSingleton<IFileService>(_ => throw new NotSupportedException("No staged input is used."));
@@ -191,7 +196,7 @@ internal static class DeploymentRuntimeLiveChecks
                     var revision = snapshot.Revisions.Single();
                     Require(revision.ImageReference.StartsWith($"relaxkonos-ad/{marker}:", StringComparison.Ordinal) && revision.EntryPoint == "python -m fixture",
                         "The active revision did not bind the image built from the staged Python archive.");
-                    Console.WriteLine("The staged Python archive built and served its HTTP fixture through the production deployment path.");
+                    Console.WriteLine($"The staged Python archive built and served its HTTP fixture (installed execution: {installedRoot is not null}).");
                 }
                 Console.WriteLine($"Live deployment HTTP submission, terminal receipt, replay and activated workload passed (registry pull: {pullFromRegistry}).");
             }

@@ -537,6 +537,8 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledApplicationDeploymentsModule>(client, root, deployments, check);
+                if (Environment.GetEnvironmentVariable("RK_TEST_SIGNED_DEPLOYMENT_RUNNER") is { Length: > 0 } deploymentRunner)
+                    await VerifyLiveInstalledDeploymentAsync(root, deploymentRunner, check);
                 var deploymentHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
                 var deploymentModule = InstalledModuleCatalog.Load(root).OfType<InstalledApplicationDeploymentsModule>().Single();
                 deploymentModule.ConfigureServices(deploymentHost, ServerModuleContext.Create(deploymentHost.Configuration, deploymentHost.Environment, "memory"));
@@ -815,6 +817,25 @@ internal static class ModulePackageHttpChecks
                 await Task.Delay(50, ct);
             }
         }
+    }
+
+    private static async Task VerifyLiveInstalledDeploymentAsync(string root, string runner, Action<bool, string> check)
+    {
+        var imageId = Environment.GetEnvironmentVariable("RK_TEST_SIGNED_DEPLOYMENT_BUSYBOX_ID")
+            ?? throw new InvalidOperationException("Set RK_TEST_SIGNED_DEPLOYMENT_BUSYBOX_ID to the cached BusyBox image ID.");
+        var path = Path.GetFullPath(runner);
+        var isDll = Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+        var start = new System.Diagnostics.ProcessStartInfo(isDll ? "dotnet" : path) { UseShellExecute = false };
+        if (isDll) start.ArgumentList.Add(path);
+        start.ArgumentList.Add("--deployment-runtime-live");
+        start.ArgumentList.Add(imageId);
+        start.Environment["RK_TEST_DEPLOYMENTS_BUILD_ARCHIVE"] = "1";
+        start.Environment["RK_TEST_DEPLOYMENTS_INSTALLED_ROOT"] = root;
+        using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start deployment acceptance.");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        try { await process.WaitForExitAsync(deadline.Token); }
+        finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+        check(process.ExitCode == 0, "the rolled-back signed Application Deployments module builds and serves a real Python workload");
     }
 
     private static async Task VerifyExecutionPackageVersionsAsync<TModule>(HttpClient client, string root,
