@@ -107,7 +107,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         if (module.DesiredEnabled) return;
         if (release.ActivationOnly && module.Packaging == "independent"
             && ModuleDeploymentCatalog.CatalogRevision(await client.StoreSourcesAsync(cancellationToken)) != plan.Target.CatalogRevision)
-            throw new InvalidOperationException("deployment-snapshot-changed");
+            throw new DeploymentPlanReviewRequiredException("deployment-snapshot-changed");
 
         var desired = facts.Where(item => item.DesiredEnabled).Select(item => item.Id)
             .Append(module.Id).Order(StringComparer.Ordinal).ToArray();

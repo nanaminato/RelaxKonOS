@@ -986,12 +986,25 @@ internal static class JointDeploymentAcceptance
                 await host.DisposeAsync();
                 host = await TestHost.StartAsync(serverRoot, config);
                 session.Url = host.Url;
-                var reactivation = await joint.PrepareAsync(await installer.InspectLocalAsync(candidate.LocalPath), [], default);
+                var reactivationCandidate = await installer.InspectLocalAsync(candidate.LocalPath);
+                var reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
                 var activate = reactivation.Plan.OrderedReleases.Single(item => item.Package.Id == moduleId);
                 Require(reactivation.Plan.PreparedSteps.IsEmpty && activate.ActivationOnly
                     && activate.Requires.Select(requirement => new ModulePackageDependency(requirement.Package.Id,
                         requirement.MinimumVersion!, requirement.MaximumVersionExclusive!)).SequenceEqual(dependencies),
                     "reactivating the disabled signed module preserves installed dependency ranges without downloading an archive");
+                factory.ChangeSecondCatalogRevision();
+                try
+                {
+                    await joint.ExecuteAsync(reactivation, default);
+                    throw new InvalidOperationException("Expected a catalog change after checkpoint creation to require review.");
+                }
+                catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-snapshot-changed") { }
+                var afterChange = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                Require(await joint.FindPendingAsync(reactivationCandidate, default) is null
+                    && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
+                    "a catalog change during signed reactivation persists the review requirement without enabling the module");
+                reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
                 await ExpectRestartAsync(joint, reactivation);
                 await host.DisposeAsync();
                 host = await TestHost.StartAsync(serverRoot, config);
@@ -2522,6 +2535,7 @@ internal static class JointDeploymentAcceptance
             return handler.EnableEntered.Task;
         }
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
+        public void ChangeSecondCatalogRevision() => handler.CatalogReadsUntilChange = 2;
         public bool DropDependencyReply { set => handler.DropDependencyReply = value; }
         public bool ExpirePackageApply { set => handler.ExpirePackageApply = value; }
         public bool DropPackageApplyReply { set => handler.DropPackageApplyReply = value; }
@@ -2544,6 +2558,7 @@ internal static class JointDeploymentAcceptance
         public List<string> EnablePreviewKeys { get; } = [];
         public TaskCompletionSource? EnableEntered { get; set; }
         public bool DropEnableResponse { get; set; }
+        public int CatalogReadsUntilChange { get; set; }
         public bool DropDependencyReply { get; set; }
         public bool ExpirePackageApply { get; set; }
         public bool DropPackageApplyReply { get; set; }
@@ -2574,6 +2589,17 @@ internal static class JointDeploymentAcceptance
             if (before is not null) await before();
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (CatalogReadsUntilChange > 0 && request.Method == HttpMethod.Get
+                && path == ServerModuleManagementRoutes.ModuleStoreSources && --CatalogReadsUntilChange == 0)
+            {
+                using var response = await base.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var page = (await response.Content.ReadFromJsonAsync<ServerModuleStoreSourcePageDto>(RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(page with { CatalogRevision = new string('0', 32) }, options: RelaxKonOSJsonOptions.Default),
+                };
+            }
             if (HideStoreModule is { } hiddenModule && request.Method == HttpMethod.Get && path == ServerModuleManagementRoutes.ModuleStoreSearch)
             {
                 using var response = await base.SendAsync(request, cancellationToken);
