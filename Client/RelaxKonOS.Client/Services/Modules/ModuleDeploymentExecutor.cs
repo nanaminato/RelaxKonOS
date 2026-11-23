@@ -68,6 +68,11 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                 {
                     throw new DeploymentPlanReviewRequiredException("deployment-module-plan-expired");
                 }
+                catch (InvalidOperationException error) when (error.Message is "module-package-upload-not-found"
+                    or "module-package-plan-target-changed")
+                {
+                    throw new DeploymentPlanReviewRequiredException(error.Message);
+                }
             }
 
             var operation = await client.ReadPackageOperationAsync(operationId.Value, cancellationToken);

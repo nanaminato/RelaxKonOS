@@ -1449,7 +1449,22 @@ internal static class JointDeploymentAcceptance
             Require(await joint.FindPendingAsync(candidate, default) is null
                     && ModulePackageOperationStore.Read(serverRoot).Count == 0,
                 "authoritative expiry at apply requires a new review without starting a package operation");
-            var review = withOptional;
+            var missingUpload = await joint.PrepareAsync(candidate, [], default);
+            var uploadId = ModulePackagePlanStore.Read(serverRoot)
+                .Single(plan => plan.PlanId == missingUpload.Plan.PreparedSteps.Single().InstallerPlanId).UploadId;
+            var upload = Path.Combine(serverRoot, "data", "module-management", "staging", "uploads", uploadId + ".rkmodule");
+            Require(File.Exists(upload), "the reviewed module archive is staged on the server");
+            File.Delete(upload);
+            try
+            {
+                await joint.ExecuteAsync(missingUpload, default);
+                throw new InvalidOperationException("Expected the server to reject a missing package upload.");
+            }
+            catch (DeploymentPlanReviewRequiredException error) when (error.Message == "module-package-upload-not-found") { }
+            Require(await joint.FindPendingAsync(candidate, default) is null
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 0,
+                "a missing staged archive requires a new review before any package operation starts");
+            var review = await joint.PrepareAsync(candidate, [optional], default);
             var settings = new ShellSettings(null!);
             var localization = new LocalizationService(settings, new SshDesktopSession(null!, settings));
             using (var uiServices = new ServiceCollection().AddSingleton(localization).BuildServiceProvider())
