@@ -14,17 +14,19 @@ internal sealed class ApplicationArchiveExecution(Func<string> resolvePath)
 
     private delegate Task<string?> PrepareArchive(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken);
-    private delegate Task WriteDockerfile(string destination, string dockerfile, CancellationToken cancellationToken);
+    private delegate Task WriteDockerfile(string destination, ApplicationSourceKind kind, string baseImage, int port,
+        string entry, bool selfContained, CancellationToken cancellationToken);
 
     internal Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries,
         long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
         => ExecuteAsync<PrepareArchive, string?>("PrepareAsync", execute =>
             execute(archive, destination, maximumEntries, maximumExpandedBytes, maximumPathDepth, cancellationToken), cancellationToken);
 
-    internal Task WriteDockerfileAsync(string destination, string dockerfile, CancellationToken cancellationToken)
+    internal Task WriteDockerfileAsync(string destination, ApplicationSourceKind kind, string baseImage, int port,
+        string entry, bool selfContained, CancellationToken cancellationToken)
         => ExecuteAsync<WriteDockerfile, bool>("WriteDockerfileAsync", async execute =>
         {
-            await execute(destination, dockerfile, cancellationToken);
+            await execute(destination, kind, baseImage, port, entry, selfContained, cancellationToken);
             return true;
         }, cancellationToken);
 

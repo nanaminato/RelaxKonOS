@@ -211,15 +211,7 @@ internal sealed class JavaJarTemplate : ApplicationTemplateBase
         }
 
         var baseImage = plan.BaseImage ?? options.JavaBaseImage;
-        var dockerfile = new StringBuilder()
-            .AppendLine($"FROM {baseImage}")
-            .AppendLine("RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin appuser")
-            .AppendLine($"WORKDIR {RuntimeDirectory}")
-            .AppendLine($"COPY --chown=10001:10001 {JarFileName} {RuntimeDirectory}/{JarFileName}")
-            .AppendLine("USER 10001:10001")
-            .AppendLine($"EXPOSE {definition.ContainerPort}")
-            .AppendLine($"ENTRYPOINT [\"java\",\"-XX:MaxRAMPercentage=75\",\"-jar\",\"{RuntimeDirectory}/{JarFileName}\"]");
-        await execution.WriteDockerfileAsync(contextDirectory, dockerfile.ToString(), cancellationToken);
+        await execution.WriteDockerfileAsync(contextDirectory, ApplicationSourceKind.JavaJar, baseImage, definition.ContainerPort, JarFileName, false, cancellationToken);
         return ($"java -jar {RuntimeDirectory}/{JarFileName}", plan.Arguments);
     }
 
@@ -303,26 +295,12 @@ internal sealed class DotNetPublishTemplate : ApplicationTemplateBase
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImagePlatformMismatch, 400);
 
         var baseImage = ResolveBaseImage(plan, options, imageVersion, isWeb, plan.SelfContained);
-        var entryExecutable = plan.SelfContained ? $"{RuntimeDirectory}/{assemblyName}" : $"{RuntimeDirectory}/{assemblyName}.dll";
         if (plan.SelfContained && !File.Exists(Path.Combine(root, assemblyName)))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
         if (!plan.SelfContained && !File.Exists(Path.Combine(root, assemblyName + ".dll")))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
 
-        var dockerfile = new StringBuilder()
-            .AppendLine($"FROM {baseImage}")
-            .AppendLine("RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin appuser")
-            .AppendLine($"WORKDIR {RuntimeDirectory}")
-            .AppendLine($"COPY --chown=10001:10001 . {RuntimeDirectory}")
-            .AppendLine($"RUN test -f {entryExecutable}")
-            .AppendLine("USER 10001:10001")
-            .AppendLine($"ENV ASPNETCORE_URLS=http://0.0.0.0:{definition.ContainerPort}")
-            .AppendLine("ENV DOTNET_EnableDiagnostics=0")
-            .AppendLine($"EXPOSE {definition.ContainerPort}")
-            .AppendLine(plan.SelfContained
-                ? $"ENTRYPOINT [\"./{assemblyName}\"]"
-                : $"ENTRYPOINT [\"dotnet\",\"{RuntimeDirectory}/{assemblyName}.dll\"]");
-        await execution.WriteDockerfileAsync(contextDirectory, dockerfile.ToString(), cancellationToken);
+        await execution.WriteDockerfileAsync(contextDirectory, ApplicationSourceKind.DotNetPublish, baseImage, definition.ContainerPort, assemblyName, plan.SelfContained, cancellationToken);
         return (plan.SelfContained ? $"./{assemblyName}" : $"dotnet {assemblyName}.dll", plan.Arguments);
     }
 
@@ -431,19 +409,7 @@ internal sealed class PythonProjectTemplate : ApplicationTemplateBase
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EntryPointInvalid, 400);
 
         var baseImage = plan.BaseImage ?? options.PythonBaseImage;
-        var dockerfile = new StringBuilder()
-            .AppendLine($"FROM {baseImage}")
-            .AppendLine("ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1")
-            .AppendLine("RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin appuser")
-            .AppendLine($"WORKDIR {RuntimeDirectory}")
-            // Dependencies are installed at image build time only; the start definition installs nothing.
-            .AppendLine($"COPY --chown=10001:10001 {RequirementsFileName} {RuntimeDirectory}/{RequirementsFileName}")
-            .AppendLine($"RUN pip install --requirement {RuntimeDirectory}/{RequirementsFileName}")
-            .AppendLine($"COPY --chown=10001:10001 . {RuntimeDirectory}")
-            .AppendLine("USER 10001:10001")
-            .AppendLine($"EXPOSE {definition.ContainerPort}")
-            .AppendLine($"ENTRYPOINT [\"python\",\"-m\",\"{module}\"]");
-        await execution.WriteDockerfileAsync(contextDirectory, dockerfile.ToString(), cancellationToken);
+        await execution.WriteDockerfileAsync(contextDirectory, ApplicationSourceKind.PythonProject, baseImage, definition.ContainerPort, module, false, cancellationToken);
         return ($"python -m {module}", plan.Arguments);
     }
 

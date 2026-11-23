@@ -11,8 +11,10 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// </summary>
 public static class ApplicationArchiveExtractor
 {
-    public static async Task WriteDockerfileAsync(string destination, string dockerfile, CancellationToken cancellationToken)
+    public static async Task WriteDockerfileAsync(string destination, ApplicationSourceKind kind, string baseImage, int port,
+        string entry, bool selfContained, CancellationToken cancellationToken)
     {
+        var dockerfile = ApplicationDockerfile.Generate(kind, baseImage, port, entry, selfContained);
         // The build must include the validated payload regardless of the archive's .dockerignore.
         var encoding = new UTF8Encoding(false);
         await File.WriteAllTextAsync(Path.Combine(destination, ".dockerignore"),

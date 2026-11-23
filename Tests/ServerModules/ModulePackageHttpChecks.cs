@@ -551,10 +551,12 @@ internal static class ModulePackageHttpChecks
                     check(await executor.PrepareAsync(archive, destination, 10, 1024, 4, default) is null
                         && await File.ReadAllTextAsync(Path.Combine(destination, "content.txt")) == "installed",
                         "rolled-back Application Deployments package extracts a build archive with installed execution");
-                    const string dockerfile = "FROM busybox:1.37\nCOPY content.txt /content.txt\n";
                     await File.WriteAllTextAsync(Path.Combine(destination, ".dockerignore"), "*\n");
-                    await executor.WriteDockerfileAsync(destination, dockerfile, default);
-                    check(await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile")) == dockerfile
+                    await executor.WriteDockerfileAsync(destination, RelaxKonOS.Protocol.ApplicationDeployments.ApplicationSourceKind.JavaJar,
+                        "eclipse-temurin:21-jre-jammy", 8080, "app.jar", false, default);
+                    var dockerfile = await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile"));
+                    check(dockerfile.StartsWith("FROM eclipse-temurin:21-jre-jammy", StringComparison.Ordinal)
+                        && dockerfile.Contains("\"-jar\",\"/app/app.jar\"", StringComparison.Ordinal)
                         && !(await File.ReadAllTextAsync(Path.Combine(destination, ".dockerignore"))).Contains('*'),
                         "rolled-back Application Deployments package writes the generated build files");
                 }
