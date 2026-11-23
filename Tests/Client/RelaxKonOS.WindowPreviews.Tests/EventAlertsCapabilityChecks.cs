@@ -112,6 +112,7 @@ public class EventAlertsAuthFixture : NotepadAuthFixture
     internal string ServiceId { get; set; } = "http://fixture.invalid";
     internal AuthSessionState State { get; set; } = AuthSessionState.Authenticated;
     internal DeviceDto? Device { get; set; }
+    internal Guid? UserId { get; set; }
     private EventHandler<AuthSessionStateChangedEventArgs>? _changed;
 
     internal void NotifyStateChanged() => _changed?.Invoke(this, new AuthSessionStateChangedEventArgs(State));
@@ -124,7 +125,7 @@ public class EventAlertsAuthFixture : NotepadAuthFixture
             case "remove_StateChanged": _changed -= (EventHandler<AuthSessionStateChangedEventArgs>)args![0]!; return null;
             case "get_ServiceId" or "get_EffectiveBaseUrl": return ServiceId;
             case "get_State": return State;
-            case "get_CurrentUser": return User;
+            case "get_CurrentUser": return UserId is { } id ? User with { Id = id } : User;
             case "get_CurrentDevice": return Device;
             default: return base.Invoke(method, args);
         }

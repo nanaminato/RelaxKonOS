@@ -22,7 +22,7 @@ using RelaxKonOS.Server.Storage;
 
 internal static class RegistryAccessChecks
 {
-    public static async Task RunAsync()
+    public static async Task RunAsync(string? desktopRunner = null, string? archive = null)
     {
         var owner = Guid.NewGuid(); var other = Guid.NewGuid(); var third = Guid.NewGuid();
         var device = Guid.NewGuid();
@@ -140,6 +140,13 @@ internal static class RegistryAccessChecks
         var scrollback = (await Read(cursor.Path)).Single(field => field.Name == "scrollbackLines");
         using (var saved = await Write(scrollback.Path, scrollback.Name, JsonSerializer.SerializeToElement(0), scrollback.Revision, type: RegistryValueType.Number)) Check(saved.IsSuccessStatusCode, "Zero scrollback is a valid preference.");
         using (var invalid = await Write(scrollback.Path, scrollback.Name, JsonSerializer.SerializeToElement(1.5), scrollback.Revision, type: RegistryValueType.Number)) Check(invalid.StatusCode == HttpStatusCode.BadRequest, "Scrollback must be an integer.");
+        if (desktopRunner is not null && archive is not null)
+        {
+            Check(Path.GetFileName(archive) == "relaxkonos.registry.roapp", "Supply the official Registry archive.");
+            privileges.Level = HostAccountPrivilege.StandardUser;
+            await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, archive, "RK_TEST_REGISTRY_PORT", http.BaseAddress!.Port,
+                new("RK_TEST_REGISTRY_USER", owner.ToString("D")));
+        }
         await app.StopAsync();
         Console.WriteLine("PASS: registry fields, nested options, canonical Explorer settings, cross-user elevation, administrator authorization, audit, revision conflicts and custom-value rename.");
     }

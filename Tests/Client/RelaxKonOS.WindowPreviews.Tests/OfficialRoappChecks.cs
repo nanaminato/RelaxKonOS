@@ -167,6 +167,8 @@ internal static class OfficialRoappChecks
         Uri? alertEndpoint = alertPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(alertPort)}/");
         var performancePort = isTaskManager ? Environment.GetEnvironmentVariable("RK_TEST_PERFORMANCE_PORT") : null;
         Uri? performanceEndpoint = performancePort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(performancePort)}/");
+        var registryPort = isRegistry ? Environment.GetEnvironmentVariable("RK_TEST_REGISTRY_PORT") : null;
+        Uri? registryEndpoint = registryPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(registryPort)}/");
         if (alertEndpoint is not null || performanceEndpoint is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "observer");
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
@@ -523,6 +525,21 @@ internal static class OfficialRoappChecks
                 for (var attempt = 0; attempt < 50 && windows.Windows.Count == 0; attempt++)
                     await Task.Delay(20);
                 var workspace = windows.Windows.Single();
+                if (registryEndpoint is not null)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    var keys = (System.Collections.IEnumerable)model.GetType().GetProperty("Keys")!.GetValue(model)!;
+                    for (var attempt = 0; attempt < 100 && !keys.Cast<object>().Any(); attempt++) await Task.Delay(50);
+                    Check(keys.Cast<object>().Any(), "The installed Registry loaded the server hive.");
+                    model.GetType().GetProperty("NavigationPathInput")!.SetValue(model, @"HKEY_CURRENT_USER\Workspace\Desktop");
+                    ((System.Windows.Input.ICommand)model.GetType().GetProperty("NavigateCommand")!.GetValue(model)!).Execute(null);
+                    var entries = (System.Collections.IEnumerable)model.GetType().GetProperty("Entries")!.GetValue(model)!;
+                    bool HasSavedTimeFormat() => entries.Cast<object>().Any(row => row.GetType().GetProperty("Source")!.GetValue(row)
+                        is RelaxKonOS.Protocol.Registry.RegistryEntryDto { Name: "timeFormat" } entry && entry.DesiredValue.GetString() == "12h");
+                    for (var attempt = 0; attempt < 100 && !HasSavedTimeFormat(); attempt++) await Task.Delay(50);
+                    Check(HasSavedTimeFormat(), "The installed Registry displays the saved workspace time format through the SDK.");
+                    Console.WriteLine("The installed Registry displayed the current user's saved workspace value over loopback HTTP.");
+                }
                 if (performanceEndpoint is not null)
                 {
                     var model = ((Control)workspace.View.Content!).DataContext!;
@@ -966,6 +983,13 @@ internal static class OfficialRoappChecks
                 appPermissions.Granted.Add(AppPermissions.ServerMetricsRead);
                 appPermissions.Granted.Add(AppPermissions.ServerProcessesManage);
             }
+            if (registryEndpoint is not null)
+            {
+                var registryAuth = (EventAlertsAuthFixture)(object)auth;
+                registryAuth.ServiceId = registryEndpoint.AbsoluteUri;
+                registryAuth.UserId = Guid.Parse(Environment.GetEnvironmentVariable("RK_TEST_REGISTRY_USER")!);
+                appPermissions.Granted.Add(AppPermissions.ServerRegistryRead);
+            }
             appPermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
             appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
             var certificates = isCertificates || isDatabase ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
@@ -996,7 +1020,7 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerTailscaleRead);
             var tailscale = isTailscale ? DispatchProxy.Create<IServerTailscale, TailscaleScopeTransport>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerDatabasesRead);
-            var scopedPermissions = alertEndpoint is not null || performanceEndpoint is not null || isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
+            var scopedPermissions = alertEndpoint is not null || performanceEndpoint is not null || registryEndpoint is not null || isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
                 || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager || isTailscale;
             var postgres = isDatabase ? new OfficialPostgreSqlFixture() : null;
             var ssh = new SshDesktopSession(null!, settings);
@@ -1020,6 +1044,7 @@ internal static class OfficialRoappChecks
                 new ExplorerClient(http, auth, memory), ssh,
                 new SshExplorerClient(ssh), DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(),
                 null!, null!, apps, memory, null!, alertEndpoint is null ? null! : new RemoteEventAlertClient(http, auth), null!, null!,
+                registry: registryEndpoint is null ? null : new RelaxKonOS.Client.Apps.Registry.RegistryClient(http, auth, null!, new PresentationSettingsChanges()),
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
                 fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels, createSquidClient: squid is null ? null : () => squid,
                 createProxyServerClient: proxyServer is null ? null : () => proxyServer,

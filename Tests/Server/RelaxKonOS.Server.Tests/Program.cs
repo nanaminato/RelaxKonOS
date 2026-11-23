@@ -396,7 +396,10 @@ if (args.Contains("--terminal-windows-only"))
 }
 if (args.Contains("--registry-access-only"))
 {
-    await RegistryAccessChecks.RunAsync();
+    if (args is ["--registry-access-only", var registryDesktop, var registryArchive])
+        await RegistryAccessChecks.RunAsync(registryDesktop, registryArchive);
+    else
+        await RegistryAccessChecks.RunAsync();
     return;
 }
 if (args.Contains("--host-data-protection-only"))

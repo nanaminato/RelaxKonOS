@@ -52,7 +52,8 @@ internal static class EventAlertChecks
         await app.StopAsync();
     }
 
-    internal static async Task RunDesktopPackageAsync(string desktopRunner, string archive, string portVariable, int port)
+    internal static async Task RunDesktopPackageAsync(string desktopRunner, string archive, string portVariable, int port,
+        KeyValuePair<string, string>? environment = null)
     {
         var runnerPath = Path.GetFullPath(desktopRunner);
         var frameworkDependent = Path.GetExtension(runnerPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
@@ -61,6 +62,7 @@ internal static class EventAlertChecks
         start.ArgumentList.Add("--official-roapp-only");
         start.ArgumentList.Add(Path.GetFullPath(archive));
         start.Environment[portVariable] = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (environment is { } setting) start.Environment[setting.Key] = setting.Value;
         using var desktop = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start the desktop package fixture.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         try { await desktop.WaitForExitAsync(timeout.Token); }
