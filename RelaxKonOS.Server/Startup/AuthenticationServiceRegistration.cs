@@ -211,13 +211,7 @@ internal static class AuthenticationServiceRegistration
                         || context.User.HasClaim(RelaxKonOSAuthSchemes.ScopeClaim, requiredScope)));
             }
             AddTunnelPolicies(options);
-            options.AddPolicy("EventsRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-                context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
-                || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
-            options.AddPolicy("EventsManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-                context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
-            options.AddPolicy("EventsCriticalSuppress", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-                context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+            AddEventAlertPolicies(options);
             options.AddPolicy("ProxyRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
                 || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
@@ -256,6 +250,17 @@ internal static class AuthenticationServiceRegistration
                     context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
         });
         return forwardedHeaders;
+    }
+
+    internal static void AddEventAlertPolicies(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)
+    {
+        options.AddPolicy("EventsRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
+            || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+        options.AddPolicy("EventsManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+        options.AddPolicy("EventsCriticalSuppress", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
     }
 
     internal static void AddTunnelPolicies(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)

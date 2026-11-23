@@ -1,8 +1,52 @@
+using System.Net;
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.EventAlerts;
+using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.EventAlerts;
+using RelaxKonOS.Server.Startup;
 
 internal static class EventAlertChecks
 {
+    internal static async Task VerifyReadEndpointsAsync(string root)
+    {
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { ContentRootPath = root, Args = [] });
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, ProgressTestAuthentication>("test", _ => { });
+        builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+        builder.Services.AddAuthorization(AuthenticationServiceRegistration.AddEventAlertPolicies);
+        var sanitizer = new ObservabilitySanitizer(new ObservabilityOptions());
+        var options = new EventAlertsOptions { DatabasePath = "event-alerts-http.db" };
+        var store = new EventAlertStore(builder.Environment, options, sanitizer);
+        builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton(store);
+        builder.Services.AddSingleton<IObservabilitySanitizer>(sanitizer);
+        builder.Services.AddSingleton<ICorrelationContextAccessor, CorrelationContextAccessor>();
+        builder.Services.AddSingleton<ISecurityAuditWriter>(_ => throw new InvalidOperationException("An alert read invoked the mutation audit fixture."));
+        await using var app = builder.Build();
+        app.MapEventAlertEndpoints();
+        await app.StartAsync();
+        var resource = Guid.NewGuid();
+        var publisher = new OperationalEventPublisher(store, sanitizer);
+        await publisher.PublishAsync(new("http-failure", "deployment.operation_failed", resource, Guid.NewGuid(), "deployment.build_failed"));
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using var anonymous = await client.GetAsync(EventAlertApiRoutes.Summary);
+        TestAssert.Assert(anonymous.StatusCode == HttpStatusCode.Unauthorized, "An anonymous request read the alert summary.");
+        client.DefaultRequestHeaders.Add("X-Test-Role", "observer");
+        var summary = await client.GetFromJsonAsync<EventAlertSummaryDto>(EventAlertApiRoutes.Summary, RelaxKonOSJsonOptions.Default);
+        var alerts = await client.GetFromJsonAsync<EventAlertPageDto<OperationalAlertDto>>(EventAlertApiRoutes.Alerts, RelaxKonOSJsonOptions.Default);
+        TestAssert.Assert(summary is { OpenCount: 1 } && alerts?.Items is [{ Status: OperationalAlertStatus.Open, ProblemCode: "deployment.build_failed" }],
+            "The observer did not receive the published alert from the desktop read routes.");
+        using var denied = await client.PostAsJsonAsync(EventAlertApiRoutes.Alerts + "/" + alerts!.Items[0].AlertId + "/acknowledgement",
+            new { note = "test" });
+        TestAssert.Assert(denied.StatusCode == HttpStatusCode.Forbidden, "An observer could acknowledge an alert.");
+        await app.StopAsync();
+    }
+
     internal static async Task VerifyAppendProjectionAndRecoveryAsync(string root)
     {
         var options = new EventAlertsOptions { DatabasePath = "event-alerts-test.db" };

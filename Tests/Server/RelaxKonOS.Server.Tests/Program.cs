@@ -683,9 +683,13 @@ if (args.Contains("--event-alerts-only"))
 {
     var eventRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-event-alerts-{Guid.NewGuid():N}");
     Directory.CreateDirectory(eventRoot);
-    try { await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(eventRoot); }
+    try
+    {
+        await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(eventRoot);
+        await EventAlertChecks.VerifyReadEndpointsAsync(eventRoot);
+    }
     finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(eventRoot, recursive: true); }
-    Console.WriteLine("Event projection, acknowledgement, sanitization, and suppression recovery checks passed.");
+    Console.WriteLine("Event projection, recovery, and authenticated alert HTTP read checks passed.");
     return;
 }
 if (args.Contains("--docker-resources-only"))
