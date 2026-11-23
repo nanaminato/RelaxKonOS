@@ -25,7 +25,7 @@
 | browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包已验，原生 WebView 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期及 Linux Standard 原生首次预装已验 |
 | registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Release 包验收；真实服务器待验 |
-| event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期、SDK 授权边界及已安装官方窗口通过隔离服务端读取告警已验 |
+| event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 与 Linux x64 包生命周期及已安装官方窗口经隔离服务端读取告警已验，桌面 SDK 授权边界已验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | Windows 和 Linux 签名双包、真实 Engine 临时项目部署和删除已验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
@@ -929,3 +929,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 从 `6816c850b` 构建自包含桌面验收运行器，在 WSL 独立网络中使用 Linux 官方归档通过同一配置损坏恢复回归。普通启动保留损坏内容，显式重选恢复配置和排除项，同时保留已安装应用和用户手动卸载的 Welcome。
 - Windows Release 告警专项使用隔离 SQLite、生产发布器和 HTTP 路由。匿名读取摘要返回 401，观察者可通过桌面使用的摘要和列表接口读取同一条告警，确认写入返回 403。测试使用角色认证夹具及生产授权策略。桌面 SDK 授权撤销和连接切换另行通过。
 - Windows Release 使用实际 Event & Alert Center 官方 `.roapp` 安装并打开无头桌面窗口。窗口经桌面 SDK、环回 HTTP 及生产告警路由显示 SQLite 中持久化的告警。可用 Server.Tests 的 `--event-alerts-only <WindowPreviews.Tests.dll> <relaxkonos.event-alerts.roapp>` 复现。测试使用观察者认证夹具。
+- Linux x64 在 WSL 独立网络命名空间使用自包含服务端与桌面验收程序，以及 Linux 官方告警归档，完成同一窗口读取和包生命周期验收。`--event-alerts-only` 的桌面运行器参数也可传入自包含可执行文件。

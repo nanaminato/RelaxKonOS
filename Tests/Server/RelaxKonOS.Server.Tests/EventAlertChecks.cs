@@ -47,8 +47,10 @@ internal static class EventAlertChecks
         if (desktopRunner is not null && archive is not null)
         {
             TestAssert.Assert(Path.GetFileName(archive) == "relaxkonos.event-alerts.roapp", "Supply the official Event & Alert Center archive.");
-            var start = new System.Diagnostics.ProcessStartInfo("dotnet") { UseShellExecute = false };
-            start.ArgumentList.Add(Path.GetFullPath(desktopRunner));
+            var runnerPath = Path.GetFullPath(desktopRunner);
+            var frameworkDependent = Path.GetExtension(runnerPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+            var start = new System.Diagnostics.ProcessStartInfo(frameworkDependent ? "dotnet" : runnerPath) { UseShellExecute = false };
+            if (frameworkDependent) start.ArgumentList.Add(runnerPath);
             start.ArgumentList.Add("--official-roapp-only");
             start.ArgumentList.Add(Path.GetFullPath(archive));
             start.Environment["RK_TEST_EVENT_ALERTS_PORT"] = client.BaseAddress.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
