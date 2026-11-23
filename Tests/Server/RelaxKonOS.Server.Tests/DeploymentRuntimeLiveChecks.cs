@@ -84,8 +84,7 @@ internal static class DeploymentRuntimeLiveChecks
         var buildArchive = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_BUILD_ARCHIVE") == "1";
         var installedRoot = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_INSTALLED_ROOT");
         var coldImage = Environment.GetEnvironmentVariable("RK_TEST_DEPLOYMENTS_COLD_IMAGE");
-        Require(!buildArchive || desktopRunner is null && coldImage is null,
-            "Archive build acceptance submits directly over HTTP and does not use cold image deployment mode.");
+        Require(!buildArchive || coldImage is null, "Archive build acceptance does not use cold image deployment mode.");
         var imageReference = coldImage ?? cachedReference;
         HashSet<string>? priorImageIds = null;
         if (coldImage is not null)
@@ -155,8 +154,17 @@ internal static class DeploymentRuntimeLiveChecks
                 applicationId = application.Id;
                 if (desktopRunner is not null && package is not null)
                 {
+                    var desktopSource = imageReference;
+                    if (buildArchive)
+                    {
+                        var path = Path.Combine(directory.FullName, "python-fixture.zip");
+                        using var archive = CreatePythonFixture(marker);
+                        await using var file = File.Create(path);
+                        await archive.CopyToAsync(file, ct);
+                        desktopSource = "archive:" + path;
+                    }
                     await EventAlertChecks.RunDesktopPackageAsync(desktopRunner, package, "RK_TEST_DEPLOYMENTS_PORT", new Uri(address).Port,
-                        new("RK_TEST_DEPLOYMENTS_SUBMIT", imageReference));
+                        new("RK_TEST_DEPLOYMENTS_SUBMIT", desktopSource));
                     var deployed = await http.GetFromJsonAsync<ApplicationDeploymentSnapshotDto>(ApplicationDeploymentApiRoutes.Application(application.Id), RelaxKonOSJsonOptions.Default, ct);
                     Require(deployed is not null && deployed.Application.CurrentRevisionId is { } activeId
                         && deployed.Revisions.Single().Id == activeId && deployed.Operations.Single() is
@@ -164,6 +172,7 @@ internal static class DeploymentRuntimeLiveChecks
                     Require((await workload.GetStringAsync($"http://127.0.0.1:{port}/ready", ct)).Trim() == marker,
                         "The window-deployed workload did not serve the expected marker.");
                     await VerifyPulledIdentityAsync(deployed!.Revisions.Single().ImageId);
+                    if (buildArchive) VerifyBuiltRevision(deployed.Revisions.Single());
                     Console.WriteLine($"Installed Application Deployments window activated a real Docker workload (registry pull: {pullFromRegistry}).");
                     return;
                 }
@@ -193,15 +202,14 @@ internal static class DeploymentRuntimeLiveChecks
                 await VerifyPulledIdentityAsync(snapshot!.Revisions.Single().ImageId);
                 if (buildArchive)
                 {
-                    var revision = snapshot.Revisions.Single();
-                    Require(revision.ImageReference.StartsWith($"relaxkonos-ad/{marker}:", StringComparison.Ordinal) && revision.EntryPoint == "python -m fixture",
-                        "The active revision did not bind the image built from the staged Python archive.");
+                    VerifyBuiltRevision(snapshot.Revisions.Single());
                     Console.WriteLine($"The staged Python archive built and served its HTTP fixture (installed execution: {installedRoot is not null}).");
                 }
                 Console.WriteLine($"Live deployment HTTP submission, terminal receipt, replay and activated workload passed (registry pull: {pullFromRegistry}).");
             }
             finally { await app.StopAsync(); }
         }
+
         finally
         {
             try
@@ -235,6 +243,10 @@ internal static class DeploymentRuntimeLiveChecks
             }
         }
 
+        void VerifyBuiltRevision(ApplicationRevisionDto revision) =>
+            Require(revision.ImageReference.StartsWith($"relaxkonos-ad/{marker}:", StringComparison.Ordinal) && revision.EntryPoint == "python -m fixture",
+                "The active revision did not bind the image built from the staged Python archive.");
+
         async Task VerifyPulledIdentityAsync(string? revisionImageId)
         {
             if (priorImageIds is null) return;
@@ -247,7 +259,19 @@ internal static class DeploymentRuntimeLiveChecks
 
     private static async Task<DeploymentSourceInputDto> UploadPythonFixtureAsync(HttpClient http, string marker, CancellationToken ct)
     {
-        using var archive = new MemoryStream();
+        using var archive = CreatePythonFixture(marker);
+        using var form = new MultipartFormDataContent();
+        form.Add(new StreamContent(archive), "file", "python-fixture.zip");
+        using var upload = await http.PostAsync(ApplicationDeploymentApiRoutes.Uploads, form, ct);
+        upload.EnsureSuccessStatusCode();
+        var staged = await upload.Content.ReadFromJsonAsync<DeploymentStagedFileDto>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new InvalidOperationException("The upload returned no staged archive.");
+        return new(ArchiveReferenceId: staged.ReferenceId, ProgramEntry: "fixture");
+    }
+
+    private static MemoryStream CreatePythonFixture(string marker)
+    {
+        var archive = new MemoryStream();
         using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
         {
             using (var requirements = zip.CreateEntry("publish/requirements.txt").Open()) requirements.Write("# Standard library only\n"u8);
@@ -265,13 +289,7 @@ internal static class DeploymentRuntimeLiveChecks
                 """);
         }
         archive.Position = 0;
-        using var form = new MultipartFormDataContent();
-        form.Add(new StreamContent(archive), "file", "python-fixture.zip");
-        using var upload = await http.PostAsync(ApplicationDeploymentApiRoutes.Uploads, form, ct);
-        upload.EnsureSuccessStatusCode();
-        var staged = await upload.Content.ReadFromJsonAsync<DeploymentStagedFileDto>(RelaxKonOSJsonOptions.Default, ct)
-            ?? throw new InvalidOperationException("The upload returned no staged archive.");
-        return new(ArchiveReferenceId: staged.ReferenceId, ProgramEntry: "fixture");
+        return archive;
     }
 
     private static async Task<HttpResponseMessage> SendAsync<T>(HttpClient client, string route, T body, string key, CancellationToken ct)

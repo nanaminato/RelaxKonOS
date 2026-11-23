@@ -33,7 +33,7 @@ using WindowManager = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class OfficialRoappChecks
 {
-    private static async Task SubmitInstalledDeploymentAsync(WindowManager windows, object model, string imageReference)
+    private static async Task SubmitInstalledDeploymentAsync(WindowManager windows, object model, string source)
     {
         var modelType = model.GetType();
         var deploy = (System.Windows.Input.ICommand)modelType.GetProperty("DeployRevisionCommand")!.GetValue(model)!;
@@ -59,8 +59,29 @@ internal static class OfficialRoappChecks
         Check(dialog?.DataContext is not null, "The installed workspace did not open its deployment wizard.");
         var wizard = dialog!.DataContext!;
         var wizardType = wizard.GetType();
-        wizardType.GetProperty("ImageReference")!.SetValue(wizard, imageReference);
-        wizardType.GetProperty("ArgumentsText")!.SetValue(wizard, $"sh\n-ec\nmkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site");
+        if (source.StartsWith("archive:", StringComparison.Ordinal))
+        {
+            var path = source["archive:".Length..];
+            var picker = wizardType.GetProperty("PickLocalArchiveAsync")!;
+            var archiveType = picker.PropertyType.GenericTypeArguments[0].GenericTypeArguments[0];
+            Func<Task<Stream>> open = () => Task.FromResult<Stream>(File.OpenRead(path));
+            var archive = Activator.CreateInstance(archiveType, Path.GetFileName(path), open);
+            var task = typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(archiveType).Invoke(null, [archive]);
+            var select = System.Linq.Expressions.Expression.Lambda(picker.PropertyType,
+                System.Linq.Expressions.Expression.Constant(task, picker.PropertyType.GenericTypeArguments[0])).Compile();
+            picker.SetValue(wizard, select);
+            wizardType.GetProperty("ProgramEntry")!.SetValue(wizard, "fixture");
+            ((System.Windows.Input.ICommand)wizardType.GetProperty("ChooseLocalArchiveCommand")!.GetValue(wizard)!).Execute(null);
+            for (var attempt = 0; attempt < 100 && wizardType.GetProperty("IsUploading")!.GetValue(wizard) is true; attempt++)
+                await Task.Delay(50);
+            Check(wizardType.GetProperty("ArchiveReferenceId")!.GetValue(wizard) is string { Length: > 0 },
+                $"The installed wizard did not stage the selected ZIP. Error: {wizardType.GetProperty("ErrorText")!.GetValue(wizard)}");
+        }
+        else
+        {
+            wizardType.GetProperty("ImageReference")!.SetValue(wizard, source);
+            wizardType.GetProperty("ArgumentsText")!.SetValue(wizard, $"sh\n-ec\nmkdir -p /tmp/site; echo {marker} > /tmp/site/ready; exec httpd -f -p 8080 -h /tmp/site");
+        }
         ((System.Windows.Input.ICommand)wizardType.GetProperty("SubmitCommand")!.GetValue(wizard)!).Execute(null);
         for (var attempt = 0; attempt < 300 && wizardType.GetProperty("IsBusy")!.GetValue(wizard) is true; attempt++)
             await Task.Delay(100);

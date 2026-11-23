@@ -829,6 +829,13 @@ internal static class ModulePackageHttpChecks
         if (isDll) start.ArgumentList.Add(path);
         start.ArgumentList.Add("--deployment-runtime-live");
         start.ArgumentList.Add(imageId);
+        if (Environment.GetEnvironmentVariable("RK_TEST_SIGNED_DEPLOYMENT_DESKTOP") is { Length: > 0 } desktop)
+        {
+            var package = Environment.GetEnvironmentVariable("RK_TEST_SIGNED_DEPLOYMENT_ROAPP")
+                ?? throw new InvalidOperationException("Set RK_TEST_SIGNED_DEPLOYMENT_ROAPP to the official deployment package.");
+            start.ArgumentList.Add(Path.GetFullPath(desktop));
+            start.ArgumentList.Add(Path.GetFullPath(package));
+        }
         start.Environment["RK_TEST_DEPLOYMENTS_BUILD_ARCHIVE"] = "1";
         start.Environment["RK_TEST_DEPLOYMENTS_INSTALLED_ROOT"] = root;
         using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start deployment acceptance.");
