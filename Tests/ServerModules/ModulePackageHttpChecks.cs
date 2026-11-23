@@ -576,6 +576,8 @@ internal static class ModulePackageHttpChecks
                 }
                 if (database is not null)
                 {
+                    var beforeDatabase = await client.GetFromJsonAsync<ServerModuleHealthPageDto>(
+                        ServerModuleManagementRoutes.ModuleHealth, RelaxKonOSJsonOptions.Default);
                     using var databaseUpload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
                         new ByteArrayContent(await File.ReadAllBytesAsync(database.ArchivePath)));
                     databaseUpload.EnsureSuccessStatusCode();
@@ -587,6 +589,9 @@ internal static class ModulePackageHttpChecks
                     using var install = await client.PostAsync(ServerModuleManagementRoutes.PackagePlanApply
                         .Replace("{planId:guid}", databasePlan.PlanId.ToString()), null);
                     install.EnsureSuccessStatusCode();
+                    var databaseInstall = (await install.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
+                    var databaseReceipt = await client.GetFromJsonAsync<ServerPackageOperationDto>(ServerModuleManagementRoutes.PackageOperation
+                        .Replace("{operationId:guid}", databaseInstall.OperationId.ToString()), RelaxKonOSJsonOptions.Default);
                     var inventory = await app.Services.GetRequiredService<ServerModules>().DescribeAsync(app.Services,
                         app.Services.GetRequiredService<ServerModuleContext>(), default);
                     check(inventory.Single(module => module.Id == ServerModules.DatabaseId) is
@@ -594,6 +599,13 @@ internal static class ModulePackageHttpChecks
                         && pending.ArtifactDigest == database.ArchiveSha256 && pending.InstalledVersion == database.Manifest.Version
                         && pending.EffectiveVersion != pending.InstalledVersion,
                         "a first signed Databases install reports the pending replacement before Core restarts");
+                    var afterDatabase = await client.GetFromJsonAsync<ServerModuleHealthPageDto>(
+                        ServerModuleManagementRoutes.ModuleHealth, RelaxKonOSJsonOptions.Default);
+                    var runningDatabase = afterDatabase?.Modules.Single(module => module.ModuleId == ServerModules.DatabaseId);
+                    check(databaseReceipt is { State: "AwaitingRestart" } && databaseReceipt.ArtifactSha256 == database.ArchiveSha256
+                        && runningDatabase is { Status: "host" }
+                        && runningDatabase == beforeDatabase?.Modules.Single(module => module.ModuleId == ServerModules.DatabaseId),
+                        "Databases installation retains the original host health until the pending signed operation is adopted");
                 }
                 using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "2.0.0"), RelaxKonOSJsonOptions.Default);
