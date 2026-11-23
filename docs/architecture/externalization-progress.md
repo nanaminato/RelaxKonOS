@@ -900,3 +900,5 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 加入八个进程内签名替换模块的执行契约预检后，Windows Release 完整模块套件通过 1,498 项。Linux x64 的 Tailscale 专项使用完整重建官方归档，验证三条不兼容版本拒绝、兼容包重启续跑、匿名读取和缺少提升授权的写入拒绝。Linux 此轮使用测试 Helper 传输。
 - 暂存版本单独激活时重新验证磁盘上的包内容和适用的进程内执行契约，再切换安装台账。Windows Release 的签名 Proxy 专项确认直接激活不兼容历史包被拒，活动摘要不变。完整模块套件同轮通过。
 - Windows x64 Release 在隔离 Core 上使用只含模块及其依赖的签名 CloudStorage 和 CloudS3 包，通过生产 HTTP 包操作复验在线激活。CloudS3 从 1.0.0 升级到 1.1.0，回执成功。1.2.0 健康检查失败后返回回滚回执，1.1.0 恢复健康并继续服务原连接，Core 与 CloudStorage 的运行代次保持不变。此轮使用本地 S3 测试配置。
+- Linux x64 在 WSL 独立网络命名空间通过同一 CloudS3 签名包在线验收，包括升级和回滚回执、原连接继续可用、Core 与 CloudStorage 保持运行，以及卸载后保留加密连接。Core 私有代理显式使用主机的内容根目录。验收从 Windows 挂载目录启动，模块和临时服务数据位于 Linux 原生文件系统，避免私有代理随进程工作目录读取和监视挂载卷。
+- 内容根目录变更后，Windows x64 重新发布的验收运行器通过 CloudS3 签名包专项，Linux x64 无外网容器通过完整模块套件的 1,510 项检查。

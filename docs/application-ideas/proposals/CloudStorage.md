@@ -97,6 +97,7 @@ S3 兼容连接也提供移动与删除。目录操作先列出选中前缀中�
 - 同一验收命令通过本机 Server 文件任务和真实 R2 进行宿主 → 云端 → 宿主整目录往返，核对文件内容与空子目录，确认下载暂存目录和云端测试前缀均已清理。
 - `--cloud-r2-package-acceptance <CloudStorage 发布目录> <CloudS3 发布目录>` 复用 R2 验收环境变量，通过现有模块包接口验证 S3 Provider 安装、在线更新、启动失败回滚和卸载。测试在独立前缀内通过 Explorer 使用的 API 验证真实分片上传、同名冲突及逐字节下载。
 - `--cloud-s3-package-checks <CloudStorage 发布目录> <CloudS3 发布目录>` 在临时 Core 上用签名测试源和两个实际 ModuleHost 进程验证相同的包操作、现有连接和上传会话，不需要上游凭据。云存储回归另用模拟 S3 与 R2 验证分片上传、同名冲突、读写及签名错误的处理。
+- 运行签名包验收前，分别用 `dotnet publish -c Release -r <目标 RID> --self-contained false` 发布 `ServerModules/RelaxKonOS.ServerModule.CloudStorage` 与对应的 Provider 项目，传入各自的发布目录。ModuleHost 提供 .NET 运行时，测试包只需要模块及其依赖。将自包含的模块发布目录传给验收程序会把 .NET 运行时一并纳入测试包，Windows 上出现过 `module-host-exit-unconfirmed`。
 - 2026-11-21 在 Windows 临时 Core 和两个实际 ModuleHost 进程上完成 S3 Provider 签名包及真实 R2 验收。用原有连接经 Explorer 文件接口列举目录，分片上传并逐字节核对 16,777,219 字节的下载。同名写入返回 409，原内容保留。在线从 `1.0.0` 更新到 `1.1.0`，`1.2.0` 启动健康检查失败后自动回滚至 `1.1.0`，同一连接和文件在更新与回滚后均可读取。Core 与 CloudStorage 的运行代际保持稳定。停止后暂存上传仍可查询，移除后原连接保留，文件操作返回 503。远端测试前缀已清理。
 - WebDAV 可使用 `Tests/ServerModules` 的 `--cloud-webdav-connector-acceptance` 验证。通过环境变量设置 `RELAXKONOS_WEBDAV_ENDPOINT`、`RELAXKONOS_WEBDAV_USER` 和 `RELAXKONOS_WEBDAV_SECRET`。私有 IPv4 端点可显式设置 `RELAXKONOS_WEBDAV_ALLOW_PRIVATE=1`，仍需受信任的 TLS 证书。测试在指定根下创建和清理一个随机目录，覆盖替换、移动、删除和双向整目录复制。
 - `--cloud-webdav-package-acceptance <CloudStorage 发布目录> <CloudWebDav 发布目录>` 复用同一组环境变量，在临时 Core 服务中通过正式模块包接口验证签名包安装、在线更新、失败回滚和卸载。测试使用两个真实的 ModuleHost 进程，对 HTTPS WebDAV 执行目录列举、上传及下载校验，并清理随机测试目录。

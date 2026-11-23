@@ -27,7 +27,12 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
         ModuleHighTrustExtensionPolicy.Validate(configuration);
         Plans = new ModulePrivilegePlanStore(environment.ContentRootPath, Resolve);
         Consents = new ModulePrivilegeConsentStore(environment.ContentRootPath, Resolve);
-        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [], EnvironmentName = Environments.Production });
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
+        {
+            Args = [],
+            ContentRootPath = environment.ContentRootPath,
+            EnvironmentName = Environments.Production,
+        });
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.WebHost.ConfigureKestrel(options =>
