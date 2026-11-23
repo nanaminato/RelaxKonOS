@@ -1042,7 +1042,17 @@ internal static class JointDeploymentAcceptance
                     && !(await afterChange.ReadAsync()).Single(module => module.Id == moduleId).DesiredEnabled,
                     "changing the installed archive after checkpoint creation requires review before enable");
                 reactivation = await joint.PrepareAsync(reactivationCandidate, [], default);
+                factory.SubstituteEnabledReceipt = true;
+                var appliesBefore = factory.SubmittedEnableApplies;
+                try
+                {
+                    await joint.ExecuteAsync(reactivation, default);
+                    throw new InvalidOperationException("Expected a mismatched enabled-module receipt to be rejected.");
+                }
+                catch (InvalidOperationException error) when (error.Message == "deployment-module-receipt-unavailable") { }
                 await ExpectRestartAsync(joint, reactivation);
+                Require(factory.SubmittedEnableApplies == appliesBefore + 1,
+                    "an inconsistent enable receipt preserves the checkpoint and retry reconciles without resubmitting");
                 await host.DisposeAsync();
                 host = await TestHost.StartAsync(serverRoot, config);
                 session.Url = host.Url;
@@ -2598,6 +2608,7 @@ internal static class JointDeploymentAcceptance
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
         public void ChangeSecondCatalogRevision() => handler.CatalogReadsUntilChange = 2;
         public bool AlterEnablePreview { set => handler.AlterEnablePreview = value; }
+        public bool SubstituteEnabledReceipt { set => handler.SubstituteEnabledReceipt = value; }
         public Guid? SubstitutePlanManifest { set => handler.SubstitutePlanManifest = value; }
         public void SubstituteActivationDigestAfterSnapshot(string? moduleId)
         {
@@ -2629,6 +2640,7 @@ internal static class JointDeploymentAcceptance
         public bool DropEnableResponse { get; set; }
         public int CatalogReadsUntilChange { get; set; }
         public bool AlterEnablePreview { get; set; }
+        public bool SubstituteEnabledReceipt { get; set; }
         public Guid? SubstitutePlanManifest { get; set; }
         public string? ActivationDigestModule { get; set; }
         public int ActivationInventoryReads { get; set; }
@@ -2855,6 +2867,20 @@ internal static class JointDeploymentAcceptance
                 DropEnableResponse = false;
                 SubmittedEnableApplies++;
                 var applied = await base.SendAsync(request, cancellationToken);
+                if (SubstituteEnabledReceipt)
+                {
+                    SubstituteEnabledReceipt = false;
+                    using (applied)
+                    {
+                        applied.EnsureSuccessStatusCode();
+                        var receipt = (await applied.Content.ReadFromJsonAsync<ServerModuleOperationDto>(
+                            RelaxKonOSJsonOptions.Default, cancellationToken))!;
+                        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                        {
+                            Content = JsonContent.Create(receipt with { EnabledModuleIds = [] }, options: RelaxKonOSJsonOptions.Default),
+                        };
+                    }
+                }
                 if (!drop) return applied;
                 using (applied) applied.EnsureSuccessStatusCode();
                 throw new HttpRequestException("fixture-enable-apply-interrupted");

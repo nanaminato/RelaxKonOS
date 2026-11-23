@@ -132,6 +132,9 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var operation = await client.ApplyAsync(preview.PlanId, cancellationToken);
         if (operation.State == ServerModuleOperationState.RecoveryRequired)
             throw new ModuleDeploymentRecoveryException(module.Id, operation.OperationId, operation.ProblemCode);
+        if (operation.State is ServerModuleOperationState.AwaitingRestart or ServerModuleOperationState.Succeeded
+            && !operation.EnabledModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(desired))
+            throw new InvalidOperationException("deployment-module-receipt-unavailable");
         if (operation.State != ServerModuleOperationState.Succeeded)
             throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
     }
