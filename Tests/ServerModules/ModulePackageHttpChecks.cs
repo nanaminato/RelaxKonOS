@@ -574,6 +574,27 @@ internal static class ModulePackageHttpChecks
                         await VerifyLiveComposeAsync(compose, composeHost.Services.GetRequiredService<DockerStackOperationCoordinator>(),
                             composeHost.Services.GetRequiredService<DockerStackOperationStore>(), check);
                 }
+                if (database is not null)
+                {
+                    using var databaseUpload = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
+                        new ByteArrayContent(await File.ReadAllBytesAsync(database.ArchivePath)));
+                    databaseUpload.EnsureSuccessStatusCode();
+                    var stagedDatabase = (await databaseUpload.Content.ReadFromJsonAsync<ServerModulePackageUploadDto>(RelaxKonOSJsonOptions.Default))!;
+                    using var previewDatabase = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackagePlans,
+                        new ServerModulePackageInstallRequest("official", database.Manifest.ReleaseId, stagedDatabase.UploadId), RelaxKonOSJsonOptions.Default);
+                    previewDatabase.EnsureSuccessStatusCode();
+                    var databasePlan = (await previewDatabase.Content.ReadFromJsonAsync<ServerModulePackagePlanDto>(RelaxKonOSJsonOptions.Default))!;
+                    using var install = await client.PostAsync(ServerModuleManagementRoutes.PackagePlanApply
+                        .Replace("{planId:guid}", databasePlan.PlanId.ToString()), null);
+                    install.EnsureSuccessStatusCode();
+                    var inventory = await app.Services.GetRequiredService<ServerModules>().DescribeAsync(app.Services,
+                        app.Services.GetRequiredService<ServerModuleContext>(), default);
+                    check(inventory.Single(module => module.Id == ServerModules.DatabaseId) is
+                        { Packaging: "independent", RestartRequired: true, TrustState: "installed" } pending
+                        && pending.ArtifactDigest == database.ArchiveSha256 && pending.InstalledVersion == database.Manifest.Version
+                        && pending.EffectiveVersion != pending.InstalledVersion,
+                        "a first signed Databases install reports the pending replacement before Core restarts");
+                }
                 using var selectSecond = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageRollback,
                     new ServerModulePackageRollbackRequest(ServerModules.GitId, "2.0.0"), RelaxKonOSJsonOptions.Default);
                 selectSecond.EnsureSuccessStatusCode();

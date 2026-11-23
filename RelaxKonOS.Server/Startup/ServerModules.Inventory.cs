@@ -78,11 +78,12 @@ internal sealed partial class ServerModules
             var host = hostStatuses?.GetValueOrDefault(module.Id);
             var fixedExecutionPackage = module.Id is Modules.TailscaleModule.ModuleId or Modules.TunnelsModule.ModuleId
                 or FirewallId or GitId or DockerId or WebServerId or CertificatesId or ProxyId;
-            var package = module is InstalledIsolatedModule || fixedExecutionPackage
+            var package = module is InstalledIsolatedModule || fixedExecutionPackage || module.Id == DatabaseId
                 ? currentPackages.GetValueOrDefault(module.Id) : null;
             var moduleVersion = package?.Version ?? installed?.InstalledVersion ?? version;
-            var executionRestart = fixedExecutionPackage && package is not null
-                && package.ArtifactSha256 != installed?.ArtifactDigest;
+            var databaseReplacement = module.Id == DatabaseId && module is not InstalledIsolatedModule && package?.Runtime == "module-host";
+            var executionRestart = databaseReplacement || (fixedExecutionPackage && package is not null
+                && package.ArtifactSha256 != installed?.ArtifactDigest);
             var effectiveVersion = module is InstalledIsolatedModule
                 ? host is { Status: "running" } ? host.Version : null
                 : isEnabled ? installed?.InstalledVersion ?? version : null;
@@ -102,7 +103,7 @@ internal sealed partial class ServerModules
                 InstalledVersion: moduleVersion, DesiredVersion: moduleVersion, EffectiveVersion: effectiveVersion,
                 ArtifactDigest: package?.ArtifactSha256 ?? installed?.ArtifactDigest ?? HostDigest.Value,
                 SourceId: package?.SourceId ?? installed?.SourceId ?? "server-release",
-                TrustState: fixedExecutionPackage && package is not null
+                TrustState: (fixedExecutionPackage || databaseReplacement) && package is not null
                     ? package.Quarantined ? "quarantined" : "installed" : installed?.TrustState ?? "host",
                 ServiceId: management?.ServiceId, ProcessGeneration: management?.ProcessGeneration,
                 DesiredRevision: managementState?.Revision, EffectiveRevision: management?.EffectiveRevision,

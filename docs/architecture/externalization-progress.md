@@ -914,3 +914,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - 仅启用签名模块时，计划已写入检查点，但提交前可信目录发生变化，恢复记录会保存为需要重新审阅。Windows Web Server 专项在两次目录读取之间注入版本变化，确认原计划退出可恢复队列，模块仍处于停用状态。重新审阅后通过原包完成启用和重启续跑。
 - 签名包计划与确认的归档、版本或权限不一致，以及启用预览包含额外模块变更，均要求重新审阅。Windows 签名 Web Server 专项模拟启用预览额外停用 Certificates，验证没有应用该预览。重新确认后继续原包启用及重启恢复。
 - Linux x64 从 `ddf536943` 自包含发布，在禁用外网的容器内使用 Linux 官方桌面归档，通过签名 Web Server、签名 Tunnels 与 Welcome/Databases 联合部署专项共 134 项断言。专项覆盖本机依赖范围、越界启动拒绝、目录变化和额外启用变更后的重新审阅、签名包重启边界及丢失提交响应恢复。随后同一构建通过完整模块套件的 1,510 项检查。本轮未连接真实 FRP、Nginx 或系统 Helper。
+- 首次安装签名 Databases ModuleHost 包后，Core 在重启前报告独立包版本、归档摘要和待重启状态，同时保留当前生效版本。Windows Release 模块包 HTTP 专项经暂存、签名计划和代码授权提交复验该边界。此项使用签名测试包，未启动数据库工作负载。
