@@ -946,3 +946,4 @@ RelaxKonOS.ServerModules.Tests --live-databases-joint-deployment <loopback-url> 
 - Linux x64 从 `1fc359b43` 发布自包含桌面和服务端验收程序。在 WSL 验收发行版使用 Linux 官方归档和已有 Docker Desktop Unix 套接字通过同一窗口写入专项。向导收到成功回执，服务端只激活一个修订，工作负载返回预期响应，测试容器完成清理。官方包完整性、更新、失败安装、重启和卸载也通过。测试复用 Windows 验收使用的 Docker Engine、控制者身份夹具和缓存镜像。
 - Windows Release 设置 `RK_TEST_DEPLOYMENTS_PULL_IMAGE=1` 复跑官方包窗口写入专项。生产服务使用真实 Docker CLI 拉取 `busybox:1.37`，向导取得成功回执，工作负载响应、测试容器清理和包生命周期检查通过。拉取开始前镜像已存在于本机缓存，本轮验证了真实仓库拉取调用与部署链路，未验证空缓存下载。
 - Windows Release 在真实拉取模式增加 `RK_TEST_DEPLOYMENTS_COLD_IMAGE=busybox:1.36.1` 并通过官方包窗口验收。提交前 Docker 无法检查该标签，现有镜像清单也没有随后出现的镜像 ID。向导提交后，生产服务从仓库拉取，激活修订绑定该新镜像 ID，工作负载响应及测试容器清理通过。保留下载的镜像缓存，复跑首次拉取可指定另一个未缓存的 BusyBox 补丁版本。
+- Application Deployments 的服务、后台协调器、日志广播和就绪探针注册集中到业务域，由 Core 与隔离验收宿主共用。Windows Release 官方包通过真实仓库拉取、成功回执、工作负载响应、正常停机和测试容器清理。该服务端业务仍随 Core 发布，独立 `.rkmodule` 尚未实现。
