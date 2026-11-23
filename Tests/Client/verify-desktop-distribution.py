@@ -24,6 +24,17 @@ def require(condition, problem):
         raise ValueError(problem)
 
 
+def verify_official_server_dependencies(manifests, official_source):
+    authorized = set(official_source["AuthorizedModuleIds"])
+    for app_id, manifest in manifests.items():
+        for requirement in (manifest.get("dependencies") or {}).get("required", []):
+            package = requirement["package"]
+            if package["kind"] == 1:  # DeploymentPackageKind.ServerModule
+                module_id = package["id"]
+                require(module_id in authorized,
+                        f"{app_id} requires {module_id}, which the official module source does not authorize.")
+
+
 def verify_published(publish_dir, manifests, profile_document):
     host_dependencies = publish_dir / "RelaxKonOS.deps.json"
     require(host_dependencies.is_file(), f"Desktop host dependency manifest is missing under {publish_dir}.")
@@ -133,6 +144,8 @@ def main(publish_dir):
     missing, extra = set(catalog_ids) - manifests.keys(), manifests.keys() - set(catalog_ids)
     require(not (missing or extra), f"Catalog and desktop publish entries differ. Missing {sorted(missing)}, extra {sorted(extra)}.")
 
+    server_settings = read_json(repo / "RelaxKonOS.Server/appsettings.json")
+    verify_official_server_dependencies(manifests, server_settings["ModulePackages"]["Sources"]["official-modules"])
     document = read_json(desktop / "installation-profiles.json")
     profiles = verify_profiles(document, manifests)
     summary = ", ".join(f"{profile}={len(entries)}" for profile, entries in profiles.items())

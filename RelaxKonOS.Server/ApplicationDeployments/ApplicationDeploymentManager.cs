@@ -14,6 +14,7 @@ internal sealed class ApplicationDeploymentManager(
     ApplicationDeploymentSecretStore secrets,
     ApplicationDeploymentOperationStore operations,
     ApplicationDeploymentRuntime runtime,
+    ApplicationContainerObservation observation,
     ApplicationDeploymentOptions options,
     ApplicationDeploymentImageTagCatalog imageTags)
 {
@@ -37,14 +38,14 @@ internal sealed class ApplicationDeploymentManager(
     public async Task<ApplicationDto[]> ListAsync(CancellationToken cancellationToken)
     {
         IReadOnlyList<DockerContainerDto>? containers;
-        try { containers = await runtime.ListContainersAsync(cancellationToken); }
+        try { containers = await observation.ListAsync(cancellationToken); }
         catch (ApplicationDeploymentException) { containers = null; }
 
         var revisions = catalog.ReadRevisionsAll().ToDictionary(revision => revision.Id);
         return [.. catalog.ReadApplications().Select(application => ApplicationDeploymentMapper.Describe(
             application,
             application.CurrentRevisionId is { } currentId && revisions.TryGetValue(currentId, out var current) ? current : null,
-            containers is null ? null : Match(containers, application),
+            containers is null ? null : ApplicationContainerObservation.Match(containers, application),
             containers is not null,
             // The list matches by the deterministic name only. The detail view inspects the container
             // and verifies the ownership labels, which is where a name collision surfaces.
@@ -54,7 +55,7 @@ internal sealed class ApplicationDeploymentManager(
     public async Task<ApplicationDeploymentSnapshotDto> SnapshotAsync(Guid applicationId, CancellationToken cancellationToken)
     {
         var application = Require(applicationId);
-        var view = await ObserveAsync(application, cancellationToken);
+        var view = await observation.ObserveAsync(application, cancellationToken);
         var revisions = catalog.ReadRevisions(applicationId);
         var current = revisions.FirstOrDefault(revision => revision.Id == application.CurrentRevisionId);
         var active = operations.GetActive(applicationId);
@@ -86,7 +87,7 @@ internal sealed class ApplicationDeploymentManager(
     public async Task<DeploymentLogDto> LogsAsync(Guid applicationId, int tail, CancellationToken cancellationToken)
     {
         var application = Require(applicationId);
-        var view = await ObserveAsync(application, cancellationToken);
+        var view = await observation.ObserveAsync(application, cancellationToken);
         if (view.Container is null || application.ManagedCompose)
             return new(applicationId, null, application.CurrentRevisionId, [], false);
 
@@ -221,34 +222,9 @@ internal sealed class ApplicationDeploymentManager(
 
     private async Task<ApplicationDto> DescribeOneAsync(ApplicationRecord application, CancellationToken cancellationToken)
     {
-        var view = await ObserveAsync(application, cancellationToken);
+        var view = await observation.ObserveAsync(application, cancellationToken);
         var current = application.CurrentRevisionId is { } id ? catalog.FindRevision(id) : null;
         return ApplicationDeploymentMapper.Describe(application, current, view.Container, view.EngineAvailable, view.Owned, secrets);
-    }
-
-    /// <summary>The observed canonical container plus whether the observation itself succeeded.</summary>
-    private async Task<RuntimeView> ObserveAsync(ApplicationRecord application, CancellationToken cancellationToken)
-    {
-        IReadOnlyList<DockerContainerDto> containers;
-        try { containers = await runtime.ListContainersAsync(cancellationToken); }
-        catch (ApplicationDeploymentException) { return new(null, false, true); }
-
-        var container = Match(containers, application);
-        if (container is null) return new(null, true, true);
-        try
-        {
-            var details = await runtime.InspectAsync(container.Id, cancellationToken);
-            return new(container, true, details is not null && ApplicationDeploymentValidation.IsOwnedBy(details.Labels, application.Id));
-        }
-        catch (ApplicationDeploymentException) { return new(container, true, true); }
-    }
-
-    private static DockerContainerDto? Match(IReadOnlyList<DockerContainerDto> containers, ApplicationRecord application)
-    {
-        var name = application.ManagedCompose ? application.ContainerName : ApplicationDeploymentValidation.ContainerName(application.Id);
-        return containers.FirstOrDefault(container => container.Names
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(candidate => string.Equals(candidate, name, StringComparison.Ordinal)));
     }
 
     private static ApplicationVolumeRecord[] Volumes(IReadOnlyList<ApplicationVolumeDto>? volumes) => volumes is null
@@ -347,8 +323,6 @@ internal sealed class ApplicationDeploymentManager(
         return new(name!, workloadKind, readinessLevel, path, containerPort, hostPort, bindAddress!,
             limits ?? new ApplicationResourceLimitsDto(), siteId);
     }
-
-    private readonly record struct RuntimeView(DockerContainerDto? Container, bool EngineAvailable, bool Owned);
 
     private sealed record Definition(
         string Name,

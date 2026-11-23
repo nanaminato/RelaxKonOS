@@ -52,6 +52,10 @@ using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Server.Certificate;
 using ApplicationArchiveExecution = RelaxKonOS.Server.ApplicationDeployments.ApplicationArchiveExecution;
+using ApplicationDeploymentOptions = RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions;
+using ApplicationSourceKind = RelaxKonOS.Protocol.ApplicationDeployments.ApplicationSourceKind;
+using ApplicationWorkloadKind = RelaxKonOS.Protocol.ApplicationDeployments.ApplicationWorkloadKind;
+using ArchiveDeploymentPlan = RelaxKonOS.Server.ApplicationDeployments.DeploymentPlan;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Git;
@@ -270,13 +274,21 @@ internal static class JointDeploymentAcceptance
         await using var host = builder.Build();
         using var archive = new MemoryStream();
         using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
-        using (var entry = zip.CreateEntry("publish/fixture.txt").Open()) entry.Write("joint deployment"u8);
+        {
+            using (var entry = zip.CreateEntry("publish/demo.py").Open()) entry.Write("print('joint deployment')\n"u8);
+            using (var entry = zip.CreateEntry("publish/requirements.txt").Open()) entry.Write("example==1.0.0\n"u8);
+        }
         archive.Position = 0;
         var context = Path.Combine(root, "deployment-build-context");
         var execution = host.Services.GetRequiredService<ApplicationArchiveExecution>();
-        Require(await execution.PrepareAsync(archive, context, 4, 1024, 4, default) is null
-            && await File.ReadAllTextAsync(Path.Combine(context, "fixture.txt")) == "joint deployment",
-            "the joint-installed Application Deployments module prepares an archive using the signed execution assembly");
+        var plan = new ArchiveDeploymentPlan(ApplicationSourceKind.PythonProject, "1.0", "fixture:1.0",
+            "python:3.12-slim", null, "3.12", "demo", [], false);
+        var entryPoint = await execution.PrepareBuildContextAsync(archive, context, plan, ApplicationWorkloadKind.Web,
+            8080, new ApplicationDeploymentOptions { MaximumArchiveEntries = 4, MaximumExpandedBytes = 1024, MaximumPathDepth = 4 }, default);
+        Require(await File.ReadAllTextAsync(Path.Combine(context, "demo.py")) == "print('joint deployment')\n"
+            && entryPoint == "python -m demo" && (await File.ReadAllTextAsync(Path.Combine(context, "Dockerfile")))
+            .Contains("ENTRYPOINT [\"python\",\"-m\",\"demo\"]", StringComparison.Ordinal),
+            "the joint-installed signed module extracts the wrapped archive and prepares the Python build context in one execution");
     }
 
     private static async Task VerifySignedDockerAsync(TestHost _, string root)
@@ -686,7 +698,15 @@ internal static class JointDeploymentAcceptance
             var appArchive = Path.Combine(official, Path.GetFileName(archive));
             const string version = "99.0.0";
             await RewriteDesktopArchiveAsync(archive, appArchive, manifest =>
-                manifest["dependencies"]!["required"]![0]!["minimumVersion"] = version);
+            {
+                var required = manifest["dependencies"]?["required"] as JsonArray;
+                var dependency = required?.OfType<JsonObject>().SingleOrDefault(item =>
+                    item["package"]?["kind"]?.GetValue<int>() == (int)DeploymentPackageKind.ServerModule
+                    && item["package"]?["id"]?.GetValue<string>() == moduleId);
+                if (dependency is null)
+                    throw new InvalidDataException($"Desktop archive {Path.GetFileName(archive)} lacks required server module {moduleId}.");
+                dependency["minimumVersion"] = version;
+            });
             var serverRoot = Directory.CreateDirectory(Path.Combine(root, "server")).FullName;
             using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var key = Path.Combine(root, "signing.pem");
@@ -1332,6 +1352,9 @@ internal static class JointDeploymentAcceptance
     public static void RunLiveDatabases(string server, string archive, string state, string phase) =>
         RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, ServerModules.DatabaseId));
 
+    public static void RunLiveApplicationDeployments(string server, string archive, string state, string phase) =>
+        RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), phase, ServerModules.ApplicationDeploymentsId));
+
     public static void RunLiveGit(string server, string archive, string state, string repository) =>
         RunWithDispatcher(() => RunLiveAsync(new Uri(server), Path.GetFullPath(archive), Path.GetFullPath(state), "reuse",
             ServerModules.GitId, repository));
@@ -1354,8 +1377,8 @@ internal static class JointDeploymentAcceptance
         string? repository = null)
     {
         if (server.Scheme != "http" || server.Host != "127.0.0.1" || server.PathAndQuery != "/"
-            || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "resume" or "reuse" or "uninstall"))
-            throw new ArgumentException("Expected a loopback Server and a start, resume, reuse or uninstall phase.");
+            || server.UserInfo.Length != 0 || server.Fragment.Length != 0 || phase is not ("start" or "enable" or "resume" or "reuse" or "uninstall"))
+            throw new ArgumentException("Expected a loopback Server and a start, enable, resume, reuse or uninstall phase.");
         var username = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_USER");
         var password = Environment.GetEnvironmentVariable("RK_JOINT_FIXTURE_PASSWORD");
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
@@ -1364,7 +1387,7 @@ internal static class JointDeploymentAcceptance
         var auth = new AuthSession(new RelaxKonOSClient(loginHttp), null!, null!);
         var platform = OperatingSystem.IsWindows() ? ClientPlatformKind.Windows : ClientPlatformKind.Linux;
         await auth.LoginAsync(ServerConnectionIdentityRules.Direct(server.AbsoluteUri),
-            new(username, password, platform, "databases-joint-acceptance", "0.3.0"), false, false);
+            new(username, password, platform, moduleId + "-joint-acceptance", "0.3.0"), false, false);
         using var moduleHttp = new HttpClient(new AuthenticatedHttpHandler(auth)
         {
             InnerHandler = new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false },
@@ -1381,8 +1404,8 @@ internal static class JointDeploymentAcceptance
         await packages.LoadInstalledAsync();
         if (phase == "uninstall")
         {
-            Require(await packages.UninstallAsync(ServerModules.DatabaseId) && !applications.IsRegistered(new AppId(ServerModules.DatabaseId)),
-                "the desktop uninstalls its own Databases application");
+            Require(await packages.UninstallAsync(moduleId) && !applications.IsRegistered(new AppId(moduleId)),
+                $"the desktop uninstalls its own {moduleId} application");
             return;
         }
         var installer = new AppPackageInstallerService(packages, null!, trust);
@@ -1430,26 +1453,33 @@ internal static class JointDeploymentAcceptance
         if (phase == "start")
         {
             var review = await deployment.PrepareAsync(candidate, [], default);
-            Require(review.Plan.PreparedSteps is [{ Package.Id: ServerModules.DatabaseId }],
-                "the desktop prepares a signed Databases server package before installation");
+            Require(review.Plan.PreparedSteps is [{ Package.Id: var preparedModule }] && preparedModule == moduleId,
+                $"the desktop prepares a signed {moduleId} server package before installation");
             await ExpectRestartAsync(deployment, review);
-            Require(!applications.IsRegistered(new AppId(ServerModules.DatabaseId)),
-                "the desktop waits for the server module before registering Databases");
+            Require(!applications.IsRegistered(new AppId(moduleId)),
+                $"the desktop waits for the server module before registering {moduleId}");
             return;
         }
         var resumed = phase == "reuse" ? await deployment.PrepareAsync(candidate, [], default)
             : await deployment.FindPendingAsync(candidate, default)
-            ?? throw new InvalidOperationException("The desktop could not recover its original Databases deployment.");
+            ?? throw new InvalidOperationException($"The desktop could not recover its original {moduleId} deployment.");
+        if (phase == "enable")
+        {
+            await ExpectRestartAsync(deployment, resumed);
+            Require(!applications.IsRegistered(new AppId(moduleId)), "the desktop waits for the managed enable to take effect");
+            return;
+        }
         if (phase == "reuse")
             Require(resumed.Plan.PreparedSteps.IsEmpty
                 && resumed.Plan.OrderedReleases.Any(release => release.Package.Kind == DeploymentPackageKind.ServerModule
-                    && release.Package.Id == ServerModules.DatabaseId && release.Satisfied
+                    && release.Package.Id == moduleId && release.Satisfied
                     && release.ArtifactIdentity.Split('/').Length == 3),
-                "the desktop reuses the running signed Databases module");
+                $"the desktop reuses the running signed {moduleId} module");
         var installed = await deployment.ExecuteAsync(resumed, default);
         var manifest = applications.GetManifest(new AppId(installed.Id));
-        Require(installed.Id == ServerModules.DatabaseId && manifest is not null,
-            "the desktop plan registers Databases after verifying the running module");
+        Require(installed.Id == moduleId && manifest is not null,
+            $"the desktop plan registers {moduleId} after verifying the running module");
+        if (moduleId != ServerModules.DatabaseId) return;
         using var readinessServices = new ServiceCollection().AddSingleton(packages).AddSingleton(applications)
             .AddSingleton<RelaxKonOS.WindowManager.IWindowManager>(windows)
             .AddSingleton<IHttpClientFactory>(new LiveHttpFactory(moduleHttp)).BuildServiceProvider();

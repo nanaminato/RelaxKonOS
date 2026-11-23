@@ -439,8 +439,9 @@ internal static class NginxProcessRecoveryChecks
         var verification = new PublicationCrashVerification();
         var clients = new FixtureHttpClientFactory([]);
         var runtime = new ApplicationDeploymentRuntime(engine, options, clients, NullLogger<ApplicationDeploymentRuntime>.Instance);
+        var observation = new ApplicationContainerObservation(engine);
         var applications = new ApplicationDeploymentManager(catalog, secrets, new ApplicationDeploymentOperationStore(environment, options),
-            runtime, options, new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
+            runtime, observation, options, new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
         var app = await applications.CreateAsync(new CreateApplicationRequest("live-publication", ApplicationSourceKind.Image,
             HostPort: UpstreamPort), Actor, default);
         ((BackgroundWebsiteEngine)(object)engine).SetRunning(app.Id);
@@ -465,7 +466,7 @@ internal static class NginxProcessRecoveryChecks
         var certificateManager = DispatchProxy.Create<ICertificateManager, BackgroundWebsiteCertificate>();
         ((BackgroundWebsiteCertificate)(object)certificateManager).Domain = PublicationDomain;
         var executions = 0;
-        using var coordinator = WebsitePublicationTestScopes.Create(new WebsitePublicationStore(environment), applications, catalog,
+        using var coordinator = WebsitePublicationTestScopes.Create(new WebsitePublicationStore(environment), observation, catalog,
             new WebServerManager([provider]), certificateManager, null!, verification, new TestApplicationLifetime(),
             NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases(),
             executionCreated: () => Interlocked.Increment(ref executions));

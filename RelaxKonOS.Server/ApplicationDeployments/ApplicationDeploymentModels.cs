@@ -156,8 +156,7 @@ internal sealed record DeploymentPlan(
     bool SelfContained);
 
 /// <summary>
-/// Domain boundary for one deployment source template. A template generates a build and a start
-/// definition only; it never re-implements container management.
+/// Describes a deployment source template and validates input before build or container operations.
 /// </summary>
 internal interface IApplicationTemplate
 {
@@ -167,11 +166,4 @@ internal interface IApplicationTemplate
 
     /// <summary>Validates the shape of the source input before any file is touched.</summary>
     DeploymentPlan Validate(DeploymentSourceInputDto source, ApplicationRecord definition, ApplicationDeploymentOptions options, string inputReference);
-
-    /// <summary>
-    /// Inspects the extracted archive, writes the generated Dockerfile into the build context, and
-    /// returns the container entry point plus its arguments.
-    /// </summary>
-    Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
-        DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken);
 }

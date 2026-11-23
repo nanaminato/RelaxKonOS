@@ -209,6 +209,8 @@ internal static class ApplicationDeploymentProgressVerification
     private static async Task VerifyDotNetPublishContextAsync(string root)
     {
         var context = Path.Combine(root, "dotnet-publish-context");
+        Directory.CreateDirectory(context);
+        await File.WriteAllTextAsync(Path.Combine(context, "previous-build.txt"), "must not be copied into the image");
         var wrapper = Path.Combine(root, "published-application");
         Directory.CreateDirectory(wrapper);
         await File.WriteAllTextAsync(Path.Combine(wrapper, ".dockerignore"), "*\n!Dockerfile\n");
@@ -223,18 +225,28 @@ internal static class ApplicationDeploymentProgressVerification
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null);
         var plan = new DeploymentPlan(ApplicationSourceKind.DotNetPublish, "1.0", "test:1", null,
             "archive", null, null, [], false);
-        var template = ApplicationTemplateCatalog.Require(ApplicationSourceKind.DotNetPublish);
         using var archive = new MemoryStream();
         ZipFile.CreateFromDirectory(wrapper, archive, CompressionLevel.Fastest, includeBaseDirectory: true);
         archive.Position = 0;
-        Check(await ApplicationArchiveExecution.Bundled.PrepareAsync(archive, context, 10, 4096, 4, default) is null,
-            "The archive execution assembly must prepare the wrapped publish.");
-        await template.PrepareBuildContextAsync(plan, context, application, new ApplicationDeploymentOptions(), ApplicationArchiveExecution.Bundled, CancellationToken.None);
+        var resolutions = 0;
+        var execution = new ApplicationArchiveExecution(() =>
+        {
+            resolutions++;
+            return Path.Combine(System.AppContext.BaseDirectory, "Modules", "ApplicationDeployments", ApplicationArchiveExecution.AssemblyFile);
+        });
+        var entryPoint = await execution.PrepareBuildContextAsync(archive, context, plan, application.WorkloadKind,
+            application.ContainerPort, new ApplicationDeploymentOptions
+            {
+                MaximumArchiveEntries = 10, MaximumExpandedBytes = 4096, MaximumPathDepth = 4,
+            }, CancellationToken.None);
+        Check(resolutions == 1 && entryPoint == "dotnet Demo.dll",
+            "One module resolution must prepare the wrapped publish and return its launch entry.");
 
         var ignore = await File.ReadAllTextAsync(Path.Combine(context, ".dockerignore"));
         var dockerfile = await File.ReadAllTextAsync(Path.Combine(context, "Dockerfile"));
-        Check(!Directory.Exists(Path.Combine(context, "published-application")) && !ignore.Contains('*') && File.Exists(Path.Combine(context, "Demo.dll")),
-            "A wrapped publish must become the build root, and its .dockerignore must not control the generated context.");
+        Check(!Directory.Exists(Path.Combine(context, "published-application")) && !ignore.Contains('*')
+            && File.Exists(Path.Combine(context, "Demo.dll")) && !File.Exists(Path.Combine(context, "previous-build.txt")),
+            "A wrapped publish must replace the previous build context and its .dockerignore.");
         Check(dockerfile.Contains("FROM mcr.microsoft.com/dotnet/aspnet:10.0", StringComparison.Ordinal)
             && dockerfile.Contains("RUN test -f /app/Demo.dll", StringComparison.Ordinal),
             "Framework-dependent web publishes must use the matching runtime and verify the copied entry assembly.");

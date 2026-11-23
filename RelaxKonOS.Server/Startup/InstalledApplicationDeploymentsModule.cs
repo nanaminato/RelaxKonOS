@@ -23,7 +23,6 @@ internal sealed class InstalledApplicationDeploymentsModule(InstalledModuleRecor
     public override void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         if (record.Quarantined) return;
-        ApplicationArchiveExecution.ValidateEntryPoint(ResolveEntry(record, contentRoot));
         base.ConfigureServices(builder, context);
     }
 

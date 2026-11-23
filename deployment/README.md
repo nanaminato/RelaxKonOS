@@ -57,6 +57,12 @@ Guardian 是可选部署组件，发布包仍携带同版本文件。首次向�
 
 ## 发布包布局
 
+服务端发行会生成同级 `RelaxKonOS-<version>-<runtime>-application-deployments-module-publish/`，其中的执行程序集与该轮 Server ZIP 内随附程序集一致。发布独立模块时，以该目录执行 `modules pack-package`，声明 `server.application-deployments` 能力，再发布签名归档及目录。
+
+在 PowerShell 构建中添加 `-ExternalApplicationDeployments`（需要 Python 3），或在 Bash 的 `server` / `all` 参数后添加 `external-application-deployments`，可生成省去该随附程序集的 Server ZIP。同级签名输入仍会生成。随包的 `ModuleManagement:DefaultDisabledModules` 将 Application Deployments 排除在默认启用集合之外。使用 `deployment` 权限时，安装签名包后通过 `Modules:ApplicationDeployments:Enabled=true` 启用并重启。使用 `managed` 权限时，默认值只用于初始化，之后通过组件中心的模块管理操作启用。切换已有实例到精简布局前，应先停用该模块或安装独立签名包。验证变体时使用独立版本标记或输出目录，以区分同名的默认发行包。
+
+Linux x64 的 `server` 和 `all` 发行构建会在输出目录生成同级的 `RelaxKonOS-<version>-linux-x64-database-module-publish/`。该目录是独立 Databases 观察模块的签名输入，位于 Server ZIP 和发行清单之外。发布时使用 [模块打包命令](../docs/architecture/RelaxKonOS.ServerModulePackage.Format.md#离线打包命令) 将其制成 `relaxkonos.database` 的 `.rkmodule` 和签名目录。发行脚本本身无需模块签名密钥。
+
 ```text
 manifest.json
 deployment/verify-release-inventory.py
@@ -125,6 +131,7 @@ Linux System Mode 则运行：
 ```
 
 Linux 打包宿主还需提供 Python 3、`zip`、`sha256sum` 与 `stat`。Linux 客户端打包会在生成 ZIP 前核对官方归档、预装配置和桌面依赖边界。Windows 发布目录可用同一校验命令检查，将路径指向解包后的 `payload/windows/client`。
+PowerShell 和 Bash 客户端打包脚本还会使用构建主机上的 .NET 运行模块契约检查。脚本在写出 ZIP 之前，核对每个新生成的官方桌面归档声明的必需模块、能力和显式契约版本是否由当前 Core 随附模块提供。
 
 ```powershell
 python Tests/Client/verify-desktop-distribution.py --publish-dir <客户端发布目录>

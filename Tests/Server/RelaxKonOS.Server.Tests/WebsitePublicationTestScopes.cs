@@ -6,7 +6,7 @@ using RelaxKonOS.Server.WebsitePublishing;
 internal static class WebsitePublicationTestScopes
 {
     internal static WebsitePublicationCoordinator Create(WebsitePublicationStore store,
-        ApplicationDeploymentManager applications, ApplicationDeploymentCatalogStore catalog,
+        ApplicationContainerObservation observation, ApplicationDeploymentCatalogStore catalog,
         IWebServerManager webServers, ICertificateManager certificates, CertificateOperationStore certificateOperations,
         IHttpClientFactory httpClients, IHostApplicationLifetime lifetime, ILogger<WebsitePublicationCoordinator> logger,
         IResidentModuleWorkLeaseSource leases, Action? executionCreated = null, Func<ValueTask>? cleanup = null,
@@ -15,7 +15,7 @@ internal static class WebsitePublicationTestScopes
         var scopes = new OperationTestScopeFactory<WebsitePublicationExecution>(() =>
         {
             executionCreated?.Invoke();
-            return new WebsitePublicationExecution(store, applications, catalog, webServers, certificates, certificateOperations,
+            return new WebsitePublicationExecution(store, observation, catalog, webServers, certificates, certificateOperations,
                 httpClients, lifetime, NullLogger<WebsitePublicationExecution>.Instance, code ?? WebServerExecutionCode.Shared);
         }, cleanup, disposeExecution: true);
         return new WebsitePublicationCoordinator(store, catalog, scopes, lifetime, logger, leases);

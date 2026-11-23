@@ -87,7 +87,7 @@ internal static class ApplicationDeploymentMapper
     /// The observed state is derived from real containers, never from the ledger alone, so a failed or
     /// externally removed instance is never presented as running.
     /// </summary>
-    private static ApplicationActualState ActualState(ApplicationRecord application, DockerContainerDto? container, bool engineAvailable)
+    internal static ApplicationActualState ActualState(ApplicationRecord application, DockerContainerDto? container, bool engineAvailable)
     {
         if (!engineAvailable) return ApplicationActualState.Unknown;
         if (container is null)

@@ -24,6 +24,26 @@ internal static class ModuleManagementChecks
         // dependency admission and do not become a startup module registration.
         try
         {
+            var externalRoot = Path.Combine(root, "external-layout");
+            var external = new ConfigurationBuilder().AddConfiguration(configuration).AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ModuleManagement:DefaultDisabledModules:0"] = ServerModules.ApplicationDeploymentsId,
+            }).Build();
+            using (var store = new ModuleManagementStore(external, externalRoot))
+            {
+                var module = ServerModules.ApplicationDeploymentsId;
+                check(store.Writable && !store.DesiredIds.Contains(module), "managed installation seeds the external layout in the disabled state");
+                var facts = store.DesiredIds.Select(id => new ServerModuleDto(id, true, [], [], [], []))
+                    .Append(new ServerModuleDto(module, false, [], [], [], [])).ToArray();
+                var request = new ServerModulePlanRequest(store.ServiceId, ServerModuleAction.Enable, [module],
+                    [.. store.DesiredIds, module], store.Revision, "enable-external-layout");
+                var plan = store.Preview("actor", request, facts);
+                store.Apply("actor", plan.PlanId, facts);
+            }
+            using (var restarted = new ModuleManagementStore(external, externalRoot))
+                check(restarted.DesiredIds.Contains(ServerModules.ApplicationDeploymentsId),
+                    "a managed enable survives restart despite the external layout default");
+
             var lockRoot = Path.Combine(root, "startup-lock");
             using (var running = ModuleManagementStore.StartHost(configuration, lockRoot))
             {

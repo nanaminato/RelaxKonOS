@@ -11,7 +11,10 @@ public interface IDatabaseQueryHost
     Task<MySqlState> ReadMySqlAsync(CancellationToken cancellationToken);
 }
 
-public interface IDatabaseQueries : IDatabaseQueryHost;
+public interface IDatabaseQueries
+{
+    Task<PostgreSqlState> ReadPostgreSqlAsync(Guid? instance, CancellationToken cancellationToken);
+}
 
 public interface IPostgreSqlBackupScheduleHost
 {

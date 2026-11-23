@@ -15,14 +15,14 @@ internal sealed class WebsitePublicationExecution : IDisposable
     private readonly WebServerExecutionCode.Lease<IWebsitePublicationExecutor> lease;
     private readonly IHostApplicationLifetime lifetime;
 
-    public WebsitePublicationExecution(WebsitePublicationStore store, ApplicationDeploymentManager applications,
+    public WebsitePublicationExecution(WebsitePublicationStore store, ApplicationContainerObservation observation,
         ApplicationDeploymentCatalogStore catalog, IWebServerManager webServers, ICertificateManager certificates,
         CertificateOperationStore certificateOperations, IHttpClientFactory httpClients, IHostApplicationLifetime lifetime,
         ILogger<WebsitePublicationExecution> logger, WebServerExecutionCode code, NginxWebServerManager? nginx = null)
     {
         this.lifetime = lifetime;
         lease = code.Acquire<IWebsitePublicationExecutor>(WebServerExecutionCode.EntryType,
-            new Ports(store, applications, catalog, webServers, certificates, certificateOperations, httpClients, logger, nginx));
+            new Ports(store, observation, catalog, webServers, certificates, certificateOperations, httpClients, logger, nginx));
     }
 
     internal async Task RunAsync(Guid operationId, PublishWebsiteRequest request, string actor, CancellationToken workStopping)
@@ -48,7 +48,7 @@ internal sealed class WebsitePublicationExecution : IDisposable
 
     public void Dispose() => lease.Dispose();
 
-    private sealed class Ports(WebsitePublicationStore store, ApplicationDeploymentManager applications,
+    private sealed class Ports(WebsitePublicationStore store, ApplicationContainerObservation observation,
         ApplicationDeploymentCatalogStore catalog, IWebServerManager webServers, ICertificateManager certificates,
         CertificateOperationStore certificateOperations, IHttpClientFactory httpClients, ILogger logger,
         NginxWebServerManager? nginx) : IWebsitePublicationPorts
@@ -69,11 +69,17 @@ internal sealed class WebsitePublicationExecution : IDisposable
         public Guid RecordBootstrapBinding(Guid operationId, WebsiteBootstrapBinding binding) => store.RecordBootstrapBinding(operationId, binding);
 
         private static WebsiteApplication Project(ApplicationRecord item) => new(item.Id, item.Name, item.HostPort, item.BindAddress, item.SiteInstanceId, item.SiteId);
-        public WebsiteApplication RequireApplication(Guid id) => Project(applications.Require(id));
+        public WebsiteApplication RequireApplication(Guid id) => Project(RequireRecord(id));
         public WebsiteApplication? FindApplication(Guid id) => catalog.Find(id) is { } item ? Project(item) : null;
         public IReadOnlyList<WebsiteApplication> ReadApplications() => catalog.ReadApplications().Select(Project).ToArray();
-        public async Task<bool> IsApplicationRunningAsync(Guid id, CancellationToken ct) =>
-            (await applications.SnapshotAsync(id, ct)).Application.ActualState == ApplicationActualState.Running;
+        public async Task<bool> IsApplicationRunningAsync(Guid id, CancellationToken ct)
+        {
+            var application = RequireRecord(id);
+            var view = await observation.ObserveAsync(application, ct);
+            return ApplicationDeploymentMapper.ActualState(application, view.Container, view.EngineAvailable) == ApplicationActualState.Running;
+        }
+        private ApplicationRecord RequireRecord(Guid id) => catalog.Find(id)
+            ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
         public void BindSite(Guid applicationId, string instanceId, WebServerSiteDto site)
         {
             try { catalog.BindSite(applicationId, instanceId, site.Id, site.DomainsDisplay); }

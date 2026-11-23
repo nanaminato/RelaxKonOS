@@ -103,10 +103,6 @@ internal abstract class ApplicationTemplateBase : IApplicationTemplate
         return new(Kind, TemplateVersion, image, requestedBaseImage, source.ArchiveReferenceId?.Trim(),
             source.RuntimeVersion?.Trim(), source.ProgramEntry?.Trim(), ApplicationTemplateCatalog.Arguments(source.Arguments), source.SelfContained);
     }
-
-    public virtual Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
-        DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken)
-        => throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 400);
 }
 
 /// <summary>Deploys an existing image reference after pulling it and binding its observed identity.</summary>
@@ -154,7 +150,6 @@ internal static class ContainerImageFacts
 /// </summary>
 internal sealed class JavaJarTemplate : ApplicationTemplateBase
 {
-    public const string RuntimeDirectory = "/app";
     public const string JarFileName = "app.jar";
 
     public override ApplicationSourceKind Kind => ApplicationSourceKind.JavaJar;
@@ -179,14 +174,6 @@ internal sealed class JavaJarTemplate : ApplicationTemplateBase
         return plan with { BaseImage = baseImage };
     }
 
-    public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
-        DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken)
-    {
-        await execution.WriteDockerfileAsync(contextDirectory, Kind, plan.BaseImage ?? options.JavaBaseImage,
-            definition.ContainerPort, JarFileName, false, cancellationToken);
-        return ($"java -jar {RuntimeDirectory}/{JarFileName}", plan.Arguments);
-    }
-
     private static bool IsRuntimeLine(string value) => value.Length is >= 1 and <= 16
         && value.Split('.').All(part => part.Length > 0 && part.All(char.IsAsciiDigit));
 }
@@ -198,23 +185,12 @@ internal sealed class JavaJarTemplate : ApplicationTemplateBase
 /// </summary>
 internal sealed class DotNetPublishTemplate : ApplicationTemplateBase
 {
-    public const string RuntimeDirectory = "/app";
-
     public override ApplicationSourceKind Kind => ApplicationSourceKind.DotNetPublish;
     public override string TemplateVersion => "1.0";
     protected override string DisplayName => ".NET publish";
     protected override bool RequiresArchive => true;
     protected override bool SupportsSelfContained => true;
     protected override string? DefaultBaseImage(ApplicationDeploymentOptions options) => options.DotNetWebBaseImage;
-
-    public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
-        DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken)
-    {
-        var entry = await execution.PrepareDotNetAsync(contextDirectory, plan.BaseImage, plan.RuntimeVersion, plan.SelfContained,
-            definition.WorkloadKind, definition.ContainerPort, options.DotNetSelfContainedBaseImage,
-            options.DotNetWebBaseImage, options.DotNetWorkerBaseImage, cancellationToken);
-        return (entry, plan.Arguments);
-    }
 }
 
 /// <summary>
@@ -223,8 +199,6 @@ internal sealed class DotNetPublishTemplate : ApplicationTemplateBase
 /// </summary>
 internal sealed class PythonProjectTemplate : ApplicationTemplateBase
 {
-    public const string RuntimeDirectory = "/app";
-
     public override ApplicationSourceKind Kind => ApplicationSourceKind.PythonProject;
     public override string TemplateVersion => "1.0";
     protected override string DisplayName => "Python project";
@@ -247,15 +221,6 @@ internal sealed class PythonProjectTemplate : ApplicationTemplateBase
         return plan with { BaseImage = baseImage };
     }
 
-    public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
-        DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, ApplicationArchiveExecution execution, CancellationToken cancellationToken)
-    {
-        var module = plan.ProgramEntry!;
-        await execution.WriteDockerfileAsync(contextDirectory, Kind, plan.BaseImage ?? options.PythonBaseImage,
-            definition.ContainerPort, module, false, cancellationToken);
-        return ($"python -m {module}", plan.Arguments);
-    }
-
     private static bool IsValidModule(string value) => value.Length is >= 1 and <= 128
         && value.Split('.').All(segment => segment.Length >= 1
             && (char.IsAsciiLetter(segment[0]) || segment[0] == '_')
@@ -263,5 +228,4 @@ internal sealed class PythonProjectTemplate : ApplicationTemplateBase
 
     private static bool IsRuntimeLine(string value) => value.Length is >= 1 and <= 16
         && value.Split('.').All(part => part.Length > 0 && part.All(char.IsAsciiDigit));
-
 }

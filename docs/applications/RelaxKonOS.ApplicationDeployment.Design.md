@@ -55,7 +55,7 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 | `secrets.json` | 机密密文（DataProtection 保护） | 同上 |
 | `operations.json` | 操作条目 + 审计 | 同上 |
 | `staging/` | 受限上传暂存（`{id}.archive`） | 流式写入 + 边写边校验上限 |
-| `build/` | 每个输入指纹一份构建上下文，最多保留 20 份 | 目录 |
+| `build/` | 每个归档构建操作一份上下文，构建完成后保留最近 20 份非活动上下文 | 目录 |
 | `mounts/{appId}/{revisionId}/` | 该修订的机密物化文件（posix 0600） | 按修订隔离 |
 
 三个账本全部**失败即关闭**（fail-closed）：文件不可读、JSON 非法或违反不变式时，构造期即置 `unavailable`，此后**所有变更**抛 `application-deployment.store_unavailable`（503），而不是用空账本静默覆盖操作者状态。只读查询同样被拒绝，避免在损坏状态上做决策。
@@ -254,7 +254,7 @@ interface IApplicationTemplate
 - 暂存条目绑定**操作者引用**（`Reference(actor)`）：只有登记它的操作者能打开；过期或被替换即 `file_reference_unavailable`，同时清理文件。
 - **宿主路径永不进入部署请求或操作记录**：请求只携带引用 ID。
 
-### 6.2 解压安全（`ApplicationArchiveSafety`）
+### 6.2 解压安全（`ApplicationArchiveExtractor`）
 
 拒绝：外部条目、链接、路径穿越（含 `.`/`..` 段与绝对路径）、符号链接模式、条目数超 `MaximumArchiveEntries`（默认 20000）、路径深度超 `MaximumPathDepth`（默认 32）、**声明大小**与**观测展开总量**超 `MaximumExpandedBytes`（默认 2 GiB）。
 
@@ -262,7 +262,12 @@ interface IApplicationTemplate
 
 ### 6.3 构建上下文
 
-只有声明的文件进入构建上下文；构建上下文与宿主其他目录物理隔离在 `build/{inputReference[..16]}` 下，`PublishRoot` 只识别「单一顶层目录」的常见包装形式。**识别出的这层包装目录会被解包（`UnwrapPublishRoot`），使构建上下文根目录与发布根目录是同一个目录**：Docker 引擎拿到的是解压根目录，而各模板生成的 Dockerfile 也都写在这个根目录下、并以「相对上下文」的路径引用载荷（`COPY requirements.txt`、`COPY . /app`）。
+Core 验证请求并打开当前操作者的暂存归档。所选 Application Deployments 执行程序集通过 `PrepareBuildContextAsync` 完成限额解包、校验 Java、Python 或 .NET 发布文件、写入构建文件及返回启动命令。Core 保留经过验证的启动参数与构建操作回执，并通过既有 Docker 边界提交构建。随附程序集和签名安装包遵循同一入口契约，旧版签名包需按当前契约重新构建和签名。
+每次归档构建前，执行程序集重新创建分配的上下文目录。清理或重建失败时返回 `build_failed`，避免把之前构建的文件混入新镜像。归档构建结束后，Core 在锁内把活动目录集合交给执行程序集的 `PruneBuildContexts`，执行程序集保留活动目录及最近修改的 20 个非活动目录。
+
+删除应用时，Core 在同一把锁内传入已删除应用的 ID。执行程序集只清理该应用的非活动构建目录。
+
+只有声明的文件进入构建上下文。目录位于 `build/{applicationId:N}-{operationId:N}`，正在准备或提交 Docker 构建的上下文不参与保留清理。`PublishRoot` 只识别「单一顶层目录」的常见包装形式。**识别出的这层包装目录会被解包（`UnwrapPublishRoot`），使构建上下文根目录与发布根目录是同一个目录**：Docker 引擎拿到的是解压根目录，而各模板生成的 Dockerfile 也都写在这个根目录下、并以「相对上下文」的路径引用载荷（`COPY requirements.txt`、`COPY . /app`）。
 
 若保留包装层，载荷会整体落在 Dockerfile 相对路径的下一级，表现为构建期 `COPY` 失败（`build_failed`），或通配复制成功但载荷深了一层、声明的入口点起不来。凭据与无关宿主文件不进入镜像层。
 

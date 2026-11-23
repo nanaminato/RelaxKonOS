@@ -35,13 +35,14 @@ internal sealed class ApplicationDeploymentService(
     ApplicationDeploymentLiveLogs liveLogs,
     IDeploymentImageBuildSource imageBuilds,
     ILogger<ApplicationDeploymentService> logger,
-    ApplicationManagedComposeInstall? managedCompose = null,
-    ApplicationArchiveExecution? archiveExecution = null)
+    ApplicationArchiveExecution archiveExecution,
+    ApplicationManagedComposeInstall? managedCompose = null)
 {
     /// <summary>Read-only secret delivery path inside the workload container.</summary>
     public const string SecretsMountPath = "/run/relaxkonos/secrets";
     internal const string RetainedOutcomeUnknown = "application-deployment.retained_outcome_unknown";
-    private const int PreservedBuildContexts = 20;
+    private readonly object buildContextsGate = new();
+    private readonly HashSet<string> activeBuildContexts = new(StringComparer.Ordinal);
 
     public static IReadOnlyList<string> Resources(Guid applicationId) => [$"application-deployment:{applicationId:D}"];
 
@@ -226,8 +227,6 @@ internal sealed class ApplicationDeploymentService(
                 && current.BindAddress == application.BindAddress && current.HostPort == application.HostPort
                 && await runtime.FindOwnedContainerAsync(application.Id, ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken) is { State: "running" }))
             throw conflict;
-        CleanupExpiredBuildContexts();
-
         var inputReference = ApplicationDeploymentValidation.Reference(Canonical(source));
         var template = ApplicationTemplateCatalog.Require(application.SourceKind);
         var plan = template.Validate(source, application, options, inputReference);
@@ -252,27 +251,16 @@ internal sealed class ApplicationDeploymentService(
         }
 
         await progress.ReportAsync(new(DeploymentStage.Preparing, null, true), cancellationToken);
-        var contextDirectory = Path.Combine(BuildRoot, inputReference[..16]);
         var entryPoint = "image default";
-        var arguments = plan.Arguments;
         if (template is not ImageTemplate)
         {
-            var execution = archiveExecution ?? ApplicationArchiveExecution.Bundled;
-            TryDeleteDirectory(contextDirectory);
-            Directory.CreateDirectory(contextDirectory);
-            using (var archive = staging.Open(plan.ArchiveReferenceId!, actor))
-            {
-                if (await execution.PrepareAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
-                    options.MaximumExpandedBytes, options.MaximumPathDepth, cancellationToken) is { } archiveProblem)
-                    throw new ApplicationDeploymentException(archiveProblem, 400);
-            }
-            (entryPoint, arguments) = await template.PrepareBuildContextAsync(plan, contextDirectory, application, options, execution, cancellationToken);
+            entryPoint = await BuildArchiveImageAsync(application, plan, operationId, actor, progress, cancellationToken);
         }
-
-        if (gitImageReference is null)
-            await progress.ReportAsync(new(template is ImageTemplate ? DeploymentStage.Pulling : DeploymentStage.Building, null, true), cancellationToken);
-        if (gitImageReference is null)
-            await ProduceImageAsync(template, plan, contextDirectory, operationId, cancellationToken);
+        else if (gitImageReference is null)
+        {
+            await progress.ReportAsync(new(DeploymentStage.Pulling, null, true), cancellationToken);
+            await PullImageAsync(plan, operationId, cancellationToken);
+        }
 
         var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, platform, cancellationToken);
         if (identity.ImageId is null)
@@ -288,7 +276,7 @@ internal sealed class ApplicationDeploymentService(
             Guid.NewGuid(), application.Id, 0, application.SourceKind, template.TemplateVersion,
             inputReference, identity.Reference ?? plan.ImageReference, identity.ImageId, platform,
             plan.BaseImage, application.WorkloadKind, application.ReadinessLevel, application.HealthCheckPath,
-            entryPoint, arguments, application.ContainerPort, application.HostPort, application.BindAddress,
+            entryPoint, plan.Arguments, application.ContainerPort, application.HostPort, application.BindAddress,
             application.Limits, application.Volumes, application.Configuration,
             application.SiteId,
             ApplicationDeploymentValidation.Reference(actor), DateTimeOffset.UtcNow,
@@ -596,8 +584,8 @@ internal sealed class ApplicationDeploymentService(
         }
 
         secrets.RemoveApplication(application.Id);
-        foreach (var revision in catalog.ReadRevisions(application.Id))
-            TryDeleteDirectory(Path.Combine(BuildRoot, revision.InputReference[..16]));
+        lock (buildContextsGate)
+            archiveExecution.PruneBuildContexts(BuildRoot, activeBuildContexts, application.Id);
         catalog.Delete(application.Id);
         runtime.LogOperation("delete", operationId, ("Application", application.Name), ("Containers", containers.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         await progress.ReportAsync(new(DeploymentStage.Completed, null, false), cancellationToken);
@@ -626,25 +614,48 @@ internal sealed class ApplicationDeploymentService(
         await ActivateRevisionAsync(application, operationId, revision, progress, cancellationToken, rollback: false, retained: true);
     }
 
-    private async Task ProduceImageAsync(IApplicationTemplate template, DeploymentPlan plan, string contextDirectory, Guid operationId, CancellationToken cancellationToken)
+    private async Task<string> BuildArchiveImageAsync(ApplicationRecord application, DeploymentPlan plan, Guid operationId,
+        string actor, IApplicationDeploymentProgress progress, CancellationToken cancellationToken)
     {
-        if (template is ImageTemplate)
+        var contextDirectory = Path.Combine(BuildRoot, $"{application.Id:N}-{operationId:N}");
+        lock (buildContextsGate)
         {
-            var pull = await runtime.PullAsync(plan.ImageReference, null, cancellationToken, line => liveLogs.Append(operationId, line));
-            if (pull.Success) return;
-            throw new ApplicationDeploymentException(pull.ProblemCode switch
-            {
-                "docker.not_installed" => ApplicationDeploymentProblemCodes.EngineNotInstalled,
-                "docker.unavailable" => ApplicationDeploymentProblemCodes.EngineUnavailable,
-                "docker.operation_timeout" => ApplicationDeploymentProblemCodes.RegistryUnreachable,
-                "docker.permission_denied" => ApplicationDeploymentProblemCodes.RegistryAuthenticationFailed,
-                _ => ApplicationDeploymentProblemCodes.ImageNotFound,
-            }, 409, pull.LogLines, pull.LogTruncated);
+            activeBuildContexts.Add(contextDirectory);
         }
+        try
+        {
+            string entryPoint;
+            using (var archive = staging.Open(plan.ArchiveReferenceId!, actor))
+                entryPoint = await archiveExecution.PrepareBuildContextAsync(archive.Stream, contextDirectory, plan,
+                    application.WorkloadKind, application.ContainerPort, options, cancellationToken);
+            await progress.ReportAsync(new(DeploymentStage.Building, null, true), cancellationToken);
+            var build = await runtime.BuildAsync(contextDirectory, plan.ImageReference, cancellationToken, line => liveLogs.Append(operationId, line));
+            if (!build.Success)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed, 409, build.LogLines, build.LogTruncated);
+            return entryPoint;
+        }
+        finally
+        {
+            lock (buildContextsGate)
+            {
+                activeBuildContexts.Remove(contextDirectory);
+                archiveExecution.PruneBuildContexts(BuildRoot, activeBuildContexts);
+            }
+        }
+    }
 
-        var build = await runtime.BuildAsync(contextDirectory, plan.ImageReference, cancellationToken, line => liveLogs.Append(operationId, line));
-        if (!build.Success)
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed, 409, build.LogLines, build.LogTruncated);
+    private async Task PullImageAsync(DeploymentPlan plan, Guid operationId, CancellationToken cancellationToken)
+    {
+        var pull = await runtime.PullAsync(plan.ImageReference, null, cancellationToken, line => liveLogs.Append(operationId, line));
+        if (pull.Success) return;
+        throw new ApplicationDeploymentException(pull.ProblemCode switch
+        {
+            "docker.not_installed" => ApplicationDeploymentProblemCodes.EngineNotInstalled,
+            "docker.unavailable" => ApplicationDeploymentProblemCodes.EngineUnavailable,
+            "docker.operation_timeout" => ApplicationDeploymentProblemCodes.RegistryUnreachable,
+            "docker.permission_denied" => ApplicationDeploymentProblemCodes.RegistryAuthenticationFailed,
+            _ => ApplicationDeploymentProblemCodes.ImageNotFound,
+        }, 409, pull.LogLines, pull.LogTruncated);
     }
 
     /// <summary>
@@ -743,24 +754,6 @@ internal sealed class ApplicationDeploymentService(
         source.GitBuildId?.ToString("D") ?? "-",
         string.Join('\u001f', source.Arguments ?? []));
 
-    /// <summary>Keeps build contexts bounded without ever reaching outside the deployment root.</summary>
-    private void CleanupExpiredBuildContexts()
-    {
-        try
-        {
-            if (!Directory.Exists(BuildRoot)) return;
-            var contexts = Directory.GetDirectories(BuildRoot).OrderByDescending(Directory.GetLastWriteTimeUtc).Skip(PreservedBuildContexts);
-            foreach (var context in contexts) TryDeleteDirectory(context);
-        }
-        catch (Exception exception) when (IsExpected(exception)) { }
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-    }
 }
 
 /// <summary>An activation failure that also carries the outcome of reverting the reverse-proxy change.</summary>

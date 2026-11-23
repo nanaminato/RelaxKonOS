@@ -9,10 +9,12 @@ param(
     [string] $DownloadBaseUri = 'https://downloads.relaxkon.com/relaxkonos/stable',
     [string] $OutputDirectory = 'artifacts',
     [ValidateSet('all', 'client', 'server')]
-    [string] $PackageKind = 'all'
+    [string] $PackageKind = 'all',
+    [switch] $ExternalApplicationDeployments
 )
 
 $ErrorActionPreference = 'Stop'
+if ($ExternalApplicationDeployments -and $PackageKind -eq 'client') { throw 'ExternalApplicationDeployments requires a Server release.' }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { throw 'Version may contain only letters, numbers, dot, underscore, and dash.' }
@@ -156,6 +158,10 @@ if ($PackageKind -in @('all', 'client')) {
 $clientPackage = New-PackageDirectory 'client'
 $clientDestination = Join-Path $clientPackage.Directory "payload\$platform\client"
 Publish-Component 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj' $clientDestination "RelaxKonOS$extension"
+$contractChecks = Join-Path $projectRoot 'Tests\ServerModules\RelaxKonOS.ServerModules.Tests.csproj'
+& dotnet run --project $contractChecks --configuration $Configuration --no-launch-profile -- `
+    --official-desktop-module-contracts (Join-Path $clientDestination 'OfficialApps')
+if ($LASTEXITCODE -ne 0) { throw 'Published desktop archives do not satisfy the bundled server module contracts.' }
 Complete-Package $clientPackage @{ client = "payload/$platform/client/RelaxKonOS$extension" }
 }
 
@@ -183,6 +189,25 @@ if ($platform -eq 'linux') {
     Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\user') -Destination (Join-Path $serverPackage.Directory 'deployment\user') -Recurse
     $serverPayload['launcher'] = 'deployment/user/relaxkon'
     Convert-LinuxShellScriptsToLf $serverPackage.Directory
+}
+if ($Runtime -eq 'linux-x64') {
+    $databasePublish = New-PackageDirectory 'database-module-publish'
+    $databaseProject = Join-Path $projectRoot 'ServerModules/RelaxKonOS.ServerModule.DatabaseObservation/RelaxKonOS.ServerModule.DatabaseObservation.csproj'
+    & dotnet publish $databaseProject --configuration $Configuration --runtime $Runtime --self-contained false `
+        --output $databasePublish.Directory "-p:InformationalVersion=$Version"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $databasePublish.Directory 'RelaxKonOS.ServerModule.DatabaseObservation.dll') -PathType Leaf)) {
+        throw 'Databases module publish failed.'
+    }
+    Write-Host "Databases module signing input: $($databasePublish.Directory)"
+}
+$applicationDeploymentsPublish = New-PackageDirectory 'application-deployments-module-publish'
+$applicationDeploymentsAssembly = Join-Path $serverPackage.Directory `
+    "payload/$platform/server/Modules/ApplicationDeployments/RelaxKonOS.ServerModule.ApplicationDeployments.dll"
+Copy-Item -LiteralPath $applicationDeploymentsAssembly -Destination $applicationDeploymentsPublish.Directory
+Write-Host "Application Deployments module signing input: $($applicationDeploymentsPublish.Directory)"
+if ($ExternalApplicationDeployments) {
+    & python (Join-Path $PSScriptRoot 'externalize-application-deployments.py') (Join-Path $serverPackage.Directory "payload/$platform/server")
+    if ($LASTEXITCODE -ne 0) { throw 'Could not externalize Application Deployments in the Server payload.' }
 }
 Complete-Package $serverPackage $serverPayload
 }

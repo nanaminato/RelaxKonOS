@@ -47,6 +47,11 @@ internal sealed partial class ServerModules
     {
         var byName = catalog.ToDictionary(module => ConfigurationName(module.Id), StringComparer.OrdinalIgnoreCase);
         var enabled = catalog.Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var moduleId in configuration.GetSection("ModuleManagement:DefaultDisabledModules").Get<string[]>() ?? [])
+        {
+            if (!enabled.Remove(moduleId))
+                throw new InvalidOperationException($"Invalid or duplicate default-disabled module: {moduleId}.");
+        }
         var settings = configuration.GetSection("Modules");
         if (settings.Value is not null)
             throw new InvalidOperationException("Modules must be a configuration section.");

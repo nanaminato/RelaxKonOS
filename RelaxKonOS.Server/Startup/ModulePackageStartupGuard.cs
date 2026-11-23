@@ -77,6 +77,8 @@ internal static class ModulePackageStartupGuard
                 ModulePackageCatalogStore.EnsureInstalledReleaseNotRevoked(contentRoot, previous);
                 var manifest = InstalledModuleStore.VerifyPackage(contentRoot, previous);
                 InstalledModuleInstaller.ValidateDependencies(contentRoot, configuration, manifest);
+                InstalledModuleInstaller.VerifyExecutionContract(
+                    InstalledModuleStore.ResolvePackageRoot(contentRoot, previous.PackagePath), manifest);
                 var modules = InstalledModuleStore.Read(contentRoot).ToList();
                 var index = modules.FindIndex(module => module.ModuleId == operation.ModuleId);
                 if (index >= 0) modules[index] = previous; else modules.Add(previous);

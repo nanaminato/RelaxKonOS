@@ -14,7 +14,7 @@ internal static class DatabaseEndpoints
         endpoints.MapPostgreSqlCredentialEndpoint();
         endpoints.MapPost(MySqlRoutes.Credentials, async (
             PostgreSqlCredentialRequest request, HttpContext http,
-            IDatabaseQueries queries,
+            IDatabaseQueryHost queries,
             PostgreSqlCredentialStore credentials,
             IHostElevationSessionStore elevations, CancellationToken ct) =>
         {
@@ -35,7 +35,7 @@ internal static class DatabaseEndpoints
     {
         endpoints.MapPostgreSqlObservationEndpoints();
         endpoints.MapGet(MySqlRoutes.State,
-            async (IDatabaseQueries queries, CancellationToken ct) =>
+            async (IDatabaseQueryHost queries, CancellationToken ct) =>
             {
                 try { return Results.Ok(await queries.ReadMySqlAsync(ct)); }
                 catch (InstallationException)

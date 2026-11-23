@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Startup;
 
 internal static class ModulePackageBuilderChecks
@@ -114,6 +116,39 @@ internal static class ModulePackageBuilderChecks
                 && !Directory.EnumerateFiles(blockedOutput).Any(),
                 "pack-package rejects an incompatible bundled module replacement before writing signed artifacts");
 
+            var legacyPublish = Directory.CreateDirectory(Path.Combine(root, "legacy-deployment")).FullName;
+            File.Copy(typeof(ApplicationArchiveExtractor).Assembly.Location,
+                Path.Combine(legacyPublish, ApplicationArchiveExecution.AssemblyFile));
+            var legacyOutput = Path.Combine(root, "legacy-deployment-output");
+            string[] deploymentArguments = [.. arguments, "--capabilities", ServerCapabilities.ApplicationDeployments];
+            deploymentArguments[Array.IndexOf(deploymentArguments, "--publish-dir") + 1] = legacyPublish;
+            deploymentArguments[Array.IndexOf(deploymentArguments, "--output-dir") + 1] = legacyOutput;
+            deploymentArguments[Array.IndexOf(deploymentArguments, "--module-id") + 1] = ServerModules.ApplicationDeploymentsId;
+            deploymentArguments[Array.IndexOf(deploymentArguments, "--entry-assembly") + 1] = ApplicationArchiveExecution.AssemblyFile;
+            deploymentArguments[Array.IndexOf(deploymentArguments, "--entry-type") + 1] = ApplicationArchiveExecution.EntryType;
+            using var legacyError = new StringWriter();
+            try
+            {
+                Console.SetError(legacyError);
+                exit = await ModulePackageBuildCommand.RunAsync(deploymentArguments);
+            }
+            finally { Console.SetError(originalError); }
+            check(exit == 1 && legacyError.ToString().Trim() == "module-package-execution-contract"
+                && !Directory.EnumerateFiles(legacyOutput).Any(),
+                "pack-package refuses a legacy deployment entry before signing or writing an archive");
+
+            deploymentArguments[Array.IndexOf(deploymentArguments, "--publish-dir") + 1] =
+                Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments");
+            using var deploymentOutput = new StringWriter();
+            try
+            {
+                Console.SetOut(deploymentOutput);
+                exit = await ModulePackageBuildCommand.RunAsync(deploymentArguments);
+            }
+            finally { Console.SetOut(original); }
+            check(exit == 0 && Directory.EnumerateFiles(legacyOutput, "*.rkmodule").Count() == 1,
+                "pack-package signs a deployment module that satisfies the current build context contract");
+
             var firstRelease = new ModulePackageRelease(result.Manifest, result.ManifestSha256, result.ArchiveSha256,
                 result.ArchiveBytes, result.DownloadUri);
             var secondRelease = ModulePackageJson.Read<ModulePackageRelease>(System.Text.Encoding.UTF8.GetBytes(
@@ -136,6 +171,25 @@ internal static class ModulePackageBuilderChecks
                     signingHistory, DateTimeOffset.UtcNow).Catalog.Releases.Length == 2
                 && verifiedCliArtifact.ArchiveSha256 == secondRelease.ArchiveSha256,
                 "the pack-package release descriptor can be signed in an aggregate and verifies against the actual archive");
+
+            var obsoleteDatabase = firstRelease with
+            {
+                Manifest = firstRelease.Manifest with
+                {
+                    ModuleId = ServerModules.DatabaseId, Runtime = "module-host",
+                    HostApiMinimum = "2.4.0", HostApiMaximumExclusive = "3.0.0",
+                },
+            };
+            try
+            {
+                await ModulePackageBuilder.SignCatalogAsync(aggregate with { Releases = [obsoleteDatabase, secondRelease] },
+                    options.KeyId, keyPath);
+                check(false, "aggregate signing must reject the obsolete Databases ABI");
+            }
+            catch (ModulePackageException error) when (error.ProblemCode == "module-package-host-api-incompatible")
+            {
+                check(true, "aggregate signing rejects an obsolete Databases ABI even when its archive already exists");
+            }
 
             var catalogBytes = System.Text.Encoding.UTF8.GetBytes("{\"schemaVersion\":1}");
             using var catalogHandler = new FixedHandler(catalogBytes);

@@ -20,6 +20,12 @@ using RoyalTerminal.Terminal;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
+if (args is ["--official-desktop-module-contracts", var packageDirectory])
+{
+    await OfficialDesktopModuleContractChecks.RunAsync(packageDirectory);
+    return;
+}
+
 if (args is ["--module-recovery-checks", var serverExecutable])
 {
     await ModuleRecoveryChecks.RunAsync(Check, Path.GetFullPath(serverExecutable));
@@ -227,6 +233,11 @@ if (args is ["--signed-git-joint-acceptance", var signedGitApp])
     return;
 }
 
+if (args is ["--live-application-deployments-joint-deployment", var appServer, var appArchive, var appState, var appPhase])
+{
+    JointDeploymentAcceptance.RunLiveApplicationDeployments(appServer, appArchive, appState, appPhase);
+    return;
+}
 if (args is ["--live-databases-joint-deployment", var liveServer, var liveArchive, var liveState, var livePhase])
 {
     JointDeploymentAcceptance.RunLiveDatabases(liveServer, liveArchive, liveState, livePhase);
@@ -653,6 +664,9 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Proxy.IProxyProfileService))
                 == (enabled && storageBound),
             $"storage-bound proxy services follow both the module and the provider enabled={enabled} storage={storage}");
+        Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Proxy.Mihomo.MihomoManagedTunOperations))
+                == (enabled && storageBound),
+            $"managed TUN operations require the proxy profile repository enabled={enabled} storage={storage}");
         Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Proxy.IProxyEngineRegistry)) == enabled,
             $"proxy engine registry registration enabled={enabled}");
         Check(builder.Services.Any(service => service.ServiceType == typeof(RelaxKonOS.Server.Proxy.IProxyLifecycleService)) == enabled,
@@ -684,6 +698,10 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         collection.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore>();
         collection.AddSingleton(new RelaxKonOS.Server.Docker.DockerStackOperationStore(hostBuilder.Environment,
             Microsoft.Extensions.Options.Options.Create(new RelaxKonOS.Server.Docker.DockerComposeOptions { DataDirectory = root })));
+        collection.AddSingleton(new RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOperationStore(hostBuilder.Environment,
+            new RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions { RootDirectory = Path.Combine(root, "deployments") }));
+        collection.AddSingleton(new RelaxKonOS.Server.BackupRecovery.BackupRecoveryManifestStore(hostBuilder.Environment,
+            new BackupRecoveryOptions { RootDirectory = Path.Combine(root, "backups") }));
         using var services = collection.BuildServiceProvider();
 
         var inventory = await ServerModules.Create(new ConfigurationBuilder().Build())
@@ -863,6 +881,8 @@ foreach (var enabled in new[] { true, false })
         ["Modules:Tunnels:Enabled"] = "false",
         // Database endpoint and scheduler coverage use their own host fixtures.
         ["Modules:Database:Enabled"] = "false",
+        // The full Server smoke test covers deployment routes with the Core ledgers registered.
+        ["Modules:ApplicationDeployments:Enabled"] = "false",
     });
     var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite");
     var modules = ServerModules.Create(builder.Configuration);

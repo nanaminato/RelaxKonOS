@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using RelaxKonOS.ModuleHost.Protocol;
 
 namespace RelaxKonOS.ModulePackaging;
 
@@ -14,6 +15,18 @@ internal static partial class ModulePackageRules
     private static partial Regex DigestPattern();
     internal static bool Id(string? value) => value is not null && IdentifierPattern().IsMatch(value);
     internal static bool Digest(string? value) => value is not null && DigestPattern().IsMatch(value);
+    internal static bool MeetsModuleHostApiMinimum(ModulePackageManifest manifest)
+    {
+        if (manifest.Runtime != "module-host") return true;
+        var required = manifest.ModuleId switch
+        {
+            DatabaseObservationProtocol.ModuleId => DatabaseObservationProtocol.HostApiMinimum,
+            CloudProviderProtocol.CallerModuleId or CloudProviderProtocol.BaiduModuleId => CloudProviderProtocol.BaiduHostApiMinimum,
+            CloudProviderProtocol.WebDavModuleId or CloudProviderProtocol.S3ModuleId => CloudProviderProtocol.HostApiMinimum,
+            _ => null,
+        };
+        return required is null || Version(manifest.HostApiMinimum) >= Version(required);
+    }
     internal static Version Version(string? value)
     {
         Require(value is not null && System.Version.TryParse(value, out var parsed)

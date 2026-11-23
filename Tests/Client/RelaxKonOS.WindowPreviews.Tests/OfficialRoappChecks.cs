@@ -70,7 +70,8 @@ internal static class OfficialRoappChecks
             var select = System.Linq.Expressions.Expression.Lambda(picker.PropertyType,
                 System.Linq.Expressions.Expression.Constant(task, picker.PropertyType.GenericTypeArguments[0])).Compile();
             picker.SetValue(wizard, select);
-            wizardType.GetProperty("ProgramEntry")!.SetValue(wizard, "fixture");
+            if (wizardType.GetProperty("SourceKind")!.GetValue(wizard) is ApplicationSourceKind.PythonProject)
+                wizardType.GetProperty("ProgramEntry")!.SetValue(wizard, "fixture");
             ((System.Windows.Input.ICommand)wizardType.GetProperty("ChooseLocalArchiveCommand")!.GetValue(wizard)!).Execute(null);
             for (var attempt = 0; attempt < 100 && wizardType.GetProperty("IsUploading")!.GetValue(wizard) is true; attempt++)
                 await Task.Delay(50);
@@ -227,6 +228,14 @@ internal static class OfficialRoappChecks
         var compatibility = new Compatibility();
         using var services = new ServiceCollection().AddSingleton<IApplicationCompatibilityEvaluator>(compatibility).BuildServiceProvider();
         using var http = new HttpClient();
+        var smbPort = isFileServices ? Environment.GetEnvironmentVariable("RK_TEST_SMB_PORT") : null;
+        if (smbPort is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+        var guardianPort = isGuardian ? Environment.GetEnvironmentVariable("RK_TEST_GUARDIAN_PORT") : null;
+        var guardianVersion = guardianPort is null ? null : Environment.GetEnvironmentVariable("RK_TEST_GUARDIAN_VERSION")
+            ?? throw new InvalidOperationException("Missing live Guardian version.");
+        var guardianWorkload = guardianPort is null ? null : Environment.GetEnvironmentVariable("RK_TEST_GUARDIAN_WORKLOAD")
+            ?? throw new InvalidOperationException("Missing live Guardian workload name.");
+        if (guardianPort is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
         var alertPort = isEventAlerts ? Environment.GetEnvironmentVariable("RK_TEST_EVENT_ALERTS_PORT") : null;
         Uri? alertEndpoint = alertPort is null ? null : new Uri($"http://127.0.0.1:{int.Parse(alertPort)}/");
         var performancePort = isTaskManager ? Environment.GetEnvironmentVariable("RK_TEST_PERFORMANCE_PORT") : null;
@@ -831,6 +840,25 @@ internal static class OfficialRoappChecks
                     Check(model.GetType().FullName == "RelaxKonOS.App.ProcessGuardian.ProcessGuardianViewModel"
                         && model.GetType().GetProperty("OpenCreateWorkloadCommand")?.GetValue(model) is System.Windows.Input.ICommand create
                         && !create.CanExecute(null), "The installed Guardian workspace honors a read-only grant.");
+                    if (guardianVersion is not null)
+                    {
+                        var status = model.GetType().GetProperty("StatusText")!;
+                        var workloads = (System.Collections.IEnumerable)model.GetType().GetProperty("Workloads")!.GetValue(model)!;
+                        bool ShowsAgentState() => status.GetValue(model) is string value && value.Contains(guardianVersion, StringComparison.Ordinal)
+                            && workloads.Cast<RelaxKonOS.Protocol.ProcessGuardian.GuardianWorkloadDto>().Any(row =>
+                                row.Name == guardianWorkload && row.DesiredState == "Stopped" && row.ProcessId is null);
+                        for (var attempt = 0; attempt < 100 && !ShowsAgentState(); attempt++) await Task.Delay(50);
+                        Check(ShowsAgentState(), "The installed Guardian workspace displays the live Agent version and restored workload.");
+                    }
+                }
+                if (smbPort is not null)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    var state = model.GetType().GetProperty("RuntimeState")!;
+                    bool IsRunning() => state.GetValue(model)?.ToString() == "Running";
+                    for (var attempt = 0; attempt < 100 && !IsRunning(); attempt++) await Task.Delay(50);
+                    Check(IsRunning() && model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
+                        "The installed File Services workspace displays live Windows SMB state with a read-only grant.");
                 }
                 if (isFirewall)
                 {
@@ -1087,11 +1115,21 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerGitManage);
             appPermissions.Granted.Add(AppPermissions.ServerFileServicesRead);
             var git = isGit ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerGit, OfficialGitFixture>() : null;
-            var fileServices = isFileServices ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerFileServices, ShareDialogClient>() : null;
+            IServerFileServices? fileServices = isFileServices ? DispatchProxy.Create<IServerFileServices, ShareDialogClient>() : null;
+            if (smbPort is not null)
+            {
+                ((EventAlertsAuthFixture)(object)auth).ServiceId = $"http://127.0.0.1:{int.Parse(smbPort)}/";
+                fileServices = new RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient(http, auth, memory);
+            }
             appPermissions.Granted.Add(AppPermissions.ServerFirewallRead);
             var firewall = isFirewall ? DispatchProxy.Create<IServerFirewall, FirewallHostStub>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerGuardianRead);
-            var guardian = isGuardian ? DispatchProxy.Create<IServerGuardian, GuardianCapabilityClient>() : null;
+            IServerGuardian? guardian = isGuardian ? DispatchProxy.Create<IServerGuardian, GuardianCapabilityClient>() : null;
+            if (guardianPort is not null)
+            {
+                ((EventAlertsAuthFixture)(object)auth).ServiceId = $"http://127.0.0.1:{int.Parse(guardianPort)}/";
+                guardian = new RelaxKonOS.Client.Apps.ProcessGuardian.ProcessGuardianClient(http, auth);
+            }
             appPermissions.Granted.Add(AppPermissions.DesktopPortForwardingManage);
             var forwarding = isPortForwarding ? DispatchProxy.Create<IPortForwardingService, PendingForwardService>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerApplicationDeploymentsRead);

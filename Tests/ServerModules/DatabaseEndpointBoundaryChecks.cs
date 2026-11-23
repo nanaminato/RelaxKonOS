@@ -271,6 +271,18 @@ internal static class DatabaseEndpointBoundaryChecks
                 || System.Text.Encoding.UTF8.GetString(body.ToArray()) != "{}")
                 throw new InvalidOperationException("The ModuleHost entry did not preserve the observation request and broker response.");
         }
+        var operation = new InstallationOperationDto(Guid.NewGuid(), InstallationServiceId.PostgreSqlBackupAutomation,
+            InstallationOperationKind.Configure, default, default, null, null, DateTimeOffset.UtcNow, null, null, false);
+        var state = new PostgreSqlState(true, true, true, "16", 1, instance, 5432, true, true, null, null, null);
+        observation.Snapshot = new(state, null, operation, operation with { OperationId = Guid.NewGuid() });
+        using var successBody = new MemoryStream();
+        var success = new DefaultHttpContext { RequestServices = app.Services };
+        success.Request.Method = "GET";
+        success.Response.Body = successBody;
+        await routes[PostgreSqlRoutes.State].RequestDelegate!(success);
+        var projected = JsonSerializer.Deserialize<PostgreSqlState>(successBody.ToArray(), RelaxKonOSJsonOptions.Default);
+        if (success.Response.StatusCode != 200 || projected?.InstanceId != instance || projected.ScheduledOperation != operation)
+            throw new InvalidOperationException("The isolated entry must project the current backup slot into public PostgreSQL state.");
         await entry.StopAsync(default);
     }
 
@@ -287,11 +299,17 @@ internal static class DatabaseEndpointBoundaryChecks
     private sealed class EntryObservationFixture : IModuleDatabaseObservation
     {
         public (DatabaseObservationKind, Guid?) Last { get; private set; }
+        public PostgreSqlObservationSnapshot? Snapshot { get; set; }
 
         public ValueTask<HttpResponseMessage> ReadAsync(DatabaseObservationKind kind, Guid? instance,
             CancellationToken cancellationToken)
         {
             Last = (kind, instance);
+            if (Snapshot is { } snapshot)
+                return ValueTask.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = System.Net.Http.Json.JsonContent.Create(snapshot, options: RelaxKonOSJsonOptions.Default),
+                });
             var content = new ByteArrayContent("{}"u8.ToArray());
             content.Headers.ContentType = new("application/problem+json");
             return ValueTask.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = content });

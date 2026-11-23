@@ -1,9 +1,117 @@
 using System.IO.Pipes;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Protocol.ProcessGuardian;
 using RelaxKonOS.App.ProcessGuardian;
 
 public static class GuardianReadChecks
 {
+    public static async Task RunAgentAsync(string executable, string[] desktopArgs)
+    {
+        if (desktopArgs.Length is not (0 or 2)) throw new ArgumentException("Expected a desktop test runner and an official .roapp.");
+        var root = Directory.CreateTempSubdirectory("rk-guardian-agent-");
+        var pipe = "rk-guardian-agent-" + Guid.NewGuid().ToString("N");
+        var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        var start = new System.Diagnostics.ProcessStartInfo(Path.GetFullPath(executable))
+        {
+            WorkingDirectory = root.FullName,
+            UseShellExecute = false,
+        };
+        start.Environment["RELAXKONOS_GUARDIAN_PIPE"] = pipe;
+        start.Environment["RELAXKONOS_GUARDIAN_SHARED_SECRET"] = secret;
+        start.Environment["RELAXKONOS_GUARDIAN_DATA_DIR"] = root.FullName;
+        start.Environment["RELAXKONOS_GUARDIAN_MODE"] = "user";
+        start.Environment["RELAXKONOS_GUARDIAN_CONFIG"] = Path.Combine(root.FullName, "guardian.json");
+        start.Environment.Remove("RELAXKONOS_GUARDIAN_SERVER_SERVICE");
+        start.Environment.Remove("RELAXKONOS_GUARDIAN_SERVER_HEALTH_URL");
+        try
+        {
+            var workloadName = "Guardian acceptance " + Guid.NewGuid().ToString("N");
+            var definition = new ProcessDefinitionDto("acceptance", workloadName, Path.GetFullPath(executable), [], root.FullName,
+                RunAs: Environment.UserName, RunAsIdentity: RelaxKonOS.Server.UserExecution.ServerProcessIdentity.CurrentStableIdentity());
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "workloads.json"),
+                JsonSerializer.Serialize(new[] { definition }, RelaxKonOSJsonOptions.Default));
+            using var agent = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Guardian did not start.");
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                var service = new NamedPipeProcessGuardianService(new GuardianAgentOptions { PipeName = pipe, SharedSecret = secret });
+                GuardianStatusDto status;
+                do
+                {
+                    if (agent.HasExited) throw new InvalidOperationException($"Guardian exited with code {agent.ExitCode}.");
+                    status = await service.GetStatusAsync(timeout.Token);
+                    if (!status.IsRunning) await Task.Delay(100, timeout.Token);
+                } while (!status.IsRunning);
+                if (!status.IsInstalled || string.IsNullOrWhiteSpace(status.Version)
+                    || (await service.ListWorkloadsAsync(timeout.Token)) is not
+                        [{ Id: "acceptance", DesiredState: "Stopped", ProcessId: null } workload] || workload.Name != workloadName
+                    || (await service.ListAuditAsync(timeout.Token)).Count != 0)
+                    throw new InvalidOperationException("Unexpected state from the isolated Guardian Agent.");
+                Console.WriteLine($"PASS: Guardian Agent {status.Version} returned live status, workload and audit reads through Core IPC.");
+                if (desktopArgs is [var runner, var package]) await RunDesktopAsync(service, root.FullName, status.Version!, workloadName, runner, package);
+            }
+            finally
+            {
+                if (!agent.HasExited) agent.Kill();
+                await agent.WaitForExitAsync();
+            }
+        }
+        finally
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                try { root.Delete(recursive: true); break; }
+                catch (IOException) when (OperatingSystem.IsWindows() && attempt < 10)
+                {
+                    await Task.Delay(100);
+                }
+            }
+        }
+    }
+
+    private static async Task RunDesktopAsync(IProcessGuardianService service, string contentRoot, string version, string workload, string runner, string package)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = contentRoot });
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, ProgressTestAuthentication>("test", _ => { });
+        builder.Services.AddAuthorization();
+        builder.Services.AddSingleton(service);
+        builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionContextResolver>(_ => throw new NotSupportedException());
+        builder.Services.AddSingleton<IRunAsAuthorizationService>(_ => throw new NotSupportedException());
+        builder.Services.AddSingleton<INativeServiceAdapter>(_ => throw new NotSupportedException());
+        builder.Services.AddSingleton<IGuardianAgentInstaller>(_ => throw new NotSupportedException());
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore>(_ => throw new NotSupportedException());
+        await using var app = builder.Build();
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapProcessGuardianEndpoints();
+        await app.StartAsync();
+        var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        var isDll = Path.GetExtension(runner).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+        var start = new System.Diagnostics.ProcessStartInfo(isDll ? "dotnet" : Path.GetFullPath(runner)) { UseShellExecute = false };
+        if (isDll) start.ArgumentList.Add(Path.GetFullPath(runner));
+        start.ArgumentList.Add("--official-roapp-only");
+        start.ArgumentList.Add(Path.GetFullPath(package));
+        start.Environment["RK_TEST_GUARDIAN_PORT"] = new Uri(address).Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        start.Environment["RK_TEST_GUARDIAN_VERSION"] = version;
+        start.Environment["RK_TEST_GUARDIAN_WORKLOAD"] = workload;
+        using var desktop = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Desktop test did not start.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        try { await desktop.WaitForExitAsync(timeout.Token); }
+        finally
+        {
+            if (!desktop.HasExited) desktop.Kill();
+            await desktop.WaitForExitAsync();
+        }
+        if (desktop.ExitCode != 0) throw new InvalidOperationException($"Desktop test exited with code {desktop.ExitCode}.");
+    }
+
     public static async Task RunAsync()
     {
         var count = 0;

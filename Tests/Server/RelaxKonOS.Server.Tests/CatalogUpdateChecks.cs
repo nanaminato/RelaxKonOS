@@ -56,7 +56,7 @@ internal static class CatalogUpdateChecks
         var controlled = (CatalogUpdateEngine)(object)engine;
         var clients = new FixtureHttpClientFactory([]);
         var runtime = new ApplicationDeploymentRuntime(engine, options, clients, NullLogger<ApplicationDeploymentRuntime>.Instance);
-        var manager = new ApplicationDeploymentManager(catalog, secrets, operations, runtime, options,
+        var manager = new ApplicationDeploymentManager(catalog, secrets, operations, runtime, new ApplicationContainerObservation(engine), options,
             new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
         var target = ApplicationCatalog.Require("upgrade-fixture", "1.0.0");
         Check(!(target with { UpgradeFrom = [new("0.9.0", target.ImageReference.Replace("registry.example", "mirror.example"))] }).IsValid(),
@@ -126,7 +126,8 @@ internal static class CatalogUpdateChecks
         await docker.StartAsync(default);
         var dispatch = new ApplicationManagedComposeDispatch(operations, docker);
         var install = new ApplicationManagedComposeInstall(catalog, secrets, runtime, dispatch, options);
-        var service = new ApplicationDeploymentService(catalog, secrets, new(environment, options, NullLogger<ApplicationDeploymentStagingStore>.Instance), runtime, null!, options, environment, logs, null!, NullLogger<ApplicationDeploymentService>.Instance, install);
+        var service = new ApplicationDeploymentService(catalog, secrets, new(environment, options, NullLogger<ApplicationDeploymentStagingStore>.Instance), runtime, null!, options, environment, logs, null!, NullLogger<ApplicationDeploymentService>.Instance,
+            ApplicationArchiveExecution.Bundled, install);
         var coordinator = new ApplicationDeploymentCoordinator(operations, catalog, service, options, logs, new TestApplicationLifetime(), new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, dispatch);
         await coordinator.StartAsync(default);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
@@ -284,13 +285,15 @@ internal static class CatalogUpdateChecks
         bool Has(HostPlatformKind platform, bool enabled, params string[] modules) =>
             ServerDescriptorFactory.Create(platform, mode, new(), new RelaxKonOS.Server.BackupRecovery.ConfigurationBackupRecoveryKeyProvider(new()),
                 modules.ToHashSet(StringComparer.Ordinal), enabled).Capabilities.Contains(ServerCapabilities.ApplicationDeploymentsCompose);
-        Check(Has(HostPlatformKind.Linux, true, ServerCapabilities.Docker)
-            && !Has(HostPlatformKind.Linux, false, ServerCapabilities.Docker)
-            && !Has(HostPlatformKind.Windows, true, ServerCapabilities.Docker)
-            && !Has(HostPlatformKind.Linux, true),
-            "Managed Compose capability requires the explicit preview flag, Linux and the Docker module.");
+        string[] requiredModules = [ServerCapabilities.Docker, ServerCapabilities.ApplicationDeployments];
+        Check(Has(HostPlatformKind.Linux, true, requiredModules)
+            && !Has(HostPlatformKind.Linux, false, requiredModules)
+            && !Has(HostPlatformKind.Windows, true, requiredModules)
+            && !Has(HostPlatformKind.Linux, true, ServerCapabilities.Docker)
+            && !Has(HostPlatformKind.Linux, true, ServerCapabilities.ApplicationDeployments),
+            "Managed Compose capability requires the explicit preview flag, Linux and both server modules.");
         mode.Deployments = false;
-        Check(!Has(HostPlatformKind.Linux, true, ServerCapabilities.Docker), "The host deployment boundary must also grant the capability.");
+        Check(!Has(HostPlatformKind.Linux, true, requiredModules), "The host deployment boundary must also grant the capability.");
     }
 
     private sealed class CatalogDescriptorMode : IServerModeResolver
@@ -459,7 +462,7 @@ internal static class CatalogUpdateChecks
         var reopened = new ApplicationDeploymentOperationStore(environment, options);
         var recovery = new ApplicationManagedComposeDispatch(reopened, reopenedDocker);
         var noActivation = new ApplicationDeploymentService(null!, null!, null!, null!, null!, options, environment,
-            new(), null!, NullLogger<ApplicationDeploymentService>.Instance);
+            new(), null!, NullLogger<ApplicationDeploymentService>.Instance, ApplicationArchiveExecution.Bundled);
         var coordinator = new ApplicationDeploymentCoordinator(reopened, null!, noActivation, options, new(), lifetime,
             new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, recovery);
         await coordinator.StartAsync(default);

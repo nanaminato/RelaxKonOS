@@ -13,16 +13,17 @@ internal static class ApplicationDeploymentRegistration
             ?? new ApplicationDeploymentOptions());
         services.AddSingleton<ApplicationDeploymentOperationStore>();
         services.AddSingleton<ApplicationDeploymentCatalogStore>();
-        services.AddSingleton<ApplicationDeploymentSecretStore>();
-        services.AddSingleton<ApplicationDeploymentRuntime>();
-        services.AddSingleton<ApplicationDeploymentImageTagCatalog>();
-        services.AddSingleton<ApplicationDeploymentManager>();
-        services.AddHttpClient(ApplicationDeploymentRuntime.HealthClientName, client => client.Timeout = TimeSpan.FromSeconds(10))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
+        services.AddSingleton<ApplicationContainerObservation>();
     }
 
     public static void AddApplicationDeploymentServices(this IServiceCollection services)
     {
+        services.AddSingleton<ApplicationDeploymentRuntime>();
+        services.AddHttpClient(ApplicationDeploymentRuntime.HealthClientName, client => client.Timeout = TimeSpan.FromSeconds(10))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
+        services.AddSingleton<ApplicationDeploymentSecretStore>();
+        services.AddSingleton<ApplicationDeploymentImageTagCatalog>();
+        services.AddSingleton<ApplicationDeploymentManager>();
         services.AddSingleton<ApplicationDeploymentStagingStore>();
         services.AddSingleton<ApplicationManagedComposeDispatch>();
         services.AddSingleton<ApplicationManagedComposeInstall>();

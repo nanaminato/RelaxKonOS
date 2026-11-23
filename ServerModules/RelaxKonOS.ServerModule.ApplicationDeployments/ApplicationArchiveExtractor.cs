@@ -11,30 +11,81 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// </summary>
 public static class ApplicationArchiveExtractor
 {
-    public static Task<(string? EntryPoint, string? Problem)> PrepareDotNetAsync(string destination, string? requestedImage,
-        string? runtimeVersion, bool selfContained, ApplicationWorkloadKind workloadKind, int port, string selfContainedImage,
-        string webImage, string workerImage, CancellationToken cancellationToken)
-        => ApplicationPayload.PrepareDotNetAsync(destination, requestedImage, runtimeVersion, selfContained, workloadKind,
-            port, selfContainedImage, webImage, workerImage, cancellationToken);
+    public static void PruneBuildContexts(string root, IReadOnlySet<string> active, Guid? deletedApplication)
+    {
+        if (!Directory.Exists(root)) return;
+        var inactive = Directory.GetDirectories(root, deletedApplication is { } application ? $"{application:N}-*" : "*")
+            .Where(path => !active.Contains(path));
+        var expired = deletedApplication is null
+            ? inactive.OrderByDescending(Directory.GetLastWriteTimeUtc).Skip(20)
+            : inactive;
+        foreach (var path in expired)
+        {
+            try { Directory.Delete(path, recursive: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
 
-    public static async Task<string?> WriteDockerfileAsync(string destination, ApplicationSourceKind kind, string baseImage, int port,
+    public static async Task<(string? EntryPoint, string? Problem)> PrepareBuildContextAsync(Stream archive, string destination,
+        int maximumEntries, long maximumExpandedBytes, int maximumPathDepth, ApplicationSourceKind kind,
+        string? requestedImage, string? runtimeVersion, string? programEntry, bool selfContained,
+        ApplicationWorkloadKind workloadKind, int port, string selfContainedImage, string webImage, string workerImage,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+            Directory.CreateDirectory(destination);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return (null, ApplicationDeploymentProblemCodes.BuildFailed);
+        }
+
+        var problem = await PrepareAsync(archive, destination, maximumEntries, maximumExpandedBytes, maximumPathDepth, cancellationToken);
+        if (problem is not null) return (null, problem);
+
+        return await PreparePayloadAsync(destination, kind, requestedImage, runtimeVersion, programEntry, selfContained,
+            workloadKind, port, selfContainedImage, webImage, workerImage, cancellationToken);
+    }
+
+    private static async Task<(string? EntryPoint, string? Problem)> PreparePayloadAsync(string destination,
+        ApplicationSourceKind kind, string? requestedImage, string? runtimeVersion, string? programEntry,
+        bool selfContained, ApplicationWorkloadKind workloadKind, int port, string selfContainedImage,
+        string webImage, string workerImage, CancellationToken cancellationToken)
+    {
+        if (kind == ApplicationSourceKind.DotNetPublish)
+            return await ApplicationPayload.PrepareDotNetAsync(destination, requestedImage, runtimeVersion, selfContained,
+                workloadKind, port, selfContainedImage, webImage, workerImage, cancellationToken);
+
+        if (kind is not (ApplicationSourceKind.JavaJar or ApplicationSourceKind.PythonProject))
+            return (null, ApplicationDeploymentProblemCodes.NotSupported);
+
+        var entry = kind == ApplicationSourceKind.JavaJar ? "app.jar" : programEntry;
+        if (entry is null) return (null, ApplicationDeploymentProblemCodes.EntryPointInvalid);
+        if (requestedImage is null) return (null, ApplicationDeploymentProblemCodes.ImageReferenceInvalid);
+        if (await ApplicationPayload.PrepareAsync(destination, kind, entry, cancellationToken) is { } problem)
+            return (null, problem);
+
+        await WriteDockerfileAsync(destination, kind, requestedImage, port, entry, false, cancellationToken);
+        return (kind == ApplicationSourceKind.JavaJar ? $"java -jar /app/{entry}" : $"python -m {entry}", null);
+    }
+
+    internal static async Task WriteDockerfileAsync(string destination, ApplicationSourceKind kind, string baseImage, int port,
         string entry, bool selfContained, CancellationToken cancellationToken)
     {
-        if (kind is ApplicationSourceKind.JavaJar or ApplicationSourceKind.PythonProject
-            && await ApplicationPayload.PrepareAsync(destination, kind, entry, cancellationToken) is { } problem)
-            return problem;
         var dockerfile = ApplicationDockerfile.Generate(kind, baseImage, port, entry, selfContained);
         // The build must include the validated payload regardless of the archive's .dockerignore.
         var encoding = new UTF8Encoding(false);
         await File.WriteAllTextAsync(Path.Combine(destination, ".dockerignore"),
             "# Generated by RelaxKonOS; the complete validated payload is required.\n", encoding, cancellationToken);
         await File.WriteAllTextAsync(Path.Combine(destination, "Dockerfile"), dockerfile, encoding, cancellationToken);
-        return null;
     }
 
-    public static async Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries, long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
+    private static async Task<string?> PrepareAsync(Stream archive, string destination, int maximumEntries, long maximumExpandedBytes, int maximumPathDepth, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(destination);
         var root = Path.GetFullPath(destination);
         using var zip = OpenArchive(archive);
         if (zip is null) return ApplicationDeploymentProblemCodes.ArchiveUnavailable;

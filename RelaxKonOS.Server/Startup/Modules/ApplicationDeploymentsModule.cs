@@ -15,7 +15,9 @@ internal class ApplicationDeploymentsModule : IServerModule, IServerModuleDeacti
 
     public virtual void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
-        builder.Services.AddSingleton(ArchiveExecution);
+        var execution = ArchiveExecution;
+        execution.ValidateEntryPoint();
+        builder.Services.AddSingleton(execution);
         builder.Services.AddApplicationDeploymentServices();
         builder.Services.AddSingleton<BackupRecoveryObjectStore>();
         builder.Services.AddSingleton<ApplicationDefinitionBackupService>();

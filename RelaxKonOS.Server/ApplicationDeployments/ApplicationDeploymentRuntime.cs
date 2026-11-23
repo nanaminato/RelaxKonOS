@@ -70,25 +70,11 @@ internal sealed class ApplicationDeploymentRuntime(
         finally { try { listener?.Stop(); } catch (SocketException) { } }
     }
 
-    public async Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken)
-    {
-        try { return await engine.ListContainersAsync(cancellationToken); }
-        catch (DockerReadException exception)
-        {
-            throw new ApplicationDeploymentException(exception.ProblemCode == "docker.not_installed"
-                ? ApplicationDeploymentProblemCodes.EngineNotInstalled : ApplicationDeploymentProblemCodes.EngineUnavailable, 409);
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException)
-        {
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EngineUnavailable, 409);
-        }
-    }
-
     /// <summary>Finds a container by its deterministic name and proves it belongs to this application
     /// before handing it to a mutating workflow. A matching name alone is never ownership.</summary>
     public async Task<DockerContainerDto?> FindOwnedContainerAsync(Guid applicationId, string name, CancellationToken cancellationToken)
     {
-        var containers = await ListContainersAsync(cancellationToken);
+        var containers = await ApplicationContainerObservation.ListAsync(engine, cancellationToken);
         var candidate = containers.FirstOrDefault(container => ContainerMatches(container, name));
         if (candidate is null) return null;
         var details = await engine.GetContainerAsync(candidate.Id, cancellationToken);
@@ -138,7 +124,7 @@ internal sealed class ApplicationDeploymentRuntime(
     public async Task<IReadOnlyList<DockerContainerDto>> FindApplicationContainersAsync(Guid applicationId, CancellationToken cancellationToken)
     {
         var stem = ApplicationDeploymentValidation.ContainerName(applicationId);
-        var containers = await ListContainersAsync(cancellationToken);
+        var containers = await ApplicationContainerObservation.ListAsync(engine, cancellationToken);
         var matches = containers.Where(container => container.Names.Split(',')
             .Any(name => name.Trim().Equals(stem, StringComparison.Ordinal)
                 || name.Trim().StartsWith(stem + "-", StringComparison.Ordinal)));

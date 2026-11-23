@@ -239,7 +239,8 @@ internal static class ModuleBackgroundOwnershipChecks
             var controlled = (BackgroundWebsiteEngine)(object)engine;
             var clients = new FixtureHttpClientFactory([]);
             var runtime = new ApplicationDeploymentRuntime(engine, options, clients, NullLogger<ApplicationDeploymentRuntime>.Instance);
-            var applications = new ApplicationDeploymentManager(catalog, secrets, new ApplicationDeploymentOperationStore(f.Environment, options), runtime, options,
+            var observation = new ApplicationContainerObservation(engine);
+            var applications = new ApplicationDeploymentManager(catalog, secrets, new ApplicationDeploymentOperationStore(f.Environment, options), runtime, observation, options,
                 new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
             var app = await applications.CreateAsync(new CreateApplicationRequest("owned-site", ApplicationSourceKind.Image, HostPort: 9080), "actor", default);
             var competingApp = await applications.CreateAsync(new CreateApplicationRequest("competing-site", ApplicationSourceKind.Image, HostPort: 9085), "actor", default);
@@ -247,7 +248,7 @@ internal static class ModuleBackgroundOwnershipChecks
             var executions = 0;
             var cleanupEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var releaseCleanup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var coordinator = WebsitePublicationTestScopes.Create(store, applications, catalog, null!, null!, f.Certificates, clients,
+            using var coordinator = WebsitePublicationTestScopes.Create(store, observation, catalog, null!, null!, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source,
                 executionCreated: () => Interlocked.Increment(ref executions),
                 cleanup: async () => { cleanupEntered.SetResult(); await releaseCleanup.Task; });
@@ -282,7 +283,7 @@ internal static class ModuleBackgroundOwnershipChecks
             await cleanupDrain.WaitAsync(TimeSpan.FromSeconds(5));
             Check(WebsitePublicationStore.Active(store.Get(operation.OperationId)!) && f.Active(ServerModules.WebServerId) == 0,
                 "Website stopping leaves a durable active record after actual observation ends");
-            using var restarted = WebsitePublicationTestScopes.Create(store, applications, catalog, null!, null!, f.Certificates, clients,
+            using var restarted = WebsitePublicationTestScopes.Create(store, observation, catalog, null!, null!, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await restarted.StartAsync(default);
             Check(store.Get(operation.OperationId)!.State == WebsitePublicationState.Interrupted && controlled.Calls == observationCalls,
@@ -293,7 +294,7 @@ internal static class ModuleBackgroundOwnershipChecks
             var web = DispatchProxy.Create<IWebServerManager, BackgroundWebsiteProvider>();
             var applied = (BackgroundWebsiteProvider)(object)web;
             var cert = DispatchProxy.Create<ICertificateManager, BackgroundWebsiteCertificate>();
-            using var associating = WebsitePublicationTestScopes.Create(store, applications, catalog, web, cert, f.Certificates, clients,
+            using var associating = WebsitePublicationTestScopes.Create(store, observation, catalog, web, cert, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await associating.StartAsync(default);
             var association = await associating.StartAsync(request, "actor", "association");
@@ -310,7 +311,7 @@ internal static class ModuleBackgroundOwnershipChecks
                 && WebsitePublicationStore.Active(store.Get(association.OperationId)!) && f.Active(ServerModules.WebServerId) == 0,
                 "Website shutdown finishes catalog association for the already applied site before releasing its lease");
             var reopened = new WebsitePublicationStore(f.Environment);
-            using var afterAssociation = WebsitePublicationTestScopes.Create(reopened, applications, catalog, web, cert, f.Certificates, clients,
+            using var afterAssociation = WebsitePublicationTestScopes.Create(reopened, observation, catalog, web, cert, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source,
                 executionCreated: () => Interlocked.Increment(ref executions));
             await afterAssociation.StartAsync(default);
@@ -362,7 +363,7 @@ internal static class ModuleBackgroundOwnershipChecks
                     "The TLS fixture must authenticate the loopback service before running the cancellation check.");
             var verification = new LoopbackWebsiteVerification(port, fingerprint);
             var verifyingCode = new WebServerExecutionCode(TimeSpan.FromMilliseconds(30));
-            using var verifying = WebsitePublicationTestScopes.Create(reopened, applications, catalog, web, cert, f.Certificates, verification,
+            using var verifying = WebsitePublicationTestScopes.Create(reopened, observation, catalog, web, cert, f.Certificates, verification,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source, code: verifyingCode);
             await verifying.StartAsync(default);
             var verifyingReceipt = await verifying.StartAsync(httpsRequest, "actor", "https-drain");
@@ -396,7 +397,7 @@ internal static class ModuleBackgroundOwnershipChecks
             Check(!System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies.Any(assembly => assembly.GetName().Name == "RelaxKonOS.ServerModule.WebServer"),
                 "Drained website execution is collected and never loads into the default context");
             var httpsRecovery = new WebsitePublicationStore(f.Environment);
-            using var recoveredHttps = WebsitePublicationTestScopes.Create(httpsRecovery, applications, catalog, web, cert, f.Certificates, verification,
+            using var recoveredHttps = WebsitePublicationTestScopes.Create(httpsRecovery, observation, catalog, web, cert, f.Certificates, verification,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await recoveredHttps.StartAsync(default);
             var httpsReplay = await recoveredHttps.StartAsync(httpsRequest, "actor", "https-drain");
@@ -412,7 +413,7 @@ internal static class ModuleBackgroundOwnershipChecks
             var failedRequest = request with { ApplicationId = failedApp.Id };
             var failingWeb = DispatchProxy.Create<IWebServerManager, BackgroundWebsiteProvider>();
             var failedApply = (BackgroundWebsiteProvider)(object)failingWeb;
-            using var failing = WebsitePublicationTestScopes.Create(httpsRecovery, applications, catalog, failingWeb, cert, f.Certificates, clients,
+            using var failing = WebsitePublicationTestScopes.Create(httpsRecovery, observation, catalog, failingWeb, cert, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await failing.StartAsync(default);
             var failedReceipt = await failing.StartAsync(failedRequest, "actor", "unknown-rollback");
@@ -427,7 +428,7 @@ internal static class ModuleBackgroundOwnershipChecks
             await failedDrain.WaitAsync(TimeSpan.FromSeconds(5));
 
             var unknownStore = new WebsitePublicationStore(f.Environment);
-            using var unknownRecovery = WebsitePublicationTestScopes.Create(unknownStore, applications, catalog, failingWeb, cert, f.Certificates, clients,
+            using var unknownRecovery = WebsitePublicationTestScopes.Create(unknownStore, observation, catalog, failingWeb, cert, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await unknownRecovery.StartAsync(default);
             var unknownReplay = await unknownRecovery.StartAsync(failedRequest, "actor", "unknown-rollback");
@@ -454,7 +455,7 @@ internal static class ModuleBackgroundOwnershipChecks
             var interruptedWeb = DispatchProxy.Create<IWebServerManager, BackgroundWebsiteProvider>();
             var interruptedApply = (BackgroundWebsiteProvider)(object)interruptedWeb;
             interruptedApply.HonorCancellationAfterRelease = true;
-            using var configuring = WebsitePublicationTestScopes.Create(unknownStore, applications, catalog, interruptedWeb, cert, f.Certificates, clients,
+            using var configuring = WebsitePublicationTestScopes.Create(unknownStore, observation, catalog, interruptedWeb, cert, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await configuring.StartAsync(default);
             var configuringReceipt = await configuring.StartAsync(interruptedRequest, "actor", "interrupted-configure");
@@ -467,7 +468,7 @@ internal static class ModuleBackgroundOwnershipChecks
                 "Website cancellation during site application preserves the last durable configuring stage");
 
             var configureRecovery = new WebsitePublicationStore(f.Environment);
-            using var recoveredConfigure = WebsitePublicationTestScopes.Create(configureRecovery, applications, catalog, interruptedWeb, cert, f.Certificates, clients,
+            using var recoveredConfigure = WebsitePublicationTestScopes.Create(configureRecovery, observation, catalog, interruptedWeb, cert, f.Certificates, clients,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
             await recoveredConfigure.StartAsync(default);
             var configureReplay = await recoveredConfigure.StartAsync(interruptedRequest, "actor", "interrupted-configure");

@@ -114,6 +114,7 @@ public static class ModulePackageBuilder
             options.CapabilityContractVersions?.OrderBy(item => item.Key, StringComparer.Ordinal)
                 .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal));
         ModulePackageRules.Manifest(manifest);
+        ModulePackageRules.Require(ModulePackageRules.MeetsModuleHostApiMinimum(manifest), "host-api-incompatible");
         validateManifest?.Invoke(manifest);
         ValidateEntryType(entryFile, options.EntryType);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
@@ -157,6 +158,9 @@ public static class ModulePackageBuilder
     public static async Task<(byte[] Envelope, string PublicKeySpki)> SignCatalogAsync(ModulePackageCatalog catalog,
         string keyId, string privateKeyPemPath, CancellationToken cancellationToken = default)
     {
+        foreach (var release in catalog.Releases)
+            ModulePackageRules.Require(ModulePackageRules.MeetsModuleHostApiMinimum(release.Manifest), "host-api-incompatible");
+
         var payload = JsonSerializer.SerializeToUtf8Bytes(catalog, ModulePackageJson.Options);
         using var key = ECDsa.Create();
         try { key.ImportFromPem(await File.ReadAllTextAsync(privateKeyPemPath, cancellationToken)); }

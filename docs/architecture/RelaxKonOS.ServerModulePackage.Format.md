@@ -108,7 +108,7 @@ RelaxKonOS.Server modules pack-package \
 RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <启用的官方源策略JSON> --private-key <离线PEM> --key-id <keyId> --output <新catalog.json>
 ```
 
-策略包含目标部署所用的授权模块、HTTPS origin 及签名公钥。命令在写出前验证签名、目录条目和内置模块替换契约。目标路径必须尚不存在。部署时仍由宿主根据自身已接纳的历史核验目录序号、不可变版本和撤销记录。
+策略包含目标部署所用的授权模块、HTTPS origin 及签名公钥。签名前校验已有归档的模块 ABI 下限，写出前验证签名、目录条目和内置模块替换契约。目标路径必须尚不存在。部署时仍由宿主根据自身已接纳的历史核验目录序号、不可变版本和撤销记录。
 
 使用 `pack-package` 打包以下随 Core 发行的执行代码时，从该发行的 `Modules/<目录>` 取指定 RID 的文件，使用 `--purpose official --runtime in-process`。打包、商店和安装共用内置模块替换检查。部署方需在已信任来源策略中显式授权相应模块 ID。
 
@@ -118,6 +118,7 @@ RelaxKonOS.Server modules sign-catalog --payload <合并后的JSON> --policy <�
 | `relaxkonos.firewall` | `Firewall` | `RelaxKonOS.Server.Firewall.FirewallExecutionModule` | `server.firewall` |
 | `relaxkonos.git` | `Git` | `RelaxKonOS.Server.Git.GitExecutionModule` | `server.git` |
 | `relaxkonos.docker` | `Docker` | `RelaxKonOS.Server.Docker.DockerComposeExecutor` | `server.docker` |
+| `relaxkonos.application-deployments` | `ApplicationDeployments` | `RelaxKonOS.Server.ApplicationDeployments.ApplicationArchiveExtractor` | `server.application-deployments` |
 | `relaxkonos.webserver` | `WebServer` | `RelaxKonOS.Server.WebsitePublishing.WebsitePublicationExecutor` | `server.web-server` |
 | `relaxkonos.certificates` | `Certificates` | `RelaxKonOS.Server.Certificate.AnvilAcmeExecutor` | `server.certificates` |
 | `relaxkonos.proxy` | `Proxy` | `RelaxKonOS.Server.Proxy.ProxyOverviewExecutor` | `server.proxy,server.gateway-proxy,server.proxy-server` |
@@ -130,6 +131,7 @@ Proxy 包解包并验证文件摘要后，宿主检查总览、连接快照、�
 Firewall 包在相同的安装、暂存复用和回退边界校验 `IFirewallExecutionModule` 接口及接收 `FirewallExecutionContext` 的公开构造函数。
 Tailscale 包在这些边界校验 `ITailscaleExecution` 接口及公开无参构造函数。
 Tunnels 包在这些边界校验 `ITunnelExecution` 接口及公开无参构造函数。
+Application Deployments 包在 CLI 打包、安装、已选版本重试、激活、回退和启动时校验公开静态 `PrepareBuildContextAsync` 和 `PruneBuildContexts` 入口。打包时入口不兼容会在写出归档和签名前返回 `module-package-execution-contract`。该执行包无模块依赖，需随目标 Core 契约重新打包并签名。
 Docker 与 Web Server 包在这些边界复用启动时的全部入口检查。Docker 覆盖 Compose、Engine 控制、镜像源、代理投影和操作结果。Web Server 覆盖站点发布、Nginx 集成、重载、网站根目录和生命周期。
 Certificates 包校验 ACME 服务及续期信息接口、公开构造签名和私有依赖程序集。Git 包校验 `IGitExecutionModule` 接口和接收 `GitExecutionContext` 的公开构造函数。
 
@@ -217,7 +219,8 @@ remove-installed 只移除 `installed.json` 记录，默认保留版本文件；
 `ModulePackageManifest` 只接受 schemaVersion=3，必填 `runtime`、`privileges`、`ui`。旧 v1/v2 清单、缺字段、未知运行模式、未知能力类别或未知字段都拒绝；不保留双解析。发布者身份继续使用 `publisherId`，不接收 `publisher` 别名。签名目录 envelope/payload、来源策略仍是其各自的 schemaVersion=1 与 `ServerModuleCatalog.v1` 签名域；它们不是模块清单版本。
 
 - `runtime=in-process` 只接受 `purpose=official`，继续使用进程内 ABI 1.0.0。
-- `runtime=module-host` 当前使用 ModuleHost ABI 2.4.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。`cloud-storage` 和 `cloud-baidu` 需要 ABI 2.3.0，`cloud-webdav` 和 `cloud-s3` 的最低 ABI 仍为 2.2.0。
+- `runtime=module-host` 当前使用 ModuleHost ABI 2.5.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。`cloud-storage` 和 `cloud-baidu` 需要 ABI 2.3.0，`cloud-webdav` 和 `cloud-s3` 的最低 ABI 仍为 2.2.0。
+- `relaxkonos.database` 的 `module-host` 包需要 ABI 2.5.0。Core 的私有 broker 为 PostgreSQL 状态查询返回 Helper 状态和备份操作候选，由独立观察入口组装公开状态。打包、目录和安装兼容性检查均要求 `hostApiMinimum` 至少为 `2.5.0`。
 - `privileges` 是 **能力类别 + 类型化资源范围** 的数组，最多 64 项，由 `kind` 判别。类别、字段、动作枚举和范围都按共享 `ModuleCapabilityCatalog` 校验；未知类别或未知字段直接拒绝。
   - 每个声明必须带 `platforms`（`linux`/`windows`/`macos`），且必须包含清单 `rid` 对应的平台。
   - `service.manage`：`services[{serviceId, actions}]`，动作限 `start`/`stop`/`restart`。已验证可执行的类别。

@@ -57,7 +57,7 @@ internal static class CatalogComposeCrashChecks
             TestAssert.Assert(child is null, "The missing-receipt fixture must have no Docker child.");
         var logs = new ApplicationDeploymentLiveLogs();
         var service = new ApplicationDeploymentService(null!, null!, null!, null!, null!, options, environment,
-            logs, null!, NullLogger<ApplicationDeploymentService>.Instance);
+            logs, null!, NullLogger<ApplicationDeploymentService>.Instance, ApplicationArchiveExecution.Bundled);
         var coordinator = new ApplicationDeploymentCoordinator(operations, null!, service, options, logs, lifetime,
             new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, dispatch);
         await coordinator.StartAsync(default);

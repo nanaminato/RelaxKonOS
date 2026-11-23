@@ -82,7 +82,6 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
         builder.Services.AddScoped(services => new ProxySubscriptionOperations(services.GetRequiredService<ProxyOperationStore>(),
             services.GetRequiredService<IServiceScopeFactory>()) { Execution = SubscriptionExecution });
         builder.Services.AddScoped<ProxyLifecycleOperations>();
-        builder.Services.AddScoped<MihomoManagedTunOperations>();
         builder.Services.AddScoped<MihomoNamedTunStartRecovery>();
         builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddScoped<IProxyLifecycleService, ProxyLifecycleService>();
@@ -126,6 +125,7 @@ internal class ProxyModule : IServerModule, IServerModuleDeactivationGuard, ISer
         // IProxyProfileRepository and fails closed when it is absent.
         if (string.Equals(context.StorageProvider, "sqlite", StringComparison.OrdinalIgnoreCase))
         {
+            builder.Services.AddScoped<MihomoManagedTunOperations>();
             builder.Services.AddTransient<IProxyProfileService, ProxyProfileService>();
             builder.Services.AddScoped<IProxySubscriptionService, ProxySubscriptionService>();
             builder.Services.AddScoped<IProxySubscriptionActions, ProxySubscriptionActions>();

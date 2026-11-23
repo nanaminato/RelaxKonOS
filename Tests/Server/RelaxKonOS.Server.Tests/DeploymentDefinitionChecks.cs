@@ -34,18 +34,30 @@ internal static class DeploymentDefinitionChecks
     {
         using var payload = new MemoryStream();
         using (var zip = new ZipArchive(payload, ZipArchiveMode.Create, leaveOpen: true))
-        using (var entry = zip.CreateEntry("published/content.txt").Open())
-            entry.Write("content"u8);
-        payload.Position = 0;
+        {
+            using (var entry = zip.CreateEntry("published/demo.py").Open()) entry.Write("print('demo')"u8);
+            using (var entry = zip.CreateEntry("published/requirements.txt").Open()) entry.Write("# No external requirements"u8);
+        }
         var buildContext = Path.Combine(root, "extracted");
+        var plan = new DeploymentPlan(ApplicationSourceKind.PythonProject, "1.0", "test:1", "python:3.12-slim",
+            "archive", null, "demo", [], false);
+        var archiveOptions = new ApplicationDeploymentOptions { MaximumArchiveEntries = 10, MaximumExpandedBytes = 100, MaximumPathDepth = 4 };
         Check(!typeof(ApplicationArchiveExecution).Assembly.GetReferencedAssemblies().Any(reference => reference.Name == "RelaxKonOS.ServerModule.ApplicationDeployments"),
             "Core must not reference the archive execution assembly at compile time.");
-        Check(await ApplicationArchiveExecution.Bundled.PrepareAsync(payload, buildContext, 10, 100, 4, default) is null
-            && File.ReadAllText(Path.Combine(buildContext, "content.txt")) == "content",
+        payload.Position = 0;
+        Check(await ApplicationArchiveExecution.Bundled.PrepareBuildContextAsync(payload, buildContext, plan,
+                ApplicationWorkloadKind.Web, 8080, archiveOptions, default) == "python -m demo"
+            && File.ReadAllText(Path.Combine(buildContext, "demo.py")) == "print('demo')",
             "The deployment execution assembly must materialize the bounded build context.");
         payload.Position = 0;
-        Check(await ApplicationArchiveExecution.Bundled.PrepareAsync(payload, buildContext, 10, 3, 4, default)
-            == ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge, "The execution assembly must preserve the archive size problem code.");
+        archiveOptions.MaximumExpandedBytes = 3;
+        try
+        {
+            await ApplicationArchiveExecution.Bundled.PrepareBuildContextAsync(payload, Path.Combine(root, "over-limit"), plan,
+                ApplicationWorkloadKind.Web, 8080, archiveOptions, default);
+            throw new InvalidOperationException("The execution assembly accepted an archive over the byte limit.");
+        }
+        catch (ApplicationDeploymentException error) when (error.ProblemCode == ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge) { }
 
         var guardRoot = Directory.CreateDirectory(Path.Combine(root, "module-guard")).FullName;
         var disabledBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = guardRoot });
@@ -54,11 +66,17 @@ internal static class DeploymentDefinitionChecks
         disabledBuilder.Services.AddApplicationDeploymentState();
         disabledBuilder.Services.AddBackupRecoveryState();
         disabled.ConfigureServices(disabledBuilder, context);
+        Check(disabledBuilder.Services.Any(service => service.ServiceType == typeof(ApplicationContainerObservation)),
+            "Core must keep the read-only container observer available for website publication.");
         await using (var disabledHost = disabledBuilder.Build())
         {
             disabled.MapEndpoints(disabledHost, context);
             Check(!disabled.Capabilities.Contains(ServerCapabilities.ApplicationDeployments)
                 && disabledHost.Services.GetService<ApplicationDeploymentCoordinator>() is null
+                && disabledHost.Services.GetService<ApplicationDeploymentManager>() is null
+                && disabledHost.Services.GetService<ApplicationDeploymentRuntime>() is null
+                && disabledHost.Services.GetService<ApplicationDeploymentSecretStore>() is null
+                && disabledHost.Services.GetService<ApplicationDeploymentImageTagCatalog>() is null
                 && !((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)disabledHost).DataSources.Any(),
                 "A disabled deployment module must expose no coordinator, routes, Hub or capability.");
             IServerModuleDeactivationGuard guard = new ApplicationDeploymentsModule();
@@ -104,7 +122,7 @@ internal static class DeploymentDefinitionChecks
         var engine = DispatchProxy.Create<IDockerEngineService, DefinitionReadEngine>();
         var clients = new FixtureHttpClientFactory([]);
         var runtime = new ApplicationDeploymentRuntime(engine, options, clients, NullLogger<ApplicationDeploymentRuntime>.Instance);
-        var manager = new ApplicationDeploymentManager(catalog, secrets, operations, runtime, options,
+        var manager = new ApplicationDeploymentManager(catalog, secrets, operations, runtime, new ApplicationContainerObservation(engine), options,
             new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
         var created = await manager.CreateAsync(new CreateApplicationRequest("website", ApplicationSourceKind.Image,
             HostPort: 9080, HealthCheckPath: "/ready", Limits: new(1.5, 16L * 1024 * 1024 + 1, 512),

@@ -632,6 +632,11 @@ if (args.Contains("--deployment-definition-only"))
     catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     return;
 }
+if (args is ["--guardian-agent-live", var guardianExecutable, .. var guardianDesktopArgs])
+{
+    await GuardianReadChecks.RunAgentAsync(guardianExecutable, guardianDesktopArgs);
+    return;
+}
 if (args.Contains("--guardian-read-only"))
 {
     await GuardianReadChecks.RunAsync();
@@ -741,6 +746,11 @@ if (args is ["--docker-proxy-only"])
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         proxyTestRoot.Delete(recursive: true);
     }
+    return;
+}
+if (args is ["--file-services-live", var smbHelper, var smbDesktop, var smbPackage])
+{
+    await FileServicesLiveChecks.RunAsync(smbHelper, smbDesktop, smbPackage);
     return;
 }
 if (args.Contains("--file-services-only"))

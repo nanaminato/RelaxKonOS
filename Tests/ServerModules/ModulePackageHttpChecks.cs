@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Protocol.Git;
@@ -28,6 +29,7 @@ using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.Tailscale;
+using RelaxKonOS.ServerModule.DatabaseObservation;
 
 internal static class ModulePackageHttpChecks
 {
@@ -75,20 +77,50 @@ internal static class ModulePackageHttpChecks
                 Dependencies = [new("fixture-http", "1.0.0", "2.0.0")],
                 Ui = new("Dependent Module", "", "", null, "UNLICENSED"),
             }, now);
-            var database = isolated ? null : await ModulePackageBuilder.BuildAsync(packageOptions with
+            var databasePublish = Path.Combine(root, "database-publish");
+            var databaseEntry = typeof(DatabaseModuleHostEntry);
+            var databaseAssembly = Path.GetFileName(databaseEntry.Assembly.Location);
+            Directory.CreateDirectory(databasePublish);
+            File.Copy(databaseEntry.Assembly.Location, Path.Combine(databasePublish, databaseAssembly));
+            var databaseOptions = packageOptions with
             {
+                PublishDirectory = databasePublish,
                 ModuleId = ServerModules.DatabaseId,
                 ReleaseId = "fixture-database-" + rid,
+                EntryAssembly = databaseAssembly,
+                EntryType = databaseEntry.FullName!,
                 Runtime = "module-host",
-                HostApiMinimum = "2.4.0",
+                HostApiMinimum = DatabaseObservationProtocol.HostApiMinimum,
                 HostApiMaximumExclusive = "3.0.0",
                 Ui = new("Database Observation", "", "", null, "UNLICENSED"),
-            }, now);
+            };
+            var database = isolated ? null : await ModulePackageBuilder.BuildAsync(databaseOptions, now);
+            if (database is not null)
+            {
+                check(ModulePackageVerifier.SupportsHostApi(database.Manifest, "1.0.0")
+                    && !ModulePackageVerifier.SupportsHostApi(database.Manifest with { HostApiMinimum = "2.4.0" }, "1.0.0"),
+                    "database observation packages require a host API range starting at 2.5.0 or later");
+                var obsoleteOutput = Path.Combine(root, "obsolete-database");
+                try
+                {
+                    await ModulePackageBuilder.BuildAsync(databaseOptions with
+                    {
+                        HostApiMinimum = "2.4.0", OutputDirectory = obsoleteOutput,
+                    }, now);
+                    check(false, "the builder rejects an obsolete database host API range");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-host-api-incompatible")
+                {
+                    check(!Directory.EnumerateFileSystemEntries(obsoleteOutput).Any(),
+                        "the builder rejects an obsolete database host API range without writing release artifacts");
+                }
+            }
             ModulePackageBuildResult[] tailscale = [];
             ModulePackageBuildResult[] firewall = [];
             ModulePackageBuildResult[] git = [];
             ModulePackageBuildResult[] docker = [];
             ModulePackageBuildResult[] deployments = [];
+            ModulePackageBuildResult? invalidDeployment = null;
             ModulePackageBuildResult[] webServer = [];
             ModulePackageBuildResult[] certificates = [];
             ModulePackageBuildResult[] proxy = [];
@@ -158,7 +190,8 @@ internal static class ModulePackageHttpChecks
                     { Version = "2.0.0", ReleaseId = "docker-2.0.0-" + rid }, now)];
                 var deploymentOptions = dockerOptions with
                 {
-                    PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments"),
+                    PublishDirectory = Environment.GetEnvironmentVariable("RK_TEST_SIGNED_DEPLOYMENT_PUBLISH")
+                        ?? Path.Combine(AppContext.BaseDirectory, "Modules", "ApplicationDeployments"),
                     OutputDirectory = Path.Combine(root, "application-deployments-package"),
                     ModuleId = ServerModules.ApplicationDeploymentsId,
                     ReleaseId = "application-deployments-1.0.0-" + rid,
@@ -170,6 +203,15 @@ internal static class ModulePackageHttpChecks
                 deployments = [await ModulePackageBuilder.BuildAsync(deploymentOptions, now),
                     await ModulePackageBuilder.BuildAsync(deploymentOptions with
                     { Version = "2.0.0", ReleaseId = "application-deployments-2.0.0-" + rid }, now)];
+                var invalidPublish = Directory.CreateDirectory(Path.Combine(root, "invalid-deployment-publish")).FullName;
+                File.Copy(typeof(ApplicationArchiveExtractor).Assembly.Location,
+                    Path.Combine(invalidPublish, ApplicationArchiveExecution.AssemblyFile));
+                invalidDeployment = await ModulePackageBuilder.BuildAsync(deploymentOptions with
+                {
+                    PublishDirectory = invalidPublish,
+                    Version = "3.0.0",
+                    ReleaseId = "application-deployments-invalid-" + rid,
+                }, now);
                 var webOptions = dockerOptions with
                 {
                     PublishDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer"),
@@ -537,6 +579,66 @@ internal static class ModulePackageHttpChecks
                 await VerifyExecutionPackageVersionsAsync<InstalledGitModule>(client, root, git, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledDockerModule>(client, root, docker, check);
                 await VerifyExecutionPackageVersionsAsync<InstalledApplicationDeploymentsModule>(client, root, deployments, check);
+                var originalDeployment = InstalledModuleStore.Read(root)
+                    .Single(record => record.ModuleId == ServerModules.ApplicationDeploymentsId);
+                await using (var invalidArchive = File.OpenRead(invalidDeployment!.ArchivePath))
+                {
+                    try
+                    {
+                        await InstalledModuleInstaller.InstallVerifiedAsync(root, "official", invalidDeployment.Manifest,
+                            invalidDeployment.ManifestSha256, invalidDeployment.ArchiveSha256, invalidArchive, now);
+                        throw new InvalidOperationException("The installer accepted a deployment package without a build context entry point.");
+                    }
+                    catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                    {
+                        var selectedDeployment = InstalledModuleStore.Read(root).Single(record => record.ModuleId == ServerModules.ApplicationDeploymentsId);
+                        check(selectedDeployment.Version == originalDeployment.Version && selectedDeployment.ArtifactSha256 == originalDeployment.ArtifactSha256,
+                            "rejecting an invalid deployment execution contract preserves the selected signed package");
+                    }
+                }
+                var legacyRoot = Path.Combine(root, "legacy-deployment-host");
+                var legacyPath = $"packages/{invalidDeployment.Manifest.ModuleId}/{invalidDeployment.Manifest.Version}";
+                var legacyDirectory = Path.Combine(legacyRoot, "data", "module-management", legacyPath);
+                System.IO.Compression.ZipFile.ExtractToDirectory(invalidDeployment.ArchivePath, legacyDirectory);
+                var legacyRecord = originalDeployment with
+                {
+                    Version = invalidDeployment.Manifest.Version,
+                    ReleaseId = invalidDeployment.Manifest.ReleaseId,
+                    PackagePath = legacyPath,
+                    ManifestSha256 = invalidDeployment.ManifestSha256,
+                    ArtifactSha256 = invalidDeployment.ArchiveSha256,
+                };
+                InstalledModuleStore.Write(legacyRoot, [legacyRecord]);
+                await using (var legacyArchive = File.OpenRead(invalidDeployment.ArchivePath))
+                {
+                    try
+                    {
+                        await InstalledModuleInstaller.InstallVerifiedAsync(legacyRoot, "official", invalidDeployment.Manifest,
+                            invalidDeployment.ManifestSha256, invalidDeployment.ArchiveSha256, legacyArchive, now);
+                        throw new InvalidOperationException("Retry accepted a selected deployment package with an obsolete contract.");
+                    }
+                    catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                    {
+                        check(InstalledModuleStore.Read(legacyRoot).Single().ArtifactSha256 == legacyRecord.ArtifactSha256,
+                            "retry revalidates an already selected deployment package without changing its record");
+                    }
+                }
+                InstalledModuleStore.WriteInstallMetadata(legacyDirectory, legacyRecord);
+                var restoredDirectory = Path.Combine(legacyRoot, "data", "module-management", originalDeployment.PackagePath);
+                System.IO.Compression.ZipFile.ExtractToDirectory(deployments[0].ArchivePath, restoredDirectory);
+                InstalledModuleStore.WriteInstallMetadata(restoredDirectory, originalDeployment);
+                InstalledModuleStore.Write(legacyRoot, [originalDeployment]);
+                try
+                {
+                    await InstalledModuleInstaller.RollbackAsync(legacyRoot, builder.Configuration,
+                        legacyRecord.ModuleId, legacyRecord.Version);
+                    throw new InvalidOperationException("Rollback selected a deployment package with an obsolete contract.");
+                }
+                catch (ModulePackageException error) when (error.ProblemCode == "module-package-execution-contract")
+                {
+                    check(InstalledModuleStore.Read(legacyRoot).Single().ArtifactSha256 == originalDeployment.ArtifactSha256,
+                        "rollback to an incompatible archived deployment package preserves the current selection");
+                }
                 if (Environment.GetEnvironmentVariable("RK_TEST_SIGNED_DEPLOYMENT_RUNNER") is { Length: > 0 } deploymentRunner)
                     await VerifyLiveInstalledDeploymentAsync(root, deploymentRunner, check);
                 var deploymentHost = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
@@ -545,40 +647,62 @@ internal static class ModulePackageHttpChecks
                 await using (var deploymentApp = deploymentHost.Build())
                 {
                     var executor = deploymentApp.Services.GetRequiredService<ApplicationArchiveExecution>();
-                    using var archive = new MemoryStream();
-                    using (var zip = new System.IO.Compression.ZipArchive(archive, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
-                    using (var entry = zip.CreateEntry("wrapped/content.txt").Open()) entry.Write("installed"u8);
-                    archive.Position = 0;
-                    var destination = Path.Combine(root, "installed-deployment-context");
-                    check(await executor.PrepareAsync(archive, destination, 10, 1024, 4, default) is null
-                        && await File.ReadAllTextAsync(Path.Combine(destination, "content.txt")) == "installed",
-                        "rolled-back Application Deployments package extracts a build archive with installed execution");
-                    await File.WriteAllTextAsync(Path.Combine(destination, ".dockerignore"), "*\n");
-                    using (var jar = System.IO.Compression.ZipFile.Open(Path.Combine(destination, "demo.jar"), System.IO.Compression.ZipArchiveMode.Create))
+                    var contextRoot = Path.Combine(root, "deleted-application-contexts");
+                    var deletedApplication = Guid.NewGuid();
+                    var expiredContext = Directory.CreateDirectory(Path.Combine(contextRoot, $"{deletedApplication:N}-{Guid.NewGuid():N}")).FullName;
+                    var activeContext = Directory.CreateDirectory(Path.Combine(contextRoot, $"{deletedApplication:N}-{Guid.NewGuid():N}")).FullName;
+                    var unrelatedContext = Directory.CreateDirectory(Path.Combine(contextRoot, $"{Guid.NewGuid():N}-{Guid.NewGuid():N}")).FullName;
+                    executor.PruneBuildContexts(contextRoot, new HashSet<string>(StringComparer.Ordinal) { activeContext }, deletedApplication);
+                    check(!Directory.Exists(expiredContext) && Directory.Exists(activeContext) && Directory.Exists(unrelatedContext),
+                        "the rolled-back signed module cleans only inactive contexts for the deleted application");
+                    async Task<string> PrepareAsync(string source, string destination, DeploymentPlan plan, ApplicationDeploymentOptions options)
+                    {
+                        using var archive = new MemoryStream();
+                        System.IO.Compression.ZipFile.CreateFromDirectory(source, archive,
+                            System.IO.Compression.CompressionLevel.Fastest, includeBaseDirectory: true);
+                        archive.Position = 0;
+                        return await executor.PrepareBuildContextAsync(archive, destination, plan, ApplicationWorkloadKind.Web, 8080, options, default);
+                    }
+
+                    var javaSource = Directory.CreateDirectory(Path.Combine(root, "java-publish")).FullName;
+                    var destination = Path.Combine(root, "java-context");
+                    await File.WriteAllTextAsync(Path.Combine(javaSource, ".dockerignore"), "*\n");
+                    using (var jar = System.IO.Compression.ZipFile.Open(Path.Combine(javaSource, "demo.jar"), System.IO.Compression.ZipArchiveMode.Create))
                     using (var manifest = jar.CreateEntry("META-INF/MANIFEST.MF").Open()) manifest.Write("Main-Class: Demo\n"u8);
-                    await executor.WriteDockerfileAsync(destination, RelaxKonOS.Protocol.ApplicationDeployments.ApplicationSourceKind.JavaJar,
-                        "eclipse-temurin:21-jre-jammy", 8080, "app.jar", false, default);
+                    var options = new ApplicationDeploymentOptions
+                    {
+                        DotNetSelfContainedBaseImage = "mcr.microsoft.com/dotnet/runtime-deps:9.0",
+                        DotNetWebBaseImage = "mcr.microsoft.com/dotnet/aspnet:9.0",
+                        DotNetWorkerBaseImage = "mcr.microsoft.com/dotnet/runtime:9.0",
+                    };
+                    var payloadPlan = new DeploymentPlan(ApplicationSourceKind.JavaJar, "1.0", "fixture:1.0",
+                        "eclipse-temurin:21-jre-jammy", null, null, null, [], false);
+                    var entryPoint = await PrepareAsync(javaSource, destination, payloadPlan, options);
                     var dockerfile = await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile"));
-                    check(dockerfile.StartsWith("FROM eclipse-temurin:21-jre-jammy", StringComparison.Ordinal)
+                    check(entryPoint == "java -jar /app/app.jar"
+                        && dockerfile.StartsWith("FROM eclipse-temurin:21-jre-jammy", StringComparison.Ordinal)
                         && dockerfile.Contains("\"-jar\",\"/app/app.jar\"", StringComparison.Ordinal)
                         && File.Exists(Path.Combine(destination, "app.jar")) && !File.Exists(Path.Combine(destination, "demo.jar"))
                         && !(await File.ReadAllTextAsync(Path.Combine(destination, ".dockerignore"))).Contains('*'),
                         "rolled-back Application Deployments package writes the generated build files");
-                    await File.WriteAllTextAsync(Path.Combine(destination, "requirements.txt"), "example==1.0.0\n");
-                    await File.WriteAllTextAsync(Path.Combine(destination, "demo.py"), "print('hello')\n");
-                    await executor.WriteDockerfileAsync(destination, RelaxKonOS.Protocol.ApplicationDeployments.ApplicationSourceKind.PythonProject,
-                        "python:3.12-slim", 8080, "demo", false, default);
+                    var pythonSource = Directory.CreateDirectory(Path.Combine(root, "python-publish")).FullName;
+                    destination = Path.Combine(root, "python-context");
+                    await File.WriteAllTextAsync(Path.Combine(pythonSource, "requirements.txt"), "example==1.0.0\n");
+                    await File.WriteAllTextAsync(Path.Combine(pythonSource, "demo.py"), "print('hello')\n");
+                    payloadPlan = payloadPlan with { SourceKind = ApplicationSourceKind.PythonProject, BaseImage = "python:3.12-slim", ProgramEntry = "demo" };
+                    entryPoint = await PrepareAsync(pythonSource, destination, payloadPlan, options);
                     dockerfile = await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile"));
-                    check(dockerfile.Contains("RUN pip install --requirement /app/requirements.txt", StringComparison.Ordinal)
+                    check(entryPoint == "python -m demo"
+                        && dockerfile.Contains("RUN pip install --requirement /app/requirements.txt", StringComparison.Ordinal)
                         && dockerfile.Contains("ENTRYPOINT [\"python\",\"-m\",\"demo\"]", StringComparison.Ordinal),
                         "rolled-back Application Deployments package prepares a locked Python payload");
-                    await File.WriteAllTextAsync(Path.Combine(destination, "Demo.dll"), "fixture");
-                    await File.WriteAllTextAsync(Path.Combine(destination, "Demo.runtimeconfig.json"),
+                    var dotnetSource = Directory.CreateDirectory(Path.Combine(root, "dotnet-publish")).FullName;
+                    destination = Path.Combine(root, "dotnet-context");
+                    await File.WriteAllTextAsync(Path.Combine(dotnetSource, "Demo.dll"), "fixture");
+                    await File.WriteAllTextAsync(Path.Combine(dotnetSource, "Demo.runtimeconfig.json"),
                         """{"runtimeOptions":{"tfm":"net10.0","frameworks":[{"name":"Microsoft.AspNetCore.App"}]}}""");
-                    var entryPoint = await executor.PrepareDotNetAsync(destination, null, "10.0", false,
-                        RelaxKonOS.Protocol.ApplicationDeployments.ApplicationWorkloadKind.Web, 8080,
-                        "mcr.microsoft.com/dotnet/runtime-deps:9.0", "mcr.microsoft.com/dotnet/aspnet:9.0",
-                        "mcr.microsoft.com/dotnet/runtime:9.0", default);
+                    payloadPlan = payloadPlan with { SourceKind = ApplicationSourceKind.DotNetPublish, BaseImage = null, RuntimeVersion = "10.0", ProgramEntry = null };
+                    entryPoint = await PrepareAsync(dotnetSource, destination, payloadPlan, options);
                     dockerfile = await File.ReadAllTextAsync(Path.Combine(destination, "Dockerfile"));
                     check(entryPoint == "dotnet Demo.dll" && dockerfile.StartsWith("FROM mcr.microsoft.com/dotnet/aspnet:10.0", StringComparison.Ordinal),
                         "rolled-back Application Deployments package selects the .NET publish entry and matching base image");
@@ -842,7 +966,7 @@ internal static class ModulePackageHttpChecks
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(4));
         try { await process.WaitForExitAsync(deadline.Token); }
         finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
-        check(process.ExitCode == 0, "the rolled-back signed Application Deployments module builds and serves a real Python workload");
+        check(process.ExitCode == 0, "the rolled-back signed Application Deployments module builds and serves a real archive workload");
     }
 
     private static async Task VerifyExecutionPackageVersionsAsync<TModule>(HttpClient client, string root,

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RelaxKonOS.ModulePackaging;
+using RelaxKonOS.Server.ApplicationDeployments;
 
 namespace RelaxKonOS.Server.Startup;
 
@@ -114,6 +115,17 @@ internal static class ModulePackageBuildCommand
             {
                 if (ServerModules.ConflictsWithBundledModule(manifest))
                     throw new ModulePackageException(ServerModules.PackageModuleIdConflict);
+                if (InstalledApplicationDeploymentsModule.MatchesManifest(manifest))
+                {
+                    try
+                    {
+                        ApplicationArchiveExecution.ValidateEntryPoint(Path.Combine(options.PublishDirectory, ApplicationArchiveExecution.AssemblyFile));
+                    }
+                    catch (InvalidDataException)
+                    {
+                        throw new ModulePackageException("module-package-execution-contract");
+                    }
+                }
             });
             Console.WriteLine(JsonSerializer.Serialize(new
             {

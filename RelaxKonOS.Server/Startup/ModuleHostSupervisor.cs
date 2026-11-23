@@ -358,7 +358,10 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         var serviceId = ModuleManagementStore.ReadRecoveryReport(root).ServiceId;
         var catalogs = ModulePackageCatalogStore.Read(root, serviceId);
         ModulePackageCatalogStore.EnsureNotRevoked(catalogs, installed.ReleaseId, installed.ArtifactSha256);
-        return InstalledModuleStore.VerifyPackage(root, installed);
+        var manifest = InstalledModuleStore.VerifyPackage(root, installed);
+        if (!ModulePackageVerifier.SupportsHostApi(manifest, ModulePackageHostConfiguration.HostApiVersion))
+            throw new ModulePackageException("module-package-host-api-incompatible");
+        return manifest;
     }
 
     private Entry FindEntry(string moduleId)

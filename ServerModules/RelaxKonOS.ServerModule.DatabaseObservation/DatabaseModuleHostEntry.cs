@@ -1,8 +1,11 @@
+using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Databases;
 
 namespace RelaxKonOS.ServerModule.DatabaseObservation;
@@ -44,11 +47,23 @@ public sealed class DatabaseModuleHostEntry : IModuleHostEntry, IModuleHostHttp
         try
         {
             using var response = await observation.ReadAsync(kind, instance, http.RequestAborted);
+            if (kind == DatabaseObservationKind.PostgreSqlState && response.IsSuccessStatusCode)
+            {
+                var snapshot = await response.Content.ReadFromJsonAsync<PostgreSqlObservationSnapshot>(
+                    RelaxKonOSJsonOptions.Default, http.RequestAborted);
+                if (snapshot?.State is not { } state)
+                    throw new JsonException("Missing PostgreSQL observation state.");
+                await http.Response.WriteAsJsonAsync(state with
+                {
+                    ScheduledOperation = snapshot.PendingBackup ?? snapshot.CurrentSlot ?? snapshot.PreviousBackup,
+                }, RelaxKonOSJsonOptions.Default, http.RequestAborted);
+                return;
+            }
             http.Response.StatusCode = (int)response.StatusCode;
             http.Response.ContentType = response.Content.Headers.ContentType?.ToString();
             await response.Content.CopyToAsync(http.Response.Body, http.RequestAborted);
         }
-        catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
+        catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException or JsonException)
         {
             if (http.Response.HasStarted || http.RequestAborted.IsCancellationRequested)
             {

@@ -143,7 +143,11 @@ internal static class InstalledModuleInstaller
         if (Directory.Exists(destination))
         {
             if (current is not null && current.Version == manifest.Version && current.ArtifactSha256 == artifactSha256)
+            {
+                var installedManifest = InstalledModuleStore.VerifyPackage(contentRoot, current);
+                VerifyExecutionContract(destination, installedManifest);
                 return current;
+            }
             if (!activate)
             {
                 var staged = InstalledModuleStore.ReadInstallMetadata(contentRoot, packagePath);
@@ -256,8 +260,11 @@ internal static class InstalledModuleInstaller
         return Task.FromResult(target);
     }
 
-    private static void VerifyExecutionContract(string packageRoot, ModulePackageManifest manifest)
+    internal static void VerifyExecutionContract(string packageRoot, ModulePackageManifest manifest)
     {
+        if (!ModulePackageVerifier.SupportsHostApi(manifest, ModulePackageHostConfiguration.HostApiVersion))
+            throw new ModulePackageException("module-package-host-api-incompatible");
+
         var entry = Path.Combine(packageRoot, manifest.EntryAssembly);
         try
         {

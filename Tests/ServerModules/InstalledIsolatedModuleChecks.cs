@@ -64,6 +64,16 @@ internal static class InstalledIsolatedModuleChecks
             var bad = await StageAsync(root, nextManifest with { Version = "3.0.0", ReleaseId = "fixture-host-unhealthy",
                 EntryType = "HostFixture.FixtureUnhealthyHostEntry" }, bytes);
             ModuleTrustStore.Set(root, bad, "test-administrator", trusted: true, preserve: record);
+            var obsoleteManifest = nextManifest with { Version = "4.0.0", ReleaseId = "fixture-host-obsolete" };
+            var obsolete = await StageAsync(root, obsoleteManifest, bytes);
+            var obsoleteRoot = InstalledModuleStore.ResolvePackageRoot(root, obsolete.PackagePath);
+            var obsoleteMetadata = JsonSerializer.SerializeToUtf8Bytes(obsoleteManifest with
+            {
+                HostApiMaximumExclusive = ModuleHostProtocol.HostApiVersion,
+            }, ModulePackageJson.Options);
+            await File.WriteAllBytesAsync(Path.Combine(obsoleteRoot, "manifest.json"), obsoleteMetadata);
+            obsolete = obsolete with { ManifestSha256 = Hash(obsoleteMetadata) };
+            InstalledModuleStore.WriteInstallMetadata(obsoleteRoot, obsolete);
             var modules = ServerModules.CreateManaged(new HashSet<string> { record.ModuleId }, [module]);
             using (var management = new ModuleManagementStore(builder.Configuration, root, [module]))
             {
@@ -79,6 +89,26 @@ internal static class InstalledIsolatedModuleChecks
                     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                     while (supervisor.Snapshot().SingleOrDefault()?.Status != "running")
                         await Task.Delay(25, timeout.Token);
+                    try
+                    {
+                        await supervisor.ReplaceAsync(record, obsolete, () => InstalledModuleInstaller.Activate(root, obsolete), timeout.Token);
+                        throw new InvalidOperationException("The supervisor accepted an archived package with an obsolete ABI.");
+                    }
+                    catch (ModulePackageException error) when (error.ProblemCode == "module-package-host-api-incompatible")
+                    {
+                        check(supervisor.Snapshot().Single() is { Status: "running", Version: "1.0.0" },
+                            "an incompatible ABI is rejected before draining the running module");
+                    }
+                    try
+                    {
+                        await InstalledModuleInstaller.RollbackAsync(root, builder.Configuration, obsolete.ModuleId, obsolete.Version, timeout.Token);
+                        throw new InvalidOperationException("Rollback selected an archived package with an obsolete ABI.");
+                    }
+                    catch (ModulePackageException error) when (error.ProblemCode == "module-package-host-api-incompatible")
+                    {
+                        check(InstalledModuleStore.Read(root).Single().ArtifactSha256 == record.ArtifactSha256,
+                            "offline rollback rejects an incompatible ABI without changing the selected package");
+                    }
                     var failed = await supervisor.ReplaceAsync(record, bad,
                         () => InstalledModuleInstaller.Activate(root, bad), timeout.Token);
                     check(failed == "module-host-update-rolled-back" && supervisor.Snapshot().Single().Version == record.Version
@@ -106,6 +136,14 @@ internal static class InstalledIsolatedModuleChecks
                 }
                 finally { await supervisor.StopAsync(CancellationToken.None); }
             }
+            var interruptedAbiUpdate = ModulePackageOperationStore.Record(root, "update", next, obsolete.Version,
+                DateTimeOffset.UtcNow);
+            ModulePackageStartupGuard.Begin(root, builder.Configuration, "abi-recovery-first");
+            ModulePackageStartupGuard.Begin(root, builder.Configuration, "abi-recovery-second");
+            check(InstalledModuleStore.Read(root).Single() is { Version: "2.0.0", Quarantined: true }
+                && ModulePackageOperationStore.Read(root).Single(item => item.OperationId == interruptedAbiUpdate.OperationId)
+                    is { State: ModulePackageOperationState.Failed, ProblemCode: "module-package-operation-startup-rollback-failed-quarantined" },
+                "startup recovery quarantines the interrupted update when the archived rollback target has an incompatible ABI");
             ModuleTrustStore.Set(root, record, "test-administrator", trusted: false);
             check(ModuleTrustStore.Read(root, record)?.Trusted == false, "code trust revocation is durable and immediately observable");
             var path = Path.Combine(InstalledModuleStore.ResolvePackageRoot(root, record.PackagePath), "manifest.json");
