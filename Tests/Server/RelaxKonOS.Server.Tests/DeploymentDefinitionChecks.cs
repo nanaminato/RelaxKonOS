@@ -36,11 +36,13 @@ internal static class DeploymentDefinitionChecks
             entry.Write("content"u8);
         payload.Position = 0;
         var buildContext = Path.Combine(root, "extracted");
-        Check(await ApplicationArchiveExtractor.ExtractAsync(payload, buildContext, 10, 100, 4, default) is null
+        Check(!typeof(ApplicationArchiveExecution).Assembly.GetReferencedAssemblies().Any(reference => reference.Name == "RelaxKonOS.ServerModule.ApplicationDeployments"),
+            "Core must not reference the archive execution assembly at compile time.");
+        Check(await ApplicationArchiveExecution.ExtractAsync(payload, buildContext, 10, 100, 4, default) is null
             && File.ReadAllText(Path.Combine(buildContext, "published", "content.txt")) == "content",
             "The deployment execution assembly must materialize the bounded build context.");
         payload.Position = 0;
-        Check(await ApplicationArchiveExtractor.ExtractAsync(payload, buildContext, 10, 3, 4, default)
+        Check(await ApplicationArchiveExecution.ExtractAsync(payload, buildContext, 10, 3, 4, default)
             == ApplicationDeploymentProblemCodes.ArchiveExpandedTooLarge, "The execution assembly must preserve the archive size problem code.");
 
         var disabledBuilder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });

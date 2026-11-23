@@ -101,7 +101,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Docker.Contracts/RelaxKonOS.ServerModule.Docker.Contracts.csproj" />
-    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.ApplicationDeployments/RelaxKonOS.ServerModule.ApplicationDeployments.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.ApplicationDeployments/RelaxKonOS.ServerModule.ApplicationDeployments.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.ApplicationDeployments/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.ApplicationDeployments.dll"
+             Link="Modules/ApplicationDeployments/RelaxKonOS.ServerModule.ApplicationDeployments.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Docker/RelaxKonOS.ServerModule.Docker.csproj" ReferenceOutputAssembly="false" />
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Docker/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Docker.dll" Link="Modules/Docker/RelaxKonOS.ServerModule.Docker.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

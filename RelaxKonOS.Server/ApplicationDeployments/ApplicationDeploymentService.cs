@@ -260,7 +260,7 @@ internal sealed class ApplicationDeploymentService(
             Directory.CreateDirectory(contextDirectory);
             using (var archive = staging.Open(plan.ArchiveReferenceId!, actor))
             {
-                if (await ApplicationArchiveExtractor.ExtractAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
+                if (await ApplicationArchiveExecution.ExtractAsync(archive.Stream, contextDirectory, options.MaximumArchiveEntries,
                     options.MaximumExpandedBytes, options.MaximumPathDepth, cancellationToken) is { } archiveProblem)
                     throw new ApplicationDeploymentException(archiveProblem, 400);
             }
