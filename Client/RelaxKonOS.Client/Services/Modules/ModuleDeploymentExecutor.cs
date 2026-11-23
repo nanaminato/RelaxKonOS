@@ -154,11 +154,12 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var identity = release.ArtifactIdentity.Split('/')[^1];
         if (module is not null && ModuleDeploymentCatalog.RequiresRecovery(module))
             throw new ModuleDeploymentRecoveryException(module.Id, module.PendingOperationId);
-        if (module is null || !ModuleDeploymentCatalog.IsEffective(module)
-            || ModuleDeploymentCatalog.EffectivePackageVersion(module) != release.Version
+        if (module is null || !ModuleDeploymentCatalog.IsEffective(module))
+            throw new InvalidOperationException("deployment-module-not-effective");
+        if (ModuleDeploymentCatalog.EffectivePackageVersion(module) != release.Version
             || !HasPlannedCapabilities(module, release)
             || identity.Length == 64 && module.ArtifactDigest != identity)
-            throw new InvalidOperationException("deployment-module-not-effective");
+            throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");
 
         if (module.Packaging == "independent")
         {
@@ -167,7 +168,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                 && package.Version == module.EffectiveVersion && package.ArtifactSha256 == identity
                 && (release.ActivationOnly
                     || $"{package.SourceId}/{package.ReleaseId}/{package.ArtifactSha256}" == release.ArtifactIdentity)))
-                throw new InvalidOperationException("deployment-module-not-effective");
+                throw new DeploymentPlanReviewRequiredException("deployment-module-not-effective");
         }
 
         var health = await client.CheckHealthAsync(cancellationToken);

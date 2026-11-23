@@ -1657,7 +1657,7 @@ internal static class JointDeploymentAcceptance
                 await executor.VerifyAsync(review.Plan, moduleRelease, default);
                 throw new InvalidOperationException("Expected changed installed package identity to be rejected.");
             }
-            catch (InvalidOperationException error) when (error.Message == "deployment-module-not-effective") { }
+            catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
             finally { factory.SubstituteInstalledDigest = false; }
             factory.SubstituteBlockedHealth = true;
             try
@@ -1734,7 +1734,7 @@ internal static class JointDeploymentAcceptance
                     await versionExecutor.VerifyAsync(review.Plan, versioned, default);
                     throw new InvalidOperationException("Expected exact capability contract verification to fail.");
                 }
-                catch (InvalidOperationException error) when (error.Message == "deployment-module-not-effective") { }
+                catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
                 factory.ObservedCapabilityVersion = "2";
                 await versionExecutor.VerifyAsync(review.Plan, versioned, default);
                 factory.SubstituteCapabilities = false;
@@ -1770,7 +1770,30 @@ internal static class JointDeploymentAcceptance
             await RewriteDesktopArchiveAsync(upgradeSource, packagePath, manifest => manifest["version"] = "1.1.0");
             await using (var upgradedArchive = File.OpenRead(packagePath))
                 await File.WriteAllTextAsync(packagePath + ".sha256", Convert.ToHexStringLower(await SHA256.HashDataAsync(upgradedArchive)));
-            var upgrade = await joint.PrepareAsync(await installer.InspectLocalAsync(packagePath), [], default);
+            var upgradeCandidate = await installer.InspectLocalAsync(packagePath);
+            var interruptedUpgrade = await joint.PrepareAsync(upgradeCandidate, [], default);
+            factory.SubstituteHealthVersion = true;
+            try
+            {
+                await joint.ExecuteAsync(interruptedUpgrade, default);
+                throw new InvalidOperationException("Expected the upgrade to wait for healthy module status.");
+            }
+            catch (InvalidOperationException error) when (error is not DeploymentPlanReviewRequiredException
+                && error.Message == "deployment-module-unhealthy") { }
+            finally { factory.SubstituteHealthVersion = false; }
+            Require((await joint.FindPendingAsync(upgradeCandidate, default))?.Plan.Id == interruptedUpgrade.Plan.Id,
+                "a transient module health mismatch leaves the confirmed upgrade available to retry");
+            factory.SubstituteInstalledDigest = true;
+            try
+            {
+                await joint.ExecuteAsync(interruptedUpgrade, default);
+                throw new InvalidOperationException("Expected a changed package identity to invalidate the confirmed upgrade.");
+            }
+            catch (DeploymentPlanReviewRequiredException error) when (error.Message == "deployment-module-not-effective") { }
+            finally { factory.SubstituteInstalledDigest = false; }
+            Require(await joint.FindPendingAsync(upgradeCandidate, default) is null && packages.FindInstalled(AppIdText) == installed,
+                "changed module identity invalidates the pending upgrade and preserves the installed application");
+            var upgrade = await joint.PrepareAsync(upgradeCandidate, [], default);
             Require((await joint.ExecuteAsync(upgrade, default)).Version == "1.1.0",
                 "upgrading the desktop application commits a replacement module dependency");
             factory.DropDependencyReply = true;
