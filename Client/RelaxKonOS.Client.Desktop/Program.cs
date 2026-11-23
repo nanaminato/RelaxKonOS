@@ -1,6 +1,5 @@
 ﻿using System;
 using Avalonia;
-using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.ServerCenter;
 
 namespace RelaxKonOS.Client.Desktop;
@@ -19,7 +18,6 @@ sealed class Program
                 ? LocalWindowsDeploymentBroker.RunAsync(args).GetAwaiter().GetResult() : 2;
             return;
         }
-        using var profile = DeveloperProfile.Acquire();
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

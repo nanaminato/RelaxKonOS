@@ -32,7 +32,16 @@ public partial class App : Application
         // while it runs; synchronously waiting here deadlocks its continuation before the login
         // window can be created.
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime startupDesktop)
+        {
             startupDesktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var preparation = await Views.StartupDataDirectoryWindow.PrepareAsync();
+            if (!preparation.Ready)
+            {
+                startupDesktop.Shutdown();
+                return;
+            }
+            startupDesktop.Exit += (_, _) => preparation.Profile?.Dispose();
+        }
 
         Services = await Bootstrapper.BuildAsync(this);
         // Install the sole palette + system-style source before the first (login) window is created.
