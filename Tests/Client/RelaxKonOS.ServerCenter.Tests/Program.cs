@@ -14,6 +14,24 @@ using RoyalTerminal.Terminal.Transport.Ssh;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
+if (args is ["--linux-ssh-probe", var portText, var user, var fingerprint, var launcherPath])
+{
+    await LinuxSshProbeChecks.RunAsync(portText, user, fingerprint, launcherPath);
+    return;
+}
+if (args is ["--linux-ssh-install", var installSshPort, var installSshUser, var installSshFingerprint,
+    var installLauncher, var installArchive])
+{
+    await LinuxSshProbeChecks.RunAsync(installSshPort, installSshUser, installSshFingerprint, installLauncher, installArchive);
+    return;
+}
+if (args is ["--linux-ssh-system-install", var systemSshPort, var systemSshUser, var systemSshFingerprint,
+    var systemLauncher, var systemArchive])
+{
+    await LinuxSshProbeChecks.RunAsync(systemSshPort, systemSshUser, systemSshFingerprint, systemLauncher,
+        systemArchive, ServerInstallMode.LinuxSystem);
+    return;
+}
 if (args.Contains("--ssh-cancellation-only"))
 {
     await SshCancellationChecks.RunAsync();

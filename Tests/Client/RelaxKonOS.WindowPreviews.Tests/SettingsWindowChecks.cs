@@ -554,6 +554,7 @@ internal static class SettingsWindowChecks
                 var ssh = new SshDesktopSession(null!, settings);
                 var fixtureRoot = Path.Combine(Path.GetTempPath(), "rk-server-center-" + Guid.NewGuid().ToString("N"));
                 var targets = new HostTargetStore(fixtureRoot);
+                var journal = new ServerCenterOperationJournal(fixtureRoot);
                 var target = HostAddressSshFixture.Target;
                 var hostKeys = new SshHostKeyTrustStore(fixtureRoot);
                 var resolver = DispatchProxy.Create<IServerCenterConnectionResolver, HostAddressSshFixture>();
@@ -574,12 +575,12 @@ internal static class SettingsWindowChecks
                     .AddSingleton(ssh)
                     .AddSingleton<ISystemLanguage>(localization)
                     .AddTransient(_ => new ServerCenterViewModel(targets,
-                        resolver, hostKeys, null!, ssh, null!, null!,
+                        resolver, hostKeys, null!, ssh, new FileServerCenterReleaseSource(), journal,
                         new LoginLocalizationService(new LocalLanguageStore())))
                     .BuildServiceProvider();
                 var hostWorkspace = new ServerCenterHostWorkspace(hostServices, windows);
                 CheckServerCenterPackage(packageSource, windows, apps,
-                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null, hostWorkspace), target);
+                    CreateFactory(new RelaxKonOS.Client.Apps.Settings.SettingsWindow(services), null, hostWorkspace), target, journal);
             }
             else if (packageSource is not null && explorerPackage)
             {
@@ -642,7 +643,8 @@ internal static class SettingsWindowChecks
     }
 
     private static void CheckServerCenterPackage(string source, RelaxKonOS.WindowManager.WindowManager windows,
-        ApplicationManager applications, ExternalAppContextFactory factory, ServerHostTarget target)
+        ApplicationManager applications, ExternalAppContextFactory factory, ServerHostTarget target,
+        ServerCenterOperationJournal journal)
     {
         var drive = new RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive(
             Path.Combine(Path.GetTempPath(), "rk-server-center-package-" + Guid.NewGuid().ToString("N")));
@@ -715,35 +717,137 @@ internal static class SettingsWindowChecks
             rollback.FindControl<Button>("CancelButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             PumpUntil(() => rollbackResult.IsCompleted && !windows.Windows.Contains(rollbackWindow));
             Check(!rollbackResult.GetAwaiter().GetResult(), "Canceling rollback approved the operation.");
+            model.SelectedHost = target;
+            model.SelectedPlatform = model.Platforms.Single(option => option.Platform == RelaxKonOS.Protocol.Common.HostPlatformKind.Linux);
             var wizardResult = model.ShowInstallationWizardAsync!();
             PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
             var wizardWindow = windows.Windows.Single(item => item.IsModalDialog);
             Check(wizardWindow.Info.OwnerAppId == appId && wizardWindow.View.Content is ServerInstallationWizardView,
                 "Server Center did not open its installation wizard as a package-owned modal.");
             var wizard = (ServerInstallationWizardViewModel)((ServerInstallationWizardView)wizardWindow.View.Content!).DataContext!;
-            model.SelectedHost = target;
-            model.SelectedPlatform = model.Platforms.Single(option => option.Platform == RelaxKonOS.Protocol.Common.HostPlatformKind.Linux);
-            model.SshPassword = target == HostAddressSshFixture.Target ? "fixture-password"
+            var sshPassword = target == HostAddressSshFixture.Target ? "fixture-password"
                 : Environment.GetEnvironmentVariable("RK_TEST_SSH_ADDRESS_PASSWORD")
                     ?? throw new InvalidOperationException("The loopback SSH fixture password is required.");
-            var showAddresses = wizard.ShowHostAddressesCommand.ExecuteAsync(null);
-            PumpUntil(() => showAddresses.IsCompleted || windows.Windows.Count(item => item.IsModalDialog) == 2);
-            Check(!showAddresses.IsCompleted, "The host address dialog did not open. " + model.ErrorMessage);
-            var addressWindow = windows.Windows.Single(item => item.IsModalDialog && item != wizardWindow);
-            var addressView = (Border)addressWindow.View.Content!;
-            var addressPanel = (StackPanel)addressView.Child!;
-            Check(addressView.GetType().Assembly == workspace.GetType().Assembly
-                && addressPanel.Children.OfType<TextBlock>().Single().Text == string.Join(Environment.NewLine, "192.0.2.8", "2001:db8::2"),
-                "The package must own the address dialog and show only the validated, distinct addresses.");
-            addressPanel.Children.OfType<Button>().Single()
-                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            PumpUntil(() => showAddresses.IsCompleted && !windows.Windows.Contains(addressWindow));
-            showAddresses.GetAwaiter().GetResult();
-            var cancel = wizard.CancelCommand.ExecuteAsync(null);
-            PumpUntil(() => cancel.IsCompleted && wizardResult.IsCompleted && !windows.Windows.Contains(wizardWindow));
-            cancel.GetAwaiter().GetResult();
-            wizardResult.GetAwaiter().GetResult();
-            Check(!windows.Windows.Any(item => item.IsModalDialog), "Canceling the installation wizard left its modal open.");
+            model.SshPassword = sshPassword;
+            if (Environment.GetEnvironmentVariable("RK_TEST_SERVER_CENTER_INSTALL_ARCHIVE") is { Length: > 0 } installArchive)
+            {
+                Check(target != HostAddressSshFixture.Target, "Installation requires the loopback SSH fixture.");
+                var mode = Environment.GetEnvironmentVariable("RK_TEST_SERVER_CENTER_SYSTEM_INSTALL") == "1"
+                    ? ServerInstallMode.LinuxSystem : ServerInstallMode.LinuxUser;
+                var installed = SubmitWizard(installArchive, ServerDeploymentKind.Install, wizard, wizardWindow, wizardResult);
+                Console.WriteLine("PASS: installed Server Center wizard submitted and verified a real SSH installation.");
+                if (Environment.GetEnvironmentVariable("RK_TEST_SERVER_CENTER_UPGRADE_ARCHIVE") is { Length: > 0 } upgradeArchive)
+                {
+                    var upgradeResult = model.ShowInstallationWizardAsync();
+                    PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
+                    var upgradeWindow = windows.Windows.Single(item => item.IsModalDialog);
+                    var upgrade = (ServerInstallationWizardViewModel)((ServerInstallationWizardView)upgradeWindow.View.Content!).DataContext!;
+                    Check(upgrade.IsUpgrade, "Server Center did not recognize the existing installation.");
+                    model.SshPassword = sshPassword;
+                    var upgraded = SubmitWizard(upgradeArchive, ServerDeploymentKind.Upgrade, upgrade, upgradeWindow, upgradeResult);
+                    Check(upgraded.InstallationId == installed.InstallationId && upgraded.Version != installed.Version,
+                        "A successful upgrade must retain the installation identity and report the newly served version.");
+                    Console.WriteLine("PASS: installed Server Center wizard upgraded the same healthy SSH installation.");
+
+                    model.SshPassword = sshPassword;
+                    var probe = model.ProbeHostCommand.ExecuteAsync(null);
+                    PumpUntil(() => probe.IsCompleted, TimeSpan.FromMinutes(1));
+                    probe.GetAwaiter().GetResult();
+                    Check(model.RollbackCommand.CanExecute(null), "The upgraded host did not advertise a rollback target.");
+                    model.SshPassword = sshPassword;
+                    var restore = model.RollbackCommand.ExecuteAsync(null);
+                    PumpUntil(() => restore.IsCompleted || windows.Windows.Any(item => item.IsModalDialog), TimeSpan.FromMinutes(1));
+                    Check(!restore.IsCompleted, "Rollback did not ask for confirmation. " + model.ErrorMessage);
+                    var confirmation = (UserControl)windows.Windows.Single(item => item.IsModalDialog).View.Content!;
+                    confirmation.FindControl<Button>("ConfirmButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    PumpUntil(() => restore.IsCompleted, TimeSpan.FromMinutes(4));
+                    restore.GetAwaiter().GetResult();
+                    var restored = model.SelectedHost?.LastVerified;
+                    Check(restored is { Installed: true, Healthy: true } && restored.InstallationId == installed.InstallationId
+                        && restored.Version == installed.Version && string.IsNullOrEmpty(model.ErrorMessage),
+                        "Server Center did not verify the restored version. " + model.ErrorMessage);
+                    var rollbackRecords = journal.LoadAsync(target.HostId);
+                    PumpUntil(() => rollbackRecords.IsCompleted);
+                    Check(rollbackRecords.GetAwaiter().GetResult().Any(record => record.Kind == ServerDeploymentKind.Rollback
+                        && record.State == ServerDeploymentState.Succeeded && record.InstallationId == installed.InstallationId),
+                        "The rollback must journal a successful receipt for the original installation.");
+                    Console.WriteLine("PASS: installed Server Center confirmed rollback and verified the previous healthy SSH version.");
+                    if (Environment.GetEnvironmentVariable("RK_TEST_SERVER_CENTER_RETAIN_UNINSTALL") == "1")
+                    {
+                        var uninstallDialog = model.ShowManagementDialogAsync!("uninstall");
+                        PumpUntil(() => windows.Windows.Any(item => item.IsModalDialog));
+                        var uninstallWindow = windows.Windows.Single(item => item.IsModalDialog);
+                        var uninstallView = (UserControl)uninstallWindow.View.Content!;
+                        Check(ReferenceEquals(uninstallView.FindControl<Button>("UninstallButton")?.Command, model.UninstallCommand)
+                            && !model.DeleteServerData && model.UninstallCommand.CanExecute(null),
+                            "The package must present uninstall with data retention selected by default.");
+                        model.SshPassword = sshPassword;
+                        var uninstall = model.UninstallCommand.ExecuteAsync(null);
+                        PumpUntil(() => uninstall.IsCompleted, TimeSpan.FromMinutes(4));
+                        uninstall.GetAwaiter().GetResult();
+                        Check(model.SelectedHost?.LastVerified is { Installed: false, Healthy: false }
+                            && string.IsNullOrEmpty(model.ErrorMessage),
+                            "The installed Server Center did not verify that the host was uninstalled. " + model.ErrorMessage);
+                        var uninstallRecords = journal.LoadAsync(target.HostId);
+                        PumpUntil(() => uninstallRecords.IsCompleted);
+                        Check(uninstallRecords.GetAwaiter().GetResult().Any(record => record.Kind == ServerDeploymentKind.Uninstall
+                            && record.State == ServerDeploymentState.Succeeded && record.InstallationId == installed.InstallationId),
+                            "The uninstall must journal a successful receipt for the original installation.");
+                        windows.Close(uninstallWindow);
+                        PumpUntil(() => uninstallDialog.IsCompleted);
+                        uninstallDialog.GetAwaiter().GetResult();
+                        Console.WriteLine("PASS: installed Server Center verified a real SSH uninstall with the retain-data option.");
+                    }
+                }
+
+                ServerHostVerifiedState SubmitWizard(string bundle, ServerDeploymentKind kind,
+                    ServerInstallationWizardViewModel modal, RelaxKonOS.WindowManager.ManagedWindow modalWindow, Task result)
+                {
+                    modal.SelectedSource = modal.Sources.Single(item => item.Source == ServerPackageSourceKind.LocalBundle);
+                    modal.SetLocalBundle(bundle);
+                    modal.MoveNextCommand.Execute(null);
+                    modal.SelectedMode = modal.Modes.Single(item => item.Mode == mode);
+                    if (mode == ServerInstallMode.LinuxSystem) modal.SudoPassword = sshPassword;
+                    modal.ServerPortText = "23186";
+                    modal.MoveNextCommand.Execute(null);
+                    Check(modal.IsReviewStep, "Server Center installation wizard did not reach explicit review.");
+                    var deployment = modal.InstallCommand.ExecuteAsync(null);
+                    PumpUntil(() => deployment.IsCompleted, TimeSpan.FromMinutes(4));
+                    deployment.GetAwaiter().GetResult();
+                    var verified = model.SelectedHost?.LastVerified;
+                    Check(result.IsCompletedSuccessfully && !windows.Windows.Contains(modalWindow)
+                        && verified is { Installed: true, Healthy: true, InstallationId.Length: > 0, Version.Length: > 0 }
+                        && verified.Mode == mode,
+                        $"The installed Server Center wizard did not verify {mode}. " + modal.ErrorMessage);
+                    var records = journal.LoadAsync(target.HostId);
+                    PumpUntil(() => records.IsCompleted);
+                    Check(records.GetAwaiter().GetResult().Any(record => record.Kind == kind
+                        && record.State == ServerDeploymentState.Succeeded && record.InstallationId == verified!.InstallationId),
+                        "The installed wizard did not journal the successful SSH operation.");
+                    return verified!;
+                }
+            }
+            else
+            {
+                var showAddresses = wizard.ShowHostAddressesCommand.ExecuteAsync(null);
+                PumpUntil(() => showAddresses.IsCompleted || windows.Windows.Count(item => item.IsModalDialog) == 2);
+                Check(!showAddresses.IsCompleted, "The host address dialog did not open. " + model.ErrorMessage);
+                var addressWindow = windows.Windows.Single(item => item.IsModalDialog && item != wizardWindow);
+                var addressView = (Border)addressWindow.View.Content!;
+                var addressPanel = (StackPanel)addressView.Child!;
+                Check(addressView.GetType().Assembly == workspace.GetType().Assembly
+                    && addressPanel.Children.OfType<TextBlock>().Single().Text == string.Join(Environment.NewLine, "192.0.2.8", "2001:db8::2"),
+                    "The package must own the address dialog and show only the validated, distinct addresses.");
+                addressPanel.Children.OfType<Button>().Single()
+                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                PumpUntil(() => showAddresses.IsCompleted && !windows.Windows.Contains(addressWindow));
+                showAddresses.GetAwaiter().GetResult();
+                var cancel = wizard.CancelCommand.ExecuteAsync(null);
+                PumpUntil(() => cancel.IsCompleted && wizardResult.IsCompleted && !windows.Windows.Contains(wizardWindow));
+                cancel.GetAwaiter().GetResult();
+                wizardResult.GetAwaiter().GetResult();
+                Check(!windows.Windows.Any(item => item.IsModalDialog), "Canceling the installation wizard left its modal open.");
+            }
         }
         finally
         {
@@ -753,7 +857,7 @@ internal static class SettingsWindowChecks
         }
         Check(!applications.IsRegistered(appId) && windows.Windows.All(window => window.Info.OwnerAppId != appId),
             "Uninstalling Server Center did not remove its registration and close its window.");
-        Console.WriteLine("PASS: installed Server Center reuses its production workspace, opens and cancels its wizard, and closes on uninstall.");
+        Console.WriteLine("PASS: installed Server Center reuses its production workspace and closes on uninstall.");
 
         async Task InstallAsync()
         {
@@ -1041,9 +1145,9 @@ internal static class SettingsWindowChecks
         window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left); Pump();
     }
     private static void Pump() { Dispatcher.UIThread.RunJobs(); }
-    private static void PumpUntil(Func<bool> condition)
+    private static void PumpUntil(Func<bool> condition, TimeSpan? wait = null)
     {
-        var timeout = DateTime.UtcNow.AddSeconds(5);
+        var timeout = DateTime.UtcNow + (wait ?? TimeSpan.FromSeconds(5));
         while (!condition() && DateTime.UtcNow < timeout) { Thread.Sleep(10); Pump(); }
         Check(condition(), "Timed out waiting for controlled preference save."); Pump();
     }

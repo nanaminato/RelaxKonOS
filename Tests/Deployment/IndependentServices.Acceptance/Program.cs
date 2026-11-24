@@ -9,6 +9,7 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.Tunnels;
 
 if (args.Length != 2 || args[1] != "--confirm-isolated-host") return 64;
+if (args[0] == "verify-first-frps-failure" && !OperatingSystem.IsLinux()) return 64;
 var ids = new[] { Guid.Parse("b2222222-2222-4222-8222-222222222222"), Guid.Parse("b3333333-3333-4333-8333-333333333333") };
 try {
     if (args[0] == "setup-mihomo") {
@@ -33,7 +34,7 @@ try {
         if (Directory.Exists(directory)) Directory.Delete(directory, recursive: false);
         if (Directory.Exists(versions)) Directory.Delete(versions, recursive: false);
         Console.WriteLine("PASS: test Mihomo service and fixed fixture staging removed.");
-    } else if (args[0] == "setup") {
+    } else if (args[0] is "setup" or "setup-frp" or "verify-first-frps-failure") {
         var supplied = Path.Combine(AppContext.BaseDirectory,OperatingSystem.IsWindows()?"frp-windows.zip":"frp-linux.tar.gz");
         string? staged = null;
         if(File.Exists(supplied)) {
@@ -42,8 +43,34 @@ try {
         }
         try { await Runtime(new(ManagedRuntime.Frpc,ManagedRuntimeAction.Install,"v0.71.0",ArchivePath:staged)); }
         finally { if(staged is not null)File.Delete(staged); }
+        if (args[0] == "verify-first-frps-failure") {
+            const string unit = "/etc/systemd/system/relaxkonos-frps.service";
+            if (File.Exists(unit)) throw new InvalidOperationException("Expected a fresh isolated FRPS installation.");
+            using var occupied = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 17100);
+            occupied.Start();
+            var rejected = false;
+            try {
+                await Runtime(new(ManagedRuntime.Frps, ManagedRuntimeAction.Start, "v0.71.0",
+                    Server: new("127.0.0.1", 17100, [new(19090, 19091)], null, null, false,
+                        "isolated-acceptance-token", false, "127.0.0.1", null, null, null), AppliedIdentity: "1"));
+            }
+            catch (Exception error) when (error.Message.StartsWith("ManagedRuntime/Frps/Start: Conflict:", StringComparison.Ordinal)) {
+                rejected = true;
+            }
+            var status = await Runtime(new(ManagedRuntime.Frps, ManagedRuntimeAction.Status));
+            if (!rejected || status.ComponentProcess is not { Running: false, AppliedIdentity: null }
+                || File.Exists(unit) || new FileInfo("/etc/systemd/system/multi-user.target.wants/relaxkonos-frps.service").LinkTarget is not null
+                || Directory.Exists("/var/lib/relaxkonos-components/frp/instances/frps"))
+                throw new InvalidOperationException("The failed first start left an FRPS unit, enable link, or applied state.");
+            Console.WriteLine("PASS: failed first FRPS start removes the unit, enable link, and applied state.");
+            return 0;
+        }
         await Runtime(new(ManagedRuntime.Frps,ManagedRuntimeAction.Start,"v0.71.0",Server:new("127.0.0.1",17099,[new(19090,19091)],null,null,false,"isolated-acceptance-token",false,"127.0.0.1",null,null,null),AppliedIdentity:"1"));
         for(var i=0;i<ids.Length;i++) await StartClient(i);
+        if (args[0] == "setup-frp") {
+            Console.WriteLine("PASS: independent FRPS and FRPC setup.");
+            return 0;
+        }
         if(OperatingSystem.IsWindows()) {
             await Runtime(new(ManagedRuntime.Nginx,ManagedRuntimeAction.Install,"1.31.3"));
             var config=@"C:\ProgramData\RelaxKonOS\webserver\nginx\conf\nginx.conf";
@@ -78,8 +105,12 @@ try {
         var restored=await Runtime(new(ManagedRuntime.Frps,ManagedRuntimeAction.Status));
         if(!rejected || restored.ComponentProcess is not {Running:true,AppliedIdentity:"1"})throw new Exception("Failed service apply did not restore prior active configuration.");
         Console.WriteLine("PASS: failed service apply restores previous configuration and proof.");
-    } else if(args[0]=="cleanup") {
+    } else if(args[0] is "cleanup" or "cleanup-frp") {
         await Runtime(new(ManagedRuntime.Frpc,ManagedRuntimeAction.Uninstall));
+        if (args[0] == "cleanup-frp") {
+            Console.WriteLine("PASS: independent FRP service removal.");
+            return 0;
+        }
         if(OperatingSystem.IsWindows())await Runtime(new(ManagedRuntime.Nginx,ManagedRuntimeAction.Uninstall));
         await Require(new(PrivilegedOperationKind.ProxyMihomoServiceAction, ProxyMihomoServiceAction: ProxyMihomoServiceAction.Stop));
         await Require(new(PrivilegedOperationKind.ProxyMihomoRemoveSystemService)); Console.WriteLine("PASS: independent service removal.");

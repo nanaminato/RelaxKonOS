@@ -243,6 +243,8 @@ internal static class OfficialRoappChecks
         var isTerminal = applicationId == "relaxkonos.terminal";
         var isSshFiles = applicationId == "relaxkonos.ssh-files";
         var sftpPort = isSshFiles || isCodeEditor ? Environment.GetEnvironmentVariable("RK_TEST_SFTP_PORT") : null;
+        var sftpRoot = Environment.GetEnvironmentVariable("RK_TEST_SFTP_ROOT") ?? "/";
+        string SftpFixturePath(string relative) => sftpRoot.TrimEnd('/') + "/" + relative;
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -254,7 +256,8 @@ internal static class OfficialRoappChecks
         using var services = new ServiceCollection().AddSingleton<IApplicationCompatibilityEvaluator>(compatibility).BuildServiceProvider();
         using var http = new HttpClient();
         var smbPort = isFileServices ? Environment.GetEnvironmentVariable("RK_TEST_SMB_PORT") : null;
-        if (smbPort is not null) http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+        var smbAction = smbPort is null ? null : Environment.GetEnvironmentVariable("RK_TEST_SMB_ACTION");
+        if (smbPort is not null) http.DefaultRequestHeaders.Add("X-Test-Role", smbAction is null ? "reader" : "manager");
         var guardianPort = isGuardian ? Environment.GetEnvironmentVariable("RK_TEST_GUARDIAN_PORT") : null;
         var guardianVersion = guardianPort is null ? null : Environment.GetEnvironmentVariable("RK_TEST_GUARDIAN_VERSION")
             ?? throw new InvalidOperationException("Missing live Guardian version.");
@@ -663,7 +666,7 @@ internal static class OfficialRoappChecks
             if (isCodeEditor && sftpPort is not null)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
-                Check(applications.OpenFile(id, "/fixture.txt"), "The installed Code Editor accepts the SSH file.");
+                Check(applications.OpenFile(id, SftpFixturePath("fixture.txt")), "The installed Code Editor accepts the SSH file.");
                 for (var attempt = 0; attempt < 100 && windows.Windows.Count == 0; attempt++)
                     await Task.Delay(50);
                 var editor = windows.Windows.Single();
@@ -783,7 +786,7 @@ internal static class OfficialRoappChecks
                         var view = workspace.View.Content!;
                         var viewType = view.GetType();
                         const BindingFlags members = BindingFlags.Instance | BindingFlags.NonPublic;
-                        await (Task)viewType.GetMethod("NavigateAsync", members)!.Invoke(view, ["/", true, false])!;
+                        await (Task)viewType.GetMethod("NavigateAsync", members)!.Invoke(view, [sftpRoot, true, false])!;
                         var entries = (Array)viewType.GetField("_entries", members)!.GetValue(view)!;
                         Check(entries.Cast<object>().Any(entry =>
                             Equals(entry.GetType().GetProperty("Name")!.GetValue(entry), "fixture.txt")),
@@ -791,34 +794,34 @@ internal static class OfficialRoappChecks
                         var files = (ISshFileSession)sessionField.GetValue(view)!;
                         var connection = files.Connection!;
                         using var downloaded = new MemoryStream();
-                        await files.DownloadFileAsync(connection, "/fixture.txt", downloaded, _ => { });
+                        await files.DownloadFileAsync(connection, SftpFixturePath("fixture.txt"), downloaded, _ => { });
                         Check(downloaded.ToArray().AsSpan().SequenceEqual("RelaxKonOS SFTP fixture\n"u8),
                             "The package file capability must download the fixture's exact bytes.");
                         var uploadedBytes = "RelaxKonOS upload fixture\n"u8.ToArray();
                         using var upload = new MemoryStream(uploadedBytes);
-                        Check(await files.UploadFileAsync(connection, upload, "/upload.txt", _ => { }),
+                        Check(await files.UploadFileAsync(connection, upload, SftpFixturePath("upload.txt"), _ => { }),
                             "The package file capability must upload a new file.");
                         using var overwrite = new MemoryStream("replacement"u8.ToArray());
-                        Check(!await files.UploadFileAsync(connection, overwrite, "/upload.txt", _ => { }),
+                        Check(!await files.UploadFileAsync(connection, overwrite, SftpFixturePath("upload.txt"), _ => { }),
                             "The package file capability must refuse to replace an existing file.");
                         using var roundTrip = new MemoryStream();
-                        await files.DownloadFileAsync(connection, "/upload.txt", roundTrip, _ => { });
+                        await files.DownloadFileAsync(connection, SftpFixturePath("upload.txt"), roundTrip, _ => { });
                         Check(roundTrip.ToArray().AsSpan().SequenceEqual(uploadedBytes),
                             "An upload must preserve the original bytes after a rejected overwrite.");
-                        Check(!await files.RenamePathAsync(connection, "/upload.txt", "/fixture.txt"),
+                        Check(!await files.RenamePathAsync(connection, SftpFixturePath("upload.txt"), SftpFixturePath("fixture.txt")),
                             "Rename must refuse an existing destination.");
-                        Check(await files.RenamePathAsync(connection, "/upload.txt", "/renamed.txt"),
+                        Check(await files.RenamePathAsync(connection, SftpFixturePath("upload.txt"), SftpFixturePath("renamed.txt")),
                             "The uploaded file must be renamed.");
-                        var renamed = await files.ReadDirectoryAsync(connection, "/");
+                        var renamed = await files.ReadDirectoryAsync(connection, sftpRoot);
                         Check(renamed.Items.Any(item => item.Name == "renamed.txt")
                             && renamed.Items.All(item => item.Name != "upload.txt"),
                             "Rename must replace the old directory entry.");
                         using var renamedFile = new MemoryStream();
-                        await files.DownloadFileAsync(connection, "/renamed.txt", renamedFile, _ => { });
+                        await files.DownloadFileAsync(connection, SftpFixturePath("renamed.txt"), renamedFile, _ => { });
                         Check(renamedFile.ToArray().AsSpan().SequenceEqual(uploadedBytes),
                             "Rename must preserve the file contents.");
-                        await files.DeletePathsAsync(connection, [("/renamed.txt", false)]);
-                        var remaining = await files.ReadDirectoryAsync(connection, "/");
+                        await files.DeletePathsAsync(connection, [(SftpFixturePath("renamed.txt"), false)]);
+                        var remaining = await files.ReadDirectoryAsync(connection, sftpRoot);
                         Check(remaining.Items is [{ Name: "fixture.txt" }],
                             "Delete must remove only the selected file.");
 
@@ -827,12 +830,12 @@ internal static class OfficialRoappChecks
                         uploadTree.CreateSubdirectory("empty");
                         await File.WriteAllBytesAsync(Path.Combine(uploadTree.FullName, "root.txt"), uploadedBytes);
                         await File.WriteAllBytesAsync(Path.Combine(uploadNested.FullName, "child.txt"), "nested fixture"u8.ToArray());
-                        Check(await files.UploadDirectoryAsync(connection, uploadTree, "/tree", (_, _, _) => { }, CancellationToken.None),
+                        Check(await files.UploadDirectoryAsync(connection, uploadTree, SftpFixturePath("tree"), (_, _, _) => { }, CancellationToken.None),
                             "The package file capability must upload a nested directory.");
-                        Check(!await files.UploadDirectoryAsync(connection, uploadTree, "/tree", (_, _, _) => { }, CancellationToken.None),
+                        Check(!await files.UploadDirectoryAsync(connection, uploadTree, SftpFixturePath("tree"), (_, _, _) => { }, CancellationToken.None),
                             "Directory upload must refuse to merge into an existing remote directory.");
                         var downloadRoot = Directory.CreateDirectory(Path.Combine(root, "download-tree")).FullName;
-                        await files.DownloadPathsAsync(connection, downloadRoot, [("/tree", "tree", true)],
+                        await files.DownloadPathsAsync(connection, downloadRoot, [(SftpFixturePath("tree"), "tree", true)],
                             (_, _, _) => { }, CancellationToken.None);
                         var rootFile = await File.ReadAllBytesAsync(Path.Combine(downloadRoot, "tree", "root.txt"));
                         var childFile = await File.ReadAllBytesAsync(Path.Combine(downloadRoot, "tree", "nested", "child.txt"));
@@ -840,18 +843,18 @@ internal static class OfficialRoappChecks
                             && Directory.Exists(Path.Combine(downloadRoot, "tree", "empty")),
                             "Directory round-trip must preserve nested contents and empty directories.");
                         var moves = new List<(int Index, bool Moved)>();
-                        await files.TransferPathsAsync(connection, "/tree", [("/fixture.txt", "fixture.txt", false, false)],
+                        await files.TransferPathsAsync(connection, SftpFixturePath("tree"), [(SftpFixturePath("fixture.txt"), "fixture.txt", false, false)],
                             copy: true, (index, moved) => moves.Add((index, moved)));
-                        var sourceAfterCopy = await files.ReadDirectoryAsync(connection, "/");
-                        var destinationAfterCopy = await files.ReadDirectoryAsync(connection, "/tree");
+                        var sourceAfterCopy = await files.ReadDirectoryAsync(connection, sftpRoot);
+                        var destinationAfterCopy = await files.ReadDirectoryAsync(connection, SftpFixturePath("tree"));
                         Check(moves.Count == 0 && sourceAfterCopy.Items.Any(item => item.Name == "fixture.txt")
                             && destinationAfterCopy.Items.Any(item => item.Name == "fixture.txt"),
                             "Remote copy must retain the source and create a destination without reporting a move.");
-                        await files.TransferPathsAsync(connection, "/tree/empty", [("/tree/fixture.txt", "fixture.txt", false, false)],
+                        await files.TransferPathsAsync(connection, SftpFixturePath("tree/empty"), [(SftpFixturePath("tree/fixture.txt"), "fixture.txt", false, false)],
                             copy: false, (index, moved) => moves.Add((index, moved)));
-                        var sourceAfterMove = await files.ReadDirectoryAsync(connection, "/tree");
+                        var sourceAfterMove = await files.ReadDirectoryAsync(connection, SftpFixturePath("tree"));
                         using var movedFile = new MemoryStream();
-                        await files.DownloadFileAsync(connection, "/tree/empty/fixture.txt", movedFile, _ => { });
+                        await files.DownloadFileAsync(connection, SftpFixturePath("tree/empty/fixture.txt"), movedFile, _ => { });
                         Check(moves is [(0, true)] && sourceAfterMove.Items.All(item => item.Name != "fixture.txt")
                             && movedFile.ToArray().AsSpan().SequenceEqual("RelaxKonOS SFTP fixture\n"u8),
                             "Remote move must report success, remove the old entry and preserve the copied bytes.");
@@ -864,7 +867,7 @@ internal static class OfficialRoappChecks
                             using var rejected = new MemoryStream();
                             try
                             {
-                                await files.DownloadFileAsync(connection, "/fixture.txt", rejected, _ => { });
+                                await files.DownloadFileAsync(connection, SftpFixturePath("fixture.txt"), rejected, _ => { });
                                 throw new InvalidOperationException("A mismatched SSH host key was accepted.");
                             }
                             catch (Renci.SshNet.Common.SshConnectionException)
@@ -952,10 +955,46 @@ internal static class OfficialRoappChecks
                 {
                     var model = ((Control)workspace.View.Content!).DataContext!;
                     var state = model.GetType().GetProperty("RuntimeState")!;
-                    bool IsRunning() => state.GetValue(model)?.ToString() == "Running";
-                    for (var attempt = 0; attempt < 100 && !IsRunning(); attempt++) await Task.Delay(50);
-                    Check(IsRunning() && model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
-                        "The installed File Services workspace displays live Windows SMB state with a read-only grant.");
+                    var expectedShare = Environment.GetEnvironmentVariable("RK_TEST_SMB_SHARE");
+                    var shares = (System.Collections.IEnumerable)model.GetType().GetProperty("Shares")!.GetValue(model)!;
+                    RelaxKonOS.Protocol.FileServices.FileShareDto? FindShare() => shares.Cast<RelaxKonOS.Protocol.FileServices.FileShareDto>()
+                        .SingleOrDefault(share => share.Name == expectedShare && share.Managed);
+                    bool ShowsLiveState() => state.GetValue(model)?.ToString() == "Running" && (expectedShare is null
+                        || smbAction == "create" || FindShare() is not null);
+                    for (var attempt = 0; attempt < 100 && !ShowsLiveState(); attempt++) await Task.Delay(50);
+                    Check(ShowsLiveState() && Equals(model.GetType().GetProperty("CanManage")?.GetValue(model), smbAction is not null),
+                        "The installed File Services workspace displays live SMB state and observes the expected management grant.");
+                    if (smbAction is not null)
+                    {
+                        var type = model.GetType();
+                        void Set(string property, object? value) => type.GetProperty(property)!.SetValue(model, value);
+                        Set("RequestHostAdministratorCredentialsAsync",
+                            (Func<string?, Task<HostAdministratorCredentials?>>)(_ => Task.FromResult<HostAdministratorCredentials?>(
+                                new("isolated-fixture", "isolated-test-credential"))));
+                        if (smbAction == "create")
+                        {
+                            Check(FindShare() is null, "The managed share is absent before the window creates it.");
+                            Set("ShareName", expectedShare);
+                            Set("SharePath", Environment.GetEnvironmentVariable("RK_TEST_SMB_SHARE_PATH"));
+                            Set("ShareReadOnly", false);
+                            Set("ShareEnabled", true);
+                            Set("ShareGuestAllowed", false);
+                            ((System.Collections.IList)type.GetProperty("SharePermissions")!.GetValue(model)!).Clear();
+                            type.GetMethod("AddSharePermission")!.Invoke(model, ["rkshare", RelaxKonOS.Protocol.FileServices.FileShareAccess.ReadWrite]);
+                            var save = (Task<bool>)type.GetMethod("SaveShareAsync")!.Invoke(model, [false])!;
+                            Check(await save && FindShare() is not null, "The installed File Services window creates and refreshes the real Samba share.");
+                        }
+                        else
+                        {
+                            Set("SelectedShare", FindShare());
+                            Set("ConfirmDeleteAsync", (Func<string, Task<bool>>)(_ => Task.FromResult(true)));
+                            var remove = (System.Windows.Input.ICommand)type.GetProperty("DeleteShareCommand")!.GetValue(model)!;
+                            Check(remove.CanExecute(null), "The installed window can remove the selected managed share.");
+                            remove.Execute(null);
+                            await (Task)remove.GetType().GetProperty("ExecutionTask")!.GetValue(remove)!;
+                            Check(FindShare() is null, "The installed File Services window removes the real Samba share.");
+                        }
+                    }
                 }
                 if (isFirewall)
                 {
@@ -1242,6 +1281,7 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerGitRead);
             appPermissions.Granted.Add(AppPermissions.ServerGitManage);
             appPermissions.Granted.Add(AppPermissions.ServerFileServicesRead);
+            if (smbAction is not null) appPermissions.Granted.Add(AppPermissions.ServerFileServicesManage);
             var git = isGit ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerGit, OfficialGitFixture>() : null;
             IServerFileServices? fileServices = isFileServices ? DispatchProxy.Create<IServerFileServices, ShareDialogClient>() : null;
             if (smbPort is not null)

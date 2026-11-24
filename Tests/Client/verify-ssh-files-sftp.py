@@ -162,7 +162,8 @@ def run(runner, package):
         accept = executor.submit(accept_connections)
         try:
             environment = dict(os.environ, RK_TEST_SFTP_PORT=str(listener.getsockname()[1]),
-                               RK_TEST_SFTP_PASSWORD=password, RK_TEST_SFTP_FINGERPRINT="SHA256:" + fingerprint)
+                               RK_TEST_SFTP_PASSWORD=password, RK_TEST_SFTP_FINGERPRINT="SHA256:" + fingerprint,
+                               RK_TEST_SFTP_ROOT="/")
             result = subprocess.run([*command, "--official-roapp-only", package],
                                     env=environment, timeout=90).returncode
             if not result and os.path.basename(package) == "relaxkonos.codeeditor.roapp":

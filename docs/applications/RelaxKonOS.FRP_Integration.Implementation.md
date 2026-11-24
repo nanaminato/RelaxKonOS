@@ -73,4 +73,6 @@ Windows FRPS/FRPC 使用独立 SCM 服务，Linux 使用独立 systemd unit，�
 
 ## 组件中心 Linux 更新与卸载（2026-10-30，MR-04）
 
+Linux Helper 在首次应用配置后若启动失败，会停用并移除本次 systemd 单元及其应用证明。已有实例仍走原配置回滚。隔离 Linux x64 systemd 实测覆盖端口占用、清理、重试和原有实例回滚。
+
 frpc/frps 的 Linux 直接下载面板增加受管更新、保留业务配置卸载，复用 FRP 领域安装台账。两项都作用于整个 frpc/frps 包；更新要求所选 pin 的版本更高，Server 与 Helper 同时认可来源及摘要；卸载无需选择归档版本。执行先停止受管隧道及 frps，更新完成后由业务入口重新启动。旧版本默认 URL 并非缺少按钮的唯一原因，原计划与面板也只开放首次安装；本次不取消 pin 信任门禁、不自动扩大版本目录。新增包生命周期仍待真实 Linux 跨版本和中断恢复验收，MR-04 不关闭。详见[组件实施进度](../platform/RelaxKonOS.ComponentCenter.Progress.md)。

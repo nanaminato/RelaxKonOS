@@ -154,7 +154,7 @@ internal static class SingBoxOperations
             finally { File.Delete(candidate); }
         }
         catch (RuntimePolicyException ex) { return Failure(ex.ProblemCode); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException
             or ArgumentException or JsonException or HttpRequestException or TimeoutException or OperationCanceledException or System.ComponentModel.Win32Exception)
         { return Failure("proxy_server.runtime_failed"); }
         finally { Gate.Release(); }

@@ -201,6 +201,8 @@ if (args is ["--official-roapp-only", var artifact]) { OfficialRoappChecks.Run(a
 if (args is ["--desktop-distribution-only", var distribution]) { DesktopDistributionChecks.Run(distribution); return; }
 if (args is ["--direct-dependencies-only", var directArtifact]) { DirectDeployDependencyChecks.Run(directArtifact); return; }
 if (args is ["--official-store-only", var storeArtifact]) { OfficialStoreChecks.Run(storeArtifact); return; }
+if (args is ["--official-store-only", var indexedStoreArtifact, var storeCatalog])
+{ OfficialStoreChecks.Run(indexedStoreArtifact, storeCatalog); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(settings); return; }
 if (args.Contains("--developer-release-only")) { DeveloperReleaseChecks.Run(); return; }

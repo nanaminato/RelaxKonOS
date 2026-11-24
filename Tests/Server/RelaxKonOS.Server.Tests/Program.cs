@@ -758,6 +758,17 @@ if (args is ["--file-services-live-pipe", var smbHelperConfig, var smbPipeDeskto
     await FileServicesLiveChecks.RunPipeAsync(smbHelperConfig, smbPipeDesktop, smbPipePackage);
     return;
 }
+if (args is ["--file-services-live-socket", var smbSocket, var smbSocketDesktop, var smbSocketPackage, var smbShare])
+{
+    await FileServicesLiveChecks.RunSocketAsync(smbSocket, smbSocketDesktop, smbSocketPackage, smbShare);
+    return;
+}
+if (args is ["--file-services-live-socket-mutation", var mutationSocket, var mutationDesktop, var mutationPackage,
+    var mutationShare, "create" or "delete", var mutationPath, "--confirm-isolated-host"])
+{
+    await FileServicesLiveChecks.RunSocketAsync(mutationSocket, mutationDesktop, mutationPackage, mutationShare, args[5], mutationPath);
+    return;
+}
 if (args.Contains("--file-services-only"))
 {
     ServerCoreChecks.VerifySmbProtocolAndElevationContract();

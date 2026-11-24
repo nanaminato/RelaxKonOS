@@ -46,6 +46,7 @@ using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Tunnels;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
@@ -83,7 +84,7 @@ internal static class JointDeploymentAcceptance
 
     public static void RunSignedTunnels(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
         "relaxkonos.tunnels", ServerCapabilities.Tunnels, "Tunnels", RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.AssemblyFile,
-        RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.EntryType, null, VerifySignedTunnelsAsync));
+        RelaxKonOS.Server.Tunnels.CollectibleTunnelExecution.EntryType, null, (host, root) => VerifySignedTunnelsAsync(host, root)));
 
     public static void RunSignedTailscale(string archive) => RunWithDispatcher(() => RunSignedExecutionAsync(Path.GetFullPath(archive),
         "relaxkonos.tailscale", ServerCapabilities.Tailscale, "Tailscale", RelaxKonOS.Server.Tailscale.CollectibleTailscaleExecution.AssemblyFile,
@@ -704,23 +705,36 @@ internal static class JointDeploymentAcceptance
             var official = Directory.CreateDirectory(Path.Combine(root, "OfficialApps")).FullName;
             var appArchive = Path.Combine(official, Path.GetFileName(archive));
             const string version = "99.0.0";
-            await RewriteDesktopArchiveAsync(archive, appArchive, manifest =>
+            var useTunnelWindow = moduleId == "relaxkonos.tunnels" && OperatingSystem.IsLinux()
+                && Environment.GetEnvironmentVariable("RK_TEST_FRP_HOST_ARCHIVE") is { Length: > 0 };
+            if (useTunnelWindow)
             {
-                var required = manifest["dependencies"]?["required"] as JsonArray;
-                var dependency = required?.OfType<JsonObject>().SingleOrDefault(item =>
-                    item["package"]?["kind"]?.GetValue<int>() == (int)DeploymentPackageKind.ServerModule
-                    && item["package"]?["id"]?.GetValue<string>() == moduleId);
-                if (dependency is null)
-                    throw new InvalidDataException($"Desktop archive {Path.GetFileName(archive)} lacks required server module {moduleId}.");
-                dependency["minimumVersion"] = version;
-            });
+                File.Copy(archive, appArchive);
+                File.Copy(archive + ".sha256", appArchive + ".sha256");
+            }
+            else
+            {
+                await RewriteDesktopArchiveAsync(archive, appArchive, manifest =>
+                {
+                    var required = manifest["dependencies"]?["required"] as JsonArray;
+                    var dependency = required?.OfType<JsonObject>().SingleOrDefault(item =>
+                        item["package"]?["kind"]?.GetValue<int>() == (int)DeploymentPackageKind.ServerModule
+                        && item["package"]?["id"]?.GetValue<string>() == moduleId);
+                    if (dependency is null)
+                        throw new InvalidDataException($"Desktop archive {Path.GetFileName(archive)} lacks required server module {moduleId}.");
+                    dependency["minimumVersion"] = version;
+                });
+            }
             var serverRoot = Directory.CreateDirectory(Path.Combine(root, "server")).FullName;
             using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var key = Path.Combine(root, "signing.pem");
             await File.WriteAllTextAsync(key, signer.ExportPkcs8PrivateKeyPem());
             var now = DateTimeOffset.UtcNow;
             var rid = ModulePackagePlatform.CurrentRid;
-            var executionDirectory = Path.Combine(AppContext.BaseDirectory, "Modules", directory);
+            var executionDirectory = useTunnelWindow
+                ? Path.GetFullPath(Environment.GetEnvironmentVariable("RK_TEST_FRP_MODULE_SOURCE")
+                    ?? throw new InvalidOperationException("Specify the external Tunnels signing input in RK_TEST_FRP_MODULE_SOURCE."))
+                : Path.Combine(AppContext.BaseDirectory, "Modules", directory);
             var package = await ModulePackageBuilder.BuildAsync(new(executionDirectory,
                 Path.Combine(root, "module"), moduleId, version, "joint-execution-" + rid, "fixture", "official", rid,
                 entryAssembly, entryType, "joint-execution", new string('a', 40), "official", 1,
@@ -774,7 +788,7 @@ internal static class JointDeploymentAcceptance
                 [moduleId], new Dictionary<string, string> { ["fixture-key"] = package.PublicKeySpkiBase64 }, 3600);
             var config = new ConfigurationBuilder().AddJsonStream(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(new
             {
-                ModuleManagement = new { Authority = "managed" },
+                ModuleManagement = new { Authority = "managed", DefaultDisabledModules = useTunnelWindow ? new[] { moduleId } : [] },
                 ModulePackages = new { Sources = new Dictionary<string, ModulePackageTrustPolicy> { ["official"] = policy } },
             }, RelaxKonOSJsonOptions.Default))).Build();
             string serviceId;
@@ -796,7 +810,24 @@ internal static class JointDeploymentAcceptance
             var windows = new RelaxKonOS.WindowManager.WindowManager();
             var apps = new ApplicationManager(windows, services);
             var drive = new VirtualSystemDrive(Path.Combine(root, "desktop"));
-            var packages = new DeveloperPackageManager(apps, null!, windows, DispatchProxy.Create<IAppPermissionManager, PermissionProxy>(),
+            var permissions = DispatchProxy.Create<IAppPermissionManager, PermissionProxy>();
+            using var tunnelHttp = useTunnelWindow ? new HttpClient() : null;
+            ExternalAppContextFactory? tunnelContext = null;
+            if (tunnelHttp is not null)
+            {
+                tunnelHttp.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+                ((PermissionProxy)(object)permissions).GrantedApp = "relaxkonos.tunnels";
+                var usage = new UsageMemoryStore(Path.Combine(root, "usage-memory.json"));
+                var broker = new RelaxKonOS.Client.Services.Privileged.HostElevationBroker(tunnelHttp, auth, windows, usage);
+                var tunnelClient = new RelaxKonOS.Client.Apps.Tunnels.RemoteTunnelClient(tunnelHttp, auth, broker);
+                windows.Attach(new Avalonia.Controls.Canvas { Width = 1200, Height = 800 });
+                tunnelContext = new ExternalAppContextFactory(permissions,
+                    new AppPermissionRequestService(apps, permissions, windows, localization), localization,
+                    settings, null!, auth, null!, windows, null!, null!, new SshDesktopSession(null!, settings), null!,
+                    new SettingsNavigationService(apps), null!, null!, apps, usage, null!, null!, null!, null!,
+                    tunnels: tunnelClient, elevationBroker: broker);
+            }
+            var packages = new DeveloperPackageManager(apps, tunnelContext!, windows, permissions,
                 new Diagnostics(), drive, official, moduleHttp: factory, moduleSession: auth);
             await packages.LoadInstalledAsync();
             using var trust = new ComponentCatalogSourceStore(Path.Combine(root, "sources"), "joint-execution");
@@ -894,6 +925,18 @@ internal static class JointDeploymentAcceptance
             host = await TestHost.StartAsync(serverRoot, config);
             session.Url = host.Url;
             var resumed = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException($"{moduleId} joint plan was not recoverable.");
+            if (useTunnelWindow)
+            {
+                await ExpectRestartAsync(joint, resumed);
+                Require(!apps.IsRegistered(new AppId(candidate.Manifest.Id)) && ModulePackageOperationStore.Read(serverRoot).Count == 1,
+                    "the original Tunnels archive waits for module enable without repeating the package installation");
+                await host.DisposeAsync();
+                host = null;
+                host = await TestHost.StartAsync(serverRoot, config);
+                session.Url = host.Url;
+                resumed = await joint.FindPendingAsync(candidate, default)
+                    ?? throw new InvalidOperationException("The original Tunnels enable operation was not recoverable.");
+            }
             var installed = await joint.ExecuteAsync(resumed, default);
             Require(apps.IsRegistered(new AppId(installed.Id)) && InstalledModuleStore.Read(serverRoot).Single() is { Version: version }
                 && ModulePackageOperationStore.Read(serverRoot).Count == 1,
@@ -974,7 +1017,10 @@ internal static class JointDeploymentAcceptance
                         $"an incompatible historical {moduleId} version cannot displace the active version during rollback");
                 }
             }
-            await verifyBusiness(host, root);
+            if (useTunnelWindow)
+                await VerifySignedTunnelsAsync(host, root, (id, start) => UseInstalledTunnelWindowAsync(apps, windows, id, start));
+            else
+                await verifyBusiness(host, root);
             var verifySharedProxy = moduleId == ServerModules.ProxyId && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SHARED_APPS") == "1";
             if (verifySharedProxy)
             {
@@ -1236,7 +1282,7 @@ internal static class JointDeploymentAcceptance
             && worktreeStatus?.Staged is [{ Path: "joint.txt" }], "the joint-installed Git package stages and reads the real Git index");
     }
 
-    private static async Task VerifySignedTunnelsAsync(TestHost host, string root)
+    private static async Task VerifySignedTunnelsAsync(TestHost host, string root, Func<Guid, bool, Task>? operateWindow = null)
     {
         using var client = new HttpClient { BaseAddress = new Uri(host.Url) };
         using var anonymous = await client.GetAsync(TunnelApiRoutes.Profiles);
@@ -1260,6 +1306,23 @@ internal static class JointDeploymentAcceptance
         var saved = (await accepted.Content.ReadFromJsonAsync<TunnelDefinitionDto>(RelaxKonOSJsonOptions.Default))!;
         var ownerProfiles = await client.GetFromJsonAsync<TunnelServerProfileDto[]>(TunnelApiRoutes.Profiles, RelaxKonOSJsonOptions.Default);
         Require(ownerProfiles is [var owned] && owned.Id == profile.Id, "the signed Tunnels route reports the saved profile to its owner");
+        var applyPath = TunnelApiRoutes.ApplyProfile.Replace("{profileId}", profile.Id.ToString("D"));
+        if (OperatingSystem.IsLinux())
+        {
+            using var apply = await client.PostAsync(applyPath, null);
+            apply.EnsureSuccessStatusCode();
+            var result = await apply.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RelaxKonOSJsonOptions.Default);
+            Require(result is { Succeeded: false, State: TunnelConnectionState.RuntimeUnavailable,
+                    ProblemCode: "tunnel.managed_runtime_not_installed" },
+                "the signed Tunnels route reports a missing managed FRP runtime before starting a service");
+            if (host.Services.GetRequiredService<IPrivilegedOperationTransport>() is UnixSocketPrivilegedOperationTransport)
+            {
+                var helper = host.Services.GetRequiredService<ManagedRuntimeOperations>();
+                var status = await helper.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Status));
+                Require(status is { Success: true, ComponentProcess: { Running: true } },
+                    $"the signed Tunnels test host reads the running FRPS through the production Helper socket: {status.ProblemCode}");
+            }
+        }
 
         client.DefaultRequestHeaders.Remove("test-user");
         client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
@@ -1268,6 +1331,8 @@ internal static class JointDeploymentAcceptance
         using var forbidden = await client.PostAsJsonAsync(TunnelApiRoutes.Tunnels,
             request with { Domain = "observer.example.test" }, RelaxKonOSJsonOptions.Default);
         Require(forbidden.StatusCode == System.Net.HttpStatusCode.Forbidden, "the observer cannot write a tunnel definition");
+        using var forbiddenApply = await client.PostAsync(applyPath, null);
+        Require(forbiddenApply.StatusCode == System.Net.HttpStatusCode.Forbidden, "the observer cannot apply a tunnel profile");
 
         client.DefaultRequestHeaders.Remove("test-user");
         client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.SecondAdmin);
@@ -1278,6 +1343,19 @@ internal static class JointDeploymentAcceptance
         Require(await db.TunnelDefinitions.AnyAsync(row => row.Id == saved.Id && row.Domain == "app.example.test")
             && await db.TunnelDefinitions.CountAsync() == 1,
             "the signed Tunnels path saves only the valid definition to SQLite");
+
+        if (host.Services.GetRequiredService<IPrivilegedOperationTransport>() is UnixSocketPrivilegedOperationTransport
+            && Environment.GetEnvironmentVariable("RK_TEST_FRP_HOST_ARCHIVE") is { Length: > 0 } managedArchive)
+        {
+            await using var input = File.OpenRead(managedArchive);
+            var installed = await host.Services.GetRequiredService<IRuntimeManager>()
+                .InstallManagedFrpcFromArchiveAsync("v0.71.0", input, input.Length, new FrpAcceptanceProgress(), default);
+            Require(installed.Succeeded, $"the managed FRP archive is installed through the production Helper: {installed.ProblemCode}");
+            client.DefaultRequestHeaders.Remove("test-user");
+            client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
+            await VerifyLiveFrpAsync(client, executable: null, port: 17099,
+                managedHelper: host.Services.GetRequiredService<ManagedRuntimeOperations>(), operateWindow: operateWindow);
+        }
 
         if (Environment.GetEnvironmentVariable("RK_TEST_FRPC") is { Length: > 0 } executable)
         {
@@ -1297,18 +1375,69 @@ internal static class JointDeploymentAcceptance
             {
                 client.DefaultRequestHeaders.Remove("test-user");
                 client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
-                await VerifyExternalFrpAsync(client, executable, int.Parse(port, System.Globalization.CultureInfo.InvariantCulture));
+                await VerifyLiveFrpAsync(client, executable, int.Parse(port, System.Globalization.CultureInfo.InvariantCulture));
             }
         }
     }
 
-    private static async Task VerifyExternalFrpAsync(HttpClient client, string executable, int port)
+    private sealed class FrpAcceptanceProgress : IInstallationProgress
     {
-        var profileRequest = new UpsertTunnelServerProfileRequest("local-live", "127.0.0.1", port, TunnelAuthKind.None,
-            TunnelTlsMode.Default, TunnelRuntimeMode.External, Path.GetFullPath(executable));
+        public Guid OperationId { get; } = Guid.NewGuid();
+        public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private static async Task UseInstalledTunnelWindowAsync(ApplicationManager apps,
+        RelaxKonOS.WindowManager.WindowManager windows, Guid profileId, bool start)
+    {
+        var appId = new AppId("relaxkonos.tunnels");
+        if (start) Require(apps.Launch(appId), "the installed Tunnels application accepts a launch request");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            var window = windows.Windows.SingleOrDefault(item => item.Info.OwnerAppId == appId);
+            if (window?.View.Content is Avalonia.Controls.Control { DataContext: { } model })
+            {
+                var type = model.GetType();
+                if (type.GetProperty("Profiles")?.GetValue(model) is IEnumerable<TunnelServerProfileDto> profiles
+                    && profiles.FirstOrDefault(item => item.Id == profileId) is { } profile
+                    && type.GetProperty(start ? "ApplySelectedCommand" : "StopSelectedCommand")?.GetValue(model)
+                        is System.Windows.Input.ICommand command)
+                {
+                    type.GetProperty("SelectedProfile")!.SetValue(model, profile);
+                    if (command.CanExecute(null))
+                    {
+                        // The installed package loads its own MVVM assembly.
+                        command.Execute(null);
+                        if (command.GetType().GetProperty("ExecutionTask")?.GetValue(command) is not Task execution)
+                            throw new InvalidOperationException("The Tunnels window command did not expose its execution task.");
+                        await execution.WaitAsync(timeout.Token);
+                        if (!start) windows.ForceClose(window);
+                        return;
+                    }
+                }
+            }
+            await Task.Delay(50, timeout.Token);
+        }
+    }
+
+    private static async Task VerifyLiveFrpAsync(HttpClient client, string? executable, int port,
+        ManagedRuntimeOperations? managedHelper = null, Func<Guid, bool, Task>? operateWindow = null)
+    {
+        var mode = executable is null ? TunnelRuntimeMode.Managed : TunnelRuntimeMode.External;
+        const string fixtureToken = "isolated-acceptance-token";
+        var profileRequest = new UpsertTunnelServerProfileRequest("local-live", "127.0.0.1", port,
+            managedHelper is null ? TunnelAuthKind.None : TunnelAuthKind.Token, TunnelTlsMode.Default, mode,
+            executable is null ? null : Path.GetFullPath(executable));
         using var response = await client.PostAsJsonAsync(TunnelApiRoutes.Profiles, profileRequest, RelaxKonOSJsonOptions.Default);
         response.EnsureSuccessStatusCode();
         var profile = (await response.Content.ReadFromJsonAsync<TunnelServerProfileDto>(RelaxKonOSJsonOptions.Default))!;
+        if (managedHelper is not null)
+        {
+            var secretPath = TunnelApiRoutes.ProfileSecret.Replace("{profileId}", profile.Id.ToString("D"));
+            using var secret = await client.PutAsJsonAsync(secretPath, new SetTunnelProfileTokenRequest(fixtureToken),
+                RelaxKonOSJsonOptions.Default);
+            secret.EnsureSuccessStatusCode();
+        }
         using var backend = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         backend.Start();
         var localPort = ((System.Net.IPEndPoint)backend.LocalEndpoint).Port;
@@ -1316,6 +1445,13 @@ internal static class JointDeploymentAcceptance
         reservation.Start();
         var remotePort = ((System.Net.IPEndPoint)reservation.LocalEndpoint).Port;
         reservation.Stop();
+        if (managedHelper is not null)
+        {
+            var server = await managedHelper.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Start, "v0.71.0",
+                Server: new("127.0.0.1", port, [new(remotePort, remotePort)], null, null, false, fixtureToken,
+                    false, "127.0.0.1", null, null, null), AppliedIdentity: "2"));
+            Require(server.Success, $"the FRPS fixture accepts the isolated proxy port: {server.ProblemCode}");
+        }
         using var definition = await client.PostAsJsonAsync(TunnelApiRoutes.Tunnels,
             new UpsertTunnelDefinitionRequest(profile.Id, "loopback-probe", TunnelProtocol.Tcp, "127.0.0.1",
                 localPort, remotePort, null, true, false, false), RelaxKonOSJsonOptions.Default);
@@ -1325,16 +1461,36 @@ internal static class JointDeploymentAcceptance
         var logPath = TunnelApiRoutes.ProfileLogs.Replace("{profileId}", profile.Id.ToString("D"));
         try
         {
-            using var applied = await client.PostAsync(applyPath, null);
-            applied.EnsureSuccessStatusCode();
-            var result = await applied.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RelaxKonOSJsonOptions.Default);
-            Require(result?.Succeeded == true, $"the signed Tunnels route starts real external frpc: {result?.ProblemCode}");
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (true)
+            if (operateWindow is not null)
+                await operateWindow(profile.Id, true);
+            else
             {
-                var logs = await client.GetFromJsonAsync<TunnelLogEntryDto[]>(logPath, RelaxKonOSJsonOptions.Default, timeout.Token);
-                if (logs?.Any(log => log.Message.Contains("start proxy success", StringComparison.OrdinalIgnoreCase)) == true) break;
-                await Task.Delay(100, timeout.Token);
+                using var applied = await client.PostAsync(applyPath, null);
+                applied.EnsureSuccessStatusCode();
+                var result = await applied.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RelaxKonOSJsonOptions.Default);
+                Require(result?.Succeeded == true, $"the signed Tunnels route starts real {mode} frpc: {result?.ProblemCode}");
+            }
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            if (managedHelper is null)
+            {
+                while (true)
+                {
+                    var logs = await client.GetFromJsonAsync<TunnelLogEntryDto[]>(logPath, RelaxKonOSJsonOptions.Default, timeout.Token);
+                    if (logs?.Any(log => log.Message.Contains("start proxy success", StringComparison.OrdinalIgnoreCase)) == true) break;
+                    await Task.Delay(100, timeout.Token);
+                }
+            }
+            else
+            {
+                while (true)
+                {
+                    var status = await managedHelper.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Status,
+                        ProfileId: profile.Id), timeout.Token);
+                    Require(status.Success, $"the production Helper returns managed FRPC status: {status.ProblemCode}");
+                    if (status.ComponentProcess is { Running: true, Connected: true, AppliedIdentity.Length: 64 })
+                        break;
+                    await Task.Delay(100, timeout.Token);
+                }
             }
             using var forwarded = new System.Net.Sockets.TcpClient();
             await forwarded.ConnectAsync(System.Net.IPAddress.Loopback, remotePort, timeout.Token);
@@ -1351,10 +1507,15 @@ internal static class JointDeploymentAcceptance
         }
         finally
         {
-            using var stopped = await client.PostAsync(stopPath, null);
-            stopped.EnsureSuccessStatusCode();
-            var result = await stopped.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RelaxKonOSJsonOptions.Default);
-            Require(result is { Succeeded: true, State: TunnelConnectionState.Disconnected }, "Core stops the external FRP session");
+            if (operateWindow is not null)
+                await operateWindow(profile.Id, false);
+            else
+            {
+                using var stopped = await client.PostAsync(stopPath, null);
+                stopped.EnsureSuccessStatusCode();
+                var result = await stopped.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RelaxKonOSJsonOptions.Default);
+                Require(result is { Succeeded: true, State: TunnelConnectionState.Disconnected }, $"Core stops the {mode} FRP session");
+            }
         }
         using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         while (true)
@@ -1363,7 +1524,7 @@ internal static class JointDeploymentAcceptance
             try { await probe.ConnectAsync(System.Net.IPAddress.Loopback, remotePort, stopTimeout.Token); }
             catch (System.Net.Sockets.SocketException error) when (error.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused)
             {
-                Console.WriteLine("PASS: stopping the external session releases the frps proxy listener");
+                Console.WriteLine($"PASS: stopping the {mode} session releases the frps proxy listener");
                 break;
             }
             await Task.Delay(100, stopTimeout.Token);
@@ -1406,6 +1567,7 @@ internal static class JointDeploymentAcceptance
         {
             ServerModules.WebServerId => "relaxkonos.webservers",
             ServerModules.SystemPerformanceId => "relaxkonos.taskmanager",
+            ServerModules.ProxyId when Path.GetFileName(archive) == "relaxkonos.proxy-server.roapp" => "relaxkonos.proxy-server",
             _ => moduleId,
         };
         if (server.Scheme != "http" || server.Host != "127.0.0.1" || server.PathAndQuery != "/"
@@ -1435,19 +1597,32 @@ internal static class JointDeploymentAcceptance
         var devicePreferences = new DesktopDevicePreferences(Path.Combine(state, "terminal-device.json"));
         ExternalAppContextFactory? appContext = null;
         ServiceProvider? fixtureLocalization = null;
-        if (moduleId == ServerModules.TerminalId)
+        var verifyProxyServerWindow = appId == "relaxkonos.proxy-server" && phase == "resume";
+        var publishProxyServer = appId == "relaxkonos.proxy-server" && Environment.GetEnvironmentVariable("RK_TEST_PROXY_SERVER_PUBLISH") == "1";
+        var proxyPublicationEvidence = Path.Combine(state, "proxy-tls-evidence.json");
+        if (moduleId == ServerModules.TerminalId || verifyProxyServerWindow)
         {
             windows.Attach(new Avalonia.Controls.Canvas { Width = 1000, Height = 720 });
             devicePreferences.Update(current => current with { TerminalVtEngine = "Native" });
             var settings = new ShellSettings(null!);
             var ssh = new SshDesktopSession(null!, settings);
             var localization = new LocalizationService(settings, ssh);
+            var permissionFixture = (PermissionProxy)(object)permissions;
+            if (verifyProxyServerWindow)
+            {
+                permissionFixture.GrantedApp = appId;
+                if (!publishProxyServer) permissionFixture.GrantedPermission = AppPermissions.ServerProxyServerRead;
+            }
+            var proxyServer = verifyProxyServerWindow
+                ? new RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient(moduleHttp, auth) : null;
             fixtureLocalization = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
             typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, fixtureLocalization);
-            appContext = new ExternalAppContextFactory(permissions, null!, localization,
+            appContext = new ExternalAppContextFactory(permissions,
+                verifyProxyServerWindow ? new AppPermissionRequestService(applications, permissions, windows, localization) : null!, localization,
                 settings, null!, auth, null!, windows, null!, null!, ssh, null!, new SettingsNavigationService(applications),
                 null!, null!, applications, new UsageMemoryStore(Path.Combine(state, "usage-memory.json")), null!,
-                null!, null!, null!, devicePreferences: devicePreferences);
+                null!, null!, null!, devicePreferences: devicePreferences,
+                createProxyServerClient: proxyServer is null ? null : () => proxyServer);
         }
         using var fixtureLocalizationLifetime = fixtureLocalization;
         var packages = new DeveloperPackageManager(applications, appContext!, windows, permissions, new Diagnostics(), drive,
@@ -1469,12 +1644,24 @@ internal static class JointDeploymentAcceptance
             Require(absent is { Packaging: "independent", InstalledVersion: null, EffectiveEnabled: false, DesiredEnabled: false }
                 && absent.AllowedActions?.Single(action => action.Action == ServerModuleAction.Enable) is { Allowed: false },
                 "the external module returns to its uninstalled state after removal");
+            if (publishProxyServer)
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                var evidence = JsonSerializer.Deserialize<ProxyTlsEvidence>(await File.ReadAllTextAsync(proxyPublicationEvidence, deadline.Token))
+                    ?? throw new InvalidOperationException("Expected evidence of a TLS listener published by the installed window.");
+                using var healthy = await loginHttp.GetAsync(new Uri(server, "/healthz"), deadline.Token);
+                using var removedRoute = await moduleHttp.GetAsync(new Uri(server, RelaxKonOS.Protocol.ProxyServer.ProxyServerRoutes.Configuration), deadline.Token);
+                Require(healthy.IsSuccessStatusCode && removedRoute.StatusCode == System.Net.HttpStatusCode.NotFound,
+                    "Core stays healthy and withdraws the Proxy Server management route after online removal");
+                await VerifyProxyTlsAsync(evidence, deadline.Token);
+                Console.WriteLine("PASS: the desktop-published TLS listener retains its exact certificate after online module removal.");
+            }
             return;
         }
         if (phase == "uninstall")
         {
             Require(await packages.UninstallAsync(appId) && !applications.IsRegistered(new AppId(appId)),
-                $"the desktop uninstalls its own {moduleId} application");
+                $"the desktop uninstalls its own {appId} application");
             if (externalLayout)
             {
                 var disable = await PreviewDisableAsync($"disable-after-desktop-uninstall-{moduleId}");
@@ -1489,7 +1676,7 @@ internal static class JointDeploymentAcceptance
         var deployment = new JointAppDeploymentService(factory, auth, installer, packages,
             applications, new FileDeploymentJournal(Path.Combine(state, "journal")));
         var candidate = await installer.InspectLocalAsync(archive);
-        Require(candidate.Manifest.Id == appId, $"the fixture uses the {moduleId} desktop package");
+        Require(candidate.Manifest.Id == appId, $"the fixture uses the {appId} desktop package");
         if (moduleId == ServerModules.GitId && phase == "reuse")
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(repository);
@@ -1573,7 +1760,7 @@ internal static class JointDeploymentAcceptance
                     "Web Server Manager reuses the running Certificates dependency before downloading WebServer");
             await ExpectRestartAsync(deployment, review);
             Require(!applications.IsRegistered(new AppId(appId)),
-                $"the desktop waits for the server module before registering {moduleId}");
+                $"the desktop waits for the server module before registering {appId}");
             return;
         }
         var resumed = phase == "reuse" ? await deployment.PrepareAsync(candidate, [], default)
@@ -1594,7 +1781,37 @@ internal static class JointDeploymentAcceptance
         var installed = await deployment.ExecuteAsync(resumed, default);
         var manifest = applications.GetManifest(new AppId(installed.Id));
         Require(installed.Id == appId && manifest is not null,
-            $"the desktop plan registers {moduleId} after verifying the running module");
+            $"the desktop plan registers {appId} after verifying the running module");
+        if (verifyProxyServerWindow)
+        {
+            var id = new AppId(appId);
+            Require(applications.Launch(id), "the installed Proxy Server application accepts a launch request");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            while (true)
+            {
+                var window = windows.Windows.SingleOrDefault(item => item.Info.OwnerAppId == id);
+                if (window?.View.Content is Avalonia.Controls.Control { DataContext: { } model }
+                    && model.GetType().GetProperty("Snapshot")?.GetValue(model)
+                        is RelaxKonOS.Protocol.ProxyServer.ProxyServerSnapshot snapshot)
+                {
+                    Require(snapshot.Capabilities.Supported && snapshot.PublishedRevision is null
+                        && (publishProxyServer || model.GetType().GetProperty("CanManage")?.GetValue(model) is false),
+                        "the installed Proxy Server window reads the signed module's unpublished configuration");
+                    var nativeHash = Environment.GetEnvironmentVariable("RK_TEST_PROXY_SERVER_NATIVE_HASH");
+                    if (nativeHash is { Length: > 0 })
+                        Require(snapshot.Status is { Installed: true, Running: true, Applied: false, RecoveryRequired: false }
+                            && string.Equals(snapshot.Status.ConfigurationHash, nativeHash, StringComparison.OrdinalIgnoreCase),
+                            "the installed Proxy Server window sees the real running configuration without claiming a desktop publication");
+                    else
+                        Require(!snapshot.Status.Installed, "the installed Proxy Server window reports the missing runtime");
+                    if (publishProxyServer)
+                        await PublishProxyServerFromWindowAsync(moduleHttp, auth, model, username, password, proxyPublicationEvidence);
+                    windows.ForceClose(window);
+                    break;
+                }
+                await Task.Delay(50, timeout.Token);
+            }
+        }
         if (moduleId == ServerModules.GitId)
             await VerifyGitRepositoryAsync();
         if (moduleId is ServerModules.CertificatesId or ServerModules.WebServerId)
@@ -1653,6 +1870,96 @@ internal static class JointDeploymentAcceptance
                 [.. inventory.Where(item => item.DesiredEnabled && item.Id != moduleId).Select(item => item.Id)],
                 module.DesiredRevision!, key));
         }
+    }
+
+    private static async Task PublishProxyServerFromWindowAsync(HttpClient http, IAuthSession auth, object model,
+        string username, string password, string evidencePath)
+    {
+        const string hostname = "desktop-proxy-fixture.example";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        var ct = timeout.Token;
+        using var elevation = await http.PostAsJsonAsync(new Uri(new Uri(auth.EffectiveBaseUrl!), PrivilegedApiRoutes.Elevation),
+            new HostElevationRequest(HostElevationCapability.CertificateCreateSelfSigned, "certificates/self-signed", password, username),
+            RelaxKonOSJsonOptions.Default, ct);
+        Require(elevation.IsSuccessStatusCode, $"the fixture account authorizes self-signed certificate creation: {elevation.StatusCode}");
+        using var issue = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(auth.EffectiveBaseUrl!), CertificateApiRoutes.SelfSigned))
+        {
+            Content = JsonContent.Create(new CreateSelfSignedCertificateRequest([hostname], ValidityDays: 1), options: RelaxKonOSJsonOptions.Default),
+        };
+        issue.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        using var issued = await http.SendAsync(issue, ct);
+        issued.EnsureSuccessStatusCode();
+        var certificate = (await issued.Content.ReadFromJsonAsync<CertificateOperationDto>(RelaxKonOSJsonOptions.Default, ct))!;
+        while (certificate.State is CertificateOperationState.Queued or CertificateOperationState.Running)
+        {
+            await Task.Delay(100, ct);
+            var path = CertificateApiRoutes.Operations.Replace("{operationId}", certificate.OperationId.ToString("D"));
+            certificate = (await http.GetFromJsonAsync<CertificateOperationDto>(new Uri(new Uri(auth.EffectiveBaseUrl!), path),
+                RelaxKonOSJsonOptions.Default, ct))!;
+        }
+        Require(certificate is { State: CertificateOperationState.Succeeded, CertificateId: not null },
+            $"the production Certificates endpoint creates a TLS fixture: {certificate.ProblemCode}");
+        var certificatePath = CertificateApiRoutes.ById.Replace("{id}", certificate.CertificateId!.Value.ToString("D"));
+        var expectedCertificate = await http.GetFromJsonAsync<CertificateDto>(new Uri(new Uri(auth.EffectiveBaseUrl!), certificatePath),
+            RelaxKonOSJsonOptions.Default, ct);
+        Require(expectedCertificate?.FingerprintSha256 is { Length: > 0 }, "the certificate API reports the expected TLS fingerprint");
+        var expectedFingerprint = expectedCertificate!.FingerprintSha256!.Replace(":", "", StringComparison.Ordinal);
+        using var reservation = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        reservation.Start();
+        var port = ((System.Net.IPEndPoint)reservation.LocalEndpoint).Port;
+        reservation.Stop();
+        var client = new RelaxKonOS.Client.Apps.ProxyServer.RemoteProxyServerClient(http, auth);
+        var snapshot = await client.ReadAsync(ct);
+        var inbound = new RelaxKonOS.Protocol.ProxyServer.ProxyServerInbound(Guid.NewGuid(), "desktop-loopback",
+            RelaxKonOS.Protocol.ProxyServer.ProxyServerProtocol.Trojan, "127.0.0.1", port, hostname, port, hostname, certificate.CertificateId);
+        var saved = await client.SaveConfigurationAsync(new(snapshot.Configuration.Revision, [inbound]), Guid.NewGuid().ToString("N"), ct);
+        await WaitAsync(saved.OperationId);
+        const string principalName = "Desktop loopback fixture";
+        await WaitAsync((await client.SavePrincipalAsync(new(null, principalName, null), Guid.NewGuid().ToString("N"), ct)).OperationId);
+        var principal = (await client.ReadAsync(ct)).Principals.Single(item => item.DisplayName == principalName);
+        await WaitAsync((await client.SaveCredentialAsync(new(null, principal.Id, "Loopback credential", [inbound.Id]),
+            Guid.NewGuid().ToString("N"), ct)).OperationId);
+
+        async Task WaitAsync(Guid operationId)
+        {
+            while (true)
+            {
+                var operation = await client.OperationAsync(operationId, ct);
+                if (operation.State == RelaxKonOS.Protocol.Proxy.ProxyOperationState.Succeeded) return;
+                Require(operation.State is RelaxKonOS.Protocol.Proxy.ProxyOperationState.Queued or RelaxKonOS.Protocol.Proxy.ProxyOperationState.Running,
+                    $"the proxy draft persists through the production queue: {operation.ProblemCode}");
+                await Task.Delay(100, ct);
+            }
+        }
+        var type = model.GetType();
+        type.GetProperty("ConfirmAsync")!.SetValue(model, (Func<RelaxKonOS.AppSDK.ApplicationMessage, RelaxKonOS.AppSDK.ApplicationMessage, Task<bool>>)((_, _) => Task.FromResult(true)));
+        while (type.GetProperty("CanManage")?.GetValue(model) is not true)
+            await Task.Delay(50, ct);
+        var command = (System.Windows.Input.ICommand)type.GetProperty("ApplyCommand")!.GetValue(model)!;
+        command.Execute(null);
+        await ((Task)command.GetType().GetProperty("ExecutionTask")!.GetValue(command)!).WaitAsync(ct);
+        var published = await client.ReadAsync(ct);
+        Require(published.Status is { Applied: true, Running: true } && published.PublishedRevision == published.Configuration.Revision
+            && published.Configuration.Inbounds.Single().Id == inbound.Id,
+            "the installed window publishes the prepared TLS draft through the real signed Proxy module and Helper");
+        var evidence = new ProxyTlsEvidence(port, hostname, expectedFingerprint);
+        await VerifyProxyTlsAsync(evidence, ct);
+        Console.WriteLine("PASS: the new desktop-published sing-box inbound serves the expected TLS certificate.");
+        await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(evidence), ct);
+    }
+
+    private sealed record ProxyTlsEvidence(int Port, string Hostname, string Fingerprint);
+
+    private static async Task VerifyProxyTlsAsync(ProxyTlsEvidence evidence, CancellationToken ct)
+    {
+        using var tcp = new System.Net.Sockets.TcpClient();
+        await tcp.ConnectAsync(System.Net.IPAddress.Loopback, evidence.Port, ct);
+        using var tls = new System.Net.Security.SslStream(tcp.GetStream(), false, (_, peer, _, errors) =>
+            peer is not null && (errors & System.Net.Security.SslPolicyErrors.RemoteCertificateNameMismatch) == 0
+                && string.Equals(peer.GetCertHashString(HashAlgorithmName.SHA256), evidence.Fingerprint,
+                    StringComparison.OrdinalIgnoreCase));
+        await tls.AuthenticateAsClientAsync(new System.Net.Security.SslClientAuthenticationOptions { TargetHost = evidence.Hostname }, ct);
+        if (!tls.IsAuthenticated) throw new InvalidOperationException("The expected Proxy Server TLS listener did not authenticate.");
     }
 
     private sealed class LiveHttpFactory(HttpClient http) : IHttpClientFactory
@@ -2840,6 +3147,15 @@ internal static class JointDeploymentAcceptance
             var modules = ServerModules.CreateManaged(store.DesiredIds, installed);
             var online = installed.Where(module => modules.IsEnabled(module.Id)).ToArray();
             var hasTunnels = online.Any(module => module.Id == "relaxkonos.tunnels");
+            var frpHelperSocket = hasTunnels && OperatingSystem.IsLinux()
+                ? Environment.GetEnvironmentVariable("RK_TEST_FRP_HELPER_SOCKET") : null;
+            if (frpHelperSocket is { Length: > 0 }
+                && Environment.GetEnvironmentVariable("RK_TEST_FRP_HOST_DATA") is { Length: > 0 } frpData)
+            {
+                var data = new DirectoryInfo(Path.Combine(root, "data"));
+                if (!data.Exists)
+                    Directory.CreateSymbolicLink(data.FullName, Path.GetFullPath(frpData));
+            }
             var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, hasTunnels ? "sqlite" : "memory");
             if (hasTunnels)
             {
@@ -2848,7 +3164,7 @@ internal static class JointDeploymentAcceptance
                 builder.Services.AddSingleton<IServerModeResolver>(new ServerModeResolver(builder.Configuration,
                     RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper));
                 builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
-                    new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+                    Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "tunnel-keys"))));
                 builder.Services.AddDbContext<RelaxKonOSDbContext>(options =>
                     options.UseSqlite($"Data Source={Path.Combine(root, "tunnels-test.sqlite")};Pooling=False"));
                 builder.Services.AddScoped<ISecretStore, DataProtectionSecretStore>();
@@ -2900,7 +3216,12 @@ internal static class JointDeploymentAcceptance
             builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
             var helperConfigPath = hasTailscale ? Environment.GetEnvironmentVariable("RK_TEST_TAILSCALE_HOST_CONFIG")
                 : hasFirewall ? Environment.GetEnvironmentVariable("RK_TEST_FIREWALL_HOST_CONFIG") : null;
-            if (helperConfigPath is { Length: > 0 })
+            if (frpHelperSocket is { Length: > 0 })
+            {
+                builder.Services.AddSingleton(new PrivilegedHelperOptions { SocketPath = Path.GetFullPath(frpHelperSocket) });
+                builder.Services.AddSingleton<IPrivilegedOperationTransport, UnixSocketPrivilegedOperationTransport>();
+            }
+            else if (helperConfigPath is { Length: > 0 })
             {
                 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The installed Helper probe requires Windows.");
                 using var installedConfig = (ConfigurationRoot)new ConfigurationBuilder().AddJsonFile(Path.GetFullPath(helperConfigPath), optional: false).Build();
@@ -3343,7 +3664,8 @@ internal static class JointDeploymentAcceptance
             "get_CurrentSession" => Online || KeepDisconnectedIdentity ? login : null,
             "get_CurrentUser" => Online || KeepDisconnectedIdentity
                 ? new UserDto(AccountId, "controller", HostPlatformKind.Windows, "fixture", default, null) : null,
-            "get_CurrentServer" => null,
+            "get_CurrentServer" or "get_CurrentWorkspace" or "get_CurrentDevice" or "get_ExecutionEligibility" or "get_Tokens" => null,
+            "get_AssignedRole" => RelaxKonOS.Protocol.Workspace.DeviceRole.Controller,
             "add_StateChanged" or "remove_StateChanged" => null,
             _ => throw new NotSupportedException(method?.Name),
         };
@@ -3351,8 +3673,17 @@ internal static class JointDeploymentAcceptance
 
     public class PermissionProxy : DispatchProxy
     {
-        protected override object? Invoke(MethodInfo? method, object?[]? args) =>
-            method?.Name == "Clear" ? null : throw new NotSupportedException(method?.Name);
+        public string? GrantedApp { get; set; }
+        public string? GrantedPermission { get; set; }
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+        {
+            "Clear" => null,
+            "GetStatus" when args?[0] is AppId id && id.Value == GrantedApp => GrantedPermission is null || Equals(args[1], GrantedPermission)
+                ? RelaxKonOS.AppSDK.AppPermissionStatus.Granted : RelaxKonOS.AppSDK.AppPermissionStatus.Denied,
+            "IsGranted" when args?[0] is AppId id && id.Value == GrantedApp => GrantedPermission is null || Equals(args[1], GrantedPermission),
+            _ => throw new NotSupportedException(method?.Name),
+        };
     }
 
     private sealed class Diagnostics : RelaxKonOS.AppSDK.IAppActivationDiagnostics

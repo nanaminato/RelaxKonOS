@@ -25,17 +25,17 @@ internal static class OfficialStoreChecks
 {
     private const string AppIdText = "relaxkonos.notepad";
 
-    public static void Run(string artifact)
+    public static void Run(string artifact, string? catalog = null)
     {
         if (DeveloperProfile.IsDebug) throw new InvalidOperationException("Use Release for the official store check.");
-        var task = RunAsync(Path.GetFullPath(artifact));
+        var task = RunAsync(Path.GetFullPath(artifact), catalog is null ? null : Path.GetFullPath(catalog));
         var deadline = DateTime.UtcNow.AddSeconds(80);
         while (!task.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(5); }
         if (!task.IsCompleted) throw new InvalidOperationException("Official store check timed out.");
         task.GetAwaiter().GetResult();
     }
 
-    private static async Task RunAsync(string artifact)
+    private static async Task RunAsync(string artifact, string? catalog)
     {
         var root = Directory.CreateTempSubdirectory("relaxkonos-official-store-");
         using var rsa = RSA.Create(2048);
@@ -54,7 +54,9 @@ internal static class OfficialStoreChecks
         var releases = Array.Empty<object>();
         var redirect = false;
         (TaskCompletionSource Started, TaskCompletionSource Aborted)? pausedDownload = null;
-        host.MapGet("/stable/catalog.json", () => Results.Json(new { schemaVersion = 1, releases }));
+        host.MapGet("/stable/catalog.json", () => catalog is null
+            ? Results.Json(new { schemaVersion = 1, releases })
+            : Results.File(catalog, "application/json"));
         host.MapGet("/stable/{app}/{version}.roapp", async (string app, string version, HttpContext context) =>
         {
             if (pausedDownload is { } paused)
@@ -105,7 +107,9 @@ internal static class OfficialStoreChecks
             packagesOnline["1.2.0"] = broken;
             packagesOnline["1.3.0"] = interrupted;
             releases = [Release("1.0.0", v1)];
-            Check((await packages.OfficialSource.BrowseOnlineAsync(default)).Count == 1, "The preconfigured HTTPS source publishes one release.");
+            var releaseCount = catalog is null ? 1 : OfficialDesktopPackages.Ids.Count;
+            Check((await packages.OfficialSource.BrowseOnlineAsync(default)).Count == releaseCount,
+                "The preconfigured HTTPS source publishes the expected releases.");
             using var model = new AppInstallerViewModel(installer) { ConfirmUninstallAsync = _ => Task.FromResult(true) };
             var view = new AppInstallerView { DataContext = model };
             var window = new Window { Width = 620, Height = 580, Content = view };
@@ -113,7 +117,8 @@ internal static class OfficialStoreChecks
             try
             {
                 await model.RefreshOfficialCommand.ExecuteAsync(null);
-                Check(model.OfficialApps.Count == 1 && model.SelectedOfficialApp?.AvailableVersion == "1.0.0",
+                model.SelectedOfficialApp = model.OfficialApps.Single(item => item.Id == AppIdText);
+                Check(model.OfficialApps.Count == releaseCount && model.SelectedOfficialApp?.AvailableVersion == "1.0.0",
                     $"Browse the official HTTPS catalog (rows {model.OfficialApps.Count}, selection {model.SelectedOfficialApp?.AvailableVersion}).");
                 await model.DownloadOfficialCommand.ExecuteAsync(null);
                 var firstReview = model.CurrentPackage;
@@ -149,6 +154,7 @@ internal static class OfficialStoreChecks
                         .SequenceEqual(originalIcon) && await File.ReadAllTextAsync(document) == documentContents,
                     "Repair restores the missing installed asset and preserves the user's document.");
 
+                catalog = null;
                 releases = [Release("1.0.0", v1), Release("1.1.0", v2)];
                 await model.RefreshOfficialCommand.ExecuteAsync(null);
                 Check(model.SelectedOfficialApp?.AvailableVersion == "1.1.0", "Browse selects the newest version.");

@@ -8,6 +8,7 @@ import struct
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 
 def version(value):
@@ -76,7 +77,30 @@ def verify_linux_apphost(path, rid):
     require(machine == elf_machines[rid], f"{path.name} ELF machine {machine} does not match {rid}.")
 
 
-def verify_published(publish_dir, manifests, profile_document, expected_rid):
+def verify_catalog_source(packages, expected_uri):
+    source = packages / "catalog-source.json"
+    if expected_uri is None and not source.exists() and not source.is_symlink():
+        return
+    require(source.is_file() and not source.is_symlink() and source.stat().st_size <= 4096,
+            "The published desktop catalog source is missing or invalid.")
+    document = read_json(source)
+    require(isinstance(document, dict) and set(document) == {"catalogUri"},
+            "The published desktop catalog source must contain only catalogUri.")
+    address = document["catalogUri"]
+    error = "The official desktop catalog URI must be an absolute HTTPS catalog.json URL."
+    require(isinstance(address, str) and not re.search(r"[\x00-\x20\x7f\s?#\\]", address), error)
+    try:
+        uri = urlsplit(address)
+        port = uri.port
+    except ValueError:
+        raise ValueError(error) from None
+    require(uri.scheme == "https" and uri.hostname and uri.username is None
+            and (port is None or port > 0) and uri.path.endswith("/catalog.json"), error)
+    require(expected_uri is None or address == expected_uri,
+            "The published desktop catalog source differs from the requested URI.")
+
+
+def verify_published(publish_dir, manifests, profile_document, expected_rid, expected_catalog_uri):
     host_dependencies = publish_dir / "RelaxKonOS.deps.json"
     require(host_dependencies.is_file(), f"Desktop host dependency manifest is missing under {publish_dir}.")
     dependency_document = read_json(host_dependencies)
@@ -138,6 +162,7 @@ def verify_published(publish_dir, manifests, profile_document, expected_rid):
 
     packages = publish_dir / "OfficialApps"
     require(packages.is_dir(), f"OfficialApps is missing under {publish_dir}.")
+    verify_catalog_source(packages, expected_catalog_uri)
     require(read_profiles(packages / "installation-profiles.json") == profile_document,
             "Published installation profiles differ from the source configuration.")
     names = {f"{app_id}.roapp" for app_id in manifests}
@@ -225,7 +250,7 @@ def verify_profiles(document, manifests):
     return profiles
 
 
-def main(publish_dir, expected_rid):
+def main(publish_dir, expected_rid, expected_catalog_uri):
     repo = Path(__file__).resolve().parents[2]
     desktop = repo / "Client/RelaxKonOS.Client.Desktop"
     project = ET.parse(desktop / "RelaxKonOS.Client.Desktop.csproj")
@@ -254,14 +279,15 @@ def main(publish_dir, expected_rid):
     )
     print(f"Verified {len(manifests)} official desktop manifests and installation profiles ({summary}).")
     if publish_dir is not None:
-        verify_published(publish_dir, manifests, document, expected_rid)
+        verify_published(publish_dir, manifests, document, expected_rid, expected_catalog_uri)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--publish-dir", type=Path, help="Verify the actual OfficialApps output of dotnet publish.")
     parser.add_argument("--rid", help="Require this runtime identifier in the published host dependency manifest.")
+    parser.add_argument("--catalog-uri", help="Require this HTTPS catalog URI in the published catalog source.")
     args = parser.parse_args()
-    if args.rid and args.publish_dir is None:
-        parser.error("--rid requires --publish-dir")
-    main(args.publish_dir, args.rid)
+    if (args.rid or args.catalog_uri) and args.publish_dir is None:
+        parser.error("--rid and --catalog-uri require --publish-dir")
+    main(args.publish_dir, args.rid, args.catalog_uri)

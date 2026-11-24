@@ -18,9 +18,13 @@
 
 本机配置集记录无法解析时，可在启动时用 `--installation-profile=minimal|standard|developer` 重新选择，并重新指定需要排除的应用。配置集记录会按新选择重建，独立保存的应用安装记录和卸载决定仍有效。
 
-桌面发行版可用 `-p:OfficialDesktopCatalogUri=https://<发行站点>/desktop/stable/catalog.json` 生成 `OfficialApps/catalog-source.json`。配置由发行版提供。目录和制品必须使用同一预配置的 HTTPS 地址范围，客户端拒绝重定向。`relaxkonos.*` 仍需匹配应用 ID 许可集合，目录或 manifest 的声明不能授予内置身份。下载按长度、SHA-256、ID 和版本校验，安装前重新检查来源和同一份暂存文件。桌面发行不要求新增签名密钥。
+PowerShell ZIP 和 MSIX 发布脚本通过 `-OfficialDesktopCatalogUri https://<发行站点>/desktop/stable/<rid>/catalog.json` 生成 `OfficialApps/catalog-source.json`。Linux Bash ZIP 脚本在第七个参数接收同一 URL，未外置服务端模块时第六个参数传空字符串。直接调用 `dotnet publish` 时可设置 `OfficialDesktopCatalogUri` MSBuild 属性。三个打包脚本在创建归档前验证配置中的地址与传入值一致。目录和制品必须使用同一预配置的 HTTPS 地址范围，客户端拒绝重定向。`relaxkonos.*` 仍需匹配应用 ID 许可集合，目录或 manifest 的声明不能授予内置身份。下载按长度、SHA-256、ID 和版本校验，安装前重新检查来源和同一份暂存文件。桌面发行不要求新增签名密钥。
 
 用现有 DevCli 的 `pack` 生成各个 `.roapp`，再运行 `official-catalog --output <静态目录> <包1.roapp> <包2.roapp>`。工具从 manifest 读取名称和版本，发布 `catalog.json` 与 `<appId>/<version>.roapp`，已有版本的制品字节保持固定。向工具提供希望出现在本次目录的所有版本。将制品先部署至固定 HTTPS 目录，再发布目录文件。
+
+重新生成已发布目录时，传入此前发布的原始制品。即使 RID 和应用版本不变，重新构建也可能改变归档字节，例如文件时间戳和共享程序集变化。DevCli 在写入新制品前核对目标目录内所有同版本制品。需要发布不同字节时，先提升应用版本。
+
+为每个桌面 RID 生成独立静态目录，并将该 RID 的发行版指向对应的 `catalog.json`。目录条目按应用 ID 和版本标识，归档路径也使用这两项。不同 RID 的同版本归档字节可能不同，因此四份目录使用各自的 HTTPS 路径，例如 `/desktop/stable/linux-arm64/catalog.json`。
 
 Docker Manager 随桌面发行物提供为官方可选包，并在 Developer 配置中声明为交互安装。安装审查显示 Docker 服务端能力和应用权限。Docker Engine 仍由组件中心管理。
 

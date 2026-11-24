@@ -40,21 +40,37 @@ internal static class OfficialDesktopCatalogCommand
                 && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
         }
 
+        var documentToPublish = new OfficialDesktopCatalogDocument(OfficialDesktopCatalogRules.SchemaVersion,
+            releases.Select(release => release.Entry).OrderBy(entry => entry.AppId, StringComparer.Ordinal)
+                .ThenByDescending(entry => Version.Parse(entry.Version)).ToArray());
+        var catalogBytes = JsonSerializer.SerializeToUtf8Bytes(documentToPublish,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        if (catalogBytes.Length > OfficialDesktopCatalogRules.MaximumCatalogBytes)
+            throw new ArgumentException("The official desktop catalog exceeds its allowed size.");
+
+        var pending = new List<(string Source, string Destination, OfficialDesktopCatalogEntry Entry)>();
         foreach (var release in releases)
         {
             var path = Path.Combine(output, OfficialDesktopCatalogRules.ArtifactPath(release.Entry.AppId, release.Entry.Version));
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (File.Exists(path))
-            {
                 await RequireReleaseAsync(path, release.Entry);
-                continue;
-            }
-            var staging = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            else
+                pending.Add((release.Path, path, release.Entry));
+        }
+
+        foreach (var release in pending)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(release.Destination)!);
+            var staging = release.Destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                File.Copy(release.Path, staging);
+                File.Copy(release.Source, staging);
                 await RequireReleaseAsync(staging, release.Entry);
-                File.Move(staging, path);
+                try { File.Move(staging, release.Destination); }
+                catch (IOException) when (File.Exists(release.Destination))
+                {
+                    await RequireReleaseAsync(release.Destination, release.Entry);
+                }
             }
             finally { File.Delete(staging); }
         }
@@ -63,13 +79,7 @@ internal static class OfficialDesktopCatalogCommand
         var temporary = catalog + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var document = new OfficialDesktopCatalogDocument(OfficialDesktopCatalogRules.SchemaVersion,
-                releases.Select(release => release.Entry).OrderBy(entry => entry.AppId, StringComparer.Ordinal)
-                    .ThenByDescending(entry => Version.Parse(entry.Version)).ToArray());
-            var json = JsonSerializer.SerializeToUtf8Bytes(document, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
-            if (json.Length > OfficialDesktopCatalogRules.MaximumCatalogBytes)
-                throw new ArgumentException("The official desktop catalog exceeds its allowed size.");
-            await File.WriteAllBytesAsync(temporary, json);
+            await File.WriteAllBytesAsync(temporary, catalogBytes);
             File.Move(temporary, catalog, overwrite: true);
         }
         finally { File.Delete(temporary); }

@@ -10,11 +10,13 @@ param(
     [string] $OutputDirectory = 'artifacts',
     [ValidateSet('all', 'client', 'server')]
     [string] $PackageKind = 'all',
-    [string[]] $ExternalModules = @()
+    [string[]] $ExternalModules = @(),
+    [string] $OfficialDesktopCatalogUri
 )
 
 $ErrorActionPreference = 'Stop'
 if ($ExternalModules.Count -and $PackageKind -eq 'client') { throw 'ExternalModules requires a Server release.' }
+if ($OfficialDesktopCatalogUri -and $PackageKind -eq 'server') { throw 'OfficialDesktopCatalogUri requires a Client release.' }
 $externalizeScript = Join-Path $PSScriptRoot 'externalize-server-modules.py'
 if ($ExternalModules.Count) {
     $ExternalModules = @($ExternalModules | ForEach-Object { $_.ToLowerInvariant() })
@@ -48,8 +50,8 @@ function New-PackageDirectory([string] $PackageKind) {
     return [PSCustomObject]@{ Name = $name; Directory = $directory; Archive = $archive; Kind = $PackageKind }
 }
 
-function Publish-Component([string] $Project, [string] $Destination, [string] $Executable) {
-    & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration "-p:RuntimeIdentifier=$Runtime" --self-contained true --output $Destination "-p:InformationalVersion=$Version"
+function Publish-Component([string] $Project, [string] $Destination, [string] $Executable, [string[]] $PublishArguments = @()) {
+    & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration "-p:RuntimeIdentifier=$Runtime" --self-contained true --output $Destination "-p:InformationalVersion=$Version" @PublishArguments
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Project." }
     $assembly = if ($Executable.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) {
         [IO.Path]::GetFileNameWithoutExtension($Executable)
@@ -181,8 +183,14 @@ Publish-DeploymentTools
 if ($PackageKind -in @('all', 'client')) {
 $clientPackage = New-PackageDirectory 'client'
 $clientDestination = Join-Path $clientPackage.Directory "payload\$platform\client"
-Publish-Component 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj' $clientDestination "RelaxKonOS$extension"
-& python (Join-Path $projectRoot 'Tests\Client\verify-desktop-distribution.py') --publish-dir $clientDestination --rid $Runtime
+$catalogPublishArguments = @()
+$catalogVerifyArguments = @()
+if ($OfficialDesktopCatalogUri) {
+    $catalogPublishArguments = @("-p:OfficialDesktopCatalogUri=$OfficialDesktopCatalogUri")
+    $catalogVerifyArguments = @('--catalog-uri', $OfficialDesktopCatalogUri)
+}
+Publish-Component 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj' $clientDestination "RelaxKonOS$extension" $catalogPublishArguments
+& python (Join-Path $projectRoot 'Tests\Client\verify-desktop-distribution.py') --publish-dir $clientDestination --rid $Runtime @catalogVerifyArguments
 if ($LASTEXITCODE -ne 0) { throw 'Published desktop distribution validation failed.' }
 $contractChecks = Join-Path $projectRoot 'Tests\ServerModules\RelaxKonOS.ServerModules.Tests.csproj'
 & dotnet run --project $contractChecks --configuration $Configuration --no-launch-profile -- `

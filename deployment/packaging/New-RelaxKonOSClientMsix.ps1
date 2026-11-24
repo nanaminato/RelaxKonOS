@@ -11,7 +11,8 @@ param(
     [string] $Publisher = 'CN=RelaxKon',
     [string] $DisplayName = 'RelaxKonOS',
     [string] $CertificatePath,
-    [switch] $SkipSigning
+    [switch] $SkipSigning,
+    [string] $OfficialDesktopCatalogUri
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,9 +50,15 @@ $stagingPath = Join-Path $env:TEMP ('RelaxKonOS-msix-stage-' + [Guid]::NewGuid()
 
 try {
     New-Item -ItemType Directory -Path $output, $publishPath, $stagingPath, (Join-Path $stagingPath 'Assets') -Force | Out-Null
-    & dotnet publish (Join-Path $projectRoot 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj') --configuration $Configuration --runtime $Runtime --self-contained true --output $publishPath
+    $catalogPublishArguments = @()
+    $catalogVerifyArguments = @()
+    if ($OfficialDesktopCatalogUri) {
+        $catalogPublishArguments = @("-p:OfficialDesktopCatalogUri=$OfficialDesktopCatalogUri")
+        $catalogVerifyArguments = @('--catalog-uri', $OfficialDesktopCatalogUri)
+    }
+    & dotnet publish (Join-Path $projectRoot 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj') --configuration $Configuration --runtime $Runtime --self-contained true --output $publishPath @catalogPublishArguments
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
-    & python (Join-Path $projectRoot 'Tests\Client\verify-desktop-distribution.py') --publish-dir $publishPath --rid $Runtime
+    & python (Join-Path $projectRoot 'Tests\Client\verify-desktop-distribution.py') --publish-dir $publishPath --rid $Runtime @catalogVerifyArguments
     if ($LASTEXITCODE -ne 0) { throw 'Published desktop distribution validation failed.' }
     $contractChecks = Join-Path $projectRoot 'Tests\ServerModules\RelaxKonOS.ServerModules.Tests.csproj'
     & dotnet run --project $contractChecks --configuration $Configuration --no-launch-profile -- `

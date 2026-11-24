@@ -25,6 +25,12 @@ $env:RELAXKONOS_MSIX_CERT_PASSWORD = '<certificate password>'
 
 MSIX upgrades in place only when `IdentityName` and `Publisher` stay unchanged and the package version increases. Do not commit a PFX file or its password; keep both in the release signing system.
 
+## Official desktop app catalog
+
+Pass the target runtime's HTTPS `catalog.json` URL as `-OfficialDesktopCatalogUri` when building a ZIP with `New-RelaxKonOSRelease.ps1` or an MSIX with `New-RelaxKonOSClientMsix.ps1`. For `package-relaxkonos.sh`, pass the URL as the seventh argument and use an empty sixth argument when no server modules are externalized.
+
+The packaging scripts verify the catalog address in `OfficialApps/catalog-source.json` before assembling the archive. Publish the catalog and the official application artifacts built for that runtime together. See the [package store design](../docs/platform/RelaxKonOS.PackageStore.Design.md).
+
 ## Desktop Settings
 
 Standard and Developer install the bundled Settings package on first startup.

@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION=${1:?usage: package-relaxkonos.sh VERSION [linux-x64|linux-arm64] [Release|Debug] [OUTPUT_DIRECTORY] [all|client|server] [EXTERNAL_MODULES]}
+VERSION=${1:?usage: package-relaxkonos.sh VERSION [linux-x64|linux-arm64] [Release|Debug] [OUTPUT_DIRECTORY] [all|client|server] [EXTERNAL_MODULES] [OFFICIAL_DESKTOP_CATALOG_URI]}
 RUNTIME=${2:-linux-x64}
 CONFIGURATION=${3:-Release}
 OUTPUT_DIRECTORY=${4:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/artifacts"}
 PACKAGE_KIND=${5:-all}
 EXTERNAL_MODULES=${6:-}
+OFFICIAL_DESKTOP_CATALOG_URI=${7:-}
 case "$RUNTIME" in linux-x64|linux-arm64) ;; *) echo 'Linux package script supports linux-x64 and linux-arm64.' >&2; exit 64 ;; esac
 case "$CONFIGURATION" in Release|Debug) ;; *) echo 'Configuration must be Release or Debug.' >&2; exit 64 ;; esac
 case "$PACKAGE_KIND" in all|client|server) ;; *) echo 'Package kind must be all, client, or server.' >&2; exit 64 ;; esac
 if [[ $PACKAGE_KIND == client && -n $EXTERNAL_MODULES ]]; then
   echo 'External modules require a Server release.' >&2
+  exit 64
+fi
+if [[ $PACKAGE_KIND == server && -n $OFFICIAL_DESKTOP_CATALOG_URI ]]; then
+  echo 'Official desktop catalog URI requires a Client release.' >&2
   exit 64
 fi
 [[ "$VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || { echo 'Invalid version.' >&2; exit 64; }
@@ -37,8 +42,9 @@ new_package() {
 
 publish_component() {
   local project="$1" name="$2" executable="$3" destination required
+  shift 3
   destination="$BUNDLE/payload/linux/$name"
-  dotnet publish "$PROJECT_ROOT/$project" --configuration "$CONFIGURATION" "-p:RuntimeIdentifier=$RUNTIME" --self-contained true --output "$destination" "-p:InformationalVersion=$VERSION"
+  dotnet publish "$PROJECT_ROOT/$project" --configuration "$CONFIGURATION" "-p:RuntimeIdentifier=$RUNTIME" --self-contained true --output "$destination" "-p:InformationalVersion=$VERSION" "$@"
   for required in "$executable" "$executable.dll" "$executable.deps.json" "$executable.runtimeconfig.json"; do
     if [[ ! -f "$destination/$required" || ! -s "$destination/$required" ]]; then
       echo "Publish output for $project is missing a non-empty $required." >&2
@@ -96,9 +102,15 @@ publish_deployment_tools
 
 if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == client ]]; then
   new_package client
-  publish_component 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS
+  catalog_publish_arguments=()
+  catalog_verify_arguments=()
+  if [[ -n $OFFICIAL_DESKTOP_CATALOG_URI ]]; then
+    catalog_publish_arguments=("-p:OfficialDesktopCatalogUri=$OFFICIAL_DESKTOP_CATALOG_URI")
+    catalog_verify_arguments=(--catalog-uri "$OFFICIAL_DESKTOP_CATALOG_URI")
+  fi
+  publish_component 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS "${catalog_publish_arguments[@]}"
   python3 "$PROJECT_ROOT/Tests/Client/verify-desktop-distribution.py" \
-    --publish-dir "$BUNDLE/payload/linux/client" --rid "$RUNTIME"
+    --publish-dir "$BUNDLE/payload/linux/client" --rid "$RUNTIME" "${catalog_verify_arguments[@]}"
   dotnet run --project "$PROJECT_ROOT/Tests/ServerModules/RelaxKonOS.ServerModules.Tests.csproj" \
     --configuration "$CONFIGURATION" --no-launch-profile -- \
     --official-desktop-module-contracts "$BUNDLE/payload/linux/client/OfficialApps"

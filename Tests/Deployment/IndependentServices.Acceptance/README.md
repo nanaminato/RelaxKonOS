@@ -11,6 +11,10 @@ dotnet publish Tests/Deployment/IndependentServices.Acceptance/IndependentServic
 
 FRP 使用 17099、19090/19091，Mihomo 使用 17890/17991，Windows Nginx 使用 18080。所有配置使用回环地址及固定测试 Token，不用于生产。主机登录凭据不属于此工程。
 
+单独验收 FRP 时，依次使用 `setup-frp`、`status`、`stop-start`、`rollback` 和 `cleanup-frp`，每次均传入 `--confirm-isolated-host`。这组命令只依赖生产 Helper、FRP 归档和宿主服务管理器。
+
+全新的隔离 Linux 环境可先运行 `verify-first-frps-failure --confirm-isolated-host`。它占用回环端口 17100，确认首次启动失败后没有留下单元、启用链接或应用证明，然后可继续正常 FRP 流程。
+
 无 GitHub 连通性时，在 runner 同目录提供官方 `frp-linux.tar.gz` / `frp-windows.zip` 与 `mihomo-linux.gz` / `mihomo-windows.zip`。Helper 与共享清单仍核验 SHA-256；Windows archive roots 必须采用安装器配置的物理数据目录。
 
 结果和边界见[进度文档](../../../docs/services/RelaxKonOS.IndependentComponentServices.Progress.md)。这是 Helper/系统服务层验收，不替代 GUI/API、版本升级和选择性卸载测试。

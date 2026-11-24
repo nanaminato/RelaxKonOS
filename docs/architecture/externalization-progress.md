@@ -13,12 +13,14 @@
 | --- | --- | --- |
 | 最小 Shell、应用包、安装配置集 | 空白系统盘只登记 App Installer，29 个官方归档；三档预装、Minimal 恢复和用户卸载保留通过 | 物理 Windows ARM64 的原生桌面、预装和 WebView2；物理 Linux ARM64 的桌面启动与预装 |
 | 服务端模块外置、回滚与联合部署 | 四 RID 构建并临时签名 46 份制品，Linux 两种架构验证独立模块共同启用；实际归档的联合部署与原回执恢复已分项验证 | 物理 ARM64 上的运行版本、健康和业务请求；当前授权目标上的最小升级路径与旧版本恢复 |
-| 应用商店与来源 | 隔离 HTTPS 和签名目录夹具覆盖来源审查、安装及恢复；本地发布产物通过发行校验 | 如以正式来源验收，需取得授权发布目标及相应签名、发布和下载证据 |
+| 应用商店与来源 | 四种 RID 的生成版目录经隔离 HTTPS 验收，116 份制品与目录摘要一致；签名模块目录覆盖来源审查、安装及恢复 | 正式来源验收需要获授权的发布目标，以及该来源的签名、发布和客户端下载证据 |
 | 真实远端工作流 | Windows、Linux 回环 SSH/SFTP 联调，Windows x64 原生 WebView2；真实业务覆盖见下方逐项记录 | 授权远端的 SSH 部署、工作区与桌面业务，以及矩阵中明确待验的宿主服务路径 |
 
-当前工作区未提供远端连接记录。已有模拟环境及回环验收的范围以各自运行记录为准。
+已使用用户提供的新地址和既有 SSH 主机密钥登录 Ubuntu 26.04 x64。连接详情未写入仓库。实体 ARM64 和正式目录发布仍待验收，已有模拟及回环证据的范围以各自运行记录为准。
 
-最近复核使用当前校验器检查 Windows x64、Windows ARM64、Linux x64 和 Linux ARM64 四份实际桌面发行，均通过 29 个官方包、目标架构及三档配置检查。Windows x64 的官方 Browser 包同时通过 WebView2 回环导航及包生命周期复验。
+继续实机验收需要实体 Windows ARM64 和 Linux ARM64 测试设备、允许执行模块最小升级及回滚的远端连接记录，以及正式目录发布权限。连接记录使用 Git 忽略的 `.codex-scratch/remote-acceptance/connections.local.md`。
+
+最近复核使用当前校验器检查 Windows x64、Windows ARM64、Linux x64 和 Linux ARM64 四份实际桌面发行。每份的 29 个官方包均通过目标架构、三档配置和当前 Core 模块契约检查。Windows x64 的官方 Browser 包同时通过 WebView2 回环导航及包生命周期复验。
 
 ## 桌面应用矩阵
 
@@ -31,7 +33,7 @@
 | settings | Settings | 是 / 是 | 否 | 工作区设置与宿主设置 | 基础 | Windows 隔离安装、同版本修复、包窗口及深链接已验 |
 | explorer | Explorer | 是 / 是 | 否 | 文件 API；调用存储提供者的聚合入口 | 基础 | Windows 隔离发行安装、修复、未登录深链接通过 |
 | terminal | RelaxKonOS.App.Terminal | 是 / 是 | 否 | SDK 终端会话和宿主原生渲染 | 基础 | Windows 与 WSL 官方桌面包已验，Linux 联合部署、已安装窗口恢复与 Ghostty 原生终端加载已验，实体桌面待验 |
-| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 包生命周期及真实环回 SSH 主机地址查询通过，远端 SSH 部署待验 |
+| server-center | RelaxKonOS.App.ServerCenter | 是 / 是 | 否 | 服务端连接、安装与管理 | 基础 | Windows 包生命周期和真实环回 SSH 地址查询通过，Linux x64 官方窗口通过真实 OpenSSH 完成用户模式安装，远端设备待验 |
 | component-center | ComponentCenter | 是 / 是 | 否 | 组件、可信来源、模块及任务 API | 基础 | Windows 隔离安装、同版本修复和生产工作区包激活已验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Windows 与 Linux x64 发行包生命周期及已安装窗口读取原生性能快照、普通进程列表已验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期、缺失资源修复及用户文档保留已验 |
@@ -39,23 +41,23 @@
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | Windows 包生命周期及 Linux Standard 原生首次预装已验 |
 | registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Windows 与 Linux x64 发行包生命周期及已安装窗口读写工作区值、SQLite 重启恢复已验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 与 Linux x64 包生命周期及已安装官方窗口经隔离服务端读取告警已验，桌面 SDK 授权边界已验 |
-| codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期和回环 SFTP 文件读写已验，远端工作区待验 |
+| codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期和真实 OpenSSH 文件读写已验，授权远端工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | Windows 和 Linux 签名双包、真实 Engine 临时项目部署和删除已验 |
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows 和 Linux x64 官方包生命周期已验，已安装只读窗口经生产 HTTP 路由和 IPC 显示独立 Agent 版本 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows 和 Linux 签名双包、Windows 真实状态读取，以及 Linux UFW 经生产 Helper 的授权增删已验 |
 | proxy | RelaxKonOS.App.ProxyManager | 是 / 是 | 否 | Proxy 模块与 Proxy capability；组件中心管理 mihomo | 官方可选包 | Windows、Linux 签名双包已验，Linux 真实 Mihomo 总览、直连重载和补偿已验 |
-| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows 包生命周期、Linux 签名 Proxy 复用、两平台原生配置和 Linux 凭据到期环回流量已验；签名双包经系统 Helper 发布待验 |
+| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows 包生命周期和原生配置已验。Linux 原包联合部署后从已安装窗口经签名 Proxy 模块和生产 Helper 发布真实 TLS 入站，证书指纹及模块移除已验 |
 | squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows 包生命周期及 Linux 精简发行的生产 Helper 发布、真实 Squid 启动与重载已验 |
-| file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 官方包生命周期及只读窗口经生产 HTTP 路由读取真实 SMB 状态已验，生产 Helper 命名管道和共享传输待验 |
+| file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 官方包生命周期和真实 SMB 查询已验。Linux 已安装窗口经持久 Helper 读取、创建及删除真实 Samba 共享，真实传输及拒绝访客已验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 官方包生命周期及 Linux 实际 OpenSSH 环回转发、移除已验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows、Linux 签名双包已验，Linux 隔离 Pebble 真实签发及重启恢复已验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows、Linux 签名双包及 Certificates 复用已验，Linux 真实 Nginx 直连重载及生产 Helper 重载已验，覆盖坏配置拒绝和修正后重载 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，Ubuntu 发行 Core 联合安装、实际仓库登记、状态、提交图及按文件提交已验 |
-| tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验，Linux 真实外部 FRP 双向转发及停止已验，受管 Helper 待验 |
+| tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows 和 Linux 签名双包已验。Linux 已安装桌面窗口经生产客户端与 Helper 应用、停止真实受管 FRP，双向转发、端口释放和档案恢复已验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows 与 Linux x64 官方包生命周期、定义读取、窗口提交部署、真实 Docker 工作负载和成功回执已验。Windows 另已验证首次拉取并绑定新镜像 ID |
 | database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、Database 模块与宿主安装任务 | 官方可选包 | Windows 包生命周期、Ubuntu 签名独立包联合安装与重启续跑及四条真实 Helper 只读查询已验 |
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows 和 Linux 随附及签名双包已验，Windows Helper IPC 控制读取与 Linux 未登录守护进程状态已验 |
-| ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及环回 SFTP 读写、复制移动和主机指纹校验已验，远端桌面待验 |
+| ssh-files | RelaxKonOS.App.SshFiles | 是 / 是 | 否 | SDK SSH/SFTP 会话，由宿主验证主机密钥 | 基础 | Windows 官方包及真实 OpenSSH 读写、复制移动和主机指纹校验已验，授权远端桌面待验 |
 
 基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前官方目录包含 29 个桌面 .roapp，桌面宿主保留内置应用安装器。Standard 离线安装 Browser、Component Center、Event & Alert Center、Explorer、Image Viewer、Notepad、Registry、Server Center、Settings、SSH Files、Task Manager、Terminal 和 Welcome。Minimal 可通过内置应用安装器从发行归档安装和修复基础应用。Developer 额外离线预装 Code Editor，另有 15 个交互式安装项。
 
@@ -81,6 +83,79 @@ Windows 图形启动冒烟测试使用发行版 `RelaxKonOS.exe --installation-p
 - Windows ConPTY、Linux Terminal worker、进程树清理和 PTY 生命周期接口已移入 `RelaxKonOS.ServerModule.Terminal`。Core 与 Helper 随各自发行物携带同一程序集，并提供各自的用户环境构造。Hub 授权和会话驻留由 Core 处理。Windows Release 通过终端协议、管理员授权回收、输入输出、调整尺寸、退出、启动失败清理和 17 项真实进程树检查。Linux x64 自包含 Core 在 WSL 通过实际 PTY 输入输出、控制帧取消及父进程异常退出后清理。自包含 Helper 在隔离 Linux 容器以 sudo 链路和普通用户身份通过全部 17 项真实进程树检查，验证显式关闭、退出码、驻留释放及无关进程存活。签名包及会话恢复验收见「实施与恢复」。
 
 ## 实施与恢复
+
+- Ubuntu 远端预检通过 SSH 历史主机密钥、账号认证和只读 sudo 维护命令。现有 Core 为 `0.2.8-dev.c1d98d60d.shutdown1`，Core、Helper、Guardian 和 Mihomo 正在运行。已登记的独立包是官方来源的 Cloud Storage 1.0.0，发行中存在 ModuleHost 可执行文件，但基础配置未启用监督条目，Core 未见直接的 ModuleHost 子进程。当前基础配置只有正式模块来源。本轮未变更任何远端服务、信任或包状态。
+- 对照当前工作树复验 File Services 服务端协议、授权、失败读取及共享管理回归，Windows x64 通过。实际 Windows x64 与 Linux ARM64 客户端发布目录的 29 个归档及对应商店配置均通过当前校验器。
+- 同一 Linux x64 Proxy Server 真实发布流程补测在线移除后的服务边界。签名模块从清单移除后，Core 健康端点仍可用，认证 Proxy Server 管理路由返回 404。桌面先前发布的 sing-box 监听继续接受回环 TLS，客户端核对相同主机名与原证书 SHA-256。再次握手与模块清单均通过。
+- Linux x64 原始 Proxy Server 桌面包从缺少 Proxy 执行模块的当前发行开始，通过 HTTPS 签名双包、两次重启及原部署恢复。真实 PAM 登录取得授权，生产 Certificates API 创建回环测试证书。生产队列通过桌面客户端保存草稿和凭据，已安装窗口的应用命令经签名 Proxy 模块及生产 Unix Helper 发布。真实 sing-box 回环 TLS 握手主机名与证书 SHA-256 均匹配，随后卸载桌面包、停用和在线移除签名模块，Core 保持健康。使用 `RK_TEST_PROXY_SERVER_PUBLISH=1` 启用该路径。测试容器预装固定归档版 sing-box；窗口在无头环境运行，测试自动确认发布。
+- Linux x64 原始 Proxy Server 包在同一无外网 systemd 容器联合部署到当前精简 Core。生产 Helper 预置并启动真实 sing-box TLS 入站，独立连接校验证书。已安装窗口经真实 PAM 会话与生产持久 Helper 读取同一运行配置摘要。Core 领域台账尚未发布该配置，窗口因此不报告桌面应用成功。应用卸载、模块停用及在线移除通过，Core 保持健康。窗口触发入站发布仍待验收。
+- 已找到离线容器的 systemd 凭据加载条件。无宿主绑定挂载的一次性容器在启动 PID 1 前执行 `mount --make-rshared /`，动态用户探针即可读取凭据。使用此布局复跑当前 Linux x64 生产 Helper，核验固定 sing-box 归档、拒绝无效候选、提交 TLS 配置、启动真实回环监听、校验证书及配置摘要、停止后端口关闭和卸载全部通过。生产单元的隔离与凭据配置未调整。本轮走单次 Helper，签名双包桌面发布仍待联调。
+- 从当前工作树重建六模块外置 Linux x64 服务端发行 `0.3.0-proxy-current`，使用新 ZIP 中的 Core 和 Helper 复跑原始 Proxy Server 桌面包。通过发行文件清单、真实 PAM、HTTPS 签名目录、两次重启、只读窗口状态、依赖阻塞、停用及在线移除检查。移除后 Core 和认证清单仍可用。此轮仍未安装或启动 sing-box。
+- 用独立 Debian 13 systemd 257 镜像复跑最小 `LoadCredential` 探针，结果与 Ubuntu systemd 255 相同。服务收到 `CREDENTIALS_DIRECTORY`，但目录不可见，普通、动态用户及文件系统隔离服务均复现。问题跨两个本地容器发行复现，尚未获得可用于真实 sing-box 启动的本地环境。
+- 当前 Windows x64 Release Proxy Core 安全、模块驻留与生命周期/TUN 作用域回归通过。Linux 隔离探针进一步确认 systemd 255 向普通服务、动态用户服务及启用文件系统隔离的服务都提供了凭据目录变量，但三者都看不到该目录。禁用容器 IPC 后结果相同。故障可脱离 sing-box 和生产配置复现，真实入站监听仍需可加载 systemd 凭据的验收宿主。
+- 隔离 Linux x64 验收用生产 Helper 导入已核对固定 SHA-256 的 sing-box 1.14.3 归档，校验并提交回环 Trojan TLS 配置，Helper 返回配置摘要。修复无效配置在渲染阶段抛出 `InvalidDataException` 时未返回协议帧的问题，复跑确认无效候选返回结构化失败。当前 Docker systemd 环境无法为动态服务加载 `LoadCredential`，独立探针也无法读取测试凭据。实际监听与桌面发布仍待在支持该 systemd 能力的宿主验收。
+- Linux x64 Proxy Server 原包联合部署补充已安装窗口验收。窗口通过真实 PAM 登录会话和生产桌面客户端读取已签名运行模块的空配置，显示 sing-box 未安装，并以只读应用授权禁止管理。卸载、停用和在线移除通过，Core 保持健康。尚未在该联合部署中发布实际入站。
+- 原始 Linux x64 Proxy Server 桌面归档在隔离 systemd 容器通过真实精简 Core 联合部署。桌面从已接纳的回环 HTTPS 签名目录选择独立 Proxy 模块，安装和启用两次重启后登记应用。卸载释放停用阻塞，模块停用后可在线移除，Core 保持健康。使用现有精简发行 ZIP 与当前桌面 runner，尚未触发 Proxy Server 入站的实际 sing-box 发布。
+- Linux x64 已安装 File Services 窗口经生产 HTTP 共享路由及非 root 生产 Unix Helper 创建和删除真实 Samba 共享。两次窗口操作均验证了预期审计动作，独立 `smbclient` 在两次操作之间完成 8192 字节上传、下载和磁盘内容核对，访客拒绝及删除后拒绝新连接均通过。窗口在无头环境运行，测试使用隔离身份、授权及审计夹具。复跑入口为 `--file-services-live-socket-mutation <socket> <桌面验收程序> <File Services .roapp> <共享名> <create|delete> <共享路径> --confirm-isolated-host`，创建使用隔离 Samba 账户 `rkshare`。
+- Linux x64 在无外网 systemd 容器通过 `--file-services-live-socket <socket> <桌面验收程序> <File Services .roapp> Roundtrip` 验证原始发行包。非 root HTTP 测试宿主经生产持久 Unix Helper 完成状态和配置读取，已安装的无头窗口显示运行状态和预期受管共享，并保持只读权限。共享由单次生产 Helper 预置，同轮再次通过实际 SMB 双向校验、访客拒绝及移除后的拒绝访问。
+- Linux x64 在无外网 systemd 容器用 Ubuntu 来源的离线 Samba 包和当前生产 Helper 跑通真实 SMB。经单次 Helper 协议设置临时账户密码并应用共享，`smbclient` 上传再下载 8192 字节，下载和磁盘文件均逐字节匹配原输入。访客拒绝、Helper 删除共享后拒绝新连接均通过。桌面窗口和持久 Helper socket 不在本轮范围内。
+- 修复后的 Helper 在同一次 Linux x64 systemd 验收中通过首次失败清理、正常重试、原始桌面包联合部署、窗口触发真实双向转发、停止后端口释放及模块恢复。ARM64 模拟容器另外通过首次失败单元清理与卸载，原生进程身份和成功启动仍需实体设备验收。
+- 修复 Linux FRP 生产 Helper 首次启动失败后的回滚。在隔离 Linux x64 systemd 容器中占用 FRPS 回环端口，确认失败后没有单元、启用链接或应用证明。正常重试、两个 FRPC 实例独立启停、已运行配置回滚和最后卸载均通过。
+- 当前 Windows x64 签名 Tunnels 专项通过回归。Linux ARM64 复跑已核对原始桌面归档、官方 FRP 0.71.0 固定摘要及当前 ARM64 Helper。模拟 systemd 容器的 FRPS 可以进入 active，但该进程的 `/proc/<pid>/exe` 指向 `/usr/bin/qemu-aarch64`，与生产 Helper 要求的固定 FRPS 可执行路径不同，启动检查返回 Conflict。此路径仍需在实体 ARM64 主机复验。
+- 使用原始 Linux x64 Tunnels 桌面发行归档及其 SHA-256 复跑。精简宿主起初缺少随附 Tunnels 执行程序集。桌面选中独立签名模块，并在安装和启用各重启一次后恢复原联合部署，期间未重复提交安装。应用登记后，窗口经生产 Helper 完成真实受管 FRP 双向转发及停止。服务端签名测试包由独立签名输入生成，使用 `RK_TEST_FRP_MODULE_SOURCE` 指定。
+- Linux x64 签名 Tunnels 联合部署专项从已安装桌面窗口应用与停止受管档案。生产桌面客户端、HTTP 路由及非 root Unix Helper 连接均参与，真实 FRPC 的双向载荷逐字节一致，停止后端口释放，签名模块重新启用后恢复档案。窗口运行在 Avalonia 无头画布，认证与应用授权由夹具提供，档案和回环后端由专项预置。
+- Linux x64 签名 Tunnels 联合部署专项在无外网 systemd 容器通过受管 FRP 验收。当前生产 Helper 经 Unix socket 导入固定版本归档，生产 HTTP 路由应用受管档案并启动真实 FRPC。结构化状态确认连接和应用证明，回环双向负载逐字节匹配，停止后 FRPS 代理端口拒绝连接。测试宿主用独立持久密钥保留档案秘密，签名模块停用及再启用后恢复档案。测试由认证 HTTP 操作，尚未从已安装的桌面窗口触发。复跑可向专项传入 `RK_TEST_FRP_HELPER_SOCKET`、`RK_TEST_FRP_HOST_ARCHIVE` 和 `RK_TEST_FRP_HOST_DATA`，仅在一次性隔离主机使用，FRPS 夹具监听回环端口 17099。
+- 签名 Tunnels 联合部署验收可通过 `RK_TEST_FRP_HELPER_SOCKET` 连接已安装的 Linux Helper。实测在无外网 systemd 容器中，测试宿主以非 root 身份通过生产 Unix socket 读取正在运行的真实 FRPS 状态，模块停用和重新启用后的档案恢复检查也通过。FRPS 由独立验收程序预先启动，签名双包自己的启动、双向转发和停止仍需验证。
+- 当前 Linux x64 Release 生产 Helper 在无外网、私有 cgroup 的一次性 systemd 容器通过 FRP 专项。固定归档安装、FRPS 与两个 FRPC 连接及应用证明、实例独立启停、占用端口时回滚、回滚后状态和卸载均通过。卸载后未留下 FRP systemd 单元，测试容器已移除。该轮使用生产 Helper 协议直连，签名双包桌面路径仍需接入本轮真实系统服务验收。
+- 独立组件验收程序新增仅启动和清理 FRP 的入口，可复用状态、实例隔离和失败回滚检查。Release 构建通过。现有默认 Linux 容器的 cgroup 为只读且 PID 1 不是 systemd，尚未在此容器运行受管服务测试。
+- 当前签名 Tunnels 联合部署专项在 Windows x64 和隔离 Linux x64 通过。新增检查验证只读账户无法应用隧道档案，以及 Linux 上缺少受管 FRP 时应用请求返回明确错误。此次验证覆盖生产路由与运行时前置检查，真实受管 Helper 启动仍待端到端验证。
+- 对照[独立组件实机记录](../services/RelaxKonOS.IndependentComponentServices.Progress.md)，生产 Helper 已在授权 Ubuntu 和 Windows 上验证过 FRPS 与两个 FRPC 实例、独立启停、服务重启及失败回滚。当前工作区的 Linux x64 FRP 0.71.0 归档 SHA-256 与代码固定值一致，可用于隔离复跑。外置化本轮缺口为从签名双包安装的桌面窗口走到同一生产 Helper 和真实系统服务。
+- 当前 Windows x64 Release 工作树的 `--frps-only` 专项通过，覆盖生产 ManagedFrpsService 的修订、秘密、进程状态和审计。该专项使用运行时夹具。既有真实 FRP 双向转发验收走的是外部运行时，Linux 系统 Helper 路径需另行验证独立 systemd 单元和受管版本。
+- 桌面发行校验现在会检查包内已有的商店配置，即使调用时未指定期望地址。Windows x64 和 Linux ARM64 实际发布目录均通过检查。合成输入覆盖 IPv6、可选空配置及十种无效地址，非法端口、协议、凭据与控制字符均被拒绝。
+- Windows ARM64 发布目录和其中的托管 Notepad 归档通过 Windows x64 桌面验收程序的回环 HTTPS 验证。29 个目录项可浏览，Notepad 下载字节与原包一致，安装和同版本修复通过。现已用桌面安装器验证四种 RID 的生成版目录。Windows ARM64 原生客户端启动、预装和 WebView2 仍待实体设备验收。
+- DevCli 在写入目标目录前校验序列化后的商店目录大小。24 个版本的多字节描述使目录超出 128 KiB，实测拒绝且未创建目标目录。缩减为单条有效记录后正常发布。
+- 复核四份静态目录与 116 份制品，目录行与文件一一对应，长度及 SHA-256 一致。同 RID 的两次 Windows x64 Notepad 构建仍产生了不同归档字节。DevCli 现会在复制新制品前检查同版本冲突。实测先传新 Browser、再传冲突 Notepad 时，原目录与制品树均保持原样。改用原 Notepad 制品后，两项正常发布。本机 Windows 为 x64。
+- Linux ARM64 自包含桌面验收程序在 Docker Desktop 的 ARM64 模拟容器中通过生成版商店验收。无外网容器经回环 HTTPS 提供 DevCli 生成的 ARM64 目录及 Notepad 原始归档。生产 App Installer 浏览 29 个应用，验证首次下载字节并完成安装和同版本修复。切换测试目录后，升级、失败回滚、离线恢复和卸载也通过。
+- Linux x64 用当前自包含验收程序复验 DevCli 生成的 Linux x64 静态目录。在无外网的一次性容器内，以回环 HTTPS 原样提供目录和 Notepad 归档，生产 App Installer 浏览全部 29 个应用，首次下载逐字节匹配制品，安装和同版本修复通过。后续升级、故障恢复、离线恢复和卸载使用测试目录。容器复用本地 fontconfig 和 DejaVu 字体。
+- Windows x64 桌面验收将 DevCli 生成的完整目录原样经回环 HTTPS 提供给生产 App Installer。29 个应用均可浏览，Notepad 的首次下载逐字节匹配发布文件，安装和同版本修复均通过。之后切换到测试目录，继续验证升级、故障恢复、发行包离线恢复和卸载。证书和 HTTPS 端点为测试夹具。可用 `dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests -c Release -- --official-store-only <目录中的 Notepad 1.0.0 归档> <catalog.json>` 复跑。
+- PowerShell ZIP、Windows MSIX 和 Linux Bash ZIP 可在打包时配置目标 RID 的官方商店 HTTPS 地址。Windows x64 ZIP、未签名 Windows ARM64 MSIX 和 WSL 原生 Bash 构建的 Linux ARM64 ZIP 已逐件核对归档内的测试配置及 ZIP 清单或 MSIX 块映射，打包前均通过 29 个官方应用及模块契约检查。将 ARM64 地址作为 x64 构建的期望值时，校验器拒绝该配置。PowerShell 和 Bash 的服务端专用发行均拒绝此参数。
+- DevCli 从 Windows 和 Linux 的 x64、ARM64 四份现有桌面发行各生成一份静态应用商店目录。逐项比对 116 份制品的原始字节、长度和 SHA-256 均通过。29 个同版本应用均存在跨 RID 的字节差异，发行说明明确按 RID 配置对应 HTTPS 目录。本轮只生成本地制品。
+
+- Windows 与 Linux x64 Release 使用各自实际 Notepad 官方归档复跑 HTTPS 应用商店。覆盖目录浏览、下载及审阅、首次安装、同版本缺失资源修复、升级、失败后保留原版本、离线发行归档和卸载。Linux 在无外网一次性容器中使用本地字体运行时。两轮来源均为隔离回环 HTTPS 夹具，正式发布来源待验。
+
+- Windows Release 使用现有官方归档复跑 Settings、Component Center 和 Server Center 的已安装窗口。Settings 与 Component Center 深链接、Server Center 工作区及卸载关闭通过。桌面回归覆盖三语设置、搜索、键盘和放大布局。资源静态检查通过 4391 个宿主键和 39 套独立应用资源。
+
+- Linux x64 当前无头桌面验收程序使用 Linux 发行中的 SSH Files 和 Code Editor 官方包，复跑一次性 Ubuntu 的真实 OpenSSH SFTP。两个包的读写、主机校验和生命周期均通过，容器直接比较编辑后的字节。SSH 仅在容器内环回监听，验收后清理。
+
+- 原 Paramiko SFTP 夹具显式绑定自己的根目录，避免继承真实 OpenSSH 验收的目录设置。Windows Release 在进程环境预设其他目录时复跑 SSH Files 和 Code Editor，两包均通过默认夹具操作和生命周期。
+
+- Windows x64 官方 SSH Files 与 Code Editor 通过真实 Ubuntu OpenSSH SFTP 联调。SSH Files 验证下载、上传、拒绝覆盖、嵌套目录往返、远程复制移动及错误主机密钥拒绝。Code Editor 打开并保存同一宿主文件，容器独立核对最终字节。两包生命周期通过。普通用户在一次性容器的专用目录操作，SSH 端口仅对 Windows 环回映射，验收后已清理。
+
+- 仓库 Server Center SSH 生命周期脚本新增 `-SystemMode`。Windows x64 官方包在一次性 Ubuntu systemd 容器通过 sudo 完成真实安装、升级、回退和保留数据卸载。旧版本恢复后保持原安装 ID 并通过健康检查。脚本独立确认卸载后 Core 环回端口拒绝连接、Core 与 Helper 均已停止或移除，系统模式 SQLite 文件仍存在。容器已清理，授权远端设备仍待验。
+
+- Windows x64 已安装官方 Server Center 包在一次性 Ubuntu systemd 容器完成系统模式 SSH 安装。向导选择本地完整发行 ZIP，绑定普通 SSH 账户的 sudo 密码，审阅提交后得到成功回执，宿主卡报告 Linux System Mode 且健康。独立 systemd 检查 Core 和 Privileged Helper 均为 active，Core 环回健康返回 `healthy`。本轮使用无头桌面，容器已清理，授权设备仍待验。
+
+- Linux x64 Server Center `--linux-ssh-system-install` 通过真实 OpenSSH/SFTP 和普通 SSH 用户的 sudo 密码，在一次性 Ubuntu systemd 容器安装完整 Server ZIP。重新连接后读取原成功回执和安装 ID，独立请求 Core 健康端点成功，systemd 确认 Core 和 Privileged Helper 均为 active。此轮使用生产 SSH 客户端服务，系统模式桌面向导与授权设备仍待验。
+
+- Windows 到 Ubuntu 的官方 Server Center SSH 生命周期可由 [仓库验收脚本](../../Tests/Client/verify-server-center-ssh-lifecycle.ps1) 复跑。传入 Windows Release 验收 DLL、官方应用目录和两份 Linux x64 Server ZIP。默认镜像由 `Tests/PostgreSql/systemd.Dockerfile` 构建为 `relaxkonos-db02-systemd:test`。脚本只发布 Windows 环回 SSH 端口，使用一次性身份，完成后自动清理。正式脚本复跑通过安装、升级、回退、保留数据卸载，以及 Core 停止后 SQLite 数据库仍存在的独立检查。
+
+- Windows x64 官方 Server Center 包在同一 SSH 目标完成安装、升级、回退及保留数据卸载。包管理对话框默认保留数据，卸载回执成功并绑定原安装 ID，独立 SSH 状态确认宿主已卸载。容器内复核 Core 端口拒绝连接且原 SQLite 数据库仍存在。验收使用无头桌面和一次性 Ubuntu 容器，测试容器已清理。
+
+- Windows x64 官方 Server Center 包在同一 OpenSSH 容器中完成 Linux User Mode 安装、升级及回退。升级后重新探测，打开包拥有的确认对话框并确认恢复。桌面读取成功的 Rollback 回执，宿主卡报告旧版本、同一安装 ID 且健康，容器内独立探测返回 `healthy`。本轮使用无头桌面和本机一次性 Ubuntu 容器，已清理容器，物理及授权远端设备待验。
+
+- Windows x64 已安装官方 Server Center 向导使用两份完整 Linux x64 Server ZIP，经同一容器的 OpenSSH/SFTP 从 `0.3.0-ssh-live` 安装并升级至 `0.3.1-ssh-live`。向导识别现有安装并进入升级审阅，日志记录成功的 Install 和 Upgrade 回执，安装 ID 不变，宿主卡报告新版本且健康，容器内独立请求返回 `healthy`。本轮使用本地无头窗口和一次性 Ubuntu 容器，设备侧安装和真实桌面回退仍待验。
+
+- Windows x64 的已安装 Server Center 官方包窗口通过 OpenSSH 部署至本机一次性 Ubuntu 容器。通过只映射至 Windows 环回的端口，向导经生产 SSH/SFTP 上传真实 Linux Server ZIP，确认成功回执及健康宿主卡。独立容器探测返回 `healthy`。此轮将 Windows 桌面与 Linux SSH 服务分开运行，包卸载后容器和一次性凭据已清理。远端设备与原生桌面交互仍待验。
+
+- Linux x64 已安装官方 Server Center 窗口经生产向导选择本地 Server ZIP、用户模式和环回端口，进入审阅后提交。一次性 Ubuntu 容器的真实 OpenSSH/SFTP 完成安装，桌面日志记录成功，宿主卡显示已安装且健康，窗口关闭后独立探测 Core 健康成功。使用 Avalonia 无头窗口和容器内一次性账户，未涉及远端设备。
+
+- Server Center 的 `--linux-ssh-install` 使用当前完整 Linux x64 Server ZIP 和正式发行启动器，通过一次性 Ubuntu 容器内的 OpenSSH/SFTP 完成真实用户模式安装。终态回执报告安装 ID、版本和健康。第二个 SSH 会话重新暂存查询工具，读取同一操作 ID、终态、序列及安装 ID，并独立请求 Core 的环回健康端点成功。该专项走生产客户端服务，桌面向导发起的远端安装仍待设备验收。
+
+- Server Center 的 `--linux-ssh-probe` 通过 Linux x64 Release 验收。一次性 Ubuntu 容器内使用真实 OpenSSH 与一次性登录、固定主机公钥指纹，生产 SSH.NET 传输经 SFTP 暂存正式发行启动器并完成 Probe。重新连接并再次暂存查询工具后，读取同一操作 ID、终态、序列和运行架构。该测试只运行探测及回执查询，远端安装仍待验证。
+
+- File Services 验收要求 Helper 的 `SmbDetect` 与 `SmbReadManagedConfiguration` 各至少成功一次，避免把 HTTP 200 的降级响应当作宿主读取成功。Windows Release 用官方包复跑单次 Helper 与跨进程生产命名管道，两种方式均满足新断言。
+
+- Windows x64 官方 File Services 包通过跨进程认证的 Helper 命名管道复验。独立测试进程运行生产管道服务端，使用随机管道名和一次性凭据；桌面经生产 HTTP 路由读取真实 SMB。四条只读请求均返回 200，包生命周期通过。测试后台以当前 Windows 身份运行，未使用已部署的 LocalSystem Helper 服务。测试进程及临时配置已清理。
 
 - File Services 设备验收新增 `--file-services-live-pipe <现有 Helper 配置路径> <桌面验收 DLL> <File Services .roapp>`。由已获管道授权的 Windows 身份执行，使用持久 Helper 的生产命名管道，验收宿主仍只允许 SMB 状态和配置读取。配置内容不进入输出。Windows Release 通过原单次只读回归并验证缺少明确管道配置时拒绝启动。当前无授权命名管道会话，真实管道运行和共享传输待验。
 

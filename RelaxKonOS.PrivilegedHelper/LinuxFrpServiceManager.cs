@@ -92,12 +92,26 @@ internal static class LinuxFrpServiceManager
             }
             catch
             {
-                await RunAsync("/usr/bin/systemctl", ["stop", Unit(key)], requireSuccess: false);
-                if (previous is not null && old is not null)
+                if (previous is null)
                 {
-                    await WritePrivateAsync(active, old); await WritePrivateAsync(metadata, JsonSerializer.Serialize(previous));
-                    await File.WriteAllTextAsync(unitPath, UnitText(key, previous));
-                    await RunAsync("/usr/bin/systemctl", ["daemon-reload"]); await RunAsync("/usr/bin/systemctl", ["start", Unit(key)]);
+                    if (File.Exists(unitPath))
+                        await RunAsync("/usr/bin/systemctl", ["disable", "--now", Unit(key)]);
+                    File.Delete(unitPath);
+                    File.Delete(metadata);
+                    if (old is null) File.Delete(active);
+                    else await WritePrivateAsync(active, old);
+                    if (!Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
+                    await RunAsync("/usr/bin/systemctl", ["daemon-reload"]);
+                }
+                else
+                {
+                    await RunAsync("/usr/bin/systemctl", ["stop", Unit(key)], requireSuccess: false);
+                    if (old is not null)
+                    {
+                        await WritePrivateAsync(active, old); await WritePrivateAsync(metadata, JsonSerializer.Serialize(previous));
+                        await File.WriteAllTextAsync(unitPath, UnitText(key, previous));
+                        await RunAsync("/usr/bin/systemctl", ["daemon-reload"]); await RunAsync("/usr/bin/systemctl", ["start", Unit(key)]);
+                    }
                 }
                 throw;
             }
